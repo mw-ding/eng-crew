@@ -28,10 +28,10 @@ import unittest
 TESTS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # dev/tests/
 SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(TESTS)), "scripts")
 ROOT = os.path.dirname(SCRIPTS)
-spec = importlib.util.spec_from_file_location("crew_render", os.path.join(SCRIPTS, "crew-render.py"))
+spec = importlib.util.spec_from_file_location("crew_render", os.path.join(os.path.dirname(SCRIPTS), "core", "crew-render.py"))
 cr = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cr)
-spec = importlib.util.spec_from_file_location("brief", os.path.join(SCRIPTS, "crew.d", "brief.py"))
+spec = importlib.util.spec_from_file_location("brief", os.path.join(os.path.dirname(SCRIPTS), "environments", "terminal", "crew.d", "brief.py"))
 brief = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(brief)
 

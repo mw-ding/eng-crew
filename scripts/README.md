@@ -47,9 +47,8 @@ run (it has a `__main__` block and is not a `test-*.py`) and a `crew` command
   backend adapter each
   ([session backends](../docs/runtimes/session-backends.md#adapter-modules)).
 - The crew CLI and its modules moved out of `scripts/` into `cli/`, `core/`,
-  `environments/`, `harnesses/` and `connectors/` (#1222). Each old path,
-  such as `scripts/crew` or `scripts/crew-config.py`, is a compatibility shim
-  for one release that runs the moved file.
+  `environments/`, `harnesses/` and `connectors/` (#1222); 7.0.0 removed the
+  old paths.
 - `required-docs.txt` and `deliverables.txt` are `check-repo.py` config; each
   starts with a comment that gives its format (see
   [Required docs](#required-docs)).
@@ -90,7 +89,7 @@ is any problem, 0 otherwise. CI runs both commands in the `repo-guard` job
 | `unclassified`, `double-classified` | a tracked path (`git ls-files`) that matches no row, or more than one row, of `deliverables.txt`. Globs: `**` matches across `/`, `*` and `?` stay inside one segment. A bad or missing manifest fails as `deliverables-config`; outside a git work tree the check is skipped. Issue #235 |
 | `index-stale`, `index-order`, `docs-index` | the index files that every PR would otherwise append to ([Index files](#index-files)): the inventory table in `docs/deliverables.md` differs from the one generated from `deliverables.txt` (or its markers are missing); an entry of `deliverables.txt`, `required-docs.txt` or a `docs/README.md` table row that sorts before the one above it; a second `docs/README.md` row for one doc, or none for a deliverable doc. Issue #325 |
 | `changelog-fragment` | a file under `changes/` that is not a valid fragment directly in `changes/unreleased/`: name `<issue>-<slug>.md`, front matter with exactly `type`, `issue` (the file name's), `pr` (a number or `TBD`), `date` and `box-skill`, then one paragraph of entry text ([CONTRIBUTING](../CONTRIBUTING.md#changelog)). Issue #264 |
-| `script-doc` | a `*.py` file directly under `scripts/`, `scripts/crew`, a `scripts/crew.d/*.py` file, `cli/mdstack`, `cli/crew`, a `*.py` file under `core/`, `harnesses/`, `connectors/` or `environments/`, or a `dev/tests/<module>/test-*.py` test or `dev/tests/crew_testlib.py` without a module docstring, or a script run directly (a `__main__` block, not a `test-*.py`) or `crew` command whose docstring has no line starting `Usage:` ([Per-script docs](#per-script-docs)). A file that does not parse fails too. Issue #325 |
+| `script-doc` | a `*.py` file directly under `scripts/`, `cli/mdstack`, a `*.py` file under `core/`, `harnesses/`, `connectors/` or `environments/`, or a `dev/tests/<module>/test-*.py` test or `dev/tests/crew_testlib.py` without a module docstring, or a script run directly (a `__main__` block, not a `test-*.py`) or `crew` command whose docstring has no line starting `Usage:` ([Per-script docs](#per-script-docs)). A file that does not parse fails too. Issue #325 |
 | `markdown` | a markdownlint rule this repo configures and has failed in CI, run on every tracked `*.md` file by `check-markdown.py` ([Markdown lint](#markdown-lint)). Issue #644 |
 | `test-layout` | a tracked `test-*.py` outside `dev/tests/<module>/` (module one of `actions`, `cli`, `connectors`, `core`, `environments`, `harnesses`, `protocols`, `roles`, `scripts`), or a test name already used in another module; a `test-*.py` under a `fixtures/` directory is test input and is skipped ([Per-script docs](#per-script-docs)). Issue #1224 |
 | `deps`, `deps-baseline` | a file in a module of the [team spec layout](../docs/specs/team.md#4-target-module-layout) that breaks a [dependency rule](../docs/specs/team.md#5-dependency-rules) D1–D9, or, under `roles/` and `protocols/`, names a runtime word (REQ-11: `tmux`, `herdr`, inbox, window, the terminal's `CREW_*` variables, a `crew <command>` or `$CREW_BIN`). A module reference is a path naming another module; in Python it is a string literal that is a whole repo path, an import of a module package (`from connectors.github import x`), or a module name or path joined into a path (`ROOT / "harnesses"`, `os.path.join(ROOT, "core", ...)`). Words follow D5–D7. Python and TOML comments, Python docstrings, `docs/` and `dev/` are not checked. A `path<TAB>rule<TAB>why` row in `deps-baseline.txt` passes that pair; a row that no longer matches, or has no reason, fails as `deps-baseline`. Issue #1224 |
@@ -189,7 +188,7 @@ left to CI. A new rule goes in with a pass and a fail fixture in
 
 ## Denylist
 
-Portable spec P6: eng-crew never names an organization's internal tools
+Portable spec P6: mdstack never names an organization's internal tools
 ([docs/packs.md](../docs/packs.md#direction-rule)). The names themselves are
 never committed here. Keep them in a file outside the repo, one per line
 (`#` comments and blank lines are ignored), and point `CREW_DENYLIST` at it:
@@ -412,7 +411,7 @@ gh pr list --repo <owner>/<repo> --state open --limit 200 \
   | python3 scripts/intake-sweep.py --repo <owner>/<repo>
 ```
 
-Then the coordinator reviews the drafts and files the keepers as eng-crew
+Then the coordinator reviews the drafts and files the keepers as mdstack
 issues. Options: `--stale-days N` (default 7), `--label NAME` (default
 `crew:blocked`), `--repo OWNER/REPO` (shown on cards), `--now
 YYYY-MM-DDTHH:MM:SSZ` (override the clock). Empty input prints nothing and
@@ -480,8 +479,8 @@ rules, and token-shaped values anywhere in the file. The token check reuses
 (`tomllib`); no network.
 
 ```sh
-python3 scripts/crew-config.py validate crew.toml
-python3 scripts/crew-config.py validate connectors/github/manifest.toml   # a file with [pack] is a pack manifest
+python3 core/crew-config.py validate crew.toml
+python3 core/crew-config.py validate connectors/github/manifest.toml   # a file with [pack] is a pack manifest
 python3 dev/tests/core/test-crew-config.py   # offline; also checks the docs/profile.md example
 ```
 
@@ -520,7 +519,7 @@ repo-wide script list (#648).
 Python 3.11+ standard library only; no network.
 
 ```sh
-python3 scripts/crew-render.py --project crew.toml [--org-profile <path>] \
+python3 core/crew-render.py --project crew.toml [--org-profile <path>] \
   [--inputs <inputs-dir>] --out <out-dir>
 python3 dev/tests/core/test-crew-render.py   # golden files under fixtures/render/
 python3 dev/tests/core/test-render-parity.py # real templates vs pre-conversion text
@@ -599,7 +598,7 @@ replaced from resolved profile keys (the "Replaces" columns of
 | `<user-logins>` | `identities.owners`, joined with `", "` so `["<user-logins>"]` becomes one JSON string per login |
 | `<state-dir>`, `<worktree-root>`, `<toolchain-bin>` | `paths.state_dir`, `paths.worktree_root`, `paths.toolchain_bin` |
 | `<timezone>` | `runtime.timezone` |
-| `<eng-crew>`, `<merge-grant>`, `<hold-label-blocks>` | `paths.eng_crew`, `runtime.options.merge_grant`, `runtime.options.hold_label_blocks` (a boolean renders as `true` / `false`) |
+| `<mdstack>`, `<merge-grant>`, `<hold-label-blocks>` | `paths.mdstack`, `runtime.options.merge_grant`, `runtime.options.hold_label_blocks` (a boolean renders as `true` / `false`) |
 | `<merge-grant-scope>`, `<spec-paths>` | `runtime.options.merge_grant_scope`, `spec.paths`, rendered as JSON arrays; absent keys render the defaults `["approved"]` and `["docs/specs/**"]` |
 | `<fallback-engine>` | `engines.fallback_engine` |
 | `<tested-update>` | `strategy.update_from_base` from the change backend's pack manifest (`merge` when undeclared), as the synthesizer's update wording |

@@ -47,8 +47,8 @@ runtime = { name = "tmux", options = { builders = 6, reviewers = 8 } }
 identities = { owners = ["<user-login>"] }
 paths = { state_dir = "<state-dir>", worktree_root = "<worktree-root>" }
 
-[repos.eng-crew]
-repo = "<owner>/eng-crew"
+[repos.mdstack]
+repo = "<owner>/mdstack"
 merge_grant = "roadmap PRs per the tracking issue"
 train_window = 120
 

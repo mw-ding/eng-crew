@@ -37,7 +37,7 @@ gate, CI or security. For small, well-specified work the reviewer queue is
 often the longest wait between the builder's push and the land.
 
 firstmate runs review as a step inside the builder's own loop and merges on
-green CI. Express brings that model into eng-crew as a scoped lane, so it
+green CI. Express brings that model into mdstack as a scoped lane, so it
 can run beside the crew lane and be measured against it, without weakening
 the floor for any other item.
 
@@ -339,7 +339,7 @@ Existing columns (`open_to_merge_min`, `ci_fix_rounds`, `escaped_defects`,
 
 Proposed follow-ups for the coordinator to file, about 100 lines each plus
 tests, in dependency order. Each adds its own CHANGELOG fragment. X1 and X2
-change gates: they are `crew:sensitive` in eng-crew and need the owner's
+change gates: they are `crew:sensitive` in mdstack and need the owner's
 per-change merge-ok (F6, F7).
 
 | ID | Scope | Depends on |

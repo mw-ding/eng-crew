@@ -17,5 +17,4 @@ Shared libraries only, used by every axis. Part of the
 ## How it plugs in
 
 Environments, connectors, harnesses and the CLI import these modules. Core
-depends on no module above it (dependency rule D4). The old `scripts/`
-paths stay as compatibility shims for one release.
+depends on no module above it (dependency rule D4).

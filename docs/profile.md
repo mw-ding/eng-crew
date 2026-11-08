@@ -1,12 +1,12 @@
 # Profile (`crew.toml`)
 
 One install-time file picks the runtime, a backend per concern, identities,
-engines and paths for one repo (portable eng-crew, roadmap 13.10,
+engines and paths for one repo (portable mdstack, roadmap 13.10,
 [#122](https://github.com/mw-ding/eng-crew/issues/122);
 [portable spec P4](specs/portable.md#2-requirements)). It replaces the
 hand-filled placeholders of the [templates](../templates/README.md#placeholders)
 and the per-repo [wiring doc](../templates/runtimes/grok-bot/wiring.md).
-`scripts/crew-config.py validate <file>` rejects a bad profile before anything
+`core/crew-config.py validate <file>` rejects a bad profile before anything
 renders ([scripts](../scripts/README.md#profile-validator)).
 
 This page adds no rule, gate, cap, marker field or label; the
@@ -152,7 +152,7 @@ changelog updates still apply. When disabled or omitted, the builder brief
 and existing builder duties are unchanged. No merge gate is added.
 
 With `owners` set, the builder pipes the changed paths to
-`scripts/crew-config.py precheck-scope --project <file>`, which runs the
+`core/crew-config.py precheck-scope --project <file>`, which runs the
 query once per path and prints each path's class (`owned`, `no-owner-ok` or
 `unowned`) and the owning targets as JSON. It exits 3 on unowned code and 4
 when a query fails; both stop the check. `no_owner_ok` uses the
@@ -177,15 +177,15 @@ Empty patterns, absolute paths and `..` segments are invalid.
 Defaults: `.github/workflows/**`, and root or nested directories named `auth`,
 `secrets`, `permissions`, `access-control`, `migrations` or `deletions`. Add the
 project's other security/irreversible paths (including files outside these
-directories). For eng-crew, add `docs/protocol.md`, `docs/verification.md`,
-`docs/flavors.md` and `scripts/crew-config.py` to protect its gate contract.
+directories). For mdstack, add `docs/protocol.md`, `docs/verification.md`,
+`docs/flavors.md` and `core/crew-config.py` to protect its gate contract.
 
 ```toml
 [sensitive]
 paths = ["infra/iam/**", "scripts/drop-*.py"]
 ```
 
-Run `python3 scripts/crew-config.py sensitive --project crew.toml` with full
+Run `python3 core/crew-config.py sensitive --project crew.toml` with full
 diff paths on stdin (`--paths-only` at triage; `--diff` with
 [content rules](#content-rules-879)). JSON output names `label`
 (`crew:sensitive` or `null`) and `matches` (path → matching rules); exit 1
@@ -327,7 +327,7 @@ command or holds an unfilled `<placeholder>` in it. The map is the pack's
 `render/backends/<name>.toml` overlay ([packs](packs.md)), else the bundled
 `templates/backends/<name>.toml`. `resolve` prints the bound command after
 the profile as `classify.sensitive = "<command>"  # pack:<name>`.
-`scripts/crew-config.py sensitive` runs that command beside the built-in
+`core/crew-config.py sensitive` runs that command beside the built-in
 rules and adds its matches, fail-closed
 ([union](interfaces.md#union-fail-closed)).
 
@@ -353,7 +353,7 @@ describes events, retries, digests and the return brief.
 Optional: how the project cuts and records releases through the
 [release operations](release.md#release-operations)
 ([#585](https://github.com/mw-ding/eng-crew/issues/585)). Without the table
-nothing changes; eng-crew's own release on GitHub needs none, since every
+nothing changes; mdstack's own release on GitHub needs none, since every
 default below is today's behaviour.
 
 | Key | Type | Default | Meaning |
@@ -527,9 +527,9 @@ never upgrades or restarts tools. With no `[tools]`, no probes run.
 | `toolchain_bin` | string | none | `<toolchain-bin>` |
 | `live_dir` | string: the deployed live copy, laid out like `crew-render.py --out` | none | none (read by `check-skill-drift.py --project`, #128) |
 | `pack` | string: pack directory, absolute or relative to this project file | none | records the org pack for resolution |
-| `eng_crew` | string: absolute path of the eng-crew checkout, so briefs cite its docs in any repo | none | `<eng-crew>` |
+| `mdstack` | string: absolute path of the mdstack checkout, so briefs cite its docs in any repo | none | `<mdstack>` |
 | `checkout` | string: the git checkout that role worktrees, trains and host prepare use, absolute or relative to this project file (to `root` when set) | the project file's directory | none (lets a non-git runtime home name its repo checkout, #1178) |
-| `root` | string: one movable base; each relative `state_dir`, `worktree_root`, `live_dir`, `eng_crew` and `checkout` resolves under it. A set `CREW_ROOT` overrides it | none (relative values keep resolving as before) | none ([home-level layout](runtimes/tmux.md#home-level-layout-1178), #1178) |
+| `root` | string: one movable base; each relative `state_dir`, `worktree_root`, `live_dir`, `mdstack` and `checkout` resolves under it. A set `CREW_ROOT` overrides it | none (relative values keep resolving as before) | none ([home-level layout](runtimes/tmux.md#home-level-layout-1178), #1178) |
 
 A key with default "none" may be left out of one file; the
 [default profile](../profiles/default.toml) sets them except the optional `pack`.
@@ -542,7 +542,7 @@ crew (20.2, [#204](https://github.com/mw-ding/eng-crew/issues/204); design in
 With no `[hosts]` table the crew runs on one machine, as today. A host is
 named by its overlay network name only, never by an address, user, port or
 credential (spec R1). Keep these tables in the host-local project
-`crew.toml` or the org layer, never in eng-crew. They replace no template
+`crew.toml` or the org layer, never in mdstack. They replace no template
 placeholder; `validate` checks them, and placement that reads them is
 [#207](https://github.com/mw-ding/eng-crew/issues/207).
 
@@ -601,7 +601,7 @@ than `tmux`.
 `connectors/<backend>/manifest.toml` is a backend's own
 [capability declaration](interfaces.md#capability-declaration):
 `[pack]` with `name` (lowercase letters and digits separated by hyphens), `commands` (the doc holding its
-command mapping), for a pack outside eng-crew, `eng_crew_version`
+command mapping), for a pack outside mdstack, `mdstack_version`
 ([packs](packs.md#version-pin)), an optional SemVer `version` naming the
 pack's own release, distinct from that pin ([pack version](packs.md#pack-version)),
 an optional `harness` naming a pack-relative
@@ -611,8 +611,7 @@ and `[capabilities.<concern>]` with every operation key of
 that concern, all *required*. `[capabilities.release]` is optional; when present, all four keys are required. `[capabilities.classify]` is optional; when present, `sensitive` is required. A profile's `capabilities` table overrides it; `resolve` folds it in
 (see [Layers and precedence](#layers-and-precedence)).
 `validate` treats a file with a `[pack]` table as a manifest; today's is
-[connectors/github/manifest.toml](../connectors/github/manifest.toml)
-(its copy at `packs/github/manifest.toml` stays for one release, #1223).
+[connectors/github/manifest.toml](../connectors/github/manifest.toml).
 
 `validate` and `resolve` check a `pack.harness` registry statically
 ([#964](https://github.com/mw-ding/eng-crew/issues/964), slice B1 of #883):

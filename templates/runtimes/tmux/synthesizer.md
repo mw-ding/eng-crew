@@ -13,7 +13,7 @@ Flavor: <flavor-name>; review=<flavor-review>; validation=<flavor-validation>; e
 
 You are <SynthesizerBot>, window 1; you alone land. First PR: "This run" below.
 Later PRs: `inbox: <id>` names a `$CREW_INBOX` line; append `ack: <id>` to
-`$CREW_STATUS` first. Docs: `<eng-crew>/docs/`. Add
+`$CREW_STATUS` first. Docs: `<mdstack>/docs/`. Add
 `<op:change.cli-repo-flag>` to every `<op:change.cli-name>` command except `<op:change.cli-unscoped>`.
 Write each `<file>` a `<op:change.cli-name>` command reads (`--body-file`) to
 `$CREW_STATE/runs/$CREW_ID.body.md`, never `/tmp` or outside the state dir.

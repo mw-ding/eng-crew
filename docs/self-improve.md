@@ -13,7 +13,7 @@ self-improve gap in the [spec](specs/framework.md).
 
 Three artifacts, three jobs:
 
-- **Intake issue = queue.** A short candidate card in an eng-crew issue.
+- **Intake issue = queue.** A short candidate card in an mdstack issue.
 - **Lesson = memory.** A dated file in [docs/lessons/](lessons/README.md), with a
   one-liner in the [findings buffer](findings/README.md) until promoted.
 - **PR = encoded fix.** A skill, protocol or template change that goes through
@@ -74,7 +74,7 @@ Every card has:
 | Lesson, Findings entry | Links, or `none yet` while pending |
 | Decision | `pending`, `accept (repo:)`, `accept (crew:)` or `close - <reason>` |
 
-Cards are filed as issues in `<owner>/eng-crew`, titled
+Cards are filed as issues in `<owner>/mdstack`, titled
 `intake: <failure class> on <owner>/<repo>#<n>`, so that one queue holds every
 candidate whichever product it came from. Never paste logs, tokens, emails,
 private chat quotes or real box paths into a card (spec R1); link the evidence.
@@ -125,12 +125,12 @@ mdstack feedback --project <project>/crew.toml --class spawn-failure \
 The helper prefills Source, role, engine and launch args from the window's
 run record. It redacts credentials (tokens, bearer values, URL credentials,
 `key=value` secrets), emails and box paths (`<state-dir>`, `<worktree>`,
-`<home>`, any other absolute path as `<path>`) and files the card in `<owner>/eng-crew` (or
+`<home>`, any other absolute path as `<path>`) and files the card in `<owner>/mdstack` (or
 `--repo`) with Scope `crew:` and Decision `pending`. When an open card
 already has that Failure class, it adds the new evidence as a comment
 instead. If it cannot list the open cards, it files nothing. Use
 `--dry-run` to print the card without posting. The coordinator never edits
-eng-crew itself; it carries on with a product-side workaround, if any. The
+mdstack itself; it carries on with a product-side workaround, if any. The
 next triage sweep picks the card up.
 
 ## Accept or close
@@ -143,7 +143,7 @@ longer than one awake half-day.
   the lesson (or has the builder write it in the fix PR) and relabels the issue
   as a normal `crew:ready` builder issue. For `repo:` it opens the issue in the
   product repo and links it. For `crew:` the issue stays in
-  `<owner>/eng-crew`. From here it is an ordinary issue: builder, reviewer-validator,
+  `<owner>/mdstack`. From here it is an ordinary issue: builder, reviewer-validator,
   synthesizer.
 - **Close.** The coordinator closes the issue with a reason: duplicate of
   `#N`, not a harness problem, one-off, or already fixed. A closed card is not
@@ -178,7 +178,7 @@ Every card carries one tag.
   The lesson and the fix go in **that product repo**.
 - **`crew:`** generalizes: a merge-gate race, missing evidence, a role
   checklist gap. The lesson and the fix go in this repo
-  (`<owner>/eng-crew`) and, where the live copy changes, the box skills
+  (`<owner>/mdstack`) and, where the live copy changes, the box skills
   `eng-pr-pipeline` and `eng-crew-roles` (mirrored under spec R4).
 
 **Promotion rule.** Default to `repo:`. Promote to `crew:` when the same
@@ -187,8 +187,8 @@ product logic. The coordinator promotes at triage; the card says why.
 
 **Cross-scope.** A failure that needs both a product fix and a harness fix
 becomes **two** issues: the `repo:` one in the product repo and a second
-`crew:` one in eng-crew. A product PR never also patches a skill or protocol
-silently; that edit needs its own eng-crew issue and PR.
+`crew:` one in mdstack. A product PR never also patches a skill or protocol
+silently; that edit needs its own mdstack issue and PR.
 
 ## Knowledge routing
 
@@ -199,14 +199,14 @@ fits.
 
 | The learning is about | Owner | How it lands |
 |---|---|---|
-| The owner's own choices, not crew rules: engine order, merge grant, hold-label behaviour | Owner preferences: the install's profile, `crew.toml` ([layers](profile.md#layers-and-precedence)) | The owner edits it, or the coordinator on the owner's OK; no eng-crew PR |
+| The owner's own choices, not crew rules: engine order, merge grant, hold-label behaviour | Owner preferences: the install's profile, `crew.toml` ([layers](profile.md#layers-and-precedence)) | The owner edits it, or the coordinator on the owner's OK; no mdstack PR |
 | One product repo: a build command, a flaky test, a convention | That repo's root `AGENTS.md` | `repo:` card and a PR in the product repo |
-| One organization's tools, commands, URLs or policy | That org's pack, outside eng-crew ([direction rule](packs.md#direction-rule)) | A change in the pack's own repo; eng-crew never names it |
-| The crew in general: a gate, a role duty, a template step ([promotion rule](#scope-repo-vs-crew)) | eng-crew harness | `crew:` card and a PR in eng-crew |
+| One organization's tools, commands, URLs or policy | That org's pack, outside mdstack ([direction rule](packs.md#direction-rule)) | A change in the pack's own repo; mdstack never names it |
+| The crew in general: a gate, a role duty, a template step ([promotion rule](#scope-repo-vs-crew)) | mdstack harness | `crew:` card and a PR in mdstack |
 | Nothing to change yet: a one-off, an analysis with no fix, a smell below the batch threshold | Lesson only | A lesson or findings entry ([lesson path](#lesson-path)); no always-loaded file changes |
 
 The coordinator routes each card in its accept-or-close step. A profile or
-org-pack learning leaves eng-crew: the coordinator closes the card as
+org-pack learning leaves mdstack: the coordinator closes the card as
 `close - routed to profile` or `close - routed to org pack` and tells the
 owner. A learning that fits two rows becomes one item per owner, as in
 cross-scope above.
@@ -240,7 +240,7 @@ session, so:
 - **Coordinator:** drafts or reviews cards, files them, and owns accept or
   close, Scope, promotion and routing. Runs the weekly pass from the
   [stuck-PR sweeper](../templates/runtimes/grok-bot/coordinator-stuck-pr-sweeper.md).
-- **Builder:** builds accepted issues: `crew:` issues in eng-crew, `repo:`
+- **Builder:** builds accepted issues: `crew:` issues in mdstack, `repo:`
   issues in the product repo.
 - **Reviewer-validator:** unchanged. Aware that its `REQUEST_CHANGES` is a
   trigger; it posts nothing extra.
@@ -266,7 +266,7 @@ more than `--stale-days` (default 7). Draft PRs are skipped: unfinished work is
 not stuck. Scope defaults to `repo:`. It makes no network call, files nothing
 and edits no skill. The coordinator then reviews the drafts, drops duplicates,
 fills Proposed fix, confirms or promotes Scope, and files the keepers as
-eng-crew issues. Nothing about this step is automatic beyond the printout.
+mdstack issues. Nothing about this step is automatic beyond the printout.
 
 ## Risks
 

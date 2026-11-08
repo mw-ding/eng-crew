@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install-time profile (crew.toml) tool for eng-crew. Python 3.11+ stdlib only.
+"""Install-time profile (crew.toml) tool for mdstack. Python 3.11+ stdlib only.
 
 Usage: crew-config.py validate FILE [--install] [--pack-manifest FILE] (profile or pack manifest)
        crew-config.py resolve --project FILE [--org-profile FILE] [--install] [--pack-manifest FILE]
@@ -487,13 +487,13 @@ def validate_manifest(manifest, err, pack_dir=None, external_pin=True):
     """A pack manifest (connectors/<name>/manifest.toml): the backend's full capability declaration.
 
     pack_dir, the manifest's directory, resolves the pack.harness registry and its sources. external_pin = False is a
-    connector inside a pack.toml pack, whose framework range replaces pack.eng_crew_version (docs/packs.md). The
+    connector inside a pack.toml pack, whose framework range replaces pack.mdstack_version (docs/packs.md). The
     optional [actions] table is the connector's actions/ binding, checked by the conformance kit (actions/contract.py)."""
     top = check_table(err, "", manifest, {"pack": (dict, REQUIRED), "capabilities": (dict, REQUIRED),
                                           "land": (dict, None), "strategy": (dict, None), "actions": (dict, None)})
     if "pack" in top:
         pack = check_table(err, "pack", top["pack"], {"name": (str, REQUIRED), "commands": (str, REQUIRED),
-                                                     "eng_crew_version": (str, None), "version": (str, None),
+                                                     "mdstack_version": (str, None), "version": (str, None),
                                                      "harness": (str, None)})
         if "harness" in pack and pack_dir is None:
             err("pack.harness", "cannot check the registry without the manifest's directory")
@@ -503,8 +503,8 @@ def validate_manifest(manifest, err, pack_dir=None, external_pin=True):
             err("pack.version", "expected a SemVer version (MAJOR.MINOR.PATCH, no leading v)")
         if "name" in pack and not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", pack["name"]):
             err("pack.name", "expected a backend name ([a-z0-9], separated by hyphens)")
-        if external_pin and pack.get("name") not in BACKENDS and not pack.get("eng_crew_version"):
-            err("pack.eng_crew_version", "required for an external backend")
+        if external_pin and pack.get("name") not in BACKENDS and not pack.get("mdstack_version"):
+            err("pack.mdstack_version", "required for an external backend")
     if "capabilities" in top:
         # A knowledge-only connector (docs/interfaces.md#knowledge) declares no core concern.
         knowledge_only = bool(top["capabilities"]) and set(top["capabilities"]) <= set(KNOWLEDGE_OPERATIONS)
@@ -889,7 +889,7 @@ def validate(profile, err, backends=BACKENDS, pack_dir=None, item=None):
                         % (entry.partition("/")[0], ", ".join(ENGINES)))
     if "paths" in top:
         check_table(err, "paths", top["paths"], {"state_dir": (str, REQUIRED), "worktree_root": (str, REQUIRED), "toolchain_bin": (str, None),
-                                                  "live_dir": (str, None), "eng_crew": (str, None), "pack": (str, None),
+                                                  "live_dir": (str, None), "mdstack": (str, None), "pack": (str, None),
                                                   "checkout": (str, None), "root": (str, None)})
         pack = top["paths"].get("pack")
         if isinstance(pack, str) and not pack.strip():
@@ -1216,7 +1216,7 @@ def classify_binding(merged, prov, files, pack_dir, err):
     return cmd
 
 
-ROOT_CHILDREN = ("state_dir", "worktree_root", "live_dir", "eng_crew", "checkout")
+ROOT_CHILDREN = ("state_dir", "worktree_root", "live_dir", "mdstack", "checkout")
 
 
 def resolve_root(paths, prov):

@@ -77,7 +77,7 @@ thinks is wrong, as with any criterion.
   the issue's acceptance checks and only the checks covering the files
   changed in the full diff at head (the configured test command limited to
   those paths, or the tests the repo's `AGENTS.md` names for them; in
-  eng-crew a template or render fixture change runs `test-crew-render.py`,
+  mdstack a template or render fixture change runs `test-crew-render.py`,
   `test-render-parity.py`, `test-tmux-briefs.py` and
   `test-crew-bootstrap.py`). `repo`,
   only when the flavor or a class rule sets it, adds the repo-wide lint and
@@ -254,7 +254,7 @@ GitHub rejects a PR body, comment or review body over 65,536 characters.
 ### Q4. Existing committed evidence
 
 Delete `evidence/` from each tree going forward without rewriting history.
-This build removes all current eng-crew evidence files and adds the
+This build removes all current mdstack evidence files and adds the
 `check-repo.py --only evidence` guard: a root `evidence/` path fails, including
 an empty directory. Product repo cleanup is one separate PR per repo;
 the coordinator files those issues. Old history retains its bytes; relative

@@ -14,52 +14,52 @@
     },
     {
       "name": "layers",
-      "run": "cd {state_dir}/a01 && python3 {source}/scripts/crew-config.py resolve --project crew.toml --org-profile org/profile.toml > layers.txt; rc=$?; grep -E '# (org|project|pack:github)$|^repo.default_branch' layers.txt | head -12; test $rc -eq 0 && grep -qxF 'repo.default_branch = \"main\"  # default' layers.txt && grep -qxF 'runtime.name = \"tmux\"  # org' layers.txt && grep -qxF 'runtime.options.builders = 2  # project' layers.txt && grep -qxF 'engines.default.order = [\"claude-code/sonnet\"]  # project' layers.txt && grep -qxF 'size_budget.builder = 16384  # core' layers.txt && grep -qxF 'backends.review.capabilities.post-verdict = \"supported\"  # pack:github' layers.txt",
+      "run": "cd {state_dir}/a01 && python3 {source}/core/crew-config.py resolve --project crew.toml --org-profile org/profile.toml > layers.txt; rc=$?; grep -E '# (org|project|pack:github)$|^repo.default_branch' layers.txt | head -12; test $rc -eq 0 && grep -qxF 'repo.default_branch = \"main\"  # default' layers.txt && grep -qxF 'runtime.name = \"tmux\"  # org' layers.txt && grep -qxF 'runtime.options.builders = 2  # project' layers.txt && grep -qxF 'engines.default.order = [\"claude-code/sonnet\"]  # project' layers.txt && grep -qxF 'size_budget.builder = 16384  # core' layers.txt && grep -qxF 'backends.review.capabilities.post-verdict = \"supported\"  # pack:github' layers.txt",
       "exit": 0
     },
     {
       "name": "team-two-repos",
-      "run": "cd {state_dir}/a01 && python3 {source}/scripts/crew-config.py resolve --project teams/campaign.toml > team.txt 2>&1; rc=$?; cat team.txt; test $rc -eq 1 && grep -q 'lists 2 repos; select one' team.txt && for r in alpha beta; do python3 {source}/scripts/crew-config.py resolve --project \"teams/campaign.toml#$r\" > $r.txt || exit 1; done; grep -E '# (team|repo)$' alpha.txt beta.txt; grep -qxF 'repo.name = \"alpha\"  # repo' alpha.txt && grep -qxF 'runtime.options.train_window = 120  # repo' alpha.txt && grep -qxF 'identities.reviewer.gh_user = \"sandbox-reviewer\"  # team' alpha.txt && grep -qxF 'paths.state_dir = \"/campaign-a01/state/campaign\"  # team' alpha.txt && grep -qxF 'repo.default_branch = \"trunk\"  # repo' beta.txt && grep -qxF 'runtime.options.train_window = 600  # core' beta.txt && grep -qxF 'sensitive.paths = [\"billing/**\"]  # repo' beta.txt && grep -qxF 'identities.builder.gh_user = \"sandbox-builder\"  # team' beta.txt",
+      "run": "cd {state_dir}/a01 && python3 {source}/core/crew-config.py resolve --project teams/campaign.toml > team.txt 2>&1; rc=$?; cat team.txt; test $rc -eq 1 && grep -q 'lists 2 repos; select one' team.txt && for r in alpha beta; do python3 {source}/core/crew-config.py resolve --project \"teams/campaign.toml#$r\" > $r.txt || exit 1; done; grep -E '# (team|repo)$' alpha.txt beta.txt; grep -qxF 'repo.name = \"alpha\"  # repo' alpha.txt && grep -qxF 'runtime.options.train_window = 120  # repo' alpha.txt && grep -qxF 'identities.reviewer.gh_user = \"sandbox-reviewer\"  # team' alpha.txt && grep -qxF 'paths.state_dir = \"/campaign-a01/state/campaign\"  # team' alpha.txt && grep -qxF 'repo.default_branch = \"trunk\"  # repo' beta.txt && grep -qxF 'runtime.options.train_window = 600  # core' beta.txt && grep -qxF 'sensitive.paths = [\"billing/**\"]  # repo' beta.txt && grep -qxF 'identities.builder.gh_user = \"sandbox-builder\"  # team' beta.txt",
       "exit": 0
     },
     {
       "name": "team-render-separate",
-      "run": "cd {state_dir}/a01 && for r in alpha beta; do python3 {source}/scripts/crew-render.py --project \"teams/campaign.toml#$r\" --out out-$r || exit 1; done; grep -rho '/campaign-a01/state/campaign/campaign__[a-z]*/status/' out-alpha out-beta; grep -rq 'campaign__alpha' out-alpha && grep -rq 'campaign__beta' out-beta && ! grep -rq 'campaign/beta\\|campaign__beta' out-alpha && ! grep -rq 'campaign/alpha\\|campaign__alpha' out-beta",
+      "run": "cd {state_dir}/a01 && for r in alpha beta; do python3 {source}/core/crew-render.py --project \"teams/campaign.toml#$r\" --out out-$r || exit 1; done; grep -rho '/campaign-a01/state/campaign/campaign__[a-z]*/status/' out-alpha out-beta; grep -rq 'campaign__alpha' out-alpha && grep -rq 'campaign__beta' out-beta && ! grep -rq 'campaign/beta\\|campaign__beta' out-alpha && ! grep -rq 'campaign/alpha\\|campaign__alpha' out-beta",
       "exit": 0
     },
     {
       "name": "bad-capability",
-      "run": "cd {state_dir}/a01 && python3 {source}/scripts/crew-config.py resolve --project bad-cap.toml --org-profile org/profile.toml > o.txt 2>&1; rc=$?; python3 {source}/scripts/crew-render.py --project bad-cap.toml --org-profile org/profile.toml --out out-bad >> o.txt 2>&1; rr=$?; cat o.txt; test $rc -eq 1 && test $rr -eq 1 && grep -q 'bad-cap.toml:backends.review.capabilities.post-verdict: expected supported' o.txt && test ! -e out-bad",
+      "run": "cd {state_dir}/a01 && python3 {source}/core/crew-config.py resolve --project bad-cap.toml --org-profile org/profile.toml > o.txt 2>&1; rc=$?; python3 {source}/core/crew-render.py --project bad-cap.toml --org-profile org/profile.toml --out out-bad >> o.txt 2>&1; rr=$?; cat o.txt; test $rc -eq 1 && test $rr -eq 1 && grep -q 'bad-cap.toml:backends.review.capabilities.post-verdict: expected supported' o.txt && test ! -e out-bad",
       "exit": 0
     },
     {
       "name": "floor-lowering",
-      "run": "cd {state_dir}/a01 && python3 {source}/scripts/crew-config.py resolve --project bad-floor.toml --org-profile org/profile.toml > o.txt 2>&1; rc=$?; cat o.txt; test $rc -eq 1 && grep -q 'flavor.custom.lax.caps\\[1\\]: floor F1' o.txt && grep -q 'flavor.custom.lax.ci_waiver: floor F1' o.txt",
+      "run": "cd {state_dir}/a01 && python3 {source}/core/crew-config.py resolve --project bad-floor.toml --org-profile org/profile.toml > o.txt 2>&1; rc=$?; cat o.txt; test $rc -eq 1 && grep -q 'flavor.custom.lax.caps\\[1\\]: floor F1' o.txt && grep -q 'flavor.custom.lax.ci_waiver: floor F1' o.txt",
       "exit": 0
     },
     {
       "name": "fix-and-rerun",
-      "run": "cd {state_dir}/a01 && sed -i.orig 's/post-verdict = \"maybe\"/post-verdict = \"supported\"/' bad-cap.toml && python3 {source}/scripts/crew-config.py resolve --project bad-cap.toml --org-profile org/profile.toml > o.txt && python3 {source}/scripts/crew-render.py --project bad-cap.toml --org-profile org/profile.toml --out out-fixed && tail -1 o.txt && grep -qxF 'backends.review.capabilities.post-verdict = \"supported\"  # project' o.txt && test -f out-fixed/runtime/builder.md",
+      "run": "cd {state_dir}/a01 && sed -i.orig 's/post-verdict = \"maybe\"/post-verdict = \"supported\"/' bad-cap.toml && python3 {source}/core/crew-config.py resolve --project bad-cap.toml --org-profile org/profile.toml > o.txt && python3 {source}/core/crew-render.py --project bad-cap.toml --org-profile org/profile.toml --out out-fixed && tail -1 o.txt && grep -qxF 'backends.review.capabilities.post-verdict = \"supported\"  # project' o.txt && test -f out-fixed/runtime/builder.md",
       "exit": 0
     },
     {
       "name": "external-pin-required",
-      "run": "cd {state_dir}/a01 && sed 's/^name = \"github\"/name = \"campaign-forge\"/' pack/manifest.toml > ext.toml && python3 {source}/scripts/crew-config.py validate ext.toml > o.txt 2>&1; rc=$?; cat o.txt; test $rc -eq 1 && grep -q 'pack.eng_crew_version: required for an external backend' o.txt",
+      "run": "cd {state_dir}/a01 && sed 's/^name = \"github\"/name = \"campaign-forge\"/' pack/manifest.toml > ext.toml && python3 {source}/core/crew-config.py validate ext.toml > o.txt 2>&1; rc=$?; cat o.txt; test $rc -eq 1 && grep -q 'pack.mdstack_version: required for an external backend' o.txt",
       "exit": 0
     },
     {
       "name": "bundle",
-      "run": "cd {state_dir}/a01 && mkdir bundle bin st && git -C {source} archive HEAD | tar -x -C bundle && echo v9.9.9 > bundle/VERSION && printf '#!/bin/sh\\necho \"fake gh: $*\" >&2\\nexit 1\\n' > bin/gh && chmod +x bin/gh && printf '[repo]\\nowner = \"campaign\"\\nname = \"boot\"\\n[flavor]\\nname = \"standard\"\\n[paths]\\nstate_dir = \"%s/st\"\\nworktree_root = \"%s/st/wt\"\\nlive_dir = \"%s/st/live\"\\neng_crew = \"%s/st/campaign__boot/eng-crew\"\\ntoolchain_bin = \"/usr/bin\"\\n' \"$PWD\" \"$PWD\" \"$PWD\" \"$PWD\" > boot.toml && cat bundle/VERSION",
+      "run": "cd {state_dir}/a01 && mkdir bundle bin st && git -C {source} archive HEAD | tar -x -C bundle && echo v9.9.9 > bundle/VERSION && printf '#!/bin/sh\\necho \"fake gh: $*\" >&2\\nexit 1\\n' > bin/gh && chmod +x bin/gh && printf '[repo]\\nowner = \"campaign\"\\nname = \"boot\"\\n[flavor]\\nname = \"standard\"\\n[paths]\\nstate_dir = \"%s/st\"\\nworktree_root = \"%s/st/wt\"\\nlive_dir = \"%s/st/live\"\\nmdstack = \"%s/st/campaign__boot/mdstack\"\\ntoolchain_bin = \"/usr/bin\"\\n' \"$PWD\" \"$PWD\" \"$PWD\" \"$PWD\" > boot.toml && cat bundle/VERSION",
       "exit": 0
     },
     {
       "name": "bootstrap-bad-pin",
-      "run": "cd {state_dir}/a01 && sed '/^name = \"github\"/a\\\neng_crew_version = \"not-a-release\"\n' pack/manifest.toml > m && mv m pack/manifest.toml && PATH=\"$PWD/bin:$PATH\" python3 bundle/cli/mdstack bootstrap --dry-run --project boot.toml --org-profile pack/profile.toml > o.txt 2>&1; rc=$?; cat o.txt; test $rc -eq 1 && grep -q 'pack.eng_crew_version must equal the stable installed tag v9.9.9' o.txt && test -z \"$(ls -A st)\"",
+      "run": "cd {state_dir}/a01 && sed '/^name = \"github\"/a\\\nmdstack_version = \"not-a-release\"\n' pack/manifest.toml > m && mv m pack/manifest.toml && PATH=\"$PWD/bin:$PATH\" python3 bundle/cli/mdstack bootstrap --dry-run --project boot.toml --org-profile pack/profile.toml > o.txt 2>&1; rc=$?; cat o.txt; test $rc -eq 1 && grep -q 'pack.mdstack_version must equal the stable installed tag v9.9.9' o.txt && test -z \"$(ls -A st)\"",
       "exit": 0
     },
     {
       "name": "bootstrap-valid-pin",
-      "run": "cd {state_dir}/a01 && sed -i.bad 's/^eng_crew_version = .*/eng_crew_version = \"v9.9.9\"/' pack/manifest.toml && PATH=\"$PWD/bin:$PATH\" python3 bundle/cli/mdstack bootstrap --dry-run --project boot.toml --org-profile pack/profile.toml > o.txt 2>&1; rc=$?; echo \"bootstrap exit $rc\"; head -3 o.txt; ! grep -q eng_crew_version o.txt && grep -q '^ok    python' o.txt && test -z \"$(ls -A st)\"",
+      "run": "cd {state_dir}/a01 && sed -i.bad 's/^mdstack_version = .*/mdstack_version = \"v9.9.9\"/' pack/manifest.toml && PATH=\"$PWD/bin:$PATH\" python3 bundle/cli/mdstack bootstrap --dry-run --project boot.toml --org-profile pack/profile.toml > o.txt 2>&1; rc=$?; echo \"bootstrap exit $rc\"; head -3 o.txt; ! grep -q mdstack_version o.txt && grep -q '^ok    python' o.txt && test -z \"$(ls -A st)\"",
       "exit": 0
     }
   ]

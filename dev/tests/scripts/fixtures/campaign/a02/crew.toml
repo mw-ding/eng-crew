@@ -10,7 +10,7 @@ name = "standard"
 state_dir = "/campaign-a02/state"
 worktree_root = "/campaign-a02/wt"
 live_dir = "/campaign-a02/live"
-eng_crew = "/campaign-a02/eng-crew"
+mdstack = "/campaign-a02/mdstack"
 toolchain_bin = "/usr/bin"
 
 [runtime.options.notes.render]

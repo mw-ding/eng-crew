@@ -85,7 +85,7 @@ manual fallback.
    `ci.yml` cancels superseded runs only for pull requests and groups `main`
    runs per commit, so a quick second merge never cancels the cut's CI.
    After a refusal, re-run CI to green, then re-run the failed release jobs.
-6. **Build** (validate job). Build `eng-crew-X.Y.Z.tar.gz` and `SHA256SUMS`
+6. **Build** (validate job). Build `mdstack-X.Y.Z.tar.gz` and `SHA256SUMS`
    ([packaging](deliverables.md#packaging)); upload them as a workflow
    artifact with the release notes, which are the `[X.Y.Z]` section.
 7. **Approval check.** The publish job needs validate and the CI gate. It
@@ -136,7 +136,7 @@ on the landed revision.
 
 `changelog-cut.py` works on any layout: paths come from flags or the
 profile, it needs no `check-repo.py`, and a fragment needs only `type`
-(`issue`, `pr`, `date` and `box-skill` are optional). eng-crew's repo guard
+(`issue`, `pr`, `date` and `box-skill` are optional). mdstack's repo guard
 still requires all five fields here
 ([CONTRIBUTING: CHANGELOG](../CONTRIBUTING.md#changelog)).
 
@@ -172,7 +172,7 @@ only the owner dispatches a real manual fallback with the same approval.
 | Validate or build fails | Nothing was published. Fix forward by PR; retry through the owner-only manual fallback |
 | Published release is bad | Never delete or move a tag; pins depend on it. Edit the Release title to "Withdrawn" with a pointer, then cut a patch that reverts or fixes |
 | An environment must go back | Reinstall the previous tag ([update path](#update-path)), re-render, drift check, deploy, record the version |
-| A pack must go back | Move `eng_crew_version` back to the previous tag ([version pin](packs.md#version-pin)) |
+| A pack must go back | Move `mdstack_version` back to the previous tag ([version pin](packs.md#version-pin)) |
 
 ## Commit release id
 
@@ -211,7 +211,7 @@ nothing pushes a version into an environment.
 | Learn | Each coordinator compares its recorded version with the latest GitHub Release in its triage window; bootstrap's `mdstack doctor` reports it too ([#160](https://github.com/mw-ding/eng-crew/issues/160) row 17). The live Grok Bot coordinator learns the same way; the publish job's release-issue notice is a courtesy, not the mechanism | Coordinator |
 | Decide | Minor or patch: the coordinator upgrades. Major: the owner OKs it after reading the `**Breaking:**` entries | Coordinator / owner |
 | Take | Fetch the bundle at the tag (from GitHub, or the `url` or `mirror` [release source](bootstrap.md#release-sources-design) in `[install]`), check `SHA256SUMS` (a `git` source instead checks the tag against its pinned commit and builds the bundle from it), re-render with the project profile, run `check-skill-drift.py --project` against the live dir, deploy, record `VERSION`. Grok Bot keeps the [mirror hold gate](runtimes/grok-bot.md#mirror-hold-gate) record for the deploy | Coordinator via bootstrap upgrade |
-| Before bootstrap | Check out the tag in an eng-crew clone, or extract the release bundle ([README: Install](../README.md#install)), and run the same render, drift check and deploy by hand | Coordinator |
+| Before bootstrap | Check out the tag in an mdstack clone, or extract the release bundle ([README: Install](../README.md#install)), and run the same render, drift check and deploy by hand | Coordinator |
 
 ## Upstreaming the session tooling
 

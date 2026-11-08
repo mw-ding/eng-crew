@@ -244,7 +244,7 @@ class Rename(MigrateBase):
                      "owner: before --apply, rename acme/widgets to acme/gadgets on GitHub and check that the old "
                      "URLs redirect (docs/runbooks/repo-rename.md steps 3 and 4)"):
             self.assertIn(line, lines)
-        self.assertTrue(any(line.startswith("keep product names: bundle eng-crew-<version>.tar.gz") for line in lines))
+        self.assertFalse([line for line in lines if "product names" in line])  # 7.0 renamed them (#1312)
         self.assertFalse([line for line in lines if line.startswith(("blocked:", "worktree-move ", "copy "))])
         self.assertEqual(tree(self.tmp), before)
 

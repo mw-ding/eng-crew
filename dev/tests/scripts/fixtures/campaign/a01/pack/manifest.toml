@@ -1,4 +1,4 @@
-# M25 A01 pack manifest beside pack/profile.toml; the run stamps eng_crew_version.
+# M25 A01 pack manifest beside pack/profile.toml; the run stamps mdstack_version.
 
 [pack]
 name = "github"

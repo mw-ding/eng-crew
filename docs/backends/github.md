@@ -1,7 +1,7 @@
 # GitHub backend
 
 How the GitHub backend expresses the core rules in
-[protocol.md](../protocol.md) (portable eng-crew, roadmap 13.3,
+[protocol.md](../protocol.md) (portable mdstack, roadmap 13.3,
 [#115](https://github.com/mw-ding/eng-crew/issues/115), and 13.4,
 [#116](https://github.com/mw-ding/eng-crew/issues/116)). GitHub is today's
 backend for every concern ([concepts: backend](../concepts.md#backend)). The

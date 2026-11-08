@@ -12,22 +12,22 @@
     },
     {
       "name": "render-overlay-notes",
-      "run": "cd {state_dir}/a02 && python3 {source}/scripts/crew-render.py --project crew.toml --org-profile pack/profile.toml --out out; rc=$?; cat out/runtime/solo.md; tail -3 out/runtime/builder-lead.md; grep -h 'campaign-overlay' out/runtime/*.md; test $rc -eq 0 && grep -qxF 'Overlay solo brief for campaign/a02 (campaign A02).' out/runtime/solo.md && grep -qxF '## Render note: notes/lead.md' out/runtime/builder-lead.md && grep -q 'gh pr list --state open --campaign-overlay' out/runtime/builder.md && ! grep -rqE '<(owner|repo|state-dir|eng-crew|op:[a-z.-]+)>' out",
+      "run": "cd {state_dir}/a02 && python3 {source}/core/crew-render.py --project crew.toml --org-profile pack/profile.toml --out out; rc=$?; cat out/runtime/solo.md; tail -3 out/runtime/builder-lead.md; grep -h 'campaign-overlay' out/runtime/*.md; test $rc -eq 0 && grep -qxF 'Overlay solo brief for campaign/a02 (campaign A02).' out/runtime/solo.md && grep -qxF '## Render note: notes/lead.md' out/runtime/builder-lead.md && grep -q 'gh pr list --state open --campaign-overlay' out/runtime/builder.md && ! grep -rqE '<(owner|repo|state-dir|eng-crew|op:[a-z.-]+)>' out",
       "exit": 0
     },
     {
       "name": "missing-mapping",
-      "run": "cd {state_dir}/a02 && cp pack/render/backends/github.toml map.orig && sed '/^list-open = /d' map.orig > pack/render/backends/github.toml && python3 {source}/scripts/crew-render.py --project crew.toml --org-profile pack/profile.toml --out out-bad > o.txt 2>&1; rc=$?; cat o.txt; cp map.orig pack/render/backends/github.toml; test $rc -eq 1 && grep -q 'templates/runtimes/tmux/builder.md:[0-9]*: missing mapping: no command for change.list-open' o.txt && test ! -e out-bad",
+      "run": "cd {state_dir}/a02 && cp pack/render/backends/github.toml map.orig && sed '/^list-open = /d' map.orig > pack/render/backends/github.toml && python3 {source}/core/crew-render.py --project crew.toml --org-profile pack/profile.toml --out out-bad > o.txt 2>&1; rc=$?; cat o.txt; cp map.orig pack/render/backends/github.toml; test $rc -eq 1 && grep -q 'templates/runtimes/tmux/builder.md:[0-9]*: missing mapping: no command for change.list-open' o.txt && test ! -e out-bad",
       "exit": 0
     },
     {
       "name": "missing-note",
-      "run": "cd {state_dir}/a02 && sed 's#notes/lead.md#notes/missing.md#' crew.toml > crew-missing.toml && python3 {source}/scripts/crew-render.py --project crew-missing.toml --org-profile pack/profile.toml --out out-bad > o.txt 2>&1; rc=$?; cat o.txt; test $rc -eq 1 && grep -q 'notes/missing.md:1: cannot read runtime.options.notes.render.builder-lead file' o.txt && test ! -e out-bad",
+      "run": "cd {state_dir}/a02 && sed 's#notes/lead.md#notes/missing.md#' crew.toml > crew-missing.toml && python3 {source}/core/crew-render.py --project crew-missing.toml --org-profile pack/profile.toml --out out-bad > o.txt 2>&1; rc=$?; cat o.txt; test $rc -eq 1 && grep -q 'notes/missing.md:1: cannot read runtime.options.notes.render.builder-lead file' o.txt && test ! -e out-bad",
       "exit": 0
     },
     {
       "name": "drift-clean",
-      "run": "cd {state_dir}/a02 && python3 {source}/scripts/crew-render.py --project crew.toml --org-profile pack/profile.toml --out live > /dev/null && python3 {source}/scripts/check-skill-drift.py --project crew.toml --org-profile pack/profile.toml --live-dir live > o.txt; rc=$?; tail -1 o.txt; test $rc -eq 0",
+      "run": "cd {state_dir}/a02 && python3 {source}/core/crew-render.py --project crew.toml --org-profile pack/profile.toml --out live > /dev/null && python3 {source}/scripts/check-skill-drift.py --project crew.toml --org-profile pack/profile.toml --live-dir live > o.txt; rc=$?; tail -1 o.txt; test $rc -eq 0",
       "exit": 0
     },
     {
@@ -42,7 +42,7 @@
     },
     {
       "name": "long-install-path",
-      "run": "cd {state_dir}/a02 && sed 's#/campaign-a02/#/campaign-a02/very-long-install-root-segment/very-long-install-root-segment/very-long-install-root-segment/very-long-install-root-segment/very-long-install-root-segment/very-long-install-root-segment/very-long-install-root-segment/very-long-install-root-segment/very-long-install-root-segment/very-long-install-root-segment/very-long-install-root-segment/very-long-install-root-segment/very-long-install-root-segment/very-long-install-root-segment/#' crew.toml > crew-long.toml && python3 {source}/scripts/crew-render.py --project crew-long.toml --org-profile pack/profile.toml --out out-long && grep -c 'very-long-install-root-segment' out-long/runtime/builder.md && grep -q 'very-long-install-root-segment' out-long/runtime/builder.md",
+      "run": "cd {state_dir}/a02 && sed 's#/campaign-a02/#/campaign-a02/very-long-install-root-segment/very-long-install-root-segment/very-long-install-root-segment/very-long-install-root-segment/very-long-install-root-segment/very-long-install-root-segment/very-long-install-root-segment/very-long-install-root-segment/very-long-install-root-segment/very-long-install-root-segment/very-long-install-root-segment/very-long-install-root-segment/very-long-install-root-segment/very-long-install-root-segment/#' crew.toml > crew-long.toml && python3 {source}/core/crew-render.py --project crew-long.toml --org-profile pack/profile.toml --out out-long && grep -c 'very-long-install-root-segment' out-long/runtime/builder.md && grep -q 'very-long-install-root-segment' out-long/runtime/builder.md",
       "exit": 0
     },
     {

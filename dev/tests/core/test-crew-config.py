@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Offline tests for scripts/crew-config.py validate (stdlib only).
+"""Offline tests for core/crew-config.py validate (stdlib only).
 
 Covers the validator (valid profile, missing key, unknown concern and backend,
 token-shaped value, wrong type) and the resolver (layer precedence, merge rule,
@@ -24,7 +24,7 @@ from unittest.mock import patch
 
 TESTS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # dev/tests/
 SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(TESTS)), "scripts")
-spec = importlib.util.spec_from_file_location("crew_config", os.path.join(SCRIPTS, "crew-config.py"))
+spec = importlib.util.spec_from_file_location("crew_config", os.path.join(os.path.dirname(SCRIPTS), "core", "crew-config.py"))
 cc = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cc)
 
@@ -691,20 +691,20 @@ class DefaultProfileTest(unittest.TestCase):
         self.assertIn(engines["fallback_engine"], ["claude-code", "codex"])
 
     def test_paths_checkout_validated(self):  # #1178
-        ok = VALID.replace('worktree_root = "/srv/wt"', 'worktree_root = "/srv/wt"\ncheckout = "../eng-crew"')
+        ok = VALID.replace('worktree_root = "/srv/wt"', 'worktree_root = "/srv/wt"\ncheckout = "../mdstack"')
         self.assertEqual(validate(ok)[0], 0, validate(ok)[1])
-        self.assertFails(ok.replace('checkout = "../eng-crew"', "checkout = 1"),
+        self.assertFails(ok.replace('checkout = "../mdstack"', "checkout = 1"),
                          "crew.toml:paths.checkout: expected string, got integer")
 
     def test_paths_root_resolves_relative_children_only(self):  # #1178
         paths = {"root": "~/stack", "state_dir": ".crew/state", "worktree_root": "/abs/wt", "live_dir": "<live-dir>",
-                 "checkout": "../eng-crew", "toolchain_bin": "bin", "pack": "pack"}
+                 "checkout": "../mdstack", "toolchain_bin": "bin", "pack": "pack"}
         prov = {}
         with patch.dict(os.environ, {"CREW_ROOT": ""}):
             cc.resolve_root(paths, prov)
         root = os.path.expanduser("~/stack")
         self.assertEqual(paths, {"root": root, "state_dir": os.path.join(root, ".crew/state"), "worktree_root": "/abs/wt",
-                                 "live_dir": "<live-dir>", "checkout": os.path.join(os.path.dirname(root), "eng-crew"),
+                                 "live_dir": "<live-dir>", "checkout": os.path.join(os.path.dirname(root), "mdstack"),
                                  "toolchain_bin": "bin", "pack": "pack"})
         self.assertEqual(prov, {})
         moved = {"root": "/old", "state_dir": "s"}
@@ -737,7 +737,7 @@ class DefaultProfileTest(unittest.TestCase):
     def test_manifest_validation(self):
         manifest = read(os.path.join(ROOT, "connectors", "github", "manifest.toml"))
         self.assertFails(manifest.replace('name = "github"', 'name = "gitlab"', 1),
-                         "crew.toml:pack.eng_crew_version: required for an external backend")
+                         "crew.toml:pack.mdstack_version: required for an external backend")
         self.assertFails(re.sub(r"\nland = .*", "", manifest),
                          "crew.toml:capabilities.change.land: missing required key")
         self.assertFails(manifest.replace('close = "supported"', 'close = "maybe"'),
@@ -860,10 +860,10 @@ class ResearcherProfile(unittest.TestCase):
         self.assertFalse(any(ln.startswith("install.") for ln in lines), lines)
         sums, commit = "a" * 64, "b" * 40
         for ok in ('source = "github"', 'source = "mirror"\nlocation = "/srv/rel"\nsha256sums_digest = "%s"' % sums,
-                   'source = "url"\nlocation = "https://rel.example/eng-crew"',
+                   'source = "url"\nlocation = "https://rel.example/mdstack"',
                    'source = "url"\nlocation = "http://127.0.0.1:8080/rel"',
-                   'source = "git"\nlocation = "/srv/eng-crew.git"\ngit_commit = "%s"' % commit,
-                   'source = "git"\nlocation = "/srv/eng-crew.git"\ngit_commit = "%s"' % ("c" * 64)):
+                   'source = "git"\nlocation = "/srv/mdstack.git"\ngit_commit = "%s"' % commit,
+                   'source = "git"\nlocation = "/srv/mdstack.git"\ngit_commit = "%s"' % ("c" * 64)):
             self.assertEqual(validate(VALID + "\n[install]\n" + ok + "\n"), OK, ok)
         code, lines = resolve(VALID + '\n[install]\nsource = "mirror"\nlocation = "/srv/rel"\n', default=VALID)
         self.assertEqual(code, 0, lines)
@@ -1037,10 +1037,10 @@ class ResolveTest(unittest.TestCase):
                              'runtime.options.hold_label_blocks = true  # core'], VALID)
         self.assertResolves(['runtime.options.merge_grant = "#110 roadmap PRs per #111"  # project',
                              'runtime.options.hold_label_blocks = false  # project',
-                             'paths.eng_crew = "/srv/eng-crew"  # project'],
+                             'paths.mdstack = "/srv/mdstack"  # project'],
                             VALID.replace("builders = 3", 'builders = 3, merge_grant = "#110 roadmap PRs per #111", '
                                           "hold_label_blocks = false")
-                            + 'eng_crew = "/srv/eng-crew"\n')
+                            + 'mdstack = "/srv/mdstack"\n')
         self.assertFails("crew.toml:runtime.options.hold_label_blocks: expected boolean, got string",
                          VALID.replace("builders = 3", 'builders = 3, hold_label_blocks = "no"'))
 
@@ -1278,7 +1278,7 @@ def resolve_with_packs(project, manifest):
 class ManifestFoldTest(unittest.TestCase):
     def test_external_backend_by_manifest_path(self):
         manifest = GITHUB_MANIFEST.replace('name = "github"', 'name = "example"')
-        manifest = manifest.replace('[pack]\n', '[pack]\neng_crew_version = "v1.0.0"\n')
+        manifest = manifest.replace('[pack]\n', '[pack]\nmdstack_version = "v1.0.0"\n')
         with tempfile.TemporaryDirectory() as d:
             pack, project = os.path.join(d, "manifest.toml"), os.path.join(d, "crew.toml")
             with open(pack, "w") as f:
@@ -1298,7 +1298,7 @@ class ManifestFoldTest(unittest.TestCase):
                 with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
                     self.assertEqual(cc.main(command), 0)
             with open(project, "a") as f:
-                f.write('toolchain_bin = "/opt/bin"\nlive_dir = "/srv/live"\neng_crew = "/srv/eng-crew"\n')
+                f.write('toolchain_bin = "/opt/bin"\nlive_dir = "/srv/live"\nmdstack = "/srv/mdstack"\n')
             for command in (["validate", project], ["resolve", "--project", project]):
                 command += ["--install", "--pack-manifest", pack]
                 with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
@@ -1326,7 +1326,7 @@ class ManifestFoldTest(unittest.TestCase):
             self.assertEqual(layers, ["core", "default", "org", "project"])
             self.assertEqual(profile["repo"]["name"], "widgets")
             self.assertEqual(provenance["backends.review.capabilities.list-verdicts"], "external-pack")
-            for bad in (manifest.replace('eng_crew_version = "v1.0.0"\n', ''),
+            for bad in (manifest.replace('mdstack_version = "v1.0.0"\n', ''),
                         manifest.replace('list-verdicts = "supported"', 'list-verdicts = "invalid"'),
                         '[pack\n'):
                 with open(pack, "w") as f:
@@ -1338,7 +1338,7 @@ class ManifestFoldTest(unittest.TestCase):
     def test_external_manifest_name_and_pin(self):
         manifest = GITHUB_MANIFEST.replace('name = "github"', 'name = "example"')
         self.assertEqual(validate(manifest)[0], 1)
-        pinned = manifest.replace('[pack]\n', '[pack]\neng_crew_version = "v1.0.0"\n')
+        pinned = manifest.replace('[pack]\n', '[pack]\nmdstack_version = "v1.0.0"\n')
         self.assertEqual(validate(pinned)[0], 0)
         self.assertEqual(validate(pinned.replace('name = "example"', 'name = "../example"'))[0], 1)
 
@@ -1377,13 +1377,13 @@ class ManifestFoldTest(unittest.TestCase):
         self.assertTrue(lines[0].startswith("connectors/github/manifest.toml:(toml): invalid TOML"), lines)
 
     def test_manifest_version_pin_validates(self):
-        pinned = GITHUB_MANIFEST.replace('[pack]\n', '[pack]\neng_crew_version = "0123456789abcdef0123456789abcdef01234567"\n')
+        pinned = GITHUB_MANIFEST.replace('[pack]\n', '[pack]\nmdstack_version = "0123456789abcdef0123456789abcdef01234567"\n')
         self.assertEqual(validate(pinned), (0, ["crew-config: OK (crew.toml)"]))
-        self.assertIn("crew.toml:pack.eng_crew_version: expected string, got integer",
+        self.assertIn("crew.toml:pack.mdstack_version: expected string, got integer",
                       validate(pinned.replace('"0123456789abcdef0123456789abcdef01234567"', "1"))[1])
 
     def test_pack_version_semver(self):
-        pinned = GITHUB_MANIFEST.replace('[pack]\n', '[pack]\neng_crew_version = "v4.0.0"\n')
+        pinned = GITHUB_MANIFEST.replace('[pack]\n', '[pack]\nmdstack_version = "v4.0.0"\n')
         for good in ("0.5.0", "1.2.3-rc.1+build.7"):
             self.assertEqual(validate(pinned.replace('[pack]\n', '[pack]\nversion = "%s"\n' % good)),
                              (0, ["crew-config: OK (crew.toml)"]), good)
@@ -1394,7 +1394,7 @@ class ManifestFoldTest(unittest.TestCase):
 
     def test_pack_version_resolve_metadata(self):
         manifest = GITHUB_MANIFEST.replace('name = "github"', 'name = "example"')
-        manifest = manifest.replace('[pack]\n', '[pack]\neng_crew_version = "v4.0.0"\n')
+        manifest = manifest.replace('[pack]\n', '[pack]\nmdstack_version = "v4.0.0"\n')
         project_text = VALID.replace('[backends.review]\nname = "github"', '[backends.review]\nname = "example"')
         with tempfile.TemporaryDirectory() as d:
             pack, project = os.path.join(d, "manifest.toml"), os.path.join(d, "crew.toml")
@@ -1424,7 +1424,7 @@ class ManifestFoldTest(unittest.TestCase):
 class AsyncLandTest(unittest.TestCase):
     """#929 (#873 B1): the optional [land] table, conditional change operations and the land timing options."""
     EXTERNAL = GITHUB_MANIFEST.replace('name = "github"', 'name = "example"').replace(
-        '[pack]\n', '[pack]\neng_crew_version = "v5.0.0"\n')
+        '[pack]\n', '[pack]\nmdstack_version = "v5.0.0"\n')
     ASYNC = EXTERNAL.replace('land = "supported"\n', 'land = "supported"\nland-status = "supported"\n') + \
         '\n[land]\nmode = "async"\nserializes = true\n'
 
@@ -1774,7 +1774,7 @@ class ReleasePairingTest(unittest.TestCase):
 
     def resolve(self, org, manifest=None, project=None):
         manifest = manifest or GITHUB_MANIFEST.replace('name = "github"', 'name = "example"').replace(
-            '[pack]\n', '[pack]\neng_crew_version = "v1.0.0"\n')
+            '[pack]\n', '[pack]\nmdstack_version = "v1.0.0"\n')
         with tempfile.TemporaryDirectory() as d:
             for name, text in (("crew.toml", project or VALID.replace('[backends.release]\nname = "github"', "")),
                                ("profile.toml", org), ("manifest.toml", manifest)):
@@ -1803,12 +1803,12 @@ class ReleasePairingTest(unittest.TestCase):
 
     def test_unrelated_pack_and_legacy_github_unchanged(self):
         no_release = re.sub(r"\n\[capabilities\.release\][^[]*", "\n", GITHUB_MANIFEST).replace(
-            'name = "github"', 'name = "example"').replace('[pack]\n', '[pack]\neng_crew_version = "v1.0.0"\n')
+            'name = "github"', 'name = "example"').replace('[pack]\n', '[pack]\nmdstack_version = "v1.0.0"\n')
         self.assertEqual(self.resolve(self.TABLE, manifest=no_release), [])
         self.assertEqual(self.resolve(self.TABLE, project=VALID), [])
         self.assertEqual(self.resolve(self.TABLE + '[backends.release]\nname = "github"\n'), [])
         self.assertTrue(self.resolve(self.TABLE + self.ROW + 'capabilities = { approve-check = "unsupported" }\n'))
-        github = GITHUB_MANIFEST.replace('[pack]\n', '[pack]\neng_crew_version = "v1.0.0"\n')
+        github = GITHUB_MANIFEST.replace('[pack]\n', '[pack]\nmdstack_version = "v1.0.0"\n')
         self.assertEqual(self.resolve("", manifest=github), [])  # an external pack named github: default row only
 
 
@@ -2408,7 +2408,7 @@ class RecordedPackTest(unittest.TestCase):
 
     def test_recorded_pack_without_profile_selects_its_manifest(self):
         manifest = GITHUB_MANIFEST.replace('name = "github"', 'name = "example"')
-        manifest = manifest.replace('[pack]\n', '[pack]\neng_crew_version = "v4.0.0"\nversion = "0.5.0"\n')
+        manifest = manifest.replace('[pack]\n', '[pack]\nmdstack_version = "v4.0.0"\nversion = "0.5.0"\n')
         with tempfile.TemporaryDirectory() as d:
             project, pack = os.path.join(d, "crew.toml"), os.path.join(d, "pack")
             os.mkdir(pack)
@@ -2439,7 +2439,7 @@ class ControlItemIdsTest(unittest.TestCase):
         os.makedirs(os.path.join(pack, "render", "backends"), exist_ok=True)
         with open(os.path.join(pack, "manifest.toml"), "w") as f:
             f.write(GITHUB_MANIFEST.replace('name = "github"', 'name = "example"')
-                    .replace('[pack]\n', '[pack]\neng_crew_version = "v4.0.0"\n'))
+                    .replace('[pack]\n', '[pack]\nmdstack_version = "v4.0.0"\n'))
         with open(os.path.join(pack, "render", "backends", "example.toml"), "w") as f:
             f.write('[markers]\nread-item = "ex item comments <control-item> --json"\n' + ids)
         return os.path.join(pack, "manifest.toml")
@@ -2548,7 +2548,7 @@ class InstallValidationTest(unittest.TestCase):
             with open(project, "w") as f:
                 f.write(VALID)
             with open(org, "w") as f:
-                f.write('[paths]\ntoolchain_bin = "/opt/bin"\nlive_dir = "/srv/live"\neng_crew = "/srv/eng-crew"\n')
+                f.write('[paths]\ntoolchain_bin = "/opt/bin"\nlive_dir = "/srv/live"\nmdstack = "/srv/mdstack"\n')
             for extra, expected in (([], 0), (["--install"], 1),
                                     (["--install", "--org-profile", org], 0)):
                 out = io.StringIO()

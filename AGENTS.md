@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Thin project guide for agents working on eng-crew. This repo is a framework
+Thin project guide for agents working on mdstack. This repo is a framework
 of docs, templates and small guard scripts, so most review is about wording.
 Keep effort proportional. Read this file before building or reviewing.
 
@@ -45,7 +45,7 @@ below stay primary.
   or quarantine, or use an alternate or mirror package registry. If a CI tool
   is missing or its registry fails, skip that one local check, say so in the PR
   evidence, and leave it to CI.
-- Direction rule: packs reference eng-crew; eng-crew never references an
+- Direction rule: packs reference mdstack; mdstack never references an
   external pack or names an org's internal tools ([docs/packs.md](docs/packs.md#direction-rule)).
 
 ## Review posture

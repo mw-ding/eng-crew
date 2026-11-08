@@ -21,7 +21,7 @@ Before any mutation the harness writes a run manifest with
 - **repo:** the sandbox profile's `owner/name`;
 - **profile:** the sandbox profile's absolute path and sha256, plus the
   production profile's path (the reference the guard compares against);
-- **source:** the eng-crew checkout under test and its full `HEAD` SHA;
+- **source:** the mdstack checkout under test and its full `HEAD` SHA;
 - **release:** the installed release id the run exercises;
 - **target:** the tmux session and the absolute `paths.state_dir`,
   `paths.worktree_root` and `paths.live_dir`;
@@ -77,7 +77,7 @@ every `run` step; a refusal there marks the scenario `BLOCKED`, the rest
 manifest is refused. Each `DIR/<Axx>.json` lists public-CLI `run` steps with
 an expected exit, and explicit `wait` steps that poll a file for a match up
 to a deadline instead of sleeping a fixed time. `{source}` expands to the
-pinned eng-crew checkout, so a step calls its CLIs.
+pinned mdstack checkout, so a step calls its CLIs.
 
 The committed specs live in `dev/tests/scripts/fixtures/campaign/`, one line per
 scenario in ID order:
@@ -327,7 +327,7 @@ level b.
 
 A20 (from #796) installs from a local bundle. It builds two releases with
 `release-bundle.py` into a `mirror` source under the sandbox state root, and
-its org pack profile and `manifest.toml` pin carry `paths.eng_crew`, the
+its org pack profile and `manifest.toml` pin carry `paths.mdstack`, the
 source, the identities and the control item. `a20/forge.sh` answers a ready
 repo for `mdstack doctor`. Steps set `HOME` to the sandbox, so doctor reads no
 host config.

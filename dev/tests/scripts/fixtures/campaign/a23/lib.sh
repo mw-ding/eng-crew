@@ -1,5 +1,5 @@
 # A23 step helpers, sourced by every A23 step after it sets SRC (eng-crew source), ST (sandbox state) and RUN.
-C="python3 $SRC/scripts/crew"
+C="python3 $SRC/cli/mdstack"
 P="--project $CREW_PROJECT --org-profile $ST/org-a23.toml"
 S=$ST/campaign__sandbox-$RUN R=$ST/../repo H=$ST/a23 L=$ST/a23/ssh.log
 export A23_LOCAL_LOG=$H/local.log
@@ -19,9 +19,9 @@ red() { (cd "$R" && sed -i.bak "s/^RED = .*/RED = $1/" scripts/test-a23.py && rm
   git push -q -f origin HEAD:b23); }
 up() {
   mkdir -p "$H/skew/scripts" "$ST/bin" && cp "$SRC/dev/tests/scripts/fixtures/campaign/a23/ssh" "$ST/bin/ssh" &&
-  cp "$SRC/scripts/crew-remote.py" "$H/skew/scripts/" && echo v0.0.1 > "$H/skew/VERSION" || return 1
+  cp "$SRC/environments/terminal/remote/crew-remote.py" "$H/skew/scripts/" && echo v0.0.1 > "$H/skew/VERSION" || return 1
   printf '{"loop": {"entry": "%s", "root": "%s"}, "skew": {"entry": "%s", "root": "%s"}, "gone": {"entry": null, "root": "%s"}}\n' \
-    "$SRC/scripts/crew-remote.py" "$H/host-loop" "$H/skew/scripts/crew-remote.py" "$H/host-skew" "$H/host-gone" > "$H/hosts.json"
+    "$SRC/environments/terminal/remote/crew-remote.py" "$H/host-loop" "$H/skew/environments/terminal/remote/crew-remote.py" "$H/host-skew" "$H/host-gone" > "$H/hosts.json"
   { printf '[hosts.primary]\nprimary = true\nmax_runs = 2\ncapabilities = { os = "macos", arch = "arm64", engines = ["claude-code"] }\n'
     for h in loop skew gone; do
       printf '[hosts.%s]\nforge = false\nmax_runs = 2\nroot = "%s"\ncapabilities = { os = "macos", arch = "arm64" }\n' $h "$H/host-$h"

@@ -1,6 +1,6 @@
 """Shared helpers for the crew commands in this directory (docs/runtimes/tmux.md). Python 3.11+ stdlib only.
 
-cli/mdstack is the entry point (cli/crew a deprecated shim, #1233); it loads this module as `crew_shared`, which the commands import from.
+cli/mdstack is the entry point; it loads this module as `crew_shared`, which the commands import from.
 Helpers: profile resolve (refusing a `<placeholder>` in a path key the command uses) and state paths, the harness
 launch line and window variables (every window gets `CREW_BIN`, `CREW_PROJECT` and the pack's `CREW_SANDBOX_ENV`
 variable), run removal with the unlanded-work check, the pane stop (SIGTERM then SIGKILL the process group),
@@ -20,7 +20,7 @@ import sys
 import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-HERE = os.path.join(ROOT, "scripts")  # the old script paths (#1222 shims) callers still name
+HERE = os.path.join(ROOT, "scripts")  # the repo's own scripts (release, checks, evidence)
 
 
 def load(name, file):

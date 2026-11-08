@@ -172,7 +172,7 @@ Silent only when nothing is stuck AND there is nothing to list.
   into a temp file and feeds it to `python3 scripts/intake-sweep.py --repo
   <owner>/<repo> <file>`. The output is draft intake cards for open PRs
   labelled `crew:blocked` or idle more than 7 days. The coordinator reviews
-  them, drops duplicates, files the keepers as eng-crew issues and accepts or
+  them, drops duplicates, files the keepers as mdstack issues and accepts or
   closes them in its triage window. The sweeper and the helper only print;
   neither files issues nor edits skills. See
   [self-improve](../../../docs/self-improve.md#weekly-sweep-recipe).

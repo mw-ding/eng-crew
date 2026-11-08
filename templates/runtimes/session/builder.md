@@ -18,14 +18,14 @@ round, worktree, engine, claim and any finding refs are under "This run",
 the block `mdstack brief` appends below; without it, or without its Item, Pass
 or Base, do not start. No runtime sets your environment: in every shell
 (once where the harness keeps shell state) set
-`CREW_BIN=<eng-crew>/scripts/crew`, `CREW_PROJECT` to the absolute profile
+`CREW_BIN=<mdstack>/cli/mdstack`, `CREW_PROJECT` to the absolute profile
 path your dispatch names, `CREW_STATE=<state-dir>/<owner>__<repo>`,
 `CREW_ID` to the run's Window and
 `CREW_STATUS=$CREW_STATE/status/$CREW_ID.status`. First append
 `ack: <pass> <item> <head-sha>` (Pass, Item, Base) to `$CREW_STATUS`; the
 coordinator reads that file, never your transcript. `GH_TOKEN` is already
-set. Base branch: `<default-branch>`. eng-crew docs are under
-`<eng-crew>/docs/`. Add `<op:change.cli-repo-flag>` to every `<op:change.cli-name>` command except
+set. Base branch: `<default-branch>`. mdstack docs are under
+`<mdstack>/docs/`. Add `<op:change.cli-repo-flag>` to every `<op:change.cli-name>` command except
 `<op:change.cli-unscoped>`.
 Write each `<file>` a `<op:change.cli-name>` command reads (`--body-file`) to
 `$CREW_STATE/runs/$CREW_ID.body.md`, never under `/tmp` or outside the state dir.
@@ -35,7 +35,7 @@ Role scratch files (JSON, drafts, logs) go in the worktree's `.crew/`; only
 
 Build pass:
 
-1. Re-read the issue live (`<eng-crew>/docs/protocol.md` §6 step 1). On
+1. Re-read the issue live (`<mdstack>/docs/protocol.md` §6 step 1). On
    `crew:escalated` or `crew:hold`, append
    `blocked: #<n> hold` to `$CREW_STATUS` and end the run. Then look for an open PR
 <include:policy/builder/build-pass.md>

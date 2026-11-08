@@ -234,7 +234,7 @@ class Host(Base):
                     'env = {k: v for k, v in os.environ.items() if k == "PATH" or k.startswith("FAKE_TMUX_")}\n'
                     'env["SSH_ORIGINAL_COMMAND"] = sys.argv[-1]\n'
                     'sys.exit(subprocess.run([sys.executable, %r, "--root", %r], env=env).returncode)\n'
-                    % (os.path.join(os.path.dirname(os.path.dirname(CREW)), "scripts", "crew-remote.py"), root))
+                    % (os.path.join(os.path.dirname(os.path.dirname(CREW)), "environments", "terminal", "remote", "crew-remote.py"), root))
         git = ["git", "-c", "user.name=t", "-c", "user.email=t@t", "-C", self.project_dir]
         for argv in (["git", "init", "-q", "--bare", origin], git + ["init", "-q", "-b", "main"],
                      git + ["add", "crew.toml"], git + ["commit", "-qm", "seed"],
@@ -244,7 +244,7 @@ class Host(Base):
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         self.assertIn("fail project mirror: acme__widgets has no main; run mdstack host prepare", r.stdout)
         self.assertIn("fail runner: down", r.stdout)
-        subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.dirname(CREW)), "scripts", "crew-remote.py"), "--root", root,
+        subprocess.run([sys.executable, os.path.join(os.path.dirname(os.path.dirname(CREW)), "environments", "terminal", "remote", "crew-remote.py"), "--root", root,
                         "runner", "--once"], env=self.env, check=True)
         r = self.prepare("host-c")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
@@ -272,7 +272,7 @@ class Host(Base):
         if record:
             os.makedirs(self.state, exist_ok=True)
             with open(os.path.join(self.state, "install.json"), "w") as f:
-                json.dump(dict(self.pin, source="/x/eng-crew-5.1.0", runtime="tmux"), f)
+                json.dump(dict(self.pin, source="/x/mdstack-5.1.0", runtime="tmux"), f)
 
     def test_no_install_table_sends_no_toolkit(self):
         self.prepare()
@@ -284,18 +284,18 @@ class Host(Base):
     def test_prepare_sends_the_pin_and_check_requires_the_toolkit_row(self):
         self.install()
         self.env["FAKE_PREPARE_REPLY"] = json.dumps(dict(result="ok", step="fetch", toolkit=dict(
-            tag="v5.1.0", state="installed"), pruned=["eng-crew-5.0.0"]))
+            tag="v5.1.0", state="installed"), pruned=["mdstack-5.0.0"]))
         self.env["FAKE_VERSION_REPLY"] = json.dumps(dict(result="ok", version="dev", toolkit=dict(
-            status="ok", detail="eng-crew v5.1.0 verified")))
+            status="ok", detail="mdstack v5.1.0 verified")))
         r = self.crew("host", "prepare", "host-b", "--prune")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertIn("ok prepare toolkit: eng-crew v5.1.0 installed\nok prepare prune: eng-crew-5.0.0\n", r.stdout)
-        self.assertIn("ok toolkit: eng-crew v5.1.0 verified\nhost-b: ready", r.stdout)
+        self.assertIn("ok prepare toolkit: mdstack v5.1.0 installed\nok prepare prune: mdstack-5.0.0\n", r.stdout)
+        self.assertIn("ok toolkit: mdstack v5.1.0 verified\nhost-b: ready", r.stdout)
         prepare, check, version = [c["request"] for c in self.calls()]
         self.assertEqual((prepare["toolkit"], prepare["prune"]), (self.pin, True))
         self.assertEqual((version["verb"], version["project"], version["toolkit"]), ("version", "acme__widgets", self.pin))
-        for reply, line in ((dict(result="ok", version="dev", toolkit=dict(status="fail", detail="eng-crew-5.1.0 files "
-                             "differ from its record")), "fail toolkit: eng-crew-5.1.0 files differ from its record; run "
+        for reply, line in ((dict(result="ok", version="dev", toolkit=dict(status="fail", detail="mdstack-5.1.0 files "
+                             "differ from its record")), "fail toolkit: mdstack-5.1.0 files differ from its record; run "
                              "mdstack host prepare"),
                             (dict(result="ok", version="dev"), "fail toolkit: no toolkit facts: host entrypoint predates"),
                             (dict(result="refused", reason="version skew"), "fail toolkit: no toolkit facts: version skew")):

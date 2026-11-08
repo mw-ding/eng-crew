@@ -4,7 +4,7 @@
    in your worktree, handle it as a fix round (below) for its latest verdict
    findings or red CI, then go to step 5.
 2. Read the repo's `AGENTS.md` and the worker brief rules in
-   `<eng-crew>/docs/roles.md`.
+   `<mdstack>/docs/roles.md`.
    Pin the toolchain: `export PATH=<toolchain-bin>:$PATH`. Work only in your
    worktree, on a branch `builder/<n>-` plus a short slug.
    Local checks: a build or fix round runs a targeted set before pushing, not

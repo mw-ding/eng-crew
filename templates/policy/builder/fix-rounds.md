@@ -11,10 +11,10 @@ push, post the `[<BuilderBot>/fix] round <k> @ <sha7>` COMMENT review (`<op:mark
 marker (§3). Kind `ci-red`: fix CI and post `[<BuilderBot>/ci-fix]` the same way; at the effective caps[1]
 limit write `blocked:` to escalate (§5). Then `done:` with the new head.
 
-Express self-gate (`<eng-crew>/docs/express-lane.md`): only when the newest
+Express self-gate (`<mdstack>/docs/express-lane.md`): only when the newest
 item record names `express` and the change carries `crew:express`. Pipe the
 full diff paths at head, both rename paths included, to
-`scripts/crew-config.py class-flavor --project "$CREW_PROJECT" --express`.
+`core/crew-config.py class-flavor --project "$CREW_PROJECT" --express`.
 Lane `crew` (a tightening class match, a missing label or an unreadable
 resolution) runs the crew lane as written. Lane `express` uses its
 `selfgate_engine` (profile `<flavor-selfgate-engine>`) and runs this loop
@@ -34,7 +34,7 @@ after local checks pass, before the PR opens and after every later push:
    contradicts; AC coverage, design fit, correctness, tests, security, scope
    creep), the evidence-presence and AC-claim checks of an authorized
    validation skip, and the code-review skill the reviewer engine's harness
-   adapter declares (`<eng-crew>/docs/runtimes/harness-adapters.md`), if any.
+   adapter declares (`<mdstack>/docs/runtimes/harness-adapters.md`), if any.
    It returns a verdict and findings and never edits.
 3. Fix 🔴 and 🟡 findings in your own context, rerun the affected checks and
    commit. A rejected finding gets a one-line reason, a deferred one a
@@ -55,9 +55,9 @@ owner's ask. Give the reason in your next signed note, remove `crew:express`
 from the PR and report `express-fallback` to the coordinator; never edit a
 posted record.
 
-Step summaries (`<eng-crew>/docs/observe.md`): after each build, test or
+Step summaries (`<mdstack>/docs/observe.md`): after each build, test or
 lint run, and each fix attempt, append one step line with
-`python3 <eng-crew>/scripts/step-summary.py --root <worktree> --ref issue-<n>
+`python3 <mdstack>/scripts/step-summary.py --root <worktree> --ref issue-<n>
 --run-id build --step NAME --status ok|fail --duration SECS --outcome TEXT`.
 It writes `<worktree>/.crew/runs/issue-<n>/build/summary.md`; in fix round
 `<k>` use `--ref pr-<pr> --run-id fix-<k>`. Never add `steps/` logs.

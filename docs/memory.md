@@ -23,7 +23,7 @@ memory by a memory PR ([capture](#capture)), never read as a rule.
 No other file belongs under `memory/`. A memory file is read at every
 start, so keep it short: correct or replace an entry before adding one,
 cite where each entry was decided, and write no relative links (the text
-is copied into briefs). eng-crew's own crew keeps its core memory in
+is copied into briefs). mdstack's own crew keeps its core memory in
 [memory/](../memory/owner.md); another project keeps it in its own repo.
 
 ## Injection at start
@@ -51,7 +51,7 @@ merged memory PR reaches running roles at the next render (`mdstack up` or
 `core/crew-memory.py` checks `memory/`: the layout above, each file's size
 limit, and personal data. `scripts/check-repo.py` runs it as its `memory`
 check, and the renderer runs the same checks on the files it injects.
-Run it on any project with `python3 <eng-crew>/core/crew-memory.py --root
+Run it on any project with `python3 <mdstack>/core/crew-memory.py --root
 <repo>`.
 
 ### Personal data

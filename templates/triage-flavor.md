@@ -32,7 +32,7 @@ supply no new merge authority; F1–F7 still apply.
 Record `express` ([express lane](../docs/express-lane.md#eligibility)) only on
 the owner's words or within a recorded owner grant for express items; quote
 them in `Reason:`. First run the sensitive classifier
-(`scripts/crew-config.py sensitive --paths-only`) on the paths the issue names and apply
+(`core/crew-config.py sensitive --paths-only`) on the paths the issue names and apply
 `crew:sensitive` on a match. Then check the record with `--labels` set to the
 issue's labels, comma-separated:
 

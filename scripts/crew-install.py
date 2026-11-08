@@ -29,12 +29,17 @@ def digest(path):
     return h.hexdigest()
 
 
+def bundle_name(tag):
+    """The release's bundle and toolkit name for tag: mdstack-<v>."""
+    return "mdstack-" + tag[1:]
+
+
 def verify(stage, tag, destination, sha256sums_digest=None):
-    """Check the staged eng-crew-<v>.tar.gz and SHA256SUMS in stage, then move the bundle to destination.
+    """Check the staged <bundle_name>.tar.gz and SHA256SUMS in stage, then move the bundle to destination.
 
     Returns (bundle sha256, SHA256SUMS sha256). Raises ValueError, leaving destination absent, on any failure.
     """
-    stage, name = Path(stage), "eng-crew-" + tag[1:]
+    stage, name = Path(stage), bundle_name(tag)
     archive, sums = stage / (name + ".tar.gz"), stage / "SHA256SUMS"
     sums_sha = digest(sums)
     if sha256sums_digest is not None and sums_sha != sha256sums_digest:
@@ -50,7 +55,7 @@ def verify(stage, tag, destination, sha256sums_digest=None):
 
 def unpack(archive, tag, destination):
     """Verifier steps 4 and 5: member checks, extract beside the archive, VERSION and entry point, then move."""
-    archive, name = Path(archive), "eng-crew-" + tag[1:]
+    archive, name = Path(archive), bundle_name(tag)
     extracted = archive.parent / "extract"
     with tarfile.open(archive, "r:gz") as tar:
         for member in tar.getmembers():
@@ -61,17 +66,17 @@ def unpack(archive, tag, destination):
         tar.extractall(extracted, filter="data")
     bundle = extracted / name
     version = bundle / "VERSION"
-    if not version.is_file() or version.read_text().strip() != tag or not (bundle / "scripts/crew").is_file():
+    if not version.is_file() or version.read_text().strip() != tag or not (bundle / "cli/mdstack").is_file():
         raise ValueError("release bundle VERSION or bootstrap entry point does not match " + tag)
     bundle.rename(destination)
 
 
 def stage(install, tag, where):
-    """Copy eng-crew-<v>.tar.gz and SHA256SUMS for tag into where. A url or mirror location holds them under
+    """Copy <bundle_name>.tar.gz and SHA256SUMS for tag into where. A url or mirror location holds them under
     <location>/<tag>/; only github calls gh."""
-    kind, names = install.get("source", "github"), ["eng-crew-%s.tar.gz" % tag[1:], "SHA256SUMS"]
+    kind, names = install.get("source", "github"), [bundle_name(tag) + ".tar.gz", "SHA256SUMS"]
     if kind == "github":
-        result = subprocess.run(["gh", "release", "download", tag, "-R", "mw-ding/eng-crew", "--pattern", names[0],
+        result = subprocess.run(["gh", "release", "download", tag, "-R", "mw-ding/mdstack", "--pattern", names[0],
                                  "--pattern", names[1], "--dir", str(where)], capture_output=True, text=True)
         if result.returncode:
             raise ValueError("release download failed for " + tag)
@@ -115,8 +120,8 @@ def build_git(location, tag, commit, where):
     with tarfile.open(archive) as tar:
         tar.extractall(tools, filter="data")
     run("build", sys.executable, str(tools / "scripts/release-bundle.py"), tag[1:], "--out", str(where), "--ref",
-        commit, "--repo", "mw-ding/eng-crew", "--root", str(repo))
-    return where / ("eng-crew-%s.tar.gz" % tag[1:])
+        commit, "--repo", "mw-ding/mdstack", "--root", str(repo))
+    return where / (bundle_name(tag) + ".tar.gz")
 
 
 def fetch(install, tag, destination):

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Repo guard for eng-crew (spec R1, R6): secret scan, required docs/sections,
+"""Repo guard for mdstack (spec R1, R6): secret scan, required docs/sections,
 relative markdown links, crew marker SHAs, optional name denylist,
 deliverables manifest coverage, spec slice status, CHANGELOG fragments,
 per-script docs, index files (inventory fresh, entries sorted, docs index
@@ -399,7 +399,7 @@ def check_spec_status(root, fail):
 
 
 def check_denylist(root, fail):
-    """Portable spec P6 (#127): no org-internal names in eng-crew. The names live
+    """Portable spec P6 (#127): no org-internal names in mdstack. The names live
     only in a file outside the repo, one per line (`#` comments and blank lines
     ignored), named by $CREW_DENYLIST; unset means skip. Case-insensitive
     whole-word match over the scanned files. A hit names the denylist line, never
@@ -619,8 +619,8 @@ def check_fragments(root, fail):
             fail(rel, e.line, "changelog-fragment", e.reason + " (CONTRIBUTING.md#changelog)")
 
 
-# The old scripts/ paths, the modules the code moved to (#1222) and the tests per module (#1224).
-SCRIPT_FILE = re.compile(r"scripts/(?:[^/]+\.py|crew|crew\.d/[^/]+\.py)|cli/(?:mdstack|crew)"
+# scripts/, the CLI, the code modules (#1222) and the tests per module (#1224).
+SCRIPT_FILE = re.compile(r"scripts/[^/]+\.py|cli/mdstack"
                          r"|(?:core|harnesses|connectors|environments)/(?:[^/]+/)*[^/]+\.py"
                          r"|dev/tests/(?:[^/]+/test-[^/]+|crew_testlib)\.py")
 MAIN_BLOCK = re.compile(r"""^if __name__ == ["']__main__["']\s*:""", re.M)

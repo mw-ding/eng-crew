@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Renderer for eng-crew: resolved profile + inputs to role briefs and runtime artifacts. Python 3.11+ stdlib only.
+"""Renderer for mdstack: resolved profile + inputs to role briefs and runtime artifacts. Python 3.11+ stdlib only.
 
 Usage: crew-render.py --project FILE [--org-profile FILE] [--inputs DIR] [--diff-paths FILE] --out DIR
 Inputs (default: the repo's templates/): core/<role>.md for each role, if core/ exists -> briefs/<role>.md;
@@ -66,7 +66,7 @@ MAPPED = {
     "session-backend": ["runtime.options.session_backend"],
     "lone-pr-land": ["runtime.options.lone_pr_land"],
     "train-min": ["runtime.options.train_min"], "train-window": ["runtime.options.train_window"],
-    "eng-crew": ["paths.eng_crew"], "merge-grant": ["runtime.options.merge_grant"],
+    "mdstack": ["paths.mdstack"], "merge-grant": ["runtime.options.merge_grant"],
     "merge-grant-scope": ["runtime.options.merge_grant_scope"], "spec-paths": ["spec.paths"],
     "hold-label-blocks": ["runtime.options.hold_label_blocks"], "timezone": ["runtime.timezone"], "fallback-engine": ["engines.fallback_engine"],
     "tested-update": ["strategy.update_from_base"],
@@ -162,7 +162,7 @@ CONTROL_BLOCK = re.compile(r"<control-item:(set|none|end)>\n?")
 INCLUDE_LINE = re.compile(r"<include:policy/([a-z0-9-]+/[a-z0-9-]+\.md)>\n?")
 # Operations that always render the core entry, whatever the backend (docs/interfaces.md#one-entry-point): core runs a
 # bound extension itself, so no backend map can replace the core run.
-CORE_OPS = {("classify", "sensitive"): "scripts/crew-config.py sensitive"}
+CORE_OPS = {("classify", "sensitive"): "core/crew-config.py sensitive"}
 # Roles a profile may leave out: a cap of 0 renders none of their templates or operations (#926).
 OPTIONAL_ROLES = [r for r, v in ROLES.items() if v.get("cap_min", 1) == 0]
 
@@ -295,7 +295,7 @@ class Renderer:
                     text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
             except (OSError, UnicodeDecodeError) as e:
                 raise ValueError("cannot read included doc %s (%s)" % (source, e)) from e
-            bundle = "<path>" if self.normalize_paths else self.values["paths.eng_crew"].rstrip("/")
+            bundle = "<path>" if self.normalize_paths else self.values["paths.mdstack"].rstrip("/")
 
             def link(match):
                 target = match.group(1)
@@ -378,7 +378,7 @@ class Renderer:
             if number == 3:
                 lines.append("3. Tests / build: gather typed runtime evidence.\n")
                 if self.values.get("builder.precheck.owners", "").strip():
-                    lines.append("   Pipe the changed paths, one per line, to `scripts/crew-config.py precheck-scope "
+                    lines.append("   Pipe the changed paths, one per line, to `core/crew-config.py precheck-scope "
                                  "--project <file>` and append its `targets` to the test command. Exit 3 (unowned "
                                  "code) or 4 (owners query failed) stops the check; `tests=n/a` only when every "
                                  "path is no-owner-ok, and list the `no_owner_ok` paths beside the marker.\n")

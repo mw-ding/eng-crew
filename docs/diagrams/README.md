@@ -2,7 +2,7 @@
 
 ## eng-crew-flow
 
-![eng-crew collaboration flow](eng-crew-flow.png)
+![mdstack collaboration flow](eng-crew-flow.png)
 
 The crew collaboration flow: how the bots hand work to each other through the
 GitHub spec → build → CI → review → validation → merge loop.

@@ -4,7 +4,7 @@ What a runtime needs from the program that hosts its role sessions (a
 session backend, such as a terminal multiplexer) to create them, show them
 to the owner, ring them, probe them and stop them, so adding a backend
 means filling in one section here, not editing the runtime (portable
-eng-crew, roadmap 15.5,
+mdstack, roadmap 15.5,
 [#178](https://github.com/mw-ding/eng-crew/issues/178); operations from
 [#160 row 13](https://github.com/mw-ding/eng-crew/issues/160#issuecomment-6532100410)).
 Each operation names the [runtime contract](README.md#contract) capability
@@ -110,9 +110,7 @@ The tmux runtime binding's contract applies with these explicit gaps:
 Each backend is one module, `environments/terminal/sessions/<name>/adapter.py`,
 named by its `runtime.options.session_backend` value.
 `environments/terminal/crew-session.py` discovers them in sorted name order
-(a `_`-prefixed directory is not an adapter). For one release (#1222) an
-adapter left at the old `scripts/session.d/<name>.py` is still discovered,
-unless `sessions/` has that name. The profile's choices, the
+(a `_`-prefixed directory is not an adapter). The profile's choices, the
 active backend in `environments/terminal/crew.d/_shared.py` and `mdstack doctor`'s
 CLI check all come from that discovery. The OS process helpers every backend
 shares (start time, parent pid, the process tree under a run) live in

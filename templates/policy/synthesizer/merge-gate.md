@@ -24,7 +24,7 @@ For each PR:
    or open rereview (§7). `crew:sensitive` requires owner merge-ok at head;
    only a recorded owner classification override clears it. CI is never waived.
    <mirror-gate>
-   Apply protocol's builder pre-review gate with `<eng-crew>/scripts/crew-precheck.py --item <issue#>`
+   Apply protocol's builder pre-review gate with `<mdstack>/scripts/crew-precheck.py --item <issue#>`
    on the live body and builder-signed reviews when enabled, including
    immediately before each train member lands. Check inline N/A reasons.
    Missing, stale, malformed or failed results block unless the
