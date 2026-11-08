@@ -30,7 +30,7 @@ class Route(SpawnBase):
                     "pr = json.load(open(%r))\n"
                     "if args[:2] == ['pr', 'view']: print(json.dumps(pr))\n"
                     "elif args[:2] == ['repo', 'view']: print(json.dumps({'defaultBranchRef': {'name': 'main'}}))\n"
-                    "elif args[:2] == ['issue', 'view']: print(json.dumps(pr.get('_issue', {'labels': [{'name': 'crew:ready'}]})))\n"
+                    "elif args[:2] == ['issue', 'view']: print(json.dumps(pr.get('_issue', {'labels': [{'name': 'crew:ready'}], 'state': 'CLOSED', 'stateReason': 'COMPLETED'})))\n"
                     "elif args[:1] == ['api'] and '/files' in args[1]: print(json.dumps(pr.get('_files', [])))\n"
                     "elif args[:1] == ['api'] and '/actions/jobs/' in args[1]: print(json.dumps(pr.get('_job', {})))\n"
                     "elif args[:1] == ['api'] and '--paginate' in args: sys.exit(1)\n"
@@ -604,6 +604,22 @@ class Route(SpawnBase):
         self.assertIn(["api", "-X", "DELETE", "repos/acme/widgets/git/refs/heads/builder/7-feature"], calls)
         self.assertEqual(self.names(), ["ash"])
         self.assertEqual(self.pending(), [])
+
+    def test_merged_closeout_closes_linked_issue_left_open(self):  # #846
+        for issue, closed in (({"state": "OPEN", "stateReason": ""}, True),
+                              ({"state": "OPEN", "stateReason": "REOPENED"}, False),  # kept open on purpose (#917)
+                              ({"state": "CLOSED", "stateReason": "COMPLETED"}, False)):
+            with self.subTest(issue=issue):
+                open(self.gh_log, "w").close()
+                self.live.update(state="MERGED", _issue=dict(issue, labels=[]))
+                self.save()
+                self.queue(self.event("pr-merged"))
+                self.route()
+                calls = [c for c in self.gh_calls() if c[:2] == ["issue", "close"]]
+                self.assertEqual(calls, [["issue", "close", "7", "-R", "acme/widgets", "--comment",
+                                          "[Ash/close-out] #12 merged and closes this issue, but GitHub left it open; "
+                                          "closed by close-out."]] if closed else [])
+                self.assertEqual(self.pending(), [])
 
     def test_merged_closeout_keeps_synthesizer_through_main_ci(self):  # #1339
         for completion in ("done: #12 " + "a" * 40, "blocked: main red after #12 https://ci/run/1"):

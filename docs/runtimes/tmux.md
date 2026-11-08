@@ -1713,8 +1713,9 @@ without a coordinator wake; other gate-status blocks still wake it. A lead's
 `blocked` message is appended to its inbox without a nudge (#578). Changes results retain their section
 files after cleanup. Merged PRs get the
 close-out in the coordinator brief: crew labels cleared, the closed issue's
-`crew:ready` removed, and that PR's head branch deleted only for a same-repo
-head that is neither default nor base. Item windows are cleaned up too.
+`crew:ready` removed, a closed issue that GitHub left open closed with a note
+(one that was reopened stays open, #846), and that PR's head branch deleted
+only for a same-repo head that is neither default nor base. Item windows are cleaned up too.
 `pr-closed` reaps the assigned builder without merged-PR label or branch cleanup.
 A `fix` or `ci-red` send to a missing `ben-<issue>` with PR/head refs queues a
 `builder-message` wake. Route checks the live PR, linkage and head, spawns the
