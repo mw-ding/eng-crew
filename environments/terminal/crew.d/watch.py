@@ -78,13 +78,18 @@ def work(state, name, rec):
     return True
 
 
+def run_identity(rec):
+    """The run behind a window name: a respawn under the same name differs (#1092)."""
+    return [rec.get(k) for k in ("start", "pane_id", "pane_pid", "pane_start", "worktree")]
+
+
 def scan(state, session, now, stale, seen, idle_ttl=1800, stuck_after=1800):
     """Wake records: new status lines, runs dead, missing or silent past stale, owner asks past their deadline and
     finishing work deferred past stuck_after; each fires once per key."""
     windows = dict((n, i) for i, n in tmux.list_windows(session))
     wakes = []
     for name, rec in list(runs(state)) + list(commands()["lead"].records(state)):
-        identity = [rec.get(k) for k in ("start", "pane_id", "pane_pid", "pane_start", "worktree")]
+        identity = run_identity(rec)
         identities = seen.setdefault("runs", {})
         if name in identities and identities[name] != identity:
             seen["offsets"].pop(name, None)
@@ -99,7 +104,7 @@ def scan(state, session, now, stale, seen, idle_ttl=1800, stuck_after=1800):
                 for line in f.read().splitlines():
                     remember_pr(rec, line)
                     if line.strip():
-                        wakes.append({"reason": "status", "window": name, "line": line})
+                        wakes.append({"reason": "status", "window": name, "line": line, "run": identity})
         seen["offsets"][name] = size
         if rec.get("pr") != previous_pr:
             path = os.path.join(state, "runs", name + ".json")

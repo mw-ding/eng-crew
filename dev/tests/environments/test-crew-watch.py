@@ -1,7 +1,7 @@
 """Tests for mdstack watch (and its scan), moved from test-crew.py; fixtures in crew_testlib.py (stdlib only).
 
 Covers: scan with a fake clock (fresh, silent, dead -> restart, twice -> escalate, status line once; a builder
-after `done:` flagged when dead, a reviewer's `done:` terminal), exit with a reason line and queue record, PID
+after `done:` flagged when dead, a reviewer's `done:` terminal; each status wake naming its run, #1092), exit with a reason line and queue record, PID
 file, `--source` events, typed wake line only into an idle coordinator and never into one showing a captured
 stuck screen (a `dialog` wake queued instead, #315), backstop backoff while idle, a never-exiting source cut
 off at `--source-timeout` as an incident, waking as `source-failing` at `--source-failures`, a source slower than a
@@ -123,14 +123,19 @@ class Watch(LivenessBase):
     def test_same_size_status_delivered_after_window_reuse_and_rearm(self):
         self.put("status/ben-7.status", "done: #7 #12 %s\n" % HEAD)
         os.utime(os.path.join(self.state, "status", "ben-7.status"), (NOW, NOW))
-        self.assertEqual([w["reason"] for w in self.scan(NOW)], ["status"])
+        first = self.scan(NOW)
+        self.assertEqual([w["reason"] for w in first], ["status"])
         seen = json.loads(json.dumps(self.seen))
         rec = self.record("ben-7")
         rec["start"] = "2033-05-18T00:00:00Z"
         self.put("runs/ben-7.json", json.dumps(rec))
         self.put("status/ben-7.status", "done: #7 #13 %s\n" % HEAD)
         os.utime(os.path.join(self.state, "status", "ben-7.status"), (NOW, NOW))
-        self.assertEqual([w["line"] for w in self.scan(NOW, seen)], ["done: #7 #13 " + HEAD])
+        second = self.scan(NOW, seen)
+        self.assertEqual([w["line"] for w in second], ["done: #7 #13 " + HEAD])
+        # each status wake names the run that wrote it, so route spares a respawn under the same name (#1092)
+        self.assertEqual(second[0]["run"], self.mod.run_identity(rec))
+        self.assertNotEqual(first[0]["run"], second[0]["run"])
         self.assertEqual(self.scan(NOW, self.seen), [])
         self.assertEqual(self.record("ben-7")["pr"], 13)
 
