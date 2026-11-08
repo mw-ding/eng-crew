@@ -475,6 +475,17 @@ class Parity(unittest.TestCase):
             for op in ops:
                 self.assertTrue(renderer.line("<op:%s.%s>" % (concern, op)).strip(), op)
 
+    def test_verdict_state_tag_commands_render_on_one_line(self):  # #823
+        with tempfile.TemporaryDirectory() as tmp:
+            code, output = render(example_profile(tmp), INPUTS, tmp)
+            self.assertEqual(code, 0, output)
+            with open(os.path.join(tmp, "runtime", "reviewer.md")) as f:
+                text = f.read()
+        for tag, others in (("approved", ("in-review", "changes")), ("changes", ("in-review", "approved"))):
+            line = next(ln for ln in text.splitlines() if "--add-label crew:%s " % tag in ln)
+            for other in others:
+                self.assertIn("--remove-label crew:%s" % other, line)
+
     def test_placeholder_table_maps_every_placeholder(self):
         """Every token in the input tree has a templates/README.md row; its profile key matches the renderer."""
         with open(os.path.join(INPUTS, "README.md"), encoding="utf-8") as f:

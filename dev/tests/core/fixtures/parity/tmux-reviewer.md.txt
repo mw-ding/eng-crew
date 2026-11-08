@@ -176,11 +176,11 @@ synthesizer's portability check with no new reviewer session.
    review-only `changes` body has exactly two: `pass=review` and
    `pass=verdict`. Each marker must name this PR, full head SHA and round,
    and its actual result. If the check fails, fix the body before posting.
-   Right after posting the verdict, the same pass sets the state tags (§4):
-   on `pass`, `gh pr edit <n> -R <owner>/<repo> --add-label crew:approved
-   --remove-label crew:in-review --remove-label crew:changes`; on `changes`,
-   `gh pr edit <n> -R <owner>/<repo> --add-label crew:changes --remove-label
-   crew:in-review --remove-label crew:approved`.
+   Right after posting the verdict, the same pass sets the state tags (§4)
+   with one command, never split: on `pass`, `gh pr edit <n> -R <owner>/<repo> --add-label crew:approved --remove-label crew:in-review --remove-label crew:changes`;
+   on `changes`, `gh pr edit <n> -R <owner>/<repo> --add-label crew:changes --remove-label crew:in-review --remove-label crew:approved`. Then read the PR's tags
+   back; if `crew:in-review` or the other verdict tag is still set, run the
+   command again.
 7. Report `$CREW_BIN action report --status done --ref '#<n>' --ref <head-sha>
    --ref <pass> --ref <pass|changes>` (this pass's section result), then exit.
 
