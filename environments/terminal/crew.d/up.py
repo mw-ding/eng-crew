@@ -23,8 +23,8 @@ import subprocess
 import sys
 from crew_shared import (
     brief_src, commands, coordinator_harness, CREW_BIN, crew_render, HERE, harnesses, kill_run, LAUNCH, load, NAMES,
-    POINTER, profile, ownership_module, proc, require_ownership, role_notes, ROLES, ROOT, runs, sandbox_env, stop_pid,
-    tmux)
+    POINTER, profile, ownership_module, proc, require_ownership, role_notes, ROLES, ROOT, runs, sandbox_env, show_icon,
+    stop_pid, tmux)
 
 
 TEMPLATES = os.path.join(os.path.dirname(HERE), "templates")
@@ -271,6 +271,7 @@ def start(values, session, state, project_dir, env):
         if values["backends.owner-channel.name"] == "slack" else None
     line = LAUNCH.removesuffix(' "%s"') % cmd if launch(values, "resume") == "ask" else LAUNCH % (cmd, POINTER)
     tmux.new_session(session, window, project_dir, env, line, private_env=private)
+    show_icon(values, session, 0, "coordinator")
     print("crew: started %s (window 0 %s, %s); attach with: %s" % (
         session, window, values["engines.coordinator"], attach_hint(session)))
     return 0

@@ -113,7 +113,7 @@ class Up(Base):
         self.assertIn('exec claude "Read your brief at $CREW_BRIEF and follow it."', launch)
         self.assertNotIn("GH_TOKEN", " ".join(env))
         self.assertIn(["move-window", "-s", "=crew-acme-widgets", "-t", "=crew-acme-widgets:0"], self.calls())
-        opts = [c for c in self.calls() if c[0] == "set-option"]
+        opts = [c for c in self.calls() if c[0] == "set-option" and "-w" not in c]  # -w: the tab icon (#1157)
         self.assertEqual(opts, [["set-option", "-t", "=crew-acme-widgets:", "renumber-windows", "off"],
                                 ["set-option", "-t", "=crew-acme-widgets:", "base-index", "0"]])
 

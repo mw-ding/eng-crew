@@ -66,6 +66,7 @@ The [C5](README.md#c5-liveness) run identity, as backend operations:
 | Server | One server on every call, `runtime.options.tmux_server` (#1327): `"default"`, the owner's default server named by path, never an inherited `$TMUX`, so plain `tmux ls` finds the crew; or `"dedicated"`, `tmux -L <session>`, the crew's own server, so a pane's bare `tmux` cannot reach the owner's default server (#818). A crew session still running on the other server stays there until its next `mdstack up`. After a lost server, `mdstack up` stops a recorded lead whose pane process survived, by recorded pid, start time and parent pid 1 ([mdstack up](tmux.md#mdstack-up)). |
 | Create (C6) | Role run: `tmux new-window -d -t =<session>:<index> -n <window> -c <worktree> -e CREW_<NAME>=<value> ... '<launch>'` ([mdstack spawn](tmux.md#mdstack-spawn)); `-d` keeps focus on window 0. Coordinator: `tmux new-session -d -s <session> -n <name> -c <project> -e ... '<launch>'`, then `renumber-windows off` and `base-index 0` on that session only (never `-g`) and the window moved to index 0 ([mdstack up](tmux.md#mdstack-up)). A non-zero exit raises tmux's error; `mdstack spawn` first refuses when `has-session` cannot reach the session. |
 | Attach (C8) | `tmux attach-session -r -t =<session>:<index>`; `--rw` drops `-r` ([mdstack attach](tmux.md#mdstack-attach)). Detach with the prefix and `d`. Attaching selects the window for every client of the session; indices and names do not change. `mdstack attach builders` shows the builder band in a temporary tiled session of its own. |
+| Tab icon | The role's configured emoji before the tab (`🔥 0:ash`), display-only (#1157): the per-window user option `@crew_icon`, and `#{?@crew_icon,#{@crew_icon} ,}` prefixed to the global `window-status-format` and `window-status-current-format`, set on that window only (never `-g`, never another session). Window names and every target stay unchanged. |
 | Doorbell (C1, C3) | `tmux send-keys -l '<line>'`, a 0.3 s settle, then `send-keys Enter`: an `Enter` right behind typed text lands in Codex's paste burst (#308). The composer is read with `capture-pane -p` and `#{cursor_x} #{cursor_y}`; only the doorbell's own stale lines are cleared (`C-u`), `Enter` is retried up to 3 times without retyping, and no key is sent while a dialog is on screen (#315). Not submitted: `mdstack send` exits 4 ([mdstack send](tmux.md#mdstack-send)). |
 | Identity probe (C5) | Located by window name at the recorded index (`list-windows -F '#{window_index} #{window_name}'`). Handle: `#{pane_id}` plus `#{pane_pid}` (`display-message -p`). Start time: `ps -o lstart= -p <pane_pid>`. Pane ids are unique only while the tmux server lives and the OS reuses pids, so the start time is required ([Q7](tmux.md#q7-failure)). Order: no window → `missing`; no answer → `ambiguous`; other pane id or pid → `missing`; `#{pane_dead}` → `dead`; other start time → `missing`. |
 | State read (C1, C5) | `#{pane_dead}`; `#{pane_current_command}` and the names in the pane tty's foreground process group (`ps -o stat= -o comm= -t <pane_tty>`, `+` in `stat`); `capture-pane -p`, the visible screen only; `#{window_activity}` as the last output time ([mdstack status](tmux.md#mdstack-status)). |
@@ -79,6 +80,10 @@ Select `session_backend = "herdr"` under `[runtime.options]`, keeping
 the already-running local default server. It never starts, stops or
 reconfigures that shared server, and uses no hooks or agent-reported metadata.
 Each run owns one workspace labelled `<session>:<index>:<window>`; workspace display numbers do not set the bands.
+herdr has no display field apart from the label, so the tab icon renames the
+workspace to `<emoji> <session>:<index>:<window>` after create, and every
+lookup (identity probe, attach, kill) compares the label with that
+`<emoji> ` prefix stripped (#1157).
 
 | Operation | herdr |
 |---|---|
@@ -140,10 +145,20 @@ an unanswered probe as `ambiguous`, never as proof of death.
 | `doorbell` | `doorbell(name, index, text)` rings the run itself and returns why a line was not submitted, or `None`. | The runtime's cursor-checked composer nudge (`mdstack send`) drives `capture`, `cursor`, `press` and `send_keys`. |
 | `reload` | `hold(name, index)` and `respawn(name, index, cwd, env, command)` restart a run in place. | `mdstack upgrade` refuses before stopping any run. |
 | `dead-keeps-pid` | An exited object still reports its pid, so a dead probe compares handle and pid. | An exited object with the recorded handle is `dead`. |
+| `icon` | `icon(name, index, emoji)` shows the role's emoji beside the run's tab without changing its name or label used for targeting. | Tabs show the name only. |
 
 The runtime branches on these capabilities and on operation results, never
-on a backend's name. tmux declares `reload` and `dead-keeps-pid`; herdr
-declares `doorbell`.
+on a backend's name. tmux declares `reload`, `dead-keeps-pid` and `icon`;
+herdr declares `doorbell` and `icon`.
+
+The emoji is the role's `[identities] <role>.emoji` (workers use their role's:
+Ben for builders, Vera for reviewers, Riley for researchers). The runtime
+drops a variation selector (`U+FE0F`, as in the default builder 🛠️) and shows
+the name only for an empty emoji or any other multi-codepoint emoji (a ZWJ
+sequence): tmux counts those narrower than the terminal draws them, which
+misaligns the status bar. Prefer single-codepoint emoji such as 🔥 or 🔬;
+`dev/tests/environments/test-crew-tab-icon.py` checks on a private tmux
+socket that one widens the tab by exactly its two cells and a space.
 
 ## Adding a session backend
 

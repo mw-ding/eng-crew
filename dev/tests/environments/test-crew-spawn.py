@@ -528,7 +528,7 @@ class Spawn(SpawnBase):
         self.assertEqual(self.crew("kill", "ben-7", "--project", self.project).returncode, 0)
         with open(self.state_file) as f:
             self.assertEqual(json.load(f)["crew-acme-widgets"], {"0": "ash", "11": "ben-8"})
-        opts = [c for c in self.calls() if c[0] == "set-option"]
+        opts = [c for c in self.calls() if c[0] == "set-option" and "-w" not in c]  # -w: the tab icon (#1157)
         self.assertTrue(opts and all(c[1:3] == ["-t", "=crew-acme-widgets:"] and "-g" not in c for c in opts), opts)
 
 

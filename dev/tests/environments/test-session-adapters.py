@@ -148,7 +148,8 @@ class ShippedBackends(unittest.TestCase):
         s = load("crew_session_shipped", os.path.join(os.path.dirname(SCRIPTS), "environments", "terminal", "crew-session.py"))
         self.assertEqual(s.CHOICES, ["tmux", "herdr"])
         self.assertEqual({n: (a.EXECUTABLE, a.CAPABILITIES) for n, a in s.ADAPTERS.items()},
-                         {"tmux": ("tmux", {"reload", "dead-keeps-pid"}), "herdr": ("herdr", {"doorbell"})})
+                         {"tmux": ("tmux", {"reload", "dead-keeps-pid", "icon"}),
+                          "herdr": ("herdr", {"doorbell", "icon"})})
 
 
 class FakeBackend(SpawnBase):
