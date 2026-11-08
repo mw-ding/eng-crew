@@ -13,9 +13,11 @@
    review-only `changes` body has exactly two: `pass=review` and
    `pass=verdict`. Each marker must name this PR, full head SHA and round,
    and its actual result. If the check fails, fix the body before posting.
-   Right after posting the verdict, the same pass sets the state tags (§4):
-   on `pass`, `<op:state-tags.set-approved>`; on `changes`,
-   `<op:state-tags.set-changes>`.
+   Right after posting the verdict, the same pass sets the state tags (§4)
+   with one command, never split: on `pass`, `<op:state-tags.set-approved>`;
+   on `changes`, `<op:state-tags.set-changes>`. Then read the PR's tags
+   back; if `crew:in-review` or the other verdict tag is still set, run the
+   command again.
 7. Report `$CREW_BIN action report --status done --ref '#<n>' --ref <head-sha>
    --ref <pass> --ref <pass|changes>` (this pass's section result), then exit.
 

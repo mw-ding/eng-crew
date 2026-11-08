@@ -44,10 +44,9 @@ close-item = "gh issue close <n> -R <owner>/<repo> --comment <reason>"
 
 [state-tags]
 set-clear-read = "gh pr edit <n> --add-label crew:<tag> (or --remove-label crew:<tag>); gh pr view <n> --json labels"
-set-approved = """gh pr edit <n> -R <owner>/<repo> --add-label crew:approved
-   --remove-label crew:in-review --remove-label crew:changes"""
-set-changes = """gh pr edit <n> -R <owner>/<repo> --add-label crew:changes --remove-label
-   crew:in-review --remove-label crew:approved"""
+# One line each: a wrapped command lets a reviewer run only its first line (#823).
+set-approved = "gh pr edit <n> -R <owner>/<repo> --add-label crew:approved --remove-label crew:in-review --remove-label crew:changes"
+set-changes = "gh pr edit <n> -R <owner>/<repo> --add-label crew:changes --remove-label crew:in-review --remove-label crew:approved"
 
 [markers]
 write = "gh pr review <n> --comment --body-file <file>"
