@@ -127,3 +127,19 @@ The live buffer. How to append, when to batch and who owns it are in
   treat anything incomplete as unknown; per-site regression tests hold it.
 - **Status:** fixed by #979, #981, #984, #991, #996, #1008, #1154, #1163,
   #1275, #1277 and #1280; every regression test survives at `main` (#1342).
+
+### Sandbox boundary checked once, not at every effect
+
+- **Date:** 2026-11-08 (recorded by #1342 from repaired cards; the last
+  sighting is #1204)
+- **PR / repo:** cards #1191, #1192, #1193, #1194 and #1204; repairs #810,
+  #815, #816, #820 and #1152 (#1186 reran them). See
+  [sandbox-every-effect](../lessons/2026-11-08-sandbox-every-effect.md)
+- **Smell:** The campaign sandbox guarded one channel once. An output path,
+  a profile changed between steps, a branch that was not checked out, a
+  grouped socket flag and inherited credentials each crossed the boundary.
+- **Count:** 5
+- **Proposed fix layer:** architecture: check the boundary at every effect,
+  with a decoy test per channel.
+- **Status:** fixed by #810, #815, #816, #820 and #1152; every regression test
+  survives at `main` (#1342).
