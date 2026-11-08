@@ -1,5 +1,11 @@
 # Self-improve intake
 
+> - **Status:** partly built
+> - **Applies to:** failed or stuck changes on repos the team runs
+> - **Current rules:** this page's hard rules; landing stays with [protocol §7](protocol.md#7-merge-gate-synthesizer)
+> - **Built:** the `weekly-sweep` trigger and its recipe (`scripts/intake-sweep.py`); the other [triggers](#triggers) are documented follow-ups
+> - **Last checked:** 2026-11-07 at `02ca805`
+
 Failures and near-misses die in chat and PR threads unless something turns them
 into work. This doc is the intake protocol: a cheap path from a failed or stuck
 crew PR to a reviewable harness improvement. It is the `M11` answer to the

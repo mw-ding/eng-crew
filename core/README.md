@@ -1,0 +1,21 @@
+# core
+
+Shared libraries only, used by every axis. Part of the
+[module layout](../docs/specs/team.md#4-target-module-layout).
+
+## Contents
+
+| File | Holds |
+|---|---|
+| `crew-config.py` | Profile schema, layering, validation and resolution ([profile](../docs/profile.md), [resolution](../docs/configuration/resolution.md)) |
+| `crew-render.py` | Renders role briefs from templates, the registry and the resolved profile |
+| `crew-roles.py` | Role registry validation ([role registry](../docs/roles-registry.md)) |
+| `crew-routines.py` | Role routine validation and due-slot logic ([routines](../docs/routines.md)) |
+| `crew-memory.py` | Core memory lint and brief injection ([memory](../docs/memory.md)) |
+| `crew-pack.py` | Pack plug-in discovery and checks ([packs](../docs/packs.md#pack-plug-ins)) |
+
+## How it plugs in
+
+Environments, connectors, harnesses and the CLI import these modules. Core
+depends on no module above it (dependency rule D4). The old `scripts/`
+paths stay as compatibility shims for one release.

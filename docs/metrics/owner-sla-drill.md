@@ -1,5 +1,11 @@
 # Owner-SLA drill (P7)
 
+> - **Status:** design
+> - **Applies to:** the owner-decision path of [protocol §6](../protocol.md#6-duties-on-wake-all-roles)
+> - **Current rules:** [protocol §6](../protocol.md#6-duties-on-wake-all-roles)
+> - **Built:** nothing; the [Results](#results) table is not filled in
+> - **Last checked:** 2026-11-07 at `02ca805`
+
 ## Purpose
 
 Prove the owner-SLA path once, end to end: a synthetic `crew:hold` that needs a

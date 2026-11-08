@@ -60,12 +60,15 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `actions/*.md` | Internal | n/a | Design contract: generic action vocabulary, CLI contract and per-environment mapping; implemented in M32 ([#1218](https://github.com/mw-ding/eng-crew/issues/1218)) |
 | `actions/contract.py` | Deliverable | all | Conformance kit: the actions/ contract tests `mdstack pack test` runs against a pack's adapters ([#1236](https://github.com/mw-ding/eng-crew/issues/1236)) |
 | `changes/**` | Internal | n/a | Unreleased CHANGELOG fragments: assembled into `CHANGELOG.md` at the cut, then deleted ([CONTRIBUTING](../CONTRIBUTING.md#changelog)) |
+| `cli/README.md` | Deliverable | all | Module README: purpose, contents and how the module plugs in ([#1237](https://github.com/mw-ding/eng-crew/issues/1237)) |
 | `cli/crew` | Deliverable | all | Deprecated CLI name for one release: runs `cli/mdstack` with a deprecation note ([#1233](https://github.com/mw-ding/eng-crew/issues/1233)) |
 | `cli/mdstack` | Deliverable | all | Runtime CLI: mdstack entry point, including bootstrap and doctor |
+| `connectors/README.md` | Deliverable | all | Module README: purpose, contents and how the module plugs in ([#1237](https://github.com/mw-ding/eng-crew/issues/1237)) |
 | `connectors/github/crew-repo.py` | Deliverable | all | Install CLI: shared GitHub repository checks and dry-run fixers |
 | `connectors/github/manifest.toml` | Deliverable | all | Connector: GitHub capability declaration ([#1223](https://github.com/mw-ding/eng-crew/issues/1223)) |
 | `connectors/notion/knowledge.py` | Deliverable | all | Knowledge connector: Notion binding of knowledge-read and knowledge-propose-edit ([#1229](https://github.com/mw-ding/eng-crew/issues/1229)) |
 | `connectors/notion/manifest.toml` | Deliverable | all | Connector: Notion knowledge capability declaration ([#1229](https://github.com/mw-ding/eng-crew/issues/1229)) |
+| `core/README.md` | Deliverable | all | Module README: purpose, contents and how the module plugs in ([#1237](https://github.com/mw-ding/eng-crew/issues/1237)) |
 | `core/crew-config.py` | Deliverable | all | Install CLI: validate and resolve a profile; imports the secret-scan patterns of `check-repo.py` ([#275](https://github.com/mw-ding/eng-crew/issues/275)) |
 | `core/crew-memory.py` | Deliverable | all | Install CLI: core memory lint (layout, size limits, no personal data) and the section the renderer appends to each brief ([#1230](https://github.com/mw-ding/eng-crew/issues/1230)) |
 | `core/crew-pack.py` | Deliverable | all | Install CLI: pack plug-in loader (pack.toml, discovery, version range, floors, commit pin) ([#1236](https://github.com/mw-ding/eng-crew/issues/1236)) |
@@ -139,6 +142,8 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `docs/specs/**` | Internal | n/a | Maintainer docs: specs and planning, not loaded by roles |
 | `docs/triage.md` | Deliverable | tmux | Protocol bundle (runtime binding): always-on triage design for the tmux binding ([#659](https://github.com/mw-ding/eng-crew/issues/659)) |
 | `docs/verification.md` | Deliverable | all | Protocol bundle (core): the text roles load and cite |
+| `environments/README.md` | Deliverable | all | Module README: purpose, contents and how the module plugs in ([#1237](https://github.com/mw-ding/eng-crew/issues/1237)) |
+| `environments/terminal/README.md` | Deliverable | all | Module README: purpose, contents and how the module plugs in ([#1237](https://github.com/mw-ding/eng-crew/issues/1237)) |
 | `environments/terminal/crew-proc.py` | Deliverable | tmux | Runtime CLI: OS process helpers every session backend shares ([#1183](https://github.com/mw-ding/eng-crew/issues/1183)) |
 | `environments/terminal/crew-session.py` | Deliverable | tmux | Runtime CLI: session backend adapter discovery from `sessions/<backend>/adapter.py` ([#1183](https://github.com/mw-ding/eng-crew/issues/1183)) |
 | `environments/terminal/crew.d/**` | Deliverable | all | Runtime CLI: per-command modules ([#224](https://github.com/mw-ding/eng-crew/issues/224)) |
@@ -146,12 +151,16 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `environments/terminal/sessions/**` | Deliverable | tmux | Runtime CLI: one adapter module per session backend ([#1183](https://github.com/mw-ding/eng-crew/issues/1183)) |
 | `examples/**` | Internal | n/a | Worked example: referenced, not installed |
 | `harnesses/*/adapter.py` | Deliverable | all | Runtime CLI: one adapter module per harness ([#1182](https://github.com/mw-ding/eng-crew/issues/1182)) |
+| `harnesses/README.md` | Deliverable | all | Module README: purpose, contents and how the module plugs in ([#1237](https://github.com/mw-ding/eng-crew/issues/1237)) |
 | `harnesses/crew-harness.py` | Deliverable | all | Runtime CLI: harness adapter discovery and the engine tables derived from `harnesses/<engine>/adapter.py` ([#1182](https://github.com/mw-ding/eng-crew/issues/1182)) |
 | `memory/**` | Internal | n/a | eng-crew's own crew core memory (owner profile, per-role files), injected into its briefs; another project keeps its own ([#1230](https://github.com/mw-ding/eng-crew/issues/1230)) |
+| `packs/README.md` | Deliverable | all | Module README: purpose, contents and how the module plugs in ([#1237](https://github.com/mw-ding/eng-crew/issues/1237)) |
 | `packs/github/**` | Deliverable | all | Compatibility copy for one release of `connectors/github/manifest.toml` ([#1223](https://github.com/mw-ding/eng-crew/issues/1223)) |
+| `profiles/README.md` | Deliverable | all | Module README: purpose, contents and how the module plugs in ([#1237](https://github.com/mw-ding/eng-crew/issues/1237)) |
 | `profiles/default.toml` | Deliverable | grok-bot | Profile: default profile (spec P7) |
 | `profiles/session.toml` | Deliverable | session | Example profile: session example profile |
 | `profiles/tmux.toml` | Deliverable | tmux | Example profile: tmux example profile |
+| `roles/README.md` | Deliverable | all | Module README: purpose, contents and how the module plugs in ([#1237](https://github.com/mw-ding/eng-crew/issues/1237)) |
 | `roles/eng/**` | Deliverable | tmux | Domain registry: one engineering role definition per file, loaded by the tmux runtime, and each role's `routines/` |
 | `roles/seats/**` | Deliverable | all | Owner-facing seat placeholder packages and the seat template; content authored elsewhere |
 | `scripts/README.md` | Deliverable | all | Script usage: script guide and guard rules; each script's own usage is its module docstring, printed by `--help` |

@@ -1,59 +1,92 @@
 # Docs index
 
-This is the index for the engineering-bot crew framework docs. Start with the
-architecture overview, then read the protocol and the role details.
+The index for eng-crew's docs. eng-crew runs a repository with a team of
+agent roles that keep their identity wherever they are deployed. A
+deployment is the product of four independent axes: **roles** (who),
+**connectors** (the tools of record), **environments** (where and how the
+team runs) and **harnesses** (how an agent launches and loads); see
+[concepts.md](concepts.md#four-axes) and [architecture.md](architecture.md#modules).
 
 The framework is generic. Per-repo values appear as placeholders such as
 `<owner>`, `<repo>`, `<author-login>` and `<reviewer-login>`. No secrets or
 tokens are stored in this repo.
 
-## Find your path
+## Reading paths
 
 Navigation only: these links point at the docs that own each rule and add no
-rule of their own. A role's rendered brief stays its operating instruction.
+rule of their own. A role's rendered brief stays its operating instruction;
+what each role reads at start, every wake and on a trigger is in
+[reading-paths.md](reading-paths.md).
 
-By role:
+<a id="find-your-path"></a>
 
-- **Owner:** [../README.md](../README.md) for the product and install front
-  page and its [Quickstart](../README.md#quickstart-tmux), then [flavors.md](flavors.md) for rigor and
-  [protocol.md](protocol.md) for steering and the decisions it asks of you.
-- **Adopter:** the [Quickstart](../README.md#quickstart-tmux) for a tmux
-  crew, then [runbook-new-repo.md](runbook-new-repo.md) by chosen runtime,
-  then [bootstrap.md](bootstrap.md), [profile.md](profile.md),
-  [release.md](release.md) and the runtime binding
-  ([runtimes/tmux.md](runtimes/tmux.md) or
-  [runtimes/grok-bot.md](runtimes/grok-bot.md)).
-- **Pack author:** [concepts.md](concepts.md), then
-  [interfaces.md](interfaces.md) and [runtimes/README.md](runtimes/README.md),
-  then [profile.md](profile.md) and [roles-registry.md](roles-registry.md),
-  then [packs.md](packs.md) and the selected binding.
-- **Coordinator:** [protocol.md](protocol.md), the coordinator sections of
-  [roles.md](roles.md), the runtime binding, [scheduling.md](scheduling.md)
-  and [self-improve.md](self-improve.md).
-- **Builder:** [../AGENTS.md](../AGENTS.md), the worker brief and PR
-  templates in [roles.md](roles.md), [verification.md](verification.md) and
-  [../templates/evidence/](../templates/evidence/README.md); add
-  [express-lane.md](express-lane.md) for an express change.
-- **Reviewer-validator:** [../AGENTS.md](../AGENTS.md), the review sections of
-  [protocol.md](protocol.md), [roles.md](roles.md) and
-  [verification.md](verification.md).
-- **Synthesizer:** the stage 7 merge gate in [protocol.md](protocol.md), the
-  runtime binding's land procedure and [release.md](release.md) for cuts.
-- **Researcher:** the Researcher section of [roles.md](roles.md) and the
-  docs the request names.
+- **User** (you own a repo and want the team to work on it):
+  [../README.md](../README.md) and its [Quickstart](../README.md#quickstart-tmux),
+  then [architecture.md](architecture.md) for how work flows,
+  [flavors.md](flavors.md) for rigor and
+  [protocol §9](protocol.md#9-steering-crew-commands) for steering and the
+  decisions the team asks of you.
+- **Operator** (you install, run, upgrade or recover a team):
+  [runbook.md](runbook.md) is the task table; it leads to
+  [runbook-new-repo.md](runbook-new-repo.md), [bootstrap.md](bootstrap.md),
+  [profile.md](profile.md), the environment binding
+  ([runtimes/tmux.md](runtimes/tmux.md),
+  [runtimes/grok-bot.md](runtimes/grok-bot.md) or
+  [runtimes/session.md](runtimes/session.md)) and
+  [release.md](release.md#update-path) for upgrades.
+- **Pack author** (you add a connector, environment, harness or org
+  specifics): [concepts.md](concepts.md), the module READMEs below, then
+  [interfaces.md](interfaces.md),
+  [runtimes/README.md](runtimes/README.md),
+  [runtimes/harness-adapters.md](runtimes/harness-adapters.md),
+  [../actions/README.md](../actions/README.md),
+  [profile.md](profile.md), [roles-registry.md](roles-registry.md) and
+  [packs.md](packs.md).
+- **Contributor** (you change eng-crew itself):
+  [../CONTRIBUTING.md](../CONTRIBUTING.md), [../AGENTS.md](../AGENTS.md),
+  the specs ([specs/team.md](specs/team.md) for the module layout and
+  dependency rules, [specs/portable.md](specs/portable.md) for the
+  invariants), [protocol.md](protocol.md), [verification.md](verification.md)
+  and [../scripts/](../scripts/README.md).
 
 By task:
 
-- **Change the framework:** [../CONTRIBUTING.md](../CONTRIBUTING.md),
-  [../AGENTS.md](../AGENTS.md) and [../scripts/](../scripts/README.md).
 - **Understand the flow:** [architecture.md](architecture.md), then
   [concepts.md](concepts.md); diagram sources are in
   [diagrams/](diagrams/README.md).
-- **Look up history:** [lessons/README.md](lessons/README.md),
-  [findings/README.md](findings/README.md),
-  [../CHANGELOG.md](../CHANGELOG.md) and the specs under [specs/](specs/portable.md).
+- **Look up history:** [decisions.md](decisions.md),
+  [lessons/README.md](lessons/README.md),
+  [findings/README.md](findings/README.md) and
+  [../CHANGELOG.md](../CHANGELOG.md).
 - **Read metrics:** [metrics/README.md](metrics/README.md) and
   [metrics/decisions.md](metrics/decisions.md).
+
+## Modules
+
+One README per module says its purpose, contents and how it plugs in. The
+target layout and dependency rules D1–D9 are in
+[specs/team.md](specs/team.md#4-target-module-layout).
+
+| Module | Axis or role | README |
+|---|---|---|
+| `roles/` | Roles axis: role definitions, routines, seat placeholders | [roles/](../roles/README.md) |
+| `actions/` | Generic action vocabulary, CLI contract, conformance kit | [actions/](../actions/README.md) |
+| `connectors/` | Connectors axis: tools of record per concern | [connectors/](../connectors/README.md) |
+| `environments/` | Environments axis: team machinery and action implementations | [environments/](../environments/README.md), [terminal/](../environments/terminal/README.md) |
+| `harnesses/` | Harnesses axis: one adapter per coding harness | [harnesses/](../harnesses/README.md) |
+| `core/` | Shared libraries: config, renderer, registry, routines, memory, packs | [core/](../core/README.md) |
+| `cli/` | The `mdstack` entry point | [cli/](../cli/README.md) |
+| `profiles/` | Install-time profiles | [profiles/](../profiles/README.md) |
+| `packs/` | Pack extension point | [packs/](../packs/README.md) |
+| `dev/` | Repo QA: tests and fixtures | [dev/](../dev/README.md) |
+| `protocols/` | Not split out yet: stages, markers, gates and flavors still live in [protocol.md](protocol.md), [flavors.md](flavors.md), [verification.md](verification.md) and [express-lane.md](express-lane.md) | none yet |
+| `install/` | Not split out yet: bootstrap, upgrade and release bundle tooling still lives in `environments/terminal/` and [../scripts/](../scripts/README.md) | none yet |
+| `docs/` | Narrative only: this index, architecture, concepts, specs, runbooks, lessons, findings | this page |
+
+Supporting directories: [../templates/](../templates/README.md) (brief and
+evidence templates), [../scripts/](../scripts/README.md) (guard scripts and
+compatibility shims), `memory/` ([core memory](memory.md)) and
+[../examples/](../examples/agentconnect/README.md).
 
 ## Available now
 
@@ -130,7 +163,7 @@ kinds mixes them; lifecycle status stays in each doc.
 | [runtimes/tmux.md](runtimes/tmux.md) | tmux binding | all | rule | tmux runtime binding (shipped in M14 and M14.1): answers to #110 Q1, Q2, Q3, Q5, Q6, Q7 with alternatives, contract table, window layout and naming, spawn and kill mechanics, the `mirror = "none"` setting for installs with no live copy (#877), firstmate design credit (14.1, #130) |
 | [scheduling.md](scheduling.md) | Crew scheduler | O, C, B, V, R | rule | Crew scheduler (built): one crew-wide `mdstack schedule decide` for both leads; observable inputs (demand, priority, worker state, machine load, memory, suites, gateway errors, presence); finish-before-start classes, hysteresis target with ramp limit, pool floors against starvation, overlap trains; decision log and one summary line; what it subsumes; build issues (M18.1, #587) |
 | [self-improve.md](self-improve.md) | Self-improve intake | C, B, V, S, R | rule, design | Self-improve intake: triggers, candidate card, accept/close, lesson path, `repo:` vs `crew:` scope, risks |
-| [specs/framework.md](specs/framework.md) | Framework spec | O, C, R, P | reference, history | Spec for this repo: goal, requirements R1–R8, layout, source material, slices |
+| [specs/framework.md](specs/framework.md) | Framework spec | O, C, R, P | reference, history | Original spec for this repo: goal and requirements R1–R8 (still cited); the bootstrap layout, source material and slices are historical (#1237) |
 | [specs/portable.md](specs/portable.md) | Portable spec | O, C, R, P, A | reference, history | Spec for portable eng-crew (#110): runtime and tool abstraction, config layers, invariants, target layout, M13/M14 slices, decisions, open questions |
 | [specs/team.md](specs/team.md) | Team spec | O, C, R, P, A | reference, design | Spec for the team and modular design (#1216): requirements REQ-01–REQ-24 (portable roles, four axes, generic actions, terminal fast lane, knowledge connector, seats and staff, self-hosted specs), target module layout, dependency rules D1–D9, relation to portable.md P1–P8, open questions |
 | [triage.md](triage.md) | Always-on triage | O, C, R | design | Always-on triage (built for tmux in M24, live in shadow mode; #753 risk mitigations unbuilt): a recurring sweep by a fresh researcher session on the watcher's timer, a zero-model scan in `mdstack poll` with P0 detection, learning lookup over duplicates, lessons, findings and owner decisions with citations, rules first and fail closed, auto-apply / propose / never autonomy, P0–P3 bands, `pass=triage` records, a daily log issue and owner replies on the item, shadow mode with an 8-of-10 precision bar, feedback metrics, build issues (M24, #659) |
