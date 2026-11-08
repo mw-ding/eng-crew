@@ -3,8 +3,8 @@
 > - **Status:** partly built
 > - **Applies to:** a tmux primary plus forge-less runner hosts
 > - **Current rules:** [tmux binding](tmux.md), [protocol](../protocol.md)
-> - **Built:** host inventory, `mdstack host check`, `mdstack hosts`, `mdstack host prepare`, the remote call and runner, [Forge-less hosts](#forge-less-hosts-remote-test-runner) and its [runbook](#runbook-add-a-runner-host), the [host OS adapter](#host-os-adapters) dispatch and the `macos` adapter, proved on fakes (#204–#206, #208, #349, #726–#729, #1358)
-> - **Design only:** placement and remote role sessions (#207, #345–#348), the `linux` [host OS adapter](#host-os-adapters) (#1281) and the two-host dry run (#209), all open
+> - **Built:** host inventory, `mdstack host check`, `mdstack hosts`, `mdstack host prepare`, the remote call and runner, [Forge-less hosts](#forge-less-hosts-remote-test-runner) and its [runbook](#runbook-add-a-runner-host), the [host OS adapter](#host-os-adapters) dispatch and the `macos` and `linux` adapters, proved on fakes (#204–#206, #208, #349, #726–#729, #1358, #1359)
+> - **Design only:** placement and remote role sessions (#207, #345–#348) and the two-host dry run (#209), all open
 > - **Last checked:** 2026-11-08 at `0e80f1d`
 
 How one coordinator runs role sessions on several hosts (laptops, a
@@ -301,10 +301,10 @@ answering; only verbs that start runs need it.
 
 Owner, 2026-11-07 ([#1281](https://github.com/mw-ding/mdstack/issues/1281)
 decision 2): the host side is OS-neutral, and `macos` and `linux` are
-adapters. The dispatch and `macos` are built in
-`environments/terminal/remote/hostos/` (#1358, lab item D, proved on
-fakes); no verb calls its install, start, stop or uninstall yet, and
-`linux` is design only (lab item E). The entrypoint picks the
+adapters. The dispatch, `macos` and `linux` are built in
+`environments/terminal/remote/hostos/` (#1358 and #1359, lab items D and
+E, proved on fakes); no verb calls their install, start, stop or
+uninstall yet. The entrypoint picks the
 adapter from its own `uname -s` and reports it in `version` and `check`;
 `mdstack host check` and `mdstack host prepare` compare it with
 `hosts.<name>.capabilities.os`, and a mismatch fails check 5. An adapter
@@ -343,9 +343,14 @@ agent outside `gui/<uid>`, or a container or headless Linux host without a
 Secret Service, sees no login, so check 6 fails there. The fix is the runner's domain on
 macOS, or a file-backed store where the harness offers one (Codex, `gh`).
 
-The supervised fallback is for containers without systemd. It proves the
-runner and entrypoint, not systemd: a real user unit with lingering needs a
-systemd-capable Linux host or VM.
+The supervised fallback is for containers without systemd. It is chosen
+by the image, never by a missing systemd: the lab `Dockerfile` writes the
+root-owned `/etc/mdstack/supervised` naming its supervisor, and only that
+file selects the `linux` supervised column. A Linux host with neither
+systemd nor that file reports `no user manager` beside the heartbeat. On a
+systemd host, `check` adds a `linger` row, `warn` while `Linger` is off.
+The fallback proves the runner and entrypoint, not systemd: a real user
+unit with lingering needs a systemd-capable Linux host or VM.
 
 ## Runtime contract across hosts
 

@@ -14,8 +14,8 @@ is {"result": "ok", ...}, {"result": "refused", "reason"} or {"result": "failed"
 yields {"result": "unreachable"}, on a transport failure. Refused: a verb outside the closed set or not built yet, a
 different mdstack version, an SSH command other than crew-host, a `root` or path outside root, and a mutating verb
 without a request id. Built verbs: `version` (with the host's os from uname); `check` (host readiness rows tools,
-project mirror, logins, runner and capacity, plus capabilities when the call declares an os and the ssh listener
-with a host OS adapter and an ssh_port, with projects and load, the reply mdstack host check reads); `prepare` (create or fetch
+project mirror, logins, runner and capacity, plus capabilities when the call declares an os, the ssh listener
+with a host OS adapter and an ssh_port, and linger on a systemd linux host, with projects and load, the reply mdstack host check reads); `prepare` (create or fetch
 mirrors/<owner>__<repo>.git with the host's gh login) and `seed` (a forge-less host: fetch the primary's base64
 one-ref git bundle into the mirror as refs/crew/heads/<sha>, and refs/heads/<branch> when given); both fail step
 `capabilities` before any change when a declared `os` is not this host's, then make wt/
@@ -65,7 +65,7 @@ DISK_FLOOR = 1 << 30  # free bytes under root below which the capacity row fails
 LOGGED_IN = r"Logged in to \S+ (account|as) %s(\s|$)"  # a `gh auth status` line, as mdstack doctor reads it
 SESSION, INTERVAL = "crew-host", 30
 UNAMES = {"Darwin": "macos", "Linux": "linux"}
-ADAPTERS = {"macos"}  # hostos/<os>.py; linux is #1281 lab item E
+ADAPTERS = {"macos", "linux"}  # hostos/<os>.py
 SSH = ["ssh", "-F", "none", "-T", "-a", "-x", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes",
        "-o", "ClearAllForwardings=yes", "-o", "ConnectTimeout=10", "-o", "ServerAliveInterval=5",
        "-o", "ServerAliveCountMax=2"]
@@ -508,6 +508,7 @@ def check_verb(request, root):
     service = "; %s %s" % (adapter.NAME, adapter.status(run_probe, os.getuid())) if adapter else ""
     checks.append(row("ok", "runner", "up" + service) if runner_state(root) == "up" else
                   row("fail", "runner", "down" + service, "start crew-remote.py --root <root> runner as a user service"))
+    checks += getattr(adapter, "service_rows", lambda *_: [])(run_probe, os.getuid())
     checks += [capabilities] if capabilities else []
     if adapter and isinstance(request.get("ssh_port"), int):
         checks.append(adapter.listener_row(run_probe, request["ssh_port"]))

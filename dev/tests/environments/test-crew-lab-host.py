@@ -203,6 +203,9 @@ class ImageSpecTest(unittest.TestCase):
         self.assertRegex(self.text, r'ENTRYPOINT \[.*crew-lab-host.py", "supervise", "--user", "crew"\]')
         self.assertRegex(self.text, r'HEALTHCHECK .*crew-lab-host.py", "ready", "--user", "crew"\]')
 
+    def test_image_selects_the_linux_adapter_supervised_mode(self):
+        self.assertIn("echo crew-lab-host.py > /etc/mdstack/supervised", self.text)
+
     def test_nothing_from_a_home_or_login_is_copied_in(self):
         copies = re.findall(r"(?m)^COPY (\S+)", self.text)
         self.assertEqual(copies, ["scripts/crew-install.py", "environments/terminal/remote/lab/crew-lab-host.py",
