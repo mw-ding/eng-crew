@@ -4,10 +4,14 @@ tested default branch, head, blocking state tags, verdict (for a crew:express ch
 GitHub mergeability, pauses on transient reads, and closes on a real stop or the last member. Overlapping
 members stay in the train unless their merge conflicts. Dropped members are routed for merge-up when the train ends; `mdstack train route` retries their queue; `bisect` isolates red members and rebuilds survivors on main.
 Solo dropped members send refs to the coordinator for PR pickup by the owner's session.
+`delegate` (#1391) reserves the next train number, records the members' heads and the base under `trains/` and hands the
+build to a builder worker through the builder lead; that worker runs `build --train N` (and `wait`/`bisect`), and the
+synthesizer keeps landing. `close` also ends a delegated train that never got a record.
 `build` and `bisect` refuse before any clone, branch or PR when the change backend declares
 strategy.update_from_base = "rebase".
 
-Usage: mdstack train build PR... [--after N] [--no-wait] [--local] | check PR... | wait N | land N PR [--mirror-deferred] | close N | route N | bisect N
+Usage: mdstack train build PR... [--after N] [--no-wait] [--local] | build --train N | delegate PR... [--after N] | check PR...
+       | wait N | land N PR [--mirror-deferred] | close N | route N | bisect N
        --project FILE [--org-profile FILE]
 """
 import argparse
@@ -20,7 +24,8 @@ import shutil
 import subprocess
 import sys
 import time
-from crew_shared import checkout, commands, coordinator_window, fetch, GATEWAY, gateway_error, git, load, ownership, profile, require_ownership, runs
+from crew_shared import (checkout, commands, coordinator_window, fetch, GATEWAY, gateway_error, git, load, NAMES, ownership, profile,
+                         require_ownership, runs)
 
 precheck = load("crew_precheck", "scripts/crew-precheck.py")
 item_flavor = load("crew_item_flavor", "scripts/item-flavor.py")
@@ -54,6 +59,62 @@ def train_save(state, rec):
     with open(pending, "w") as f:
         json.dump(rec, f, indent=2)
     os.replace(pending, path)
+
+
+def delegation_path(state, n):
+    return os.path.join(state, "trains", "delegated-%d.json" % n)
+
+
+def delegation_load(state, n):
+    try:
+        with open(delegation_path(state, n)) as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return None
+
+
+def delegation_save(state, rec):
+    os.makedirs(os.path.join(state, "trains"), exist_ok=True)
+    with open(delegation_path(state, rec["n"]) + ".tmp", "w") as f:
+        json.dump(rec, f, indent=2)
+    os.replace(delegation_path(state, rec["n"]) + ".tmp", delegation_path(state, rec["n"]))
+
+
+def train_delegate(args, values, state, repo, slug):
+    """Reserve the next train number with a delegation record (base and member heads) and hand its build to a builder
+    worker through the builder lead (#1391). Refs only: train-<n>, the base, then #<pr> <head> per member."""
+    if not require_ownership(values, "write"):
+        return 1
+    n = train_number(repo, state)
+    if args.after:
+        parent = train_load(state, args.after)
+        if parent is None:
+            return 1
+        base = fetch(repo, parent["branch"]) if not parent.get("closed") else parent["sha"]
+    else:
+        base = fetch(repo, values["repo.default_branch"])
+    rec = {"n": n, "base": base, "after": args.after, "members": [], "closed": False,
+           "synthesizer": values.get("identities.synthesizer.name", NAMES["synthesizer"]).lower()}
+    for pr in dict.fromkeys(args.items):
+        try:
+            rec["members"].append({"pr": pr, "head": fetch(repo, "pull/%d/head" % pr)})
+        except RuntimeError:
+            print("dropped pr=%d reason=no-head" % pr)
+    if not rec["members"]:
+        print("crew: no member heads; nothing delegated")
+        return 1
+    delegation_save(state, rec)
+    refs = ["train-%d" % n, base] + [r for m in rec["members"] for r in ("#%d" % m["pr"], m["head"])]
+    sent = commands()["lead"].handoff(argparse.Namespace(project=args.project, org_profile=args.org_profile,
+                                                         timeout=15.0, wait_ack=None), "builder", "train", refs)
+    if sent not in (0, 4):  # 4: the nudge was ambiguous but the message is in the lead's inbox
+        rec["closed"] = True
+        delegation_save(state, rec)
+        print("crew: builder lead handoff failed; delegation %d closed; build the train yourself" % n)
+        return 1
+    print("delegated train n=%d base=%s members=%s path=%s" % (
+        n, base, ",".join("%d@%s" % (m["pr"], m["head"]) for m in rec["members"]), delegation_path(state, n)))
+    return 0
 
 
 def train_number(repo, state):
@@ -200,6 +261,14 @@ def train_route(args, values, state, repo, slug, rec):
 
 def train_build(args, values, state, repo, slug):
     n, main = train_number(repo, state), values["repo.default_branch"]
+    delegated = None
+    if getattr(args, "train", None):  # a builder worker builds the synthesizer's delegated train (#1391)
+        delegated, n = delegation_load(state, args.train), args.train
+        if delegated is None or delegated.get("closed") or os.path.exists(train_path(state, n)):
+            print("crew: delegated train %d is %s" % (n, "missing" if delegated is None else "closed" if delegated.get(
+                "closed") else "already built; run mdstack train wait %d" % n))
+            return 1
+        args.items, args.after = [m["pr"] for m in delegated["members"]], delegated.get("after")
     base = fetch(repo, main)
     parent = train_load(state, args.after) if args.after else None
     if args.after:
@@ -217,6 +286,12 @@ def train_build(args, values, state, repo, slug):
         return 1
     rec = {"n": n, "branch": "crew/train-%d" % n, "base": base, "sha": base, "members": [], "dropped": [],
            "pr": None, "local": "none", "ci": "none", "ci_links": [], "after": args.after, "deferred": []}
+    if delegated and base != delegated["base"]:  # the synthesizer landed meanwhile: a stale base never trains
+        rec.update(closed=True, stopped={"reason": "delegated base %s moved to %s" % (delegated["base"], base)})
+        train_save(state, rec)
+        print("stopped train=%d reason=base-moved" % n)
+        print(train_report(rec))
+        return 1
     os.makedirs(os.path.dirname(wt), exist_ok=True)
     # A temporary clone, not a worktree: the shared repo's info/attributes (or a global attributes file) can resolve a
     # conflict locally, e.g. merge=union, that GitHub's merge then hits (train 4, #321).
@@ -232,8 +307,12 @@ def train_build(args, values, state, repo, slug):
                 rec["deferred"].append({"pr": pr, "reason": "predecessor-member"})
             else:
                 prs.append(pr)
+        heads = {m["pr"]: m["head"] for m in delegated["members"]} if delegated else {}
         for candidate in train_compose(wt, base, prs, rec):
             pr, head, paths = candidate["pr"], candidate["head"], candidate["paths"]
+            if delegated and head != heads[pr]:  # a new head needs its own verdict; not a merge-up
+                rec["dropped"].append({"pr": pr, "head": head, "reason": "head-moved", "merge_up": "none"})
+                continue
             before = git(wt, "rev-parse", "HEAD")
             view = commands()["poll"].gh_json("pr", "view", str(pr), "-R", slug, "--json", "number,reviews,labels")
             try:
@@ -329,7 +408,7 @@ def train_bisect(args, values, state, repo, slug):
     result = rec["bisect"] = {"trains": [], "culprits": [], "remaining": None}
     heads = {m["pr"]: m["head"] for m in rec["members"]}
     options = argparse.Namespace(**vars(args))
-    options.after, options.no_wait = None, False
+    options.after, options.no_wait, options.train = None, False, None
 
     def build(prs, diagnostic=True):
         if any(fetch(repo, "pull/%d/head" % pr) != heads[pr] for pr in prs):
@@ -905,6 +984,13 @@ def train_land(args, values, state, repo, slug):
 
 def train_close_cmd(args, values, state, repo, slug):
     """End a train early (the synthesizer's own §7 check failed for the next member): close its PR, delete its branch."""
+    delegated = delegation_load(state, args.items[0])
+    if delegated and not delegated.get("closed"):  # a delegated build that never ran or died stays unbuilt (#1391)
+        delegated["closed"] = True
+        delegation_save(state, delegated)
+        if not os.path.exists(train_path(state, args.items[0])):
+            print("train n=%d delegation closed before build" % args.items[0])
+            return 0
     rec = train_load(state, args.items[0])
     if rec is None:
         return 1
@@ -919,10 +1005,11 @@ def train_close_cmd(args, values, state, repo, slug):
 
 def register(sub):
     p = sub.add_parser("train", help="merge train: CI once on main + approved PRs, then land them in order")
-    p.add_argument("action", choices=["build", "wait", "check", "land", "close", "route", "bisect"])
-    p.add_argument("items", nargs="+", type=int,
+    p.add_argument("action", choices=["build", "delegate", "wait", "check", "land", "close", "route", "bisect"])
+    p.add_argument("items", nargs="*", type=int,
                    help="build: PR numbers in landing order; land: the train number and its next PR; close/route/bisect: the number")
     p.add_argument("--after", type=int, help="build on this predecessor train's tested tip")
+    p.add_argument("--train", type=int, help="build: the delegated train N, its members, heads and base (#1391)")
     p.add_argument("--no-wait", action="store_true", help="push the train and return while CI is pending")
     p.add_argument("--local", action="store_true", help="build: opt in to the local full suite before opening the CI train")
     p.add_argument("--mirror-deferred", action="store_true",
@@ -935,8 +1022,12 @@ def register(sub):
 
 
 def run(args):
-    if len(args.items) != {"build": len(args.items), "check": len(args.items), "wait": 1, "land": 2, "close": 1, "route": 1, "bisect": 1}[args.action]:
-        print("crew: train %s takes %s" % (args.action, "<n> <pr>" if args.action == "land" else "<n>"))
+    many = len(args.items) or -1
+    if args.train and (args.action != "build" or args.items or args.after):
+        print("crew: train build --train N takes no PRs or --after")
+        return 2
+    if not args.train and len(args.items) != {"build": many, "delegate": many, "check": many, "wait": 1, "land": 2, "close": 1, "route": 1, "bisect": 1}[args.action]:
+        print("crew: train %s takes %s" % (args.action, "<n> <pr>" if args.action == "land" else "PR..." if many < 0 else "<n>"))
         return 2
     values, _, state = profile(args, *(("worktree_root",) if args.action in ("build", "bisect") else ()))
     if args.action in ("build", "bisect") and values.get("strategy.update_from_base") == "rebase":
@@ -958,7 +1049,7 @@ def run(args):
             train_route(args, values, state, repo, slug, rec)
             print(train_report(rec))
             return 0
-        return {"build": train_build, "wait": train_wait, "check": train_check, "land": train_land, "close": train_close_cmd, "bisect": train_bisect}[args.action](
+        return {"build": train_build, "delegate": train_delegate, "wait": train_wait, "check": train_check, "land": train_land, "close": train_close_cmd, "bisect": train_bisect}[args.action](
             args, values, state, repo, slug)
     except RuntimeError as e:
         print(e)

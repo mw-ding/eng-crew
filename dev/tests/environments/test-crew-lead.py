@@ -201,6 +201,19 @@ class BuilderLead(LivenessBase):
         self.assertEqual([(m["kind"], m["refs"]) for m in again], [("build", ["#639"])])
         self.assertNotEqual(again[0]["id"], first[0]["id"])
 
+    def test_train_handoff_reaches_the_lead_and_its_worker_dequeues_by_train_ref(self):  # #1391
+        refs = ["train-5", "b" * 40, "#12", "a" * 40]
+        with mock.patch.dict(os.environ, self.env, FAKE_SOLO_PR="12"):  # no solo lookup: a train has no item
+            self.assertEqual(self.lead.handoff(self.args, "builder", "train", refs), 0)
+        self.assertEqual([(m["kind"], m["refs"]) for m in self.lead.pending(self.state, "ben-lead")], [("train", refs)])
+        self.put("spawn-queue.jsonl", json.dumps(dict(role="builder", issue=None, pr=None, train=5, **{
+            "pass": "train", "round": 1, "tier": "default", "head": None})) + "\n")
+        self.crew("dequeue", "--ref", "#None", "--project", self.project, CREW_POOL="builder")
+        self.assertFalse(os.path.exists(os.path.join(self.state, "runs", "ben-train5.json")))
+        result = self.crew("dequeue", "--ref", "train-5", "--project", self.project, CREW_POOL="builder")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(self.record("ben-train5")["args"]["train"], 5)
+
     def test_other_pool_cannot_dequeue_builder_and_lead_can(self):
         self.put("spawn-queue.jsonl", json.dumps(dict(role="builder", issue=8, pr=None, **{
             "pass": "build", "round": 1, "tier": "default", "head": None})) + "\n")
