@@ -23,9 +23,7 @@ Write `<project>/crew.toml` using item 1 of the
 [Set up the target repo](../runbook-new-repo.md#set-up-the-target-repo) for the runtime-specific
 profile values. Set every path used by the install to a real path; for tmux,
 `paths.mdstack` must be `<state-dir>/<owner>__<repo>/mdstack`, the link
-bootstrap creates to the bundle (a 6.x install's `.../eng-crew` link and
-`paths.eng_crew` key still work for one release; see
-[migration](../guides/migration.md#product-names-700)). Use an absolute project-file path:
+bootstrap creates to the bundle. Use an absolute project-file path:
 
 ```bash
 <mdstack>/cli/mdstack bootstrap --project <project>/crew.toml --dry-run

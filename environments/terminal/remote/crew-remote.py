@@ -18,7 +18,7 @@ capacity, with projects and load, the reply mdstack host check reads); `prepare`
 mirrors/<owner>__<repo>.git with the host's gh login) and `seed` (a forge-less host: fetch the primary's base64
 one-ref git bundle into the mirror as refs/crew/heads/<sha>, and refs/heads/<branch> when given); both then make wt/
 and state/<owner>__<repo>/, and a failed reply names its `step`. With a `toolkit` pin (tag, bundle_sha256,
-transport) both also install that release into toolkit/mdstack-<v>/ (a 6.x release keeps eng-crew-<v>) with the shared verifier (docs/bootstrap.md Host toolkit, #945): staged under
+transport) both also install that release into toolkit/mdstack-<v>/ with the shared verifier (docs/bootstrap.md Host toolkit, #945): staged under
 toolkit/.staging-*, its record toolkit/<name>.json (pin, bundle digest, SHA-256 of every file) written last,
 then state/<owner>__<repo>/toolkit.json names the version; a verified existing version is reused, any other is
 moved aside only after the replacement verifies, so a refused one leaves the previous install in place. The
@@ -226,7 +226,7 @@ def prune_toolkit(root):
             pass
     removed = []
     for name in sorted(os.listdir(toolkit)) if os.path.isdir(toolkit) else []:
-        if not name.startswith((".staging-", "mdstack-", "eng-crew-")) or name.removesuffix(".json") in pinned:
+        if not name.startswith((".staging-", "mdstack-")) or name.removesuffix(".json") in pinned:
             continue
         path = os.path.join(toolkit, name)
         if os.path.isdir(path) and not os.path.islink(path):

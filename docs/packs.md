@@ -35,9 +35,8 @@ or specs (spec P6). The [denylist check](#denylist-check) guards it.
 
 ## Version pin
 
-`pack.mdstack_version` (the 6.x `pack.eng_crew_version` is a deprecated
-alias for one release; the new key wins when both are set) names the
-mdstack version the pack was checked against by its release id: a release tag once mdstack tags releases, until
+`pack.mdstack_version` names the mdstack version the pack was checked
+against by its release id: a release tag once mdstack tags releases, until
 then the full 40-character commit SHA of mdstack `main`. Where the
 installed mdstack is released with `release_id = "commit"`
 ([commit release id](release.md#commit-release-id)), the pin is the full

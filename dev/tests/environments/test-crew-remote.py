@@ -343,10 +343,10 @@ class Toolkit(Mirror):
         self.sha, sums = self.publish()
         self.pin = dict(tag=self.TAG, bundle_sha256=self.sha, transport=dict(
             kind="mirror", location=self.releases, sha256sums_sha256=sums, pinned=False))
-        self.toolkit = os.path.join(self.root, "toolkit", "eng-crew-5.1.0")
+        self.toolkit = os.path.join(self.root, "toolkit", "mdstack-5.1.0")
 
     def publish(self, crew="#!/bin/sh\n", extra=(), tag=None):
-        """Write releases/<tag>/{<name>.tar.gz,SHA256SUMS} (v5.1.0: eng-crew-5.1.0); return both digests."""
+        """Write releases/<tag>/{mdstack-<v>.tar.gz,SHA256SUMS}; return both digests."""
         tag = tag or self.TAG
         name = remote.crew_install().bundle_name(tag)
         where = os.path.join(self.releases, tag)
@@ -374,7 +374,7 @@ class Toolkit(Mirror):
                          (self.TAG, self.sha, self.pin["transport"]))
         self.assertEqual(sorted(record["files"]), ["VERSION", "scripts/crew"])
         self.assertEqual(self.load(os.path.join(self.root, "state/acme__widgets/toolkit.json")), dict(tag=self.TAG))
-        self.assertEqual(sorted(os.listdir(os.path.join(self.root, "toolkit"))), ["eng-crew-5.1.0", "eng-crew-5.1.0.json"])
+        self.assertEqual(sorted(os.listdir(os.path.join(self.root, "toolkit"))), ["mdstack-5.1.0", "mdstack-5.1.0.json"])
 
     def test_entrypoint_run_from_the_toolkit_keeps_it_verified(self):
         extra = []
@@ -449,9 +449,9 @@ class Toolkit(Mirror):
     def test_prune_removes_only_unpinned_versions(self):
         self.prepare(self.pin)
         toolkit = os.path.join(self.root, "toolkit")
-        for name in ("eng-crew-5.0.0", ".staging-old"):
+        for name in ("mdstack-5.0.0", ".staging-old"):
             os.makedirs(os.path.join(toolkit, name, "scripts"))
-        with open(os.path.join(toolkit, "eng-crew-5.0.0.json"), "w") as f:
+        with open(os.path.join(toolkit, "mdstack-5.0.0.json"), "w") as f:
             f.write("{}")
         os.makedirs(os.path.join(self.root, "state/acme__gadgets"))
         with open(os.path.join(self.root, "state/acme__gadgets/toolkit.json"), "w") as f:
@@ -460,17 +460,17 @@ class Toolkit(Mirror):
         self.assertEqual(reply["pruned"], [".staging-old"])
         os.remove(os.path.join(self.root, "state/acme__gadgets/toolkit.json"))
         reply = remote.call("host-b", "prepare", project="acme__widgets", toolkit=self.pin, prune=True)
-        self.assertEqual(reply["pruned"], ["eng-crew-5.0.0", "eng-crew-5.0.0.json"])
-        self.assertEqual(sorted(os.listdir(toolkit)), ["eng-crew-5.1.0", "eng-crew-5.1.0.json"])
+        self.assertEqual(reply["pruned"], ["mdstack-5.0.0", "mdstack-5.0.0.json"])
+        self.assertEqual(sorted(os.listdir(toolkit)), ["mdstack-5.1.0", "mdstack-5.1.0.json"])
         self.assertEqual(self.status()["status"], "ok")
 
-    def test_7x_pin_installs_mdstack_toolkit_and_prunes_the_6x_one(self):  # #1312
+    def test_new_pin_installs_its_toolkit_and_prunes_the_old_one(self):  # #1312
         self.prepare(self.pin)
         sha, sums = self.publish(tag="v7.0.0")
         pin = dict(self.pin, tag="v7.0.0", bundle_sha256=sha, transport=dict(self.pin["transport"], sha256sums_sha256=sums))
         reply = remote.call("host-b", "prepare", project="acme__widgets", toolkit=pin, prune=True)
         self.assertEqual((reply["result"], reply["toolkit"]), ("ok", dict(tag="v7.0.0", state="installed")), reply)
-        self.assertEqual(reply["pruned"], ["eng-crew-5.1.0", "eng-crew-5.1.0.json"])
+        self.assertEqual(reply["pruned"], ["mdstack-5.1.0", "mdstack-5.1.0.json"])
         self.assertEqual(sorted(os.listdir(os.path.join(self.root, "toolkit"))), ["mdstack-7.0.0", "mdstack-7.0.0.json"])
         self.assertEqual(self.status(pin), dict(status="ok", detail="mdstack v7.0.0 verified"))
 

@@ -272,7 +272,7 @@ class Host(Base):
         if record:
             os.makedirs(self.state, exist_ok=True)
             with open(os.path.join(self.state, "install.json"), "w") as f:
-                json.dump(dict(self.pin, source="/x/eng-crew-5.1.0", runtime="tmux"), f)
+                json.dump(dict(self.pin, source="/x/mdstack-5.1.0", runtime="tmux"), f)
 
     def test_no_install_table_sends_no_toolkit(self):
         self.prepare()
@@ -284,18 +284,18 @@ class Host(Base):
     def test_prepare_sends_the_pin_and_check_requires_the_toolkit_row(self):
         self.install()
         self.env["FAKE_PREPARE_REPLY"] = json.dumps(dict(result="ok", step="fetch", toolkit=dict(
-            tag="v5.1.0", state="installed"), pruned=["eng-crew-5.0.0"]))
+            tag="v5.1.0", state="installed"), pruned=["mdstack-5.0.0"]))
         self.env["FAKE_VERSION_REPLY"] = json.dumps(dict(result="ok", version="dev", toolkit=dict(
             status="ok", detail="mdstack v5.1.0 verified")))
         r = self.crew("host", "prepare", "host-b", "--prune")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertIn("ok prepare toolkit: mdstack v5.1.0 installed\nok prepare prune: eng-crew-5.0.0\n", r.stdout)
+        self.assertIn("ok prepare toolkit: mdstack v5.1.0 installed\nok prepare prune: mdstack-5.0.0\n", r.stdout)
         self.assertIn("ok toolkit: mdstack v5.1.0 verified\nhost-b: ready", r.stdout)
         prepare, check, version = [c["request"] for c in self.calls()]
         self.assertEqual((prepare["toolkit"], prepare["prune"]), (self.pin, True))
         self.assertEqual((version["verb"], version["project"], version["toolkit"]), ("version", "acme__widgets", self.pin))
-        for reply, line in ((dict(result="ok", version="dev", toolkit=dict(status="fail", detail="eng-crew-5.1.0 files "
-                             "differ from its record")), "fail toolkit: eng-crew-5.1.0 files differ from its record; run "
+        for reply, line in ((dict(result="ok", version="dev", toolkit=dict(status="fail", detail="mdstack-5.1.0 files "
+                             "differ from its record")), "fail toolkit: mdstack-5.1.0 files differ from its record; run "
                              "mdstack host prepare"),
                             (dict(result="ok", version="dev"), "fail toolkit: no toolkit facts: host entrypoint predates"),
                             (dict(result="refused", reason="version skew"), "fail toolkit: no toolkit facts: version skew")):

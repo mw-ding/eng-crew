@@ -9,7 +9,6 @@ refused; on apply, an unrelated compound hook keeps its shell text while the gua
 old path whose new path needs quoting blocks before anything moves, and an interrupted apply's quoted rollback
 commands run and restore the state. Run in CI.
 """
-import importlib.util
 import json
 import os
 import shlex
@@ -245,7 +244,7 @@ class Rename(MigrateBase):
                      "owner: before --apply, rename acme/widgets to acme/gadgets on GitHub and check that the old "
                      "URLs redirect (docs/runbooks/repo-rename.md steps 3 and 4)"):
             self.assertIn(line, lines)
-        self.assertFalse([line for line in lines if "product names" in line])  # --product-names moves them (#1312)
+        self.assertFalse([line for line in lines if "product names" in line])  # 7.0 renamed them (#1312)
         self.assertFalse([line for line in lines if line.startswith(("blocked:", "worktree-move ", "copy "))])
         self.assertEqual(tree(self.tmp), before)
 
@@ -313,99 +312,7 @@ class Rename(MigrateBase):
     def test_needs_one_of_to_or_rename_to(self):
         r = self.crew("migrate", "--project", self.project, "--to", self.new_project, "--rename-to", "acme/gadgets")
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
-        self.assertIn("migrate needs one of --to, --rename-to or --product-names", r.stdout)
-        r = self.crew("migrate", "--project", self.project, "--rename-to", "acme/gadgets", "--product-names")
-        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
-        self.assertIn("migrate needs one of --to, --rename-to or --product-names", r.stdout)
-
-
-class ProductNames(MigrateBase):
-    """--product-names (#1312): the 6.x install link and paths.eng_crew move to the 7.0 names in place."""
-
-    def setUp(self):
-        super().setUp()
-        self.bundle = os.path.join(self.tmp, "releases", "eng-crew-6.2.0")
-        os.makedirs(self.bundle)
-        self.link, self.new_link = os.path.join(self.state, "eng-crew"), os.path.join(self.state, "mdstack")
-        os.symlink(self.bundle, self.link)
-        with open(self.project) as f:
-            text = f.read()
-        with open(self.project, "w") as f:
-            f.write(text.replace('toolchain_bin = "/opt/node/bin"\n',
-                                 'toolchain_bin = "/opt/node/bin"\neng_crew = "%s"\n' % self.link))
-        self.put("runs/ben-7.brief.md", "Read %s/docs/protocol.md and %s-old/x.\n" % (self.link, self.link))
-
-    def names(self, *args):
-        return self.crew("migrate", "--project", self.project, "--product-names", *args)
-
-    def read(self, path):
-        with open(path) as f:
-            return f.read()
-
-    def test_preview_lists_the_link_move_and_rewrites_and_writes_nothing(self):
-        self.stop()
-        before = tree(self.tmp)
-        r = self.names()
-        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        lines = r.stdout.splitlines()
-        for line in ("map %s -> %s" % (self.link, self.new_link),
-                     "move %s -> %s" % (self.link, self.new_link),
-                     "rewrite %s (1 refs)" % os.path.join(self.state, "runs", "ben-7.brief.md"),
-                     "rewrite %s (2 refs)" % self.project):  # the key and its value
-            self.assertIn(line, lines)
-        self.assertFalse([line for line in lines if line.startswith("blocked:")])
-        self.assertEqual(tree(self.tmp), before)
-        self.assertTrue(os.path.islink(self.link))
-
-    def test_apply_moves_the_link_and_renames_the_key(self):
-        self.stop()
-        r = self.names("--apply")
-        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertFalse(os.path.lexists(self.link))
-        self.assertEqual(os.path.realpath(self.new_link), os.path.realpath(self.bundle))
-        with open(self.project, "rb") as f:
-            paths = tomllib.load(f)["paths"]
-        self.assertEqual((paths.get("mdstack"), "eng_crew" in paths), (self.new_link, False))
-        self.assertEqual(self.read(os.path.join(self.state, "runs", "ben-7.brief.md")),
-                         "Read %s/docs/protocol.md and %s-old/x.\n" % (self.new_link, self.link))
-        r = self.crew("doctor", "--project", self.project)
-        self.assertNotIn("deprecated", r.stdout)
-
-    def test_blocked_while_running_or_when_the_new_link_exists(self):
-        r = self.names("--apply")
-        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
-        self.assertIn("blocked: session crew-acme-widgets is running", r.stdout)
-        self.stop()
-        os.symlink(self.bundle, self.new_link)
-        r = self.names()
-        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
-        self.assertIn("blocked: destination exists: %s" % self.new_link, r.stdout)
-        self.assertTrue(os.path.islink(self.link))
-
-    def test_relative_value_under_paths_root_is_renamed(self):
-        rename_keys = cc_migrate().rename_keys
-        self.assertEqual(rename_keys('[paths]\neng_crew = ".crew/state/a__b/eng-crew"\nx = 1\n', True),
-                         ('[paths]\nmdstack = ".crew/state/a__b/mdstack"\nx = 1\n', 1))
-        self.assertEqual(rename_keys("eng_crew = '/opt/bundle'\n", True), ("mdstack = '/opt/bundle'\n", 1))
-        # A key naming a checkout rather than the state's link keeps its value.
-        self.assertEqual(rename_keys('eng_crew = "/home/me/eng-crew"\n'), ('mdstack = "/home/me/eng-crew"\n', 1))
-
-
-def load(name, path):
-    spec = importlib.util.spec_from_file_location(name, path)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-def cc_migrate():
-    """crew.d/migrate.py, loaded as cli/mdstack loads it (with _shared.py as crew_shared)."""
-    crew_d = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))),
-                          "environments", "terminal", "crew.d")
-    if "crew_shared" not in sys.modules:
-        load("crew_shared", os.path.join(crew_d, "_shared.py"))
-    return load("crew_migrate", os.path.join(crew_d, "migrate.py"))
+        self.assertIn("migrate needs one of --to or --rename-to", r.stdout)
 
 
 if __name__ == "__main__":

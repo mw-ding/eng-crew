@@ -19,7 +19,6 @@ import os
 import re
 import subprocess
 import tempfile
-import tomllib
 import unittest
 from unittest.mock import patch
 
@@ -2717,46 +2716,6 @@ class KnowledgeManifestTest(unittest.TestCase):
         mixed = self.problems('[pack]\nname = "n"\ncommands = "x"\n' + self.KNOWLEDGE +
                               '[capabilities.ci]\ncheck-status = "supported"\nfailing-jobs = "supported"\n')
         self.assertIn("capabilities.change: missing required key", mixed)
-
-
-class ProductNameAliasTest(unittest.TestCase):
-    """#1312: the 6.x keys paths.eng_crew and pack.eng_crew_version read as paths.mdstack and pack.mdstack_version for
-    one release; in one layer with both set the new key wins, and a higher layer's old key beats a lower new one."""
-
-    assertResolves = ResolveTest.assertResolves
-
-    def test_old_paths_key_resolves_as_the_new_key_and_is_reported(self):
-        self.assertResolves(['paths.mdstack = "/srv/old"  # project'], VALID + 'eng_crew = "/srv/old"\n')
-        self.assertEqual(validate(VALID + 'eng_crew = "/srv/old"\n')[0], 0)
-        with tempfile.TemporaryDirectory() as d:
-            project = os.path.join(d, "crew.toml")
-            with open(project, "w") as f:
-                f.write(VALID + 'eng_crew = "/srv/old"\n')
-            found = []
-            profile, _, problems, _ = cc.resolve_profile(project, deprecated=found)
-            self.assertEqual((problems, profile["paths"]["mdstack"], found), ([], "/srv/old", ["paths.eng_crew"]))
-            self.assertNotIn("eng_crew", profile["paths"])
-
-    def test_new_key_wins_in_one_layer_and_layers_keep_their_order(self):
-        self.assertResolves(['paths.mdstack = "/srv/new"  # project'],
-                            VALID + 'eng_crew = "/srv/old"\nmdstack = "/srv/new"\n')
-        self.assertResolves(['paths.mdstack = "/srv/old"  # project'], VALID + 'eng_crew = "/srv/old"\n',
-                            default='[paths]\nmdstack = "<mdstack>"\n')
-        self.assertResolves(['paths.mdstack = "/srv/new"  # project'], VALID + 'mdstack = "/srv/new"\n',
-                            default='[paths]\neng_crew = "<eng-crew>"\n')
-
-    def test_old_pack_pin_key_is_an_alias(self):
-        self.assertEqual(cc.pack_pin_value({"eng_crew_version": "v6.2.0"}), "v6.2.0")
-        self.assertEqual(cc.pack_pin_value({"eng_crew_version": "v6.2.0", "mdstack_version": "v7.0.0"}), "v7.0.0")
-        self.assertIsNone(cc.pack_pin_value({}))
-        manifest = read(os.path.join(ROOT, "connectors", "github", "manifest.toml")).replace(
-            'name = "github"', 'name = "gitlab"', 1)
-        problems = []
-        cc.validate_manifest(tomllib.loads(manifest.replace("[pack]\n", '[pack]\neng_crew_version = "v6.2.0"\n')),
-                             lambda key, reason: problems.append(key))
-        self.assertEqual(problems, [])
-        cc.validate_manifest(tomllib.loads(manifest), lambda key, reason: problems.append(key))
-        self.assertEqual(problems, ["pack.mdstack_version"])
 
 
 if __name__ == "__main__":

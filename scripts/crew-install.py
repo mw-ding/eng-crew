@@ -30,9 +30,8 @@ def digest(path):
 
 
 def bundle_name(tag):
-    """The release's bundle and toolkit name for tag: mdstack-<v> from 7.0.0 on; a 6.x or older release keeps the
-    eng-crew-<v> name it was published under (#1312)."""
-    return ("mdstack-" if int(tag[1:].split(".")[0]) >= 7 else "eng-crew-") + tag[1:]
+    """The release's bundle and toolkit name for tag: mdstack-<v>."""
+    return "mdstack-" + tag[1:]
 
 
 def verify(stage, tag, destination, sha256sums_digest=None):

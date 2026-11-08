@@ -4,8 +4,7 @@ adapter's host and coordinator checks (Codex hook trust, Claude Code folder trus
 layout, the installed version against the latest release (not queried under a non-github [install] source), the
 recorded install source and the running/installed/minimum versions for [tools] in the profile, and the runtime
 handoff rows (docs/handoff.md): control item set and readable, `runtime.instance` set and the current owning
-runtime, and a deprecation warn for each 6.x name still in use (paths.eng_crew, pack.eng_crew_version, the
-<state>/eng-crew link; #1312). On grok-bot a triage row reports that triage.enabled installs no Grok timer (warn) and never claims one.
+runtime. On grok-bot a triage row reports that triage.enabled installs no Grok timer (warn) and never claims one.
 Read-only by default. --fix creates the missing state layout and repairs GitHub prerequisites through crew-repo.py.
 --dry-run prints planned repairs without any writes, including local state. --milestone confirms an M number. It never
 changes auth or a harness config. Human-only fixes are listed together at the end as the steps only a
@@ -22,7 +21,7 @@ import shutil
 import subprocess
 import sys
 import tomllib
-from crew_shared import (commands, crew_render, HERE, harnesses, ownership_module, placeholder_paths, sessions,
+from crew_shared import (crew_render, HERE, harnesses, ownership_module, placeholder_paths, sessions,
                          load as load_module)
 
 repo_fixers = load_module("crew_repo", "connectors/github/crew-repo.py")
@@ -116,20 +115,6 @@ def pack(values):
     state = os.path.join(os.path.abspath(values["paths.state_dir"]), "%s__%s" % (values["repo.owner"], values["repo.name"]))
     recorded = load(os.path.join(state, "install.json"), json.load).get("pack")
     return [("ok", "pack", "%s %s" % (recorded["name"], recorded["version"]), "")] if recorded else []
-
-
-def deprecated(values):
-    """A warn row per 6.x name the install still uses (#1312): the paths.eng_crew or pack.eng_crew_version key, read
-    as its new name for one release, and the <state>/eng-crew install link."""
-    rows = [("warn", "deprecated", "%s is deprecated; use %s" % (key, key.replace("eng_crew", "mdstack")),
-             "rename it (mdstack migrate --product-names renames paths.eng_crew); the alias goes in the next major")
-            for key in sorted(k.removeprefix("deprecated.") for k in values if k.startswith("deprecated."))]
-    state = os.path.join(os.path.abspath(values["paths.state_dir"]), "%s__%s" % (values["repo.owner"], values["repo.name"]))
-    link = os.path.join(state, commands()["bootstrap"].LEGACY_LINK)
-    if os.path.islink(link):
-        rows.append(("warn", "deprecated", "install link %s is deprecated; the new name is %s" % (
-            link, os.path.join(state, "mdstack")), "mdstack migrate --product-names moves it"))
-    return rows
 
 
 def install_source(values):
@@ -258,7 +243,6 @@ def run(args):
     if not bad:
         rows += repo_fixers.checks(values, args.fix, args.dry_run, args.milestone)
     rows += handoff(values) + triage(values) + version(values) + pack(values) + install_source(values) + tool_drift(values)
-    rows += deprecated(values)
     for status, check, detail, hint in rows:
         print("%-5s %-18s %s%s" % (status, check, detail, "; " + hint if hint and status in ("warn", "fail") else ""))
     human = [hint for status, _, _, hint in rows if status == "human"]

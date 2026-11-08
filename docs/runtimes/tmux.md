@@ -733,23 +733,10 @@ cli/mdstack migrate --project <home>/crew.toml --rename-to <owner>/<new> [--appl
 the old one with the repo name changed, so only the state directory
 `<owner>__<name>` moves; the owner must stay. On top of the plan above it
 prints `name` lines for the repo slug and the tmux session, `keep` lines for
-profile paths that hold the old name by choice, `rewrite` of the profile (the `[repo]` name, quoted slugs and
-state paths) and of the home's `.claude/settings.local.json` in place, and
+profile paths that hold the old name by choice, `rewrite` of the profile (the
+`[repo]` name, quoted slugs and state paths) and of the home's `.claude/settings.local.json` in place, and
 `owner:` steps: the GitHub rename, which comes before `--apply`, each host's
 job root and the optional remote URL.
-
-```sh
-cli/mdstack migrate --project <home>/crew.toml --product-names [--apply]
-```
-
-`--product-names` moves a 6.x install to the 7.0.0 product names (#1312,
-[migration](../guides/migration.md#product-names-700)) in place of `--to`:
-`move` of the install link `<state>/eng-crew` to `<state>/mdstack`, and
-`rewrite` of the profile (each `eng_crew` key becomes `mdstack`, and a value
-naming the old link names the new one), of each operational state file and
-`install.json`, and of the home's `.claude/settings.local.json` where they
-cite the old link. The same blockers apply. A pack's `pack.eng_crew_version`
-is an `owner:` step: the pack renames it.
 
 ### mdstack spawn
 

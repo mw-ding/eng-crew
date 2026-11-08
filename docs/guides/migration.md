@@ -4,8 +4,9 @@ For installs and packs set up before 6.0.0, before the CLI was named
 `mdstack`, or before 7.0.0. Three changes need action: the modular layout
 moved files out of `scripts/` in 6.0.0, the CLI `crew` became `mdstack` in
 the release after 6.0.0, and the product names `eng-crew` became `mdstack`
-in 7.0.0 ([product names](#product-names-700)). Each keeps compatibility for
-a limited time. This guide is
+in 7.0.0 ([product names](#product-names-700)). The first two keep
+compatibility shims for a limited time; the 7.0.0 rename has none, so a 6.x
+install is reinstalled from scratch. This guide is
 navigation only: the [CHANGELOG](../../CHANGELOG.md) entries for 6.0.0
 (issue #1226) and for the rename (#1233) are the record, and
 [release.md](../release.md#update-path) owns upgrades.
@@ -26,10 +27,7 @@ navigation only: the [CHANGELOG](../../CHANGELOG.md) entries for 6.0.0
 4. **Restart:** `mdstack up --project <home>/crew.toml`. It re-points a
    turn-end guard hook that still names the old `crew` path.
 5. **Update your pack**, if you have one ([packs](#packs)).
-6. **Move to the 7.0.0 product names**:
-   `mdstack migrate --project <home>/crew.toml --product-names`, then again
-   with `--apply` once the crew is stopped ([product names](#product-names-700)).
-7. Check with `mdstack doctor --project <home>/crew.toml`.
+6. Check with `mdstack doctor --project <home>/crew.toml`.
 
 Optional, at any time: move to the
 [home-level layout](../runtimes/tmux.md#home-level-layout-1178) with
@@ -64,20 +62,13 @@ repo moved to `github.com/mw-ding/mdstack`:
 | Profile key `paths.eng_crew` | `paths.mdstack` |
 | Pack key `pack.eng_crew_version` | `pack.mdstack_version` |
 
-For one release the old names keep working. The old keys are read as
-aliases; when a layer sets both, the new key wins. Bootstrap, upgrade and
-doctor still find a `<state>/eng-crew` link, and fetching a 6.x tag still
-names its bundle and toolkit `eng-crew-<version>`. Doctor prints a
-`deprecated` warning for each old name still in use.
-
-`mdstack migrate --project <home>/crew.toml --product-names` previews the
-move: the link `<state>/eng-crew` to `<state>/mdstack`, each `eng_crew` key
-in the profile to `mdstack` (with a value that names the old link), and
-every state file and the home's `.claude/settings.local.json` that cite the
-old link. Stop the crew with `mdstack down --preserve`, rerun it with
-`--apply`, then `mdstack layout --write` and `mdstack up`. A pack renames
-`pack.eng_crew_version` itself. The bundle and toolkit take their new names
-from the next release you fetch.
+The old names are not accepted: no alias, compatibility link or migration
+step. Reinstall from scratch with a 7.0.0 bundle ([README: Install](../../README.md#install)):
+download and extract `mdstack-<version>.tar.gz`, set `paths.mdstack` to
+`<state-dir>/<owner>__<repo>/mdstack` in your profile, run
+`mdstack bootstrap`, and remove the old `<state>/eng-crew` link and
+`eng-crew-<version>/` bundle by hand. A pack renames `eng_crew_version` to
+`mdstack_version` in its manifest.
 
 `crew:` labels, markers and `CREW_*` variables keep their names.
 

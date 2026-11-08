@@ -43,7 +43,6 @@ crew_install = load("crew_install", "scripts/crew-install.py")
 crew_pack = load("crew_pack", "core/crew-pack.py")
 
 ROOT = Path(HERE).parent.resolve()
-LEGACY_LINK = "eng-crew"  # the 6.x install link <state>/eng-crew, still honoured for one release (#1312)
 
 
 def release_tag(tag, pre):
@@ -197,7 +196,7 @@ def pack_pin(org_profile, tag, project=None):
         if reason:
             raise ValueError(reason + "; install an mdstack release the pack supports, or upgrade the pack")
     elif pack is not None:
-        pin = crew_render.crew_config.pack_pin_value(pack)
+        pin = pack.get("mdstack_version")
         if pin != tag or not re.fullmatch(r"v\d+\.\d+\.\d+", tag):
             raise ValueError("pack.mdstack_version must equal the stable installed tag %s; "
                              "follow docs/packs.md Version pin steps" % tag)
@@ -484,8 +483,6 @@ def bootstrap(args):
         raise ValueError("harness pointers need tmux role briefs; a session binding is not implemented")
     old = previous.get("targets", {})
     link = state / "mdstack"
-    if tmux and Path(values["paths.mdstack"]).absolute() == state / LEGACY_LINK:  # a 6.x install keeps it (#1312)
-        link = state / LEGACY_LINK
     if tmux and Path(values["paths.mdstack"]).absolute() != link:
         raise ValueError("paths.mdstack must name the install link: " + str(link))
     if link.exists() or link.is_symlink():

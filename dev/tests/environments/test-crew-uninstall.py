@@ -22,7 +22,7 @@ class Uninstall(fixtures.doctor_tests.DoctorBase):
 
     def setUp(self):
         super().setUp()
-        self.bundle = Path(self.tmp) / "eng-crew-v2.1.0"
+        self.bundle = Path(self.tmp) / "mdstack-v2.1.0"
         for name in ("scripts", "cli", "core", "environments", "harnesses", "connectors", "profiles", "templates",
                      "packs", "roles", "docs"):
             shutil.copytree(fixtures.ROOT / name, self.bundle / name)
@@ -79,7 +79,6 @@ elif a[:2] == ['label', 'list']:
 
     def test_apply_pauses_archives_and_preserves_edited_targets(self):
         (Path(self.state) / "VERSION").write_text("owner edit\n")
-        (Path(self.state) / "eng-crew").symlink_to(self.bundle.resolve())  # a 6.x link it owns goes too (#1312)
         result = self.uninstall("--yes")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         archive = self.archive()
@@ -87,7 +86,6 @@ elif a[:2] == ['label', 'list']:
         self.assertEqual((archive / "VERSION").read_text(), "owner edit\n")
         self.assertFalse((archive / "crew.toml").exists())
         self.assertFalse((archive / "mdstack").is_symlink())
-        self.assertFalse((archive / "eng-crew").is_symlink())
         self.assertTrue((archive / "wiring.md").exists())
         self.assertTrue((archive / "evidence.txt").exists())
         self.assertTrue(self.bundle.exists())

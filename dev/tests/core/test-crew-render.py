@@ -390,10 +390,6 @@ class TmuxBriefs(unittest.TestCase):
                              "CHANGELOG fragment", "box-skill", "pass=fix", "effort=<effort>"):
                     self.assertIn(rule, got[name])
 
-    def test_old_bundle_placeholder_still_renders(self):  # #1312: a pack overlay may still write <eng-crew>
-        renderer = cr.Renderer({"paths.mdstack": "/opt/bundle"}, None)
-        self.assertEqual(renderer.line("<mdstack>/docs and <eng-crew>/docs"), "/opt/bundle/docs and /opt/bundle/docs")
-
     def test_golden_tmux_briefs(self):
         root = os.path.dirname(SCRIPTS)
         tmp = tempfile.mkdtemp()

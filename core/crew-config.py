@@ -483,22 +483,6 @@ def validate_harness_registry(err, name, pack_dir):
                 pack_file(err, "%s.%s" % (path, key), pack_dir, e[key])
 
 
-def pack_pin_value(pack):
-    """A pack's version pin: pack.mdstack_version, or the deprecated pack.eng_crew_version alias for one release
-    (#1312); with both set the new key wins."""
-    return pack.get("mdstack_version", pack.get("eng_crew_version"))
-
-
-def alias_keys(data):
-    """Rename a profile layer's deprecated keys in place (#1312): paths.eng_crew reads as paths.mdstack for one
-    release, and with both set in one layer the new key wins. Returns the old dotted keys found."""
-    paths = data.get("paths")
-    if not isinstance(paths, dict) or "eng_crew" not in paths:
-        return []
-    paths.setdefault("mdstack", paths.pop("eng_crew"))
-    return ["paths.eng_crew"]
-
-
 def validate_manifest(manifest, err, pack_dir=None, external_pin=True):
     """A pack manifest (connectors/<name>/manifest.toml): the backend's full capability declaration.
 
@@ -509,8 +493,7 @@ def validate_manifest(manifest, err, pack_dir=None, external_pin=True):
                                           "land": (dict, None), "strategy": (dict, None), "actions": (dict, None)})
     if "pack" in top:
         pack = check_table(err, "pack", top["pack"], {"name": (str, REQUIRED), "commands": (str, REQUIRED),
-                                                     "mdstack_version": (str, None), "eng_crew_version": (str, None),
-                                                     "version": (str, None),
+                                                     "mdstack_version": (str, None), "version": (str, None),
                                                      "harness": (str, None)})
         if "harness" in pack and pack_dir is None:
             err("pack.harness", "cannot check the registry without the manifest's directory")
@@ -520,7 +503,7 @@ def validate_manifest(manifest, err, pack_dir=None, external_pin=True):
             err("pack.version", "expected a SemVer version (MAJOR.MINOR.PATCH, no leading v)")
         if "name" in pack and not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", pack["name"]):
             err("pack.name", "expected a backend name ([a-z0-9], separated by hyphens)")
-        if external_pin and pack.get("name") not in BACKENDS and not pack_pin_value(pack):
+        if external_pin and pack.get("name") not in BACKENDS and not pack.get("mdstack_version"):
             err("pack.mdstack_version", "required for an external backend")
     if "capabilities" in top:
         # A knowledge-only connector (docs/interfaces.md#knowledge) declares no core concern.
@@ -907,7 +890,6 @@ def validate(profile, err, backends=BACKENDS, pack_dir=None, item=None):
     if "paths" in top:
         check_table(err, "paths", top["paths"], {"state_dir": (str, REQUIRED), "worktree_root": (str, REQUIRED), "toolchain_bin": (str, None),
                                                   "live_dir": (str, None), "mdstack": (str, None), "pack": (str, None),
-                                                  "eng_crew": (str, None),  # 6.x alias of mdstack (#1312)
                                                   "checkout": (str, None), "root": (str, None)})
         pack = top["paths"].get("pack")
         if isinstance(pack, str) and not pack.strip():
@@ -1278,13 +1260,12 @@ def plugin_pack(directory, files, report):
     return pack
 
 
-def resolve_profile(project, org_profile=None, pack_manifest=None, meta=None, deprecated=None):
+def resolve_profile(project, org_profile=None, pack_manifest=None, meta=None):
     """Layered effective profile: (merged, provenance, problems, layer names).
 
     provenance maps each leaf key of merged (as `leaves` yields it) to the layer that set it.
     meta, when given, receives the external pack's pack.version, the change backend's declared land.* and
     strategy.* keys and a bound classify.sensitive extension command as {key: (value, layer)}, outside merged.
-    deprecated, when given, receives each deprecated key alias a layer or the external pack used (#1312).
     On any problem, merged and provenance are None. A team file (or FILE#<repo>) resolves as
     core < default < org < team < repo; its state root is <paths.state_dir>/<team>.
     """
@@ -1351,12 +1332,9 @@ def resolve_profile(project, org_profile=None, pack_manifest=None, meta=None, de
             pack_manifest = adjacent
     files["external-pack"] = pack_manifest
     external = load_pack(pack_manifest, lambda key, reason: err("external-pack", key, reason)) if pack_manifest else None
-    merged, prov, aliases = {}, {}, []
-    if external and isinstance(external.get("pack"), dict) and "eng_crew_version" in external["pack"]:
-        aliases.append("pack.eng_crew_version")
+    merged, prov = {}, {}
     if not problems:
         for name, data in layers:
-            aliases += alias_keys(data)
             merge(merged, data, prov, name, err)
         rt = merged.get("runtime")
         if isinstance(rt, dict) and rt.get("name") in RUNTIME_OPTIONS and isinstance(rt.setdefault("options", {}), dict):
@@ -1430,8 +1408,6 @@ def resolve_profile(project, org_profile=None, pack_manifest=None, meta=None, de
             cmd = classify_binding(merged, prov, files, pack_dir, err)
             if meta is not None and cmd is not None:
                 meta["classify.sensitive"] = (cmd, "pack:" + merged["backends"]["classify"]["name"])
-    if deprecated is not None:
-        deprecated.extend(aliases)
     names = [name for name, _ in layers]
     if problems:
         return None, None, problems, names

@@ -38,7 +38,7 @@ spec.loader.exec_module(doctor_tests)
 class Bootstrap(doctor_tests.DoctorBase):
     def setUp(self):
         super().setUp()
-        self.bundle = Path(self.tmp) / "eng-crew-v2.1.0"
+        self.bundle = Path(self.tmp) / "mdstack-v2.1.0"
         for name in ("scripts", "cli", "core", "environments", "harnesses", "connectors", "profiles", "templates",
                      "packs", "roles", "docs"):
             shutil.copytree(ROOT / name, self.bundle / name)
@@ -519,7 +519,7 @@ class Bootstrap(doctor_tests.DoctorBase):
     def release(self, tag="v2.2.0", checksum=True, version=None, unsafe=False):
         assets = Path(self.tmp) / "assets"
         assets.mkdir(exist_ok=True)
-        name = ("mdstack-" if int(tag[1:].split(".")[0]) >= 7 else "eng-crew-") + tag[1:]
+        name = "mdstack-" + tag[1:]
         archive = assets / (name + ".tar.gz")
         with tarfile.open(archive, "w:gz") as tar:
             for path in sorted(self.bundle.rglob("*")):
@@ -569,7 +569,7 @@ class Bootstrap(doctor_tests.DoctorBase):
         self.assertEqual((self.bundle / "VERSION").read_text(), "v2.1.0\n")
         argv = json.loads((Path(self.tmp) / "assets/argv.json").read_text())
         self.assertEqual(argv[:5], ["release", "download", "v2.2.0", "-R", "mw-ding/mdstack"])
-        self.assertIn("eng-crew-2.2.0.tar.gz", argv)
+        self.assertIn("mdstack-2.2.0.tar.gz", argv)
         self.assertIn("SHA256SUMS", argv)
         self.cli = destination / "cli/mdstack"
         self.assertEqual(self.bootstrap("--yes").returncode, 0)
@@ -588,32 +588,6 @@ class Bootstrap(doctor_tests.DoctorBase):
         self.assertIn("mdstack-7.0.0.tar.gz", argv)
         self.assertEqual((Path(self.state) / "mdstack").resolve(), destination.resolve())
         self.assertEqual(json.loads(self.manifest.read_text())["bundle_sha256"], sha)
-
-    def test_6x_link_and_old_keys_still_work_with_a_deprecation_note(self):  # #1312
-        self.real_git()
-        subprocess.run(["git", "init", "-q", self.project_dir], check=True)
-        self.project_path.write_text(self.project_path.read_text().replace(
-            'mdstack = "%s/mdstack"' % self.state, 'eng_crew = "%s/eng-crew"' % self.state))
-        org = Path(self.org("v2.1.0"))
-        (org.parent / "manifest.toml").write_text((org.parent / "manifest.toml").read_text().replace(
-            "mdstack_version", "eng_crew_version"))
-        r = self.bootstrap("--yes", "--org-profile", str(org))
-        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertEqual((Path(self.state) / "eng-crew").resolve(), self.bundle.resolve())
-        self.assertFalse((Path(self.state) / "mdstack").exists())
-        r = subprocess.run([sys.executable, str(self.cli), "doctor", "--project", self.project, "--org-profile", str(org)],
-                           capture_output=True, text=True, env=self.env)
-        for line in ("warn  deprecated         pack.eng_crew_version is deprecated; use pack.mdstack_version",
-                     "warn  deprecated         paths.eng_crew is deprecated; use paths.mdstack",
-                     "warn  deprecated         install link %s/eng-crew is deprecated; the new name is %s/mdstack"
-                     % (self.state, self.state)):
-            self.assertIn(line, r.stdout)
-        self.assertEqual(self.bootstrap("--yes", "--org-profile", str(org)).returncode, 0)  # a rerun keeps the link
-        self.project_path.write_text(self.project_path.read_text().replace(
-            'eng_crew = "%s/eng-crew"' % self.state, 'eng_crew = "%s/other"' % self.state))
-        r = self.bootstrap("--dry-run", "--org-profile", str(org))
-        self.assertEqual(r.returncode, 1)
-        self.assertIn("paths.mdstack must name the install link: %s/mdstack" % self.state, r.stderr)
 
     def test_recorded_pack_pin_is_checked(self):
         org = self.org("v2.1.0")
@@ -846,7 +820,7 @@ class ReleaseSources(Bootstrap):
         r = self.bootstrap("--version", "v2.3.0", "--dry-run")
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         self.assertIn("release fetch failed for v2.3.0 from mirror", r.stderr)
-        self.assertFalse((Path(self.tmp) / "eng-crew-2.2.0").exists())
+        self.assertFalse((Path(self.tmp) / "mdstack-2.2.0").exists())
         self.assertFalse(self.gh_log.exists())
 
     def git_release(self, tag="v2.2.0"):
@@ -855,7 +829,7 @@ class ReleaseSources(Bootstrap):
         os.symlink(shutil.which("git-upload-pack"), Path(self.bindir) / "git-upload-pack")
         work, remote = Path(self.tmp) / "git-work", Path(self.tmp) / "release.git"
         stub = "import shutil, sys\nshutil.copy(%r, sys.argv[sys.argv.index('--out') + 1])\n" % str(
-            Path(self.tmp) / "assets" / ("eng-crew-%s.tar.gz" % tag[1:]))
+            Path(self.tmp) / "assets" / ("mdstack-%s.tar.gz" % tag[1:]))
         (work / "scripts").mkdir(parents=True)
         (work / "scripts/release-bundle.py").write_text(stub)
         git = ["git", "-c", "user.name=t", "-c", "user.email=t"]
@@ -1325,7 +1299,7 @@ def fetch_evidence():
         assert (Path(fixture.state) / "mdstack").resolve() == destination.resolve()
         assert (fixture.bundle / "VERSION").read_text() == "v2.1.0\n"
         print("update: mdstack bootstrap --version v2.2.0 --yes --org-profile <pack>/profile.toml -> exit 0")
-        print("verified SHA256SUMS; extracted eng-crew-2.2.0 beside original; matching pack pin accepted")
+        print("verified SHA256SUMS; extracted mdstack-2.2.0 beside original; matching pack pin accepted")
         print("record: v2.2.0 installed; checksum and selected bundle link verified; original v2.1.0 preserved")
         previous = fixture.manifest.read_text()
         for tag, options, flags, message in (
