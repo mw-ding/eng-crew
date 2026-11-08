@@ -10,9 +10,9 @@ P11 / issue #67, M4 batch: back the [§7 merge gate](protocol.md#7-merge-gate-sy
 with platform rules while preserving Vera's review and Sam's serial squash
 merge roles. This runbook documents a target; **nothing has been applied**.
 
-## Current state: eng-crew (2026-10-28)
+## Current state: mdstack (2026-10-28)
 
-A read-only inspection found `mw-ding/eng-crew` private, user-owned,
+A read-only inspection found `mw-ding/mdstack` private, user-owned,
 with default branch `main`. The `mw-ding` token has `permissions.admin: true`.
 However, GET requests for repository rulesets, `branches/main/protection`,
 and `rules/branches/main` all returned HTTP 403:
@@ -32,7 +32,7 @@ This plan-level blocker is tracked in **[#80](https://github.com/mw-ding/eng-cre
 repos). Keep #80 open until the account can apply the target ruleset (or an
 App-based alternative lands); then close it with what was applied.
 
-## Target rules: eng-crew
+## Target rules: mdstack
 
 | Rule | Value | Why | §7 gate backed |
 |---|---|---|---|
@@ -61,7 +61,7 @@ synthesizer still checks all of §7. Optional CODEOWNERS (`* @md-mt` plus
 now: it auto-requests review on every PR and fires `review-requested`, which
 Vera's V2 listens to.
 
-## Prerequisites and application: eng-crew
+## Prerequisites and application: mdstack
 
 MD must upgrade `mw-ding` to GitHub Pro, or move the repository to a paid
 organization (reassess this personal-repo recipe after a move). Making the
@@ -103,7 +103,7 @@ cat > ruleset.json <<'EOF'
 }
 EOF
 GH_TOKEN=$(gh auth token --user mw-ding) \
-  gh api -X POST repos/mw-ding/eng-crew/rulesets --input ruleset.json
+  gh api -X POST repos/mw-ding/mdstack/rulesets --input ruleset.json
 ```
 
 Optionally, with the same go, make repository merge settings squash-only too.
@@ -111,15 +111,15 @@ GitHub update-branch merge-ups on PR branches are unaffected:
 
 ```bash
 GH_TOKEN=$(gh auth token --user mw-ding) \
-  gh api -X PATCH repos/mw-ding/eng-crew \
+  gh api -X PATCH repos/mw-ding/mdstack \
   -F allow_squash_merge=true -F allow_merge_commit=false -F allow_rebase_merge=false
 ```
 
-## Verify: eng-crew
+## Verify: mdstack
 
 ```bash
-GH_TOKEN=$(gh auth token --user mw-ding) gh api repos/mw-ding/eng-crew/rulesets
-GH_TOKEN=$(gh auth token --user mw-ding) gh api repos/mw-ding/eng-crew/rules/branches/main
+GH_TOKEN=$(gh auth token --user mw-ding) gh api repos/mw-ding/mdstack/rulesets
+GH_TOKEN=$(gh auth token --user mw-ding) gh api repos/mw-ding/mdstack/rules/branches/main
 ```
 
 Expect one active gate ruleset and effective rules `deletion`,
@@ -127,27 +127,27 @@ Expect one active gate ruleset and effective rules `deletion`,
 parameters against the target table and save its ID and returned ruleset URL
 here with the application date; until then this gate is **not live**.
 On the next crew PR, before approval, run `gh pr view` with that PR's number,
-`-R mw-ding/eng-crew --json mergeStateStatus,reviewDecision`: expect
+`-R mw-ding/mdstack --json mergeStateStatus,reviewDecision`: expect
 `BLOCKED` / `REVIEW_REQUIRED`. After Vera's APPROVE and green checks, expect
 `CLEAN`; still check every §7 condition before merging. Do not test by
 force-pushing `main`.
 
-## Rollback: eng-crew
+## Rollback: mdstack
 
 MD/admin can disable the created ruleset, using its ID from verification:
 
 ```bash
 GH_TOKEN=$(gh auth token --user mw-ding) \
-  gh api -X PUT repos/mw-ding/eng-crew/rulesets/<ruleset-id> -f enforcement=disabled
+  gh api -X PUT repos/mw-ding/mdstack/rulesets/<ruleset-id> -f enforcement=disabled
 ```
 
 Alternatively delete it with `gh api -X DELETE
-repos/mw-ding/eng-crew/rulesets/<ruleset-id>` under the same identity. If the
+repos/mw-ding/mdstack/rulesets/<ruleset-id>` under the same identity. If the
 optional merge-settings PATCH was applied, restore the observed settings with:
 
 ```bash
 GH_TOKEN=$(gh auth token --user mw-ding) \
-  gh api -X PATCH repos/mw-ding/eng-crew \
+  gh api -X PATCH repos/mw-ding/mdstack \
   -F allow_squash_merge=true -F allow_merge_commit=true -F allow_rebase_merge=true
 ```
 

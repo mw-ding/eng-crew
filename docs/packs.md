@@ -5,8 +5,8 @@ mapping and, for an organization, the profile values that pick it. The
 GitHub pack ships here as the GitHub connector
 ([connectors/github/](../connectors/github/manifest.toml); the copy at
 `packs/github/manifest.toml` stays for one release, #1223);
-an organization's own pack lives in its own repo, outside eng-crew, pinned
-to an eng-crew version (portable eng-crew, roadmap 13.15,
+an organization's own pack lives in its own repo, outside mdstack, pinned
+to an mdstack version (portable mdstack, roadmap 13.15,
 [#127](https://github.com/mw-ding/eng-crew/issues/127);
 [portable spec P5, P6](specs/portable.md#2-requirements)).
 
@@ -16,7 +16,7 @@ is out of scope.
 
 ## Direction rule
 
-Packs reference eng-crew; eng-crew never references a pack outside this
+Packs reference mdstack; mdstack never references a pack outside this
 repo. No file here names an organization's internal tools, commands, URLs
 or specs (spec P6). The [denylist check](#denylist-check) guards it.
 
@@ -24,7 +24,7 @@ or specs (spec P6). The [denylist check](#denylist-check) guards it.
 
 | Path in the pack | Required | Contents |
 |---|---|---|
-| `manifest.toml` | yes | `[pack]` (`name`, `commands`; `eng_crew_version` for a pack outside eng-crew; optional `version`, the [pack's own release](#pack-version)) and the [capability declaration](#capability-declaration) |
+| `manifest.toml` | yes | `[pack]` (`name`, `commands`; `mdstack_version` for a pack outside mdstack; optional `version`, the [pack's own release](#pack-version)) and the [capability declaration](#capability-declaration) |
 | `profile.toml` | no | Org-layer values for [`resolve`](profile.md#layers-and-precedence): any `crew.toml` key, usually `backends.<concern>.name` and overrides |
 | `docs/` | yes | Binding docs: one command or API call per operation of [interfaces](interfaces.md), as [backends/github.md](backends/github.md#interface-mapping) does for GitHub; `commands` points at it |
 | `render/` | no | Per-file [render overlay](#render-overlay): `backends/<name>.toml` and any template to change, laid out like `templates/` |
@@ -35,15 +35,16 @@ or specs (spec P6). The [denylist check](#denylist-check) guards it.
 
 ## Version pin
 
-`pack.eng_crew_version` names the eng-crew version the pack was checked
-against by its release id: a release tag once eng-crew tags releases, until
-then the full 40-character commit SHA of eng-crew `main`. Where the
-installed eng-crew is released with `release_id = "commit"`
+`pack.mdstack_version` (the 6.x `pack.eng_crew_version` is a deprecated
+alias for one release; the new key wins when both are set) names the
+mdstack version the pack was checked against by its release id: a release tag once mdstack tags releases, until
+then the full 40-character commit SHA of mdstack `main`. Where the
+installed mdstack is released with `release_id = "commit"`
 ([commit release id](release.md#commit-release-id)), the pin is the full
 40-character hash of a landed cut commit recorded by
 `release.record-release`; any other hash is not a release. Compatibility rule:
 
-- A pack is supported only at its pinned version. Install the eng-crew
+- A pack is supported only at its pinned version. Install the mdstack
   checkout that matches the pin, by tag or by hash.
 - To move the pin, run `validate` on the manifest and `resolve` with the
   pack's profile against the new checkout; both must pass. Then bump the
@@ -57,8 +58,8 @@ installed eng-crew is released with `release_id = "commit"`
 `pack.version` is optional and names the pack's own release, for a pack
 released on its own schedule. It is a SemVer string with the
 [Versioning](deliverables.md#versioning) rules but no leading `v`
-(`0.5.0`, `1.2.0-rc.1`). It differs from the pin: `eng_crew_version` names
-the eng-crew release the pack was checked against; `version` names the
+(`0.5.0`, `1.2.0-rc.1`). It differs from the pin: `mdstack_version` names
+the mdstack release the pack was checked against; `version` names the
 pack's release and gates nothing.
 
 - `validate` refuses a malformed `version`; a manifest without one stays
@@ -108,13 +109,13 @@ adds no org layer. Core/default/org/project precedence is unchanged.
 Bootstrap checks the recorded pack's version pin just as it does for an
 explicit `--org-profile`.
 
-The pack path stays with the install, never in eng-crew. `--pack-manifest`
+The pack path stays with the install, never in mdstack. `--pack-manifest`
 loads and validates the external manifest, then admits its `pack.name` as
 a backend alongside `github`. With an explicit or recorded org profile, its adjacent
 `manifest.toml` is used when present, unless `--pack-manifest` overrides it;
 a recorded pack directory without `profile.toml` still supplies its `manifest.toml`.
 Names use lowercase letters and digits
-separated by hyphens; new backends require `pack.eng_crew_version`.
+separated by hyphens; new backends require `pack.mdstack_version`.
 `validate crew.toml --pack-manifest <pack-path>/manifest.toml` uses the same
 declaration. Unknown names still fail. External capabilities fold below
 profile overrides with provenance `external-pack`; other backends continue
@@ -224,7 +225,7 @@ above.
 [pack]
 name = "example"
 version = "0.1.0"                # optional, SemVer
-framework = ">=5.3.0, <6.0.0"    # eng-crew release versions the pack supports
+framework = ">=5.3.0, <6.0.0"    # mdstack release versions the pack supports
 
 [provides]
 connectors = ["example-tracker"]  # connectors/<name>/manifest.toml
@@ -234,7 +235,7 @@ skills = ["example-review"]       # skills/<name>/SKILL.md
 ```
 
 `framework` is a comma-separated list of comparators (`>=`, `>`, `<=`, `<`,
-`==`) on `X.Y.Z`. It replaces the single `pack.eng_crew_version` pin, so a
+`==`) on `X.Y.Z`. It replaces the single `pack.mdstack_version` pin, so a
 connector manifest inside the pack needs no pin of its own.
 
 ### Discovery

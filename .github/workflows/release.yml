@@ -173,12 +173,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           tag=$(gh api "repos/$GITHUB_REPOSITORY/git/tags" -f tag="v$VERSION" \
-            -f message="eng-crew v$VERSION" -f object="$GITHUB_SHA" -f type=commit --jq .sha)
+            -f message="mdstack v$VERSION" -f object="$GITHUB_SHA" -f type=commit --jq .sha)
           gh api "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/v$VERSION" -f sha="$tag"
           pre=""; case "$VERSION" in *-*) pre="--prerelease" ;; esac
           gh release create "v$VERSION" --repo "$GITHUB_REPOSITORY" --verify-tag \
             --title "v$VERSION" --notes-file notes.md $pre \
-            "dist/eng-crew-$VERSION.tar.gz" dist/SHA256SUMS
+            "dist/mdstack-$VERSION.tar.gz" dist/SHA256SUMS
       - name: Notify and close the release issue
         env:
           GH_TOKEN: ${{ github.token }}

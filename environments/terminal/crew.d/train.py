@@ -498,7 +498,7 @@ def train_check(args, values, state, repo, slug):
             results["evidence"] = ("manual", "user-attachments media; verify route or device, viewport or build, and SHA")
         else:
             results["evidence"] = ("blocked", "no evidence artifacts or reasoned N/A")
-        mirrored = os.path.isfile(os.path.join(repo, "cli", "mdstack")) and any(  # eng-crew's own checkout, by layout
+        mirrored = os.path.isfile(os.path.join(repo, "cli", "mdstack")) and any(  # mdstack's own checkout, by layout
             f["path"] == "docs/protocol.md" or f["path"].startswith("templates/") for f in view["files"])
         mirror_posts = [p for p in view["comments"] if p.get("author", {}).get("login") ==
                         values.get("identities.coordinator.gh_user") and "check-skill-drift.py" in p["body"]]

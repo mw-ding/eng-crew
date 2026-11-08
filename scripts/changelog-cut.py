@@ -14,7 +14,7 @@ come from the flags, else the profile's `[release]` table (`changelog`,
 `changes/unreleased/` next to it (docs/profile.md). A fragment is
 `<slug>.md`: front matter with `type` and optionally `issue`, `pr`, `date`
 and `box-skill`, then one paragraph of entry text; a `<n>-` name prefix must
-match `issue`. The repo guard may require more fields (eng-crew:
+match `issue`. The repo guard may require more fields (mdstack:
 check-repo.py). The date defaults to today in UTC. Refuses, with exit 1 and
 nothing changed: no entries and no fragments, a malformed fragment or one
 with `pr: TBD`, a version that is not SemVer, a version that already exists,

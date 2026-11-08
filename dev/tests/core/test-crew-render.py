@@ -381,7 +381,7 @@ class TmuxBriefs(unittest.TestCase):
             with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
                 self.assertEqual(cr.main(["--project", project, "--out", tmp]), 0)
             got = tree(os.path.join(tmp, "runtime"))
-            contract = cr.Renderer({"paths.eng_crew": "<eng-crew>"}, None).line(
+            contract = cr.Renderer({"paths.mdstack": "<mdstack>"}, None).line(
                 "<include:docs/roles.md#pr-conventions>")
             for name in ("builder.md", "solo.md"):
                 self.assertIn(contract, got[name])
@@ -389,6 +389,10 @@ class TmuxBriefs(unittest.TestCase):
                 for rule in ("Closes #<issue#>", "## Acceptance Evidence", "create→complete→delete",
                              "CHANGELOG fragment", "box-skill", "pass=fix", "effort=<effort>"):
                     self.assertIn(rule, got[name])
+
+    def test_old_bundle_placeholder_still_renders(self):  # #1312: a pack overlay may still write <eng-crew>
+        renderer = cr.Renderer({"paths.mdstack": "/opt/bundle"}, None)
+        self.assertEqual(renderer.line("<mdstack>/docs and <eng-crew>/docs"), "/opt/bundle/docs and /opt/bundle/docs")
 
     def test_golden_tmux_briefs(self):
         root = os.path.dirname(SCRIPTS)
@@ -439,7 +443,7 @@ class TmuxBriefs(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             project = os.path.join(tmp, "crew.toml")
             with open(project, "w") as f:
-                f.write('[paths]\neng_crew = "/opt/bundle"\n')
+                f.write('[paths]\nmdstack = "/opt/bundle"\n')
             with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
                 code = cr.main(["--project", project, "--out", tmp])
             self.assertEqual(code, 0)
@@ -452,7 +456,7 @@ class TmuxBriefs(unittest.TestCase):
                 self.assertIn("<owner>/<repo>", text)
                 self.assertIn(reviewed.splitlines()[0], text)
                 self.assertIn("](/opt/bundle/docs/", text)
-                normalized = cr.Renderer({"paths.eng_crew": "/opt/bundle"}, None, normalize_paths=True).line(
+                normalized = cr.Renderer({"paths.mdstack": "/opt/bundle"}, None, normalize_paths=True).line(
                     "<include:docs/" + doc + ".md>")
                 self.assertIn("](<path>/docs/", normalized)
                 self.assertNotIn("/opt/bundle", normalized)
@@ -463,7 +467,7 @@ class TmuxBriefs(unittest.TestCase):
     def test_box_skill_missing_source_fails_before_writing(self):
         with tempfile.TemporaryDirectory() as tmp:
             with patch.object(cr, "HERE", os.path.join(tmp, "scripts")):
-                renderer = cr.Renderer({"paths.eng_crew": "/bundle"}, tmp)
+                renderer = cr.Renderer({"paths.mdstack": "/bundle"}, tmp)
                 with self.assertRaisesRegex(ValueError, "cannot read included doc"):
                     renderer.line("<include:docs/protocol.md>")
             inputs = os.path.join(tmp, "inputs")
@@ -546,7 +550,7 @@ class TmuxBriefs(unittest.TestCase):
         self.assertIn("§7 spec changes need merge-ok unless scope has `spec`", synth)
 
     def test_profile_values_fill_tmux_briefs(self):
-        """14.1d (#233): eng-crew path, merge grant and hold semantics render from the profile; booleans as TOML."""
+        """14.1d (#233): mdstack path, merge grant and hold semantics render from the profile; booleans as TOML."""
         root = os.path.dirname(SCRIPTS)
         tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, tmp)
@@ -555,7 +559,7 @@ class TmuxBriefs(unittest.TestCase):
             text = f.read().replace('options = { permission_mode = "bypass", researchers = 2 }\n', 'options = { merge_grant = "#110 '
                                     'roadmap PRs", hold_label_blocks = false, mirror_deferral = "#110 roadmap PRs per #140", train_min = 4, train_window = 120 }\n')
         with open(project, "w", encoding="utf-8") as f:
-            f.write(text + '\n[repo]\nowner = "acme"\nname = "widgets"\n[paths]\neng_crew = "/opt/eng-crew"\n')
+            f.write(text + '\n[repo]\nowner = "acme"\nname = "widgets"\n[paths]\nmdstack = "/opt/mdstack"\n')
         out = io.StringIO()
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
             code = cr.main(["--project", project, "--out", os.path.join(tmp, "out")])
@@ -573,9 +577,9 @@ class TmuxBriefs(unittest.TestCase):
         self.assertIn("`$CREW_BIN land-lock acquire", synth)
         for rel, brief in got.items():
             with self.subTest(brief=rel):
-                self.assertIn("/opt/eng-crew/docs/protocol.md", brief)
+                self.assertIn("/opt/mdstack/docs/protocol.md", brief)
                 self.assertIn("-R acme/widgets", brief)
-                self.assertNotIn("<eng-crew>", brief)
+                self.assertNotIn("<mdstack>", brief)
 
     def test_mirror_option_selects_synthesizer_mirror_gate(self):
         """#877 B3: live-copy renders today's bytes; none swaps the deferral paragraph for n/a by profile."""

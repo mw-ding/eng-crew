@@ -26,12 +26,12 @@ spec.loader.exec_module(ci)
 TAG, NAME = "v5.1.0", "eng-crew-5.1.0"
 
 
-def stage_bundle(stage, version=TAG, extra=None, sums=None):
-    """Write NAME.tar.gz (VERSION, scripts/crew, optional extra member) and SHA256SUMS into stage."""
-    archive = Path(stage) / (NAME + ".tar.gz")
+def stage_bundle(stage, version=TAG, extra=None, sums=None, name=NAME):
+    """Write <name>.tar.gz (VERSION, scripts/crew, optional extra member) and SHA256SUMS into stage."""
+    archive = Path(stage) / (name + ".tar.gz")
     with tarfile.open(archive, "w:gz") as tar:
         for path, data in (("VERSION", version + "\n"), ("scripts/crew", "#!/bin/sh\n")):
-            info = tarfile.TarInfo(NAME + "/" + path)
+            info = tarfile.TarInfo(name + "/" + path)
             info.size = len(data.encode())
             tar.addfile(info, io.BytesIO(data.encode()))
         if extra:
@@ -84,6 +84,42 @@ class VerifyTest(unittest.TestCase):
                 self.refused("unsafe release archive member", extracted=False)
         stage_bundle(self.stage, version="v5.0.0")
         self.refused("VERSION or bootstrap entry point does not match")
+
+
+class BundleNameTest(unittest.TestCase):
+    """#1312: a 7.x release is mdstack-<v>; a 6.x or older one keeps the eng-crew-<v> name it was published under."""
+
+    def test_name_follows_the_major(self):
+        for tag, name in (("v7.0.0", "mdstack-7.0.0"), ("v7.1.0-rc.1", "mdstack-7.1.0-rc.1"), ("v12.0.0", "mdstack-12.0.0"),
+                          ("v6.2.0", "eng-crew-6.2.0"), ("v5.1.0", "eng-crew-5.1.0")):
+            with self.subTest(tag):
+                self.assertEqual(ci.bundle_name(tag), name)
+
+    def test_a_7x_bundle_verifies_under_its_new_name_and_an_old_name_is_refused(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            stage, dest = Path(tmp) / "stage", Path(tmp) / "mdstack-7.0.0"
+            stage.mkdir()
+            sha = stage_bundle(stage, "v7.0.0", name="mdstack-7.0.0")
+            self.assertEqual(ci.verify(stage, "v7.0.0", dest)[0], sha)
+            self.assertEqual((dest / "VERSION").read_text(), "v7.0.0\n")
+            (stage / "mdstack-7.0.0.tar.gz").unlink()
+            stage_bundle(stage, "v7.0.0", name="eng-crew-7.0.0")  # a 7.x tag never reads an eng-crew asset
+            with self.assertRaisesRegex(FileNotFoundError, "mdstack-7.0.0.tar.gz"):
+                ci.verify(stage, "v7.0.0", Path(tmp) / "other")
+
+    def test_github_stage_downloads_the_named_asset_from_the_renamed_repo(self):
+        calls = []
+        real = ci.subprocess.run
+        ci.subprocess.run = lambda argv, **kw: calls.append(argv) or subprocess.CompletedProcess(argv, 0, "", "")
+        try:
+            ci.stage({}, "v7.0.0", "/nowhere")
+            ci.stage({}, "v6.2.0", "/nowhere")
+        finally:
+            ci.subprocess.run = real
+        self.assertEqual([c[:5] for c in calls], [["gh", "release", "download", "v7.0.0", "-R"],
+                                                  ["gh", "release", "download", "v6.2.0", "-R"]])
+        self.assertEqual([(c[5], c[7]) for c in calls], [("mw-ding/mdstack", "mdstack-7.0.0.tar.gz"),
+                                                         ("mw-ding/mdstack", "eng-crew-6.2.0.tar.gz")])
 
 
 STUB = """import io, os, sys, tarfile
@@ -142,7 +178,7 @@ class GitSourceTest(unittest.TestCase):
                 self.assertEqual((sums, commit), (None, self.good))
                 self.assertRegex(sha, "^[0-9a-f]{64}$")
                 self.assertEqual((self.tmp / NAME / "VERSION").read_text(), TAG + "\n")
-                self.assertIn("--ref %s --repo mw-ding/eng-crew" % self.good, self.log.read_text())
+                self.assertIn("--ref %s --repo mw-ding/mdstack" % self.good, self.log.read_text())
                 self.assertFalse(list(self.tmp.glob(".crew-fetch-*")))
                 (self.tmp / NAME / "VERSION").unlink()
                 (self.tmp / NAME / "scripts/crew").unlink()

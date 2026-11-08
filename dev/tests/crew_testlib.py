@@ -72,7 +72,7 @@ def write_pack(root, pin="v2.1.0", mapping=None):
     os.makedirs(os.path.join(root, "render", "backends"), exist_ok=True)
     os.makedirs(os.path.join(root, "render", "runtimes", "tmux"), exist_ok=True)
     with open(os.path.join(repo, "connectors", "github", "manifest.toml")) as f:
-        manifest = f.read().replace('name = "github"', 'name = "example"\neng_crew_version = "%s"' % pin)
+        manifest = f.read().replace('name = "github"', 'name = "example"\nmdstack_version = "%s"' % pin)
     with open(os.path.join(repo, "templates", "backends", "github.toml")) as f:
         github = f.read()
     with open(os.path.join(repo, "templates", "runtimes", "tmux", "solo.md")) as f:

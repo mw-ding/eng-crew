@@ -3,10 +3,10 @@
 Usage: mdstack layout --project FILE [--org-profile FILE] [--write] [--owner-cmd CMD]
 
 The layout is the profile's [paths] after the root resolver: with paths.root set (a set CREW_ROOT overrides it),
-every relative state_dir, worktree_root, live_dir, eng_crew and checkout resolves under that one root, so a later
+every relative state_dir, worktree_root, live_dir, mdstack and checkout resolves under that one root, so a later
 move of the whole layout changes one value. Rows: root, home (the profile's directory: the coordinator and leads
 start there), checkout (paths.checkout, else home), state (the project's state directory), worktree_root, live_dir,
-eng_crew and the CLI the wrappers run.
+mdstack (the install link) and the CLI the wrappers run.
 
 --write writes two POSIX sh wrappers and prints each path: `<home>/start` runs `mdstack up` for this profile from any
 cwd, and `<checkout>/.crew/start-owner` starts the owner's session (`--owner-cmd`, default `claude`) in the checkout.
@@ -32,11 +32,11 @@ def register(sub):
 
 def rows(values, project, state):
     home = os.path.dirname(os.path.abspath(project))
-    cli = os.path.join(values["paths.eng_crew"], "cli", "mdstack") if values.get("paths.eng_crew") else CREW_BIN
+    cli = os.path.join(values["paths.mdstack"], "cli", "mdstack") if values.get("paths.mdstack") else CREW_BIN
     return {"root": values.get("paths.root", ""), "home": home, "checkout": checkout(values, project), "state": state,
             "worktree_root": os.path.abspath(values["paths.worktree_root"]),
             "live_dir": os.path.abspath(values["paths.live_dir"]) if values.get("paths.live_dir") else "",
-            "eng_crew": values.get("paths.eng_crew", ""), "cli": cli}
+            "mdstack": values.get("paths.mdstack", ""), "cli": cli}
 
 
 def wrappers(layout, project, owner_cmd):

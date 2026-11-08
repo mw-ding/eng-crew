@@ -271,9 +271,9 @@ class CurrentBriefs(unittest.TestCase):
         briefs = render()[0]
         reviewer = " ".join(briefs["reviewer.md"].split())
         synthesizer = " ".join(briefs["synthesizer.md"].split())
-        self.assertIn("`<eng-crew>/scripts/crew-precheck.py`, passing `--item <issue#>` when the PR closes exactly "
+        self.assertIn("`<mdstack>/scripts/crew-precheck.py`, passing `--item <issue#>` when the PR closes exactly "
                       "one issue; missing, stale, malformed, other-item or failed results block", reviewer)
-        self.assertIn("with `<eng-crew>/scripts/crew-precheck.py --item <issue#>` on the live body", synthesizer)
+        self.assertIn("with `<mdstack>/scripts/crew-precheck.py --item <issue#>` on the live body", synthesizer)
 
     def test_test_as_evidence_rule_matches(self):
         briefs = render()[0]
@@ -326,7 +326,7 @@ class CurrentBriefs(unittest.TestCase):
         """#584: an owner deep dive goes to Riley through an issue; the coordinator never researches inline."""
         text = " ".join(render()[0]["coordinator.md"].split())
         for want in ("Hand an owner deep dive (more than a few lookups) to Riley",
-                     "`<eng-crew>/docs/roles.md`, Researcher", "file or link an issue",
+                     "`<mdstack>/docs/roles.md`, Researcher", "file or link an issue",
                      "never research inline", "answer other asks meanwhile", "relay its TL;DR"):
             self.assertIn(want, text)
 
@@ -334,7 +334,7 @@ class CurrentBriefs(unittest.TestCase):
         """#299: a crew defect that blocks or slows the run is reported upstream the same turn, unasked."""
         text = " ".join(render()[0]["coordinator.md"].split())
         self.assertIn("Report crew defects that block or slow the run the same turn, unasked, per "
-                      "`<eng-crew>/docs/self-improve.md`, Runtime-blocker recipe.", text)
+                      "`<mdstack>/docs/self-improve.md`, Runtime-blocker recipe.", text)
 
     def test_owner_feedback_reaches_both_coordinators(self):
         tmux = render()[0]["coordinator.md"]
@@ -347,7 +347,7 @@ class CurrentBriefs(unittest.TestCase):
         with open(os.path.join(tmp, "runtime", "wiring.md"), encoding="utf-8") as f:
             grok = f.read()
         tmux = " ".join(tmux.split())
-        self.assertIn("`<eng-crew>/docs/self-improve.md`, Runtime-blocker recipe. On owner "
+        self.assertIn("`<mdstack>/docs/self-improve.md`, Runtime-blocker recipe. On owner "
                       "feedback, read and follow its Owner-feedback recipe in full", tmux)
         grok = " ".join(grok.split())
         for rule in ("verify the owner", "link the affected issue or PR",
@@ -615,7 +615,7 @@ class DocsPassBrief(unittest.TestCase):
             self.assertIn(rule, self.text)
 
     def test_review_stages_citations_and_re_proposal(self):
-        for rule in ("run stages 2–4 of `<eng-crew>/docs/project-docs.md` (Docs pass)", "Cite findings `path:line` at the "
+        for rule in ("run stages 2–4 of `<mdstack>/docs/project-docs.md` (Docs pass)", "Cite findings `path:line` at the "
                      "head", "never re-propose a draft the log shows rejected until its cited text changed",
                      "A quiet pass posts nothing.", "[Riley/docs-pass] <owner>/<repo> @ <sha7>", "done: docs-pass quiet"):
             self.assertIn(rule, self.text)

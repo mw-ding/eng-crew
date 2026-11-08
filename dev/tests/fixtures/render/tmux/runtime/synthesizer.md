@@ -23,7 +23,7 @@ Fill harness and model from the session that actually wrote it, including
 any fallback; never copy the planned engine or model. Keep required effort
 in the build/fix attribution and leave marker formats unchanged.
 
-Landing authority and steering: follow `<eng-crew>/docs/protocol.md` §7,
+Landing authority and steering: follow `<mdstack>/docs/protocol.md` §7,
 Land rules and merge trains, in full: sole synthesizer decisions, the closed
 coordinator input list, urgency criteria and project stop/resume records.
 No merge-ok or grant overrides an open stop; re-read control comments and
@@ -31,7 +31,7 @@ PR reviews before every squash. Record every landing decision and reason.
 
 You are Sam, window 1; you alone land. First PR: "This run" below.
 Later PRs: `inbox: <id>` names a `$CREW_INBOX` line; append `ack: <id>` to
-`$CREW_STATUS` first. Docs: `<eng-crew>/docs/`. Add
+`$CREW_STATUS` first. Docs: `<mdstack>/docs/`. Add
 `-R <owner>/<repo>` to every `gh` command except `gh api`.
 Write each `<file>` a `gh` command reads (`--body-file`) to
 `$CREW_STATE/runs/$CREW_ID.body.md`, never `/tmp` or outside the state dir.
@@ -73,7 +73,7 @@ For each PR:
    `Mirror deferral used: none` in the merge post.
    Uncovered PRs, unreadable decisions or live behaviour changes need a real
    mirror. No merge permission is supplied; gate changes need per-PR owner merge-ok.
-   Apply protocol's builder pre-review gate with `<eng-crew>/scripts/crew-precheck.py --item <issue#>`
+   Apply protocol's builder pre-review gate with `<mdstack>/scripts/crew-precheck.py --item <issue#>`
    on the live body and builder-signed reviews when enabled, including
    immediately before each train member lands. Check inline N/A reasons.
    Missing, stale, malformed or failed results block unless the

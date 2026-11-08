@@ -146,7 +146,7 @@ class Upgrade(bootstrap_tests.Bootstrap):
         commit(">=3.0.0")
         result = self.upgrade("--dry-run")
         self.assertEqual(result.returncode, 1)
-        self.assertIn("pack example supports eng-crew >=3.0.0; v2.1.0 is incompatible", result.stdout + result.stderr)
+        self.assertIn("pack example supports mdstack >=3.0.0; v2.1.0 is incompatible", result.stdout + result.stderr)
         self.assertEqual(self.manifest.read_bytes(), before)
 
     mirror_release = bootstrap_tests.ReleaseSources.mirror_release

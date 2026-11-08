@@ -14,7 +14,7 @@ Status: v0.1 (2026-11-07). Owner: coordinator. Changes land through
 
 ## 1. Goal
 
-Turn eng-crew from one engineering crew into a **team of portable
+Turn mdstack from one engineering crew into a **team of portable
 employees**: roles that keep their identity and procedures wherever they are
 deployed, built from four independent axes, coordinated through generic
 actions, and laid out as modules with enforced dependency rules. This repo

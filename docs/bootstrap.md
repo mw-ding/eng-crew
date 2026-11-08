@@ -8,7 +8,7 @@
 > - **Last checked:** 2026-11-04 at `217cec5`
 
 How a new environment (a Claude Code or Codex session, a Grok Bot account, a
-tmux host) gets eng-crew from one reviewed source, at a pinned version, with
+tmux host) gets mdstack from one reviewed source, at a pinned version, with
 the right profile, and proves the install works before any role does work
 (roadmap 17.1, [#144](https://github.com/mw-ding/eng-crew/issues/144);
 umbrella [#110](https://github.com/mw-ding/eng-crew/issues/110);
@@ -62,17 +62,17 @@ Bootstrap never starts or stops a crew: `mdstack up` (tmux) or routine creation
 
 | Choice | Alternatives considered |
 |---|---|
-| `mdstack bootstrap`: a module `scripts/crew.d/bootstrap.py` of the existing `crew` CLI ([#224](https://github.com/mw-ding/eng-crew/issues/224) layout), run as `<eng-crew>/cli/mdstack bootstrap`. The first bundle comes from the README install steps (download, `SHA256SUMS`, extract); later ones from bootstrap itself ([Q8](#q8-idempotency-upgrade-and-uninstall)) | A one-line fetch-and-run (`curl … \| sh`): the repo is private, so a plain fetch gets a 404, and it runs code before any checksum is checked. A separate shell installer: a second language and code path beside stdlib Python. A Claude Code plugin as the installer: one harness only ([packaging](deliverables.md#packaging)) |
+| `mdstack bootstrap`: a module `scripts/crew.d/bootstrap.py` of the existing `crew` CLI ([#224](https://github.com/mw-ding/eng-crew/issues/224) layout), run as `<mdstack>/cli/mdstack bootstrap`. The first bundle comes from the README install steps (download, `SHA256SUMS`, extract); later ones from bootstrap itself ([Q8](#q8-idempotency-upgrade-and-uninstall)) | A one-line fetch-and-run (`curl … \| sh`): the repo is private, so a plain fetch gets a 404, and it runs code before any checksum is checked. A separate shell installer: a second language and code path beside stdlib Python. A Claude Code plugin as the installer: one harness only ([packaging](deliverables.md#packaging)) |
 | No `--runtime` flag: the resolved `runtime.name` decides, so the profile stays the one record (P4) | A `--runtime` flag: two sources for one fact, which can disagree |
 | Runs on the host that runs the roles, from any directory; `--project` names the target clone's `crew.toml` | Only from inside the target repo: a Grok Bot box or a second host ([#158](https://github.com/mw-ding/eng-crew/issues/158)) may not run from a clone |
-| A clone of eng-crew works only at an exact tag (`git describe --exact-match`); `--dev` records the full SHA and satisfies no pin | Any commit: the install could not say which version it runs |
+| A clone of mdstack works only at an exact tag (`git describe --exact-match`); `--dev` records the full SHA and satisfies no pin | Any commit: the install could not say which version it runs |
 
 Where it writes:
 
 | Location | What | Why there |
 |---|---|---|
-| `<install-root>/eng-crew-<version>/` (the parent of the running bundle) | Extracted bundles, one per version, never edited | Side by side, so a rollback is a re-point ([rollback](release.md#rollback)) |
-| `<state-dir>/<owner>__<repo>/` | `crew.toml` copy, `VERSION`, `install.json`, the `eng-crew` link, `render/`, `claims/`, `locks/`, `inbox/` (tmux also `status/`, `wake/`) | The per-repo state home ([runbook](runbook-new-repo.md#shared-state-dir), [tmux layout](runtimes/tmux.md#layout-and-naming)); outside every checkout; no credentials |
+| `<install-root>/mdstack-<version>/` (the parent of the running bundle) | Extracted bundles, one per version, never edited | Side by side, so a rollback is a re-point ([rollback](release.md#rollback)) |
+| `<state-dir>/<owner>__<repo>/` | `crew.toml` copy, `VERSION`, `install.json`, the `mdstack` link, `render/`, `claims/`, `locks/`, `inbox/` (tmux also `status/`, `wake/`) | The per-repo state home ([runbook](runbook-new-repo.md#shared-state-dir), [tmux layout](runtimes/tmux.md#layout-and-naming)); outside every checkout; no credentials |
 | `paths.live_dir` | The deployed render (Grok Bot), drift-checked | The live copy of #128 |
 | `<project>` clone | Untracked harness pointers only ([Q4](#q4-install-targets)), each listed in `.git/info/exclude` | Where harnesses look. Precedent: `mdstack up` writes `.claude/settings.local.json`; `mdstack spawn` excludes `.crew/` |
 | The repo on GitHub | `crew:*` labels, milestone, Project link ([Q6](#q6-repo-side-setup)) | Runbook Steps 1–3 |
@@ -82,11 +82,11 @@ Where it writes:
 
 | Topic | Choice | Alternatives considered |
 |---|---|---|
-| Source | The bundle `eng-crew-<version>.tar.gz` at a tag: `gh release download vX.Y.Z -R mw-ding/eng-crew` with the host's existing `gh` login, checked against `SHA256SUMS` before extraction. Other sources: `url` and `mirror` per [release sources](#release-sources-design) (#882; `git` and the host toolkit still design) | A `git clone` at the tag: kept only as the maintainer path (the "Before bootstrap" row of the [update path](release.md#update-path)); a clone carries internal paths the bundle leaves out. Tracking `main`: P9 says installs record a tag. A submodule or vendored copy in the product repo: a product commit per upgrade. A package manager: hosting and publishing are out of scope |
+| Source | The bundle `mdstack-<version>.tar.gz` at a tag: `gh release download vX.Y.Z -R mw-ding/mdstack` with the host's existing `gh` login, checked against `SHA256SUMS` before extraction. Other sources: `url` and `mirror` per [release sources](#release-sources-design) (#882; `git` and the host toolkit still design) | A `git clone` at the tag: kept only as the maintainer path (the "Before bootstrap" row of the [update path](release.md#update-path)); a clone carries internal paths the bundle leaves out. Tracking `main`: P9 says installs record a tag. A submodule or vendored copy in the product repo: a product commit per upgrade. A package manager: hosting and publishing are out of scope |
 | Which tag | The bundle it runs from; `--version vX.Y.Z` for an upgrade. Pre-release tags need `--pre` and never satisfy a pin ([versioning](deliverables.md#versioning)) | Implicit "latest": an unattended major bump, which the update path's Decide step gives to the owner |
 | Minimum | The first release whose bundle carries every file the install CLI imports ([#275](https://github.com/mw-ding/eng-crew/issues/275); `v2.0.0` lacks one) | none |
-| Record | `<state-dir>/<owner>__<repo>/VERSION` (the bundle's file) and `install.json` (tag, bundle SHA-256, runtime, each target path with its SHA-256, pending human steps, status). The link `<state-dir>/<owner>__<repo>/eng-crew` points at the extracted bundle, and `paths.eng_crew` names the link, so an upgrade never edits `crew.toml`. This is the update path's "next to the live copy": beside it, never inside it | The tag in `crew.toml`: bootstrap would rewrite the owner's file each upgrade (#191 records answers once). `VERSION` inside the live dir: `check-skill-drift.py --project` reports any live file the render does not produce as `EXTRA` |
-| Pack pin | An org pack's `pack.eng_crew_version` (the `manifest.toml` beside its profile) must equal the installed tag; else fail closed, with the [version pin](packs.md#version-pin) steps as the hint | Warn and continue: a pack is supported only at its pin |
+| Record | `<state-dir>/<owner>__<repo>/VERSION` (the bundle's file) and `install.json` (tag, bundle SHA-256, runtime, each target path with its SHA-256, pending human steps, status). The link `<state-dir>/<owner>__<repo>/mdstack` points at the extracted bundle, and `paths.mdstack` names the link, so an upgrade never edits `crew.toml`. This is the update path's "next to the live copy": beside it, never inside it | The tag in `crew.toml`: bootstrap would rewrite the owner's file each upgrade (#191 records answers once). `VERSION` inside the live dir: `check-skill-drift.py --project` reports any live file the render does not produce as `EXTRA` |
+| Pack pin | An org pack's `pack.mdstack_version` (the `manifest.toml` beside its profile) must equal the installed tag; else fail closed, with the [version pin](packs.md#version-pin) steps as the hint | Warn and continue: a pack is supported only at its pin |
 | Upgrade | Pull only ([update path](release.md#update-path)): see [Q8](#q8-idempotency-upgrade-and-uninstall) | A scheduled auto-update: nothing pushes a version into an environment ([compatibility](deliverables.md#compatibility-promise)) |
 
 ## Q3. Config resolution
@@ -99,8 +99,8 @@ then runs every `validate` and cross-key check.
 | Layer | Source at bootstrap | When missing |
 |---|---|---|
 | `core` | `crew-config.py` defaults | Always present |
-| `default` | `<eng-crew>/profiles/default.toml` in the bundle | The bundle is damaged: `SHA256SUMS` fails first; refuse |
-| `org` | `--org-profile <pack>/profile.toml`, later `paths.pack` ([#166](https://github.com/mw-ding/eng-crew/issues/166)); never stored in eng-crew | Not given: skipped (P7: the default profile is complete). Given but unreadable, or its pin is not this version: fail closed |
+| `default` | `<mdstack>/profiles/default.toml` in the bundle | The bundle is damaged: `SHA256SUMS` fails first; refuse |
+| `org` | `--org-profile <pack>/profile.toml`, later `paths.pack` ([#166](https://github.com/mw-ding/eng-crew/issues/166)); never stored in mdstack | Not given: skipped (P7: the default profile is complete). Given but unreadable, or its pin is not this version: fail closed |
 | `project` | `--project <project>/crew.toml` | Propose, confirm, record ([#191](https://github.com/mw-ding/eng-crew/issues/191)): backends from the clone's git config only (never the network), runtime and engines from `profiles/default.toml` or `profiles/tmux.toml`; the owner confirms or edits; written once where `--project` points and never re-derived. Without a terminal and `--yes`: print the proposal and fail |
 
 A team file ([profile.md](profile.md#team-files), #634) resolves the same way,
@@ -201,7 +201,7 @@ drift, and every session pays the size twice); editing the product's
 `AGENTS.md` or `CLAUDE.md` (a product commit outside the crew's PR flow, read
 by every worker); user-level files such as `~/.claude/agents/` (shared by
 every project on the host, so a second install overwrites the first);
-committing the pointers (couples product history to an eng-crew version).
+committing the pointers (couples product history to an mdstack version).
 
 ## Q5. Preflight checks
 
@@ -221,7 +221,7 @@ anything; exit 0 only with no `fail`. `--fix` runs the fixer where one exists.
 | 6 | Engines | all | An engine in `engines.coordinator` or a tier `order` has no working CLI (`--version` fails) | Install it, or drop it from the order |
 | 7 | Engine auth | all | An auth variable [roles.md](roles.md#how-to-run-each-engine) names for an engine in the order is unset (checked by name; the value is never read into output) | Export it in the roles' environment |
 | 8 | Engine policy | all | A free-credit engine is in an order on a private repo ([hard rules](roles.md#hard-rules)); only one engine family is installed, so the reviewer engine cannot differ (invariant 2) | Edit `[engines]`, or install a second engine |
-| 9 | Nested sandbox (found 2026-10-29) | Codex in the profile | A no-op command under Codex's own sandbox fails (seen when nested in a sandboxed agent session: exit 71, `sandbox_apply: Operation not permitted`) while `CREW_SANDBOX_ENV` is unset or not `<NAME>=<value>` | Export `CREW_SANDBOX_ENV=<NAME>=<value>` with the variable the org pack names; `mdstack up` and `mdstack spawn` pass it to every window. eng-crew never names it |
+| 9 | Nested sandbox (found 2026-10-29) | Codex in the profile | A no-op command under Codex's own sandbox fails (seen when nested in a sandboxed agent session: exit 71, `sandbox_apply: Operation not permitted`) while `CREW_SANDBOX_ENV` is unset or not `<NAME>=<value>` | Export `CREW_SANDBOX_ENV=<NAME>=<value>` with the variable the org pack names; `mdstack up` and `mdstack spawn` pass it to every window. mdstack never names it |
 | 10 | Harness prompts | tmux, session | A role run would stop on a permission or network prompt for `gh` or `git` ([#269](https://github.com/mw-ding/eng-crew/issues/269), [#288](https://github.com/mw-ding/eng-crew/issues/288), [#293](https://github.com/mw-ding/eng-crew/issues/293)) | `warn` with the issue's workaround until those land |
 | 11 | tmux | tmux | `tmux` missing | Install tmux |
 | 12 | Codex hook trust | tmux, Codex | The host's Codex config has an untrusted hook ([troubleshooting](runbook-new-repo.md#tmux-troubleshooting)) | `human`: trust it in the host config |
@@ -328,7 +328,7 @@ still manual; this command requires the tmux binding.
 |---|---|
 | Re-run, nothing changed | Each step compares desired with live state; prints `no changes`, writes nothing, exit 0 |
 | Re-run, profile changed | Re-render, show the diff, deploy on confirmation |
-| Upgrade ([#192](https://github.com/mw-ding/eng-crew/issues/192)) | `--version vX.Y.Z`: fetch and verify next to the current bundle; resolve and render with it; show the diff (render, harness targets, repo operations); a major needs the owner's OK after the `**Breaking:**` entries; deploy; move the `eng-crew` link; record; then reload running roles, coordinator last, each once its in-flight pass ends (terminal worker status and idle pane) |
+| Upgrade ([#192](https://github.com/mw-ding/eng-crew/issues/192)) | `--version vX.Y.Z`: fetch and verify next to the current bundle; resolve and render with it; show the diff (render, harness targets, repo operations); a major needs the owner's OK after the `**Breaking:**` entries; deploy; move the `mdstack` link; record; then reload running roles, coordinator last, each once its in-flight pass ends (terminal worker status and idle pane) |
 | Rollback | Upgrade to the previous tag ([rollback](release.md#rollback)); its bundle is still on disk |
 | Hand-edited target | A file whose hash differs from `install.json` is never overwritten: it is listed, and that target waits until the owner restores or removes it |
 | Pack pointer changed or removed | Re-planned even with an unchanged render and tag; unchanged targets are rewritten or removed, edited ones reported ([pack harness pointers](#upgrade-and-removal), #883) |
@@ -344,7 +344,7 @@ default (it strips them from every issue and PR).
 The default tmux layout keeps the runtime home, the checkout and the crew
 state apart under one root ([home-level layout](runtimes/tmux.md#home-level-layout-1178)):
 `~/crew-home/` holds `crew.toml`, the `start` wrapper and
-`releases/eng-crew-X.Y.Z/`; `~/eng-crew/` is the checkout (`paths.checkout`);
+`releases/mdstack-X.Y.Z/`; `~/mdstack/` is the checkout (`paths.checkout`);
 `~/.crew/` holds state, run worktrees and the live copy. The runtime home
 need not be a git checkout: spawn, train, host prepare and bootstrap's
 `.crew/` exclude use `paths.checkout`.
@@ -352,7 +352,7 @@ need not be a git checkout: spawn, train, host prepare and bootstrap's
 - **First managed install.** With no `install.json` yet, run the release
   bundle seeded in `~/crew-home/releases/` with
   `bootstrap --project ~/crew-home/crew.toml --dry-run`, then `--yes`.
-  `paths.eng_crew` names the state directory's install link.
+  `paths.mdstack` names the state directory's install link.
 - **Later releases.** `mdstack upgrade --project ~/crew-home/crew.toml
   --version vX.Y.Z --dry-run`, then `--yes`; each bundle lands beside the
   last.
@@ -425,14 +425,14 @@ That keeps the change within a minor release.
 | Key | Values (default) | Meaning |
 |---|---|---|
 | `source` | `github` \| `url` \| `mirror` \| `git` (`github`) | Where `--version` fetches a release |
-| `location` | string | `url`: a base URL; `mirror`: a local directory; `git`: a remote. Each `url` or `mirror` location holds `eng-crew-<v>.tar.gz` and `SHA256SUMS` per version under `<location>/v<v>/`, the layout of GitHub's release downloads. Refused under `github` |
+| `location` | string | `url`: a base URL; `mirror`: a local directory; `git`: a remote. Each `url` or `mirror` location holds `mdstack-<v>.tar.gz` and `SHA256SUMS` per version under `<location>/v<v>/`, the layout of GitHub's release downloads. Refused under `github` |
 | `sha256sums_digest` | 64 hex | Optional pin on the SHA-256 of the version's `SHA256SUMS`; `url` and `mirror` only |
 | `git_commit` | 40 or 64 hex | The full commit the tag must resolve to; required for `git`, refused otherwise |
 
 ```toml
 [install]
 source = "mirror"
-location = "/srv/releases/eng-crew"
+location = "/srv/releases/mdstack"
 sha256sums_digest = "<sha256 of SHA256SUMS>"
 ```
 
@@ -446,7 +446,7 @@ under a pinned source fails until the pin is updated with it.
 Bootstrap, upgrade and host prepare share one fetch and verify step, the
 current `fetch` generalized. For `github`, `url` and `mirror` it:
 
-1. Copies `eng-crew-<v>.tar.gz` and `SHA256SUMS` into a staging directory
+1. Copies `mdstack-<v>.tar.gz` and `SHA256SUMS` into a staging directory
    beside the bundles (`gh release download`, an HTTP GET or a file copy).
    Later steps read only the staged copies.
 2. With `sha256sums_digest`, refuses a `SHA256SUMS` whose digest differs.
@@ -522,8 +522,8 @@ layout under `root`:
 
 | Path | Holds |
 |---|---|
-| `toolkit/eng-crew-<v>/` | The verified bundle |
-| `toolkit/eng-crew-<v>.json` | Its record: tag, transport, bundle digest or commit, SHA-256 of every file |
+| `toolkit/mdstack-<v>/` | The verified bundle |
+| `toolkit/mdstack-<v>.json` | Its record: tag, transport, bundle digest or commit, SHA-256 of every file |
 | `state/<owner>__<repo>/toolkit.json` | The version this project pins on this host |
 
 `mdstack host prepare` runs the verifier on the host, from the same source (a
@@ -579,7 +579,7 @@ accepted at triage: project-local targets only, and no executable registry
 mode. The Q4 and Q8 safety rules stay the contract; install code stays
 security-sensitive, so each slice keeps the owner's per-change merge-ok.
 
-An org's harness sessions also need pointers eng-crew cannot know: how to run
+An org's harness sessions also need pointers mdstack cannot know: how to run
 the org's review and tracker tools, where the venue's docs live, extra role or
 tool skills. Today a pack ships its own installer script for them, outside
 bootstrap's refusals, excludes, hashes and uninstall. A registry makes them
@@ -721,7 +721,7 @@ without a registry.
 | Size budget ([Q7](#q7-self-test) row 4) | [#194](https://github.com/mw-ding/eng-crew/issues/194) (17.6) |
 | `resolve_profile` ([Q3](#q3-config-resolution)) | [#165](https://github.com/mw-ding/eng-crew/issues/165) |
 | Pack by path, `paths.pack` ([Q3](#q3-config-resolution)) | [#166](https://github.com/mw-ding/eng-crew/issues/166) |
-| `mdstack bootstrap` core: locate, resolve, doctor, plan, `--dry-run`, record, the `eng-crew` link; `scripts/crew` and `scripts/crew.d/` become runtime `all` in the manifest | proposed, not filed yet |
+| `mdstack bootstrap` core: locate, resolve, doctor, plan, `--dry-run`, record, the `mdstack` link; `scripts/crew` and `scripts/crew.d/` become runtime `all` in the manifest | proposed, not filed yet |
 | Bundle fetch: `--version`, `SHA256SUMS`, side-by-side extract, `--pre`, pack-pin check | proposed, not filed yet |
 | Release sources: `url`, `mirror` and `git`; host toolkit ([release sources](#release-sources-design)) | [#882](https://github.com/mw-ding/eng-crew/issues/882) slices B1 to B5 (#943 to #947) |
 | Repo fixers: labels, milestone, Project, invitation ([Q6](#q6-repo-side-setup)) | proposed, not filed yet |

@@ -4,7 +4,7 @@ Flavor: <flavor-name>; review=<flavor-review>; validation=<flavor-validation>; e
 One owner-driven session builds and fixes this item. Fill in the issue number,
 worktree, acceptance criteria and actual engine/model/effort before starting.
 Read the live issue and PR, the repo's `AGENTS.md`, and
-`<eng-crew>/docs/protocol.md`. Adopt any open PR closing the issue.
+`<mdstack>/docs/protocol.md`. Adopt any open PR closing the issue.
 
 Mark the issue and PR `crew:solo`. This skips builder dispatch, B2 watches,
 merge-up and fix delivery to builder windows. Findings and red CI are posted
@@ -14,7 +14,7 @@ squashes under §7. Keep the floor F1–F7, holds, CI, inline mutation evidence
 and the existing merge permission rules.
 
 Before work and each push or post, run
-`<eng-crew>/cli/mdstack ownership --project "$CREW_PROJECT"` (add `--action write`
+`<mdstack>/cli/mdstack ownership --project "$CREW_PROJECT"` (add `--action write`
 for pushes and posts). Set `CREW_PROJECT` to the installed project's absolute profile path.
 On refusal, read/report only. Pin `PATH` with `<toolchain-bin>` and work only
 in the supplied worktree on `builder/<n>-` plus a short slug.

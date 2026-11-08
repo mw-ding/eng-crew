@@ -98,12 +98,12 @@ def uninstall(args):
             removed.append(name)
         else:
             kept.append(name)
-    link = state / "eng-crew"
-    if link.is_symlink() and str(link.resolve()) == record.get("source"):
-        link.unlink()
-        removed.append(str(link))
-    else:
-        kept.append(str(link))
+    for link in (state / "mdstack", state / commands()["bootstrap"].LEGACY_LINK):
+        if link.is_symlink() and str(link.resolve()) == record.get("source"):
+            link.unlink()
+            removed.append(str(link))
+        elif link.is_symlink():
+            kept.append(str(link))
     if exclude and exclude.exists():
         # Bootstrap owns the .crew/ entry; keep it while any run output remains in the checkout.
         lines = exclude.read_text().splitlines(True)

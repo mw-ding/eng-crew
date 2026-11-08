@@ -139,7 +139,7 @@ Merge gate, all at the CURRENT head SHA, re-checked right before merging:
 
 Verdict portability (protocol §7): pin the verified review's `base=` SHA B
 and head H before a tool-performed base update; pin the updated base and head.
-Run `<eng-crew>/cli/mdstack content "$VERIFIED_BASE" "$VERIFIED_HEAD" "$UPDATED_BASE" "$UPDATED_HEAD" --repo <worktree>`
+Run `<mdstack>/cli/mdstack content "$VERIFIED_BASE" "$VERIFIED_HEAD" "$UPDATED_BASE" "$UPDATED_HEAD" --repo <worktree>`
 using full SHAs and fetched commits. Match the passing Review, Validation
 and final verdict markers to H; their original SHA fields stay at H. Never infer an unrecorded reviewed base
 from today's diff: missing B at a changed head requires a fresh verdict;

@@ -1,6 +1,6 @@
 # Concepts
 
-Shared vocabulary for the abstract protocol (portable eng-crew, roadmap 13.1,
+Shared vocabulary for the abstract protocol (portable mdstack, roadmap 13.1,
 [#113](https://github.com/mw-ding/eng-crew/issues/113)). Later M13 changes use
 these terms when they split the core from its bindings. The
 [four axes](#four-axes) and the [team and module terms](#team-and-modules)

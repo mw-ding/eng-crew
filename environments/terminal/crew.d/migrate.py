@@ -1,6 +1,6 @@
 """`mdstack migrate` previews, then applies, moving a stopped crew from one profile's layout to another's (#1178).
 
-Usage: mdstack migrate --project OLD (--to NEW | --rename-to OWNER/NAME) [--org-profile FILE] [--apply]
+Usage: mdstack migrate --project OLD (--to NEW | --rename-to OWNER/NAME | --product-names) [--org-profile FILE] [--apply]
 
 OLD is the profile the crew runs from today; NEW is the relocated profile the owner wrote (for example
 ~/crew-home/crew.toml with paths.root). Both must resolve and name the same repo. The preview writes nothing and
@@ -28,10 +28,15 @@ and kept paths) and the next steps: `mdstack layout --write`, then `mdstack up -
 --rename-to OWNER/NAME plans a repo rename (#1234; docs/runbooks/repo-rename.md) in place of --to: the new profile is
 OLD with the repo name changed, so the state directory `<owner>__<name>` moves and nothing else does. The owner stays.
 On top of the plan above it prints `name` lines for each name derived from the repo (repo slug, tmux session, each
-host's job root), `keep` lines for the product names a release renames and for profile paths that hold the old name
-by choice, a rewrite of the profile ([repo] name, quoted slugs, state paths) and of the home's
-.claude/settings.local.json (the guard's --state) in place, and `owner:` steps: the GitHub rename itself, which must
+host's job root), `keep` lines for profile paths that hold the old name by choice, a rewrite of the profile ([repo]
+name, quoted slugs, state paths) and of the home's .claude/settings.local.json (the guard's --state) in place, and `owner:` steps: the GitHub rename itself, which must
 come first and which the runbook checks, each host's job root and the optional remote URL.
+
+--product-names moves a 6.x install to the 7.0 product names (#1312) in place of --to: a `move` of the install link
+<state>/eng-crew to <state>/mdstack, a rewrite of the profile (each paths.eng_crew key becomes paths.mdstack, and a
+value naming the old link, absolute or relative to paths.root, names the new one) and of every operational state file and the home's
+.claude/settings.local.json that cite the old link. A pack.eng_crew_version key is the pack author's to rename (an
+`owner:` step). The bundle and toolkit take their new names from the next fetched release.
 """
 import contextlib
 import glob
@@ -57,6 +62,7 @@ def register(sub):
     p.add_argument("--project", required=True, help="the profile the crew runs from today")
     p.add_argument("--to", help="the relocated profile")
     p.add_argument("--rename-to", metavar="OWNER/NAME", help="plan a repo rename in place of --to (#1234)")
+    p.add_argument("--product-names", action="store_true", help="move a 6.x install to the 7.0 names (#1312)")
     p.add_argument("--org-profile")
     p.add_argument("--apply", action="store_true", help="run the plan; refused while anything is blocked")
 
@@ -66,13 +72,13 @@ def layout(values, project, state):
     return {"project": os.path.abspath(project), "home": home, "checkout": checkout(values, project), "state": state,
             "worktree_root": os.path.abspath(values["paths.worktree_root"]),
             "live_dir": os.path.abspath(values["paths.live_dir"]) if values.get("paths.live_dir") else None,
-            "eng_crew": os.path.abspath(values["paths.eng_crew"]) if values.get("paths.eng_crew") else None}
+            "mdstack": os.path.abspath(values["paths.mdstack"]) if values.get("paths.mdstack") else None}
 
 
 # Most specific first: a whole-path reference to the old directory is the checkout (a run record's repo) before the
 # home, while a path under it is the state, worktree root, live dir or bundle (docs, scripts) before the home.
-EXACT = ["project", "state", "worktree_root", "live_dir", "checkout", "home", "eng_crew"]
-UNDER = ["project", "state", "worktree_root", "live_dir", "eng_crew", "home", "checkout"]
+EXACT = ["project", "state", "worktree_root", "live_dir", "checkout", "home", "mdstack"]
+UNDER = ["project", "state", "worktree_root", "live_dir", "mdstack", "home", "checkout"]
 
 
 def mappings(old, new):
@@ -210,8 +216,6 @@ def rename(values, name, old, session, maps):
         root = host.setting(values, h, "root", "~/.crew")
         owner.append("on host %s, move %s/%s__%s to %s/%s__%s before the next mdstack host prepare" % (
             h, root, values["repo.owner"], values["repo.name"], root, values["repo.owner"], name))
-    notes.append("keep product names: bundle eng-crew-<version>.tar.gz, toolkit eng-crew-<version>, install link "
-                 "<state>/eng-crew, paths.eng_crew and pack.eng_crew_version (not the repo name; a release renames them)")
     for key in sorted(k for k in values if k.startswith("paths.")):
         path = values[key]
         if isinstance(path, str) and values["repo.name"] in path and not maps.get(os.path.abspath(path)) and \
@@ -255,6 +259,49 @@ def rename(values, name, old, session, maps):
     return ops, notes, owner, blocked
 
 
+def product_names(values, old, session):
+    """(operations, maps, owner steps, blockers) moving the install link and paths key to the 7.0 names (#1312)."""
+    ops, owner = [], []
+    blocked = plan(old, old, session, {})[2]
+    link, new_link = os.path.join(old["state"], "eng-crew"), os.path.join(old["state"], "mdstack")
+    maps = {link: [new_link, new_link]}
+    if os.path.islink(link):
+        ops.append(("move", link, new_link))
+        if os.path.lexists(new_link):
+            blocked.append("destination exists: %s" % new_link)
+    rx = pattern(maps)
+    for path in files(old["state"], OPERATIONAL + ["install.json"]):
+        with open(path, encoding="utf-8", errors="surrogateescape") as f:
+            count = rewrite(f.read(), maps, rx)[1]
+        if count:
+            ops.append(("rewrite", path, count))
+    with open(old["project"], encoding="utf-8") as f:
+        text, count = rewrite(f.read(), maps, rx)
+    count += rename_keys(text, old["mdstack"] == link)[1]
+    if count:
+        ops.append(("rewrite", old["project"], count))
+    settings = os.path.join(old["home"], SETTINGS)
+    if os.path.isfile(settings):
+        with open(settings, encoding="utf-8") as f:
+            count = rewrite(f.read(), maps, rx)[1]
+        if count:
+            ops.append(("rewrite", settings, count))
+    if "deprecated.pack.eng_crew_version" in values:
+        owner.append("rename pack.eng_crew_version to pack.mdstack_version in the pack manifest (the pack's change)")
+    return ops, maps, owner, blocked
+
+
+def rename_keys(text, link=False):
+    """Profile text with each paths.eng_crew key renamed to mdstack; when the key resolves to the old install link, a
+    value ending in it (one relative to paths.root) is renamed with it. (new text, count)."""
+    def sub(m):
+        value = m.group(4)
+        if link and (value == "eng-crew" or value.endswith("/eng-crew")):
+            value = value[:-len("eng-crew")] + "mdstack"
+        return "%smdstack%s%s%s%s" % (m.group(1), m.group(2), m.group(3), value, m.group(3))
+    return re.subn(r"""(?m)^(\s*)eng_crew(\s*=\s*)(["'])(.*?)\3""", sub, text)
+
+
 def show(op):
     if op[0] == "rewrite":
         return "rewrite %s (%d refs)" % (op[1], op[2])
@@ -264,10 +311,16 @@ def show(op):
 
 
 def run(args):
-    if bool(args.to) == bool(args.rename_to):
-        print("crew: migrate needs one of --to or --rename-to")
+    if [bool(args.to), bool(args.rename_to), args.product_names].count(True) != 1:
+        print("crew: migrate needs one of --to, --rename-to or --product-names")
         return 1
     values, session, state = profile(args, "worktree_root")
+    if args.product_names:
+        old = layout(values, args.project, state)
+        ops, maps, owner, blocked = product_names(values, old, session)
+        is_link = old["mdstack"] == os.path.join(state, "eng-crew")
+        retext = lambda path, text: rename_keys(text, is_link)[0] if path == old["project"] else text
+        return finish(args, old, old, ops, maps, owner, blocked, retext)
     name = None
     if args.rename_to:
         owner_part, _, name = args.rename_to.partition("/")
@@ -294,6 +347,11 @@ def run(args):
         ops = [op for op in ops if not (op[0] == "rewrite" and op[1] == old["project"])] + extra_ops
         owner, blocked = owner + extra_owner, blocked + extra_blocked
         retext = lambda path, text: rename_profile(text, values, name)[0] if path == old["project"] else text
+    return finish(args, old, new, ops, maps, owner, blocked, retext, notes)
+
+
+def finish(args, old, new, ops, maps, owner, blocked, retext, notes=()):
+    """Print the plan; with --apply and nothing blocked, run it. Exit code."""
     for path, (whole, under) in maps.items():
         print("map %s -> %s" % (path, whole) + ("" if whole == under else " (under it: %s)" % under))
     for line in notes:

@@ -4,7 +4,7 @@ What a runtime needs from the program that hosts its role sessions (a
 session backend, such as a terminal multiplexer) to create them, show them
 to the owner, ring them, probe them and stop them, so adding a backend
 means filling in one section here, not editing the runtime (portable
-eng-crew, roadmap 15.5,
+mdstack, roadmap 15.5,
 [#178](https://github.com/mw-ding/eng-crew/issues/178); operations from
 [#160 row 13](https://github.com/mw-ding/eng-crew/issues/160#issuecomment-6532100410)).
 Each operation names the [runtime contract](README.md#contract) capability

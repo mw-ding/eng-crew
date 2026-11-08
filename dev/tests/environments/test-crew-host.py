@@ -286,11 +286,11 @@ class Host(Base):
         self.env["FAKE_PREPARE_REPLY"] = json.dumps(dict(result="ok", step="fetch", toolkit=dict(
             tag="v5.1.0", state="installed"), pruned=["eng-crew-5.0.0"]))
         self.env["FAKE_VERSION_REPLY"] = json.dumps(dict(result="ok", version="dev", toolkit=dict(
-            status="ok", detail="eng-crew v5.1.0 verified")))
+            status="ok", detail="mdstack v5.1.0 verified")))
         r = self.crew("host", "prepare", "host-b", "--prune")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertIn("ok prepare toolkit: eng-crew v5.1.0 installed\nok prepare prune: eng-crew-5.0.0\n", r.stdout)
-        self.assertIn("ok toolkit: eng-crew v5.1.0 verified\nhost-b: ready", r.stdout)
+        self.assertIn("ok prepare toolkit: mdstack v5.1.0 installed\nok prepare prune: eng-crew-5.0.0\n", r.stdout)
+        self.assertIn("ok toolkit: mdstack v5.1.0 verified\nhost-b: ready", r.stdout)
         prepare, check, version = [c["request"] for c in self.calls()]
         self.assertEqual((prepare["toolkit"], prepare["prune"]), (self.pin, True))
         self.assertEqual((version["verb"], version["project"], version["toolkit"]), ("version", "acme__widgets", self.pin))

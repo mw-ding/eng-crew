@@ -230,7 +230,7 @@ reviews. Require the latest `role=builder pass=precheck` marker at the full
 current head SHA, with all seven step fields `pass` or reasoned `n/a`.
 Missing, stale, malformed or failed results block. A newer failed marker at
 head supersedes an earlier pass. Check N/A reasons inline; a marker alone
-is not independent proof. Run the helper from the installed eng-crew tree with the resolved project
+is not independent proof. Run the helper from the installed mdstack tree with the resolved project
 profile (and `--org-profile` when that layer is configured):
 
 ```sh

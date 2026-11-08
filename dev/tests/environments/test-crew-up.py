@@ -163,7 +163,7 @@ class Up(Base):
         self.assertIn(self.state, guard[0])
 
     def test_up_through_link_keeps_one_guard_and_repoints_stale_ones(self):
-        """#1088: a guard from an older bundle is re-pointed, and mdstack up through the eng-crew link leaves the file
+        """#1088: a guard from an older bundle is re-pointed, and mdstack up through the mdstack link leaves the file
         byte-identical, so bootstrap's target hash still matches."""
         stale = "python3 /old/eng-crew-9.9.8/cli/mdstack guard --state " + self.state
         other_state = "python3 /old/eng-crew-9.9.8/cli/mdstack guard --state /elsewhere"
@@ -308,7 +308,7 @@ class PackOwnershipRead(Base):
         pack.mkdir()
         manifest = Path(os.path.dirname(CREW), "..", "connectors", "github", "manifest.toml").read_text()
         (pack / "manifest.toml").write_text(manifest.replace('name = "github"', 'name = "example"').replace(
-            "[pack]\n", '[pack]\neng_crew_version = "v1.0.0"\n'))
+            "[pack]\n", '[pack]\nmdstack_version = "v1.0.0"\n'))
         (pack / "profile.toml").write_text('[backends.markers]\nname = "example"\n')
         text = Path(self.project).read_text().replace('name = "tmux"', 'name = "tmux"\ninstance = "local"').replace(
             'name = "widgets"', 'name = "widgets"\ncontrol_item = 123\n')

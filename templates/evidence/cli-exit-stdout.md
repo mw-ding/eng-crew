@@ -11,7 +11,7 @@ an API (`curl` request with status/body). Protocol:
 2. Run the command with the capture helper and paste its output verbatim:
 
    ```sh
-   python3 <eng-crew>/scripts/evidence-cli.py --label R1 [--setup setup.sh] \
+   python3 <mdstack>/scripts/evidence-cli.py --label R1 [--setup setup.sh] \
      [--scrub-env VAR] [--volatile NOTE] -- <argv...>
    ```
 

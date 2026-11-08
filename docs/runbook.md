@@ -1,6 +1,6 @@
 # Runbook
 
-eng-crew's runbook entry point in the
+mdstack's runbook entry point in the
 [essential doc set](project-doc-set.md#essential-doc-set)
 ([#1219](https://github.com/mw-ding/eng-crew/issues/1219)): how to install,
 run, release, operate and recover a crew. Navigation only. Each link goes to

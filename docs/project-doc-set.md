@@ -40,7 +40,7 @@ a default; a project with an existing home for one maps it in the profile
   ([#1225](https://github.com/mw-ding/eng-crew/issues/1225)).
 - **Docs index.** A project with more than five docs under `docs/` also keeps
   `docs/README.md`: one row per doc with its purpose and kind, in the shape of
-  [eng-crew's index](README.md#available-now).
+  [mdstack's index](README.md#available-now).
 - **Small projects.** A section of `README.md` may be the home of the
   architecture, runbook or decisions doc while it stays under about 100 lines
   (specs keep their own directory);

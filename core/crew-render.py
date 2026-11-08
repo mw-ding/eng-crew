@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Renderer for eng-crew: resolved profile + inputs to role briefs and runtime artifacts. Python 3.11+ stdlib only.
+"""Renderer for mdstack: resolved profile + inputs to role briefs and runtime artifacts. Python 3.11+ stdlib only.
 
 Usage: crew-render.py --project FILE [--org-profile FILE] [--inputs DIR] [--diff-paths FILE] --out DIR
 Inputs (default: the repo's templates/): core/<role>.md for each role, if core/ exists -> briefs/<role>.md;
@@ -66,7 +66,7 @@ MAPPED = {
     "session-backend": ["runtime.options.session_backend"],
     "lone-pr-land": ["runtime.options.lone_pr_land"],
     "train-min": ["runtime.options.train_min"], "train-window": ["runtime.options.train_window"],
-    "eng-crew": ["paths.eng_crew"], "merge-grant": ["runtime.options.merge_grant"],
+    "mdstack": ["paths.mdstack"], "eng-crew": ["paths.mdstack"], "merge-grant": ["runtime.options.merge_grant"],
     "merge-grant-scope": ["runtime.options.merge_grant_scope"], "spec-paths": ["spec.paths"],
     "hold-label-blocks": ["runtime.options.hold_label_blocks"], "timezone": ["runtime.timezone"], "fallback-engine": ["engines.fallback_engine"],
     "tested-update": ["strategy.update_from_base"],
@@ -185,8 +185,8 @@ def pack_overlay(project, org, values):
 
 def resolve(project, org, paths=None):
     """Resolve the layered profile with crew_config.resolve_profile; return ({dotted key: value}, problems)."""
-    meta = {}
-    merged, _, problems, _ = crew_config.resolve_profile(project, org, meta=meta)
+    meta, deprecated = {}, []
+    merged, _, problems, _ = crew_config.resolve_profile(project, org, meta=meta, deprecated=deprecated)
     if problems:
         return None, problems
     flavor = merged["flavor"]
@@ -205,6 +205,7 @@ def resolve(project, org, paths=None):
             name = next((n for n, candidate in named.items() if all(knobs[k] == candidate[k] for k in keys)), "mixed")
     values = dict(crew_config.leaves(merged))
     values.update({key: value for key, (value, _) in meta.items() if key.startswith("land.")})
+    values.update({"deprecated." + key: True for key in deprecated})  # 6.x key aliases, for doctor (#1312)
     values.update({"flavor." + k: v for k, v in knobs.items()})
     values["flavor.name"] = name
     values["flavor.selfgate_engine"] = flavor.get("selfgate_engine", "different")  # read only for express changes
@@ -295,7 +296,7 @@ class Renderer:
                     text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
             except (OSError, UnicodeDecodeError) as e:
                 raise ValueError("cannot read included doc %s (%s)" % (source, e)) from e
-            bundle = "<path>" if self.normalize_paths else self.values["paths.eng_crew"].rstrip("/")
+            bundle = "<path>" if self.normalize_paths else self.values["paths.mdstack"].rstrip("/")
 
             def link(match):
                 target = match.group(1)

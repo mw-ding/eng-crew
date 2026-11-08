@@ -1,7 +1,7 @@
 # Profile (`crew.toml`)
 
 One install-time file picks the runtime, a backend per concern, identities,
-engines and paths for one repo (portable eng-crew, roadmap 13.10,
+engines and paths for one repo (portable mdstack, roadmap 13.10,
 [#122](https://github.com/mw-ding/eng-crew/issues/122);
 [portable spec P4](specs/portable.md#2-requirements)). It replaces the
 hand-filled placeholders of the [templates](../templates/README.md#placeholders)
@@ -177,7 +177,7 @@ Empty patterns, absolute paths and `..` segments are invalid.
 Defaults: `.github/workflows/**`, and root or nested directories named `auth`,
 `secrets`, `permissions`, `access-control`, `migrations` or `deletions`. Add the
 project's other security/irreversible paths (including files outside these
-directories). For eng-crew, add `docs/protocol.md`, `docs/verification.md`,
+directories). For mdstack, add `docs/protocol.md`, `docs/verification.md`,
 `docs/flavors.md` and `scripts/crew-config.py` to protect its gate contract.
 
 ```toml
@@ -353,7 +353,7 @@ describes events, retries, digests and the return brief.
 Optional: how the project cuts and records releases through the
 [release operations](release.md#release-operations)
 ([#585](https://github.com/mw-ding/eng-crew/issues/585)). Without the table
-nothing changes; eng-crew's own release on GitHub needs none, since every
+nothing changes; mdstack's own release on GitHub needs none, since every
 default below is today's behaviour.
 
 | Key | Type | Default | Meaning |
@@ -527,9 +527,9 @@ never upgrades or restarts tools. With no `[tools]`, no probes run.
 | `toolchain_bin` | string | none | `<toolchain-bin>` |
 | `live_dir` | string: the deployed live copy, laid out like `crew-render.py --out` | none | none (read by `check-skill-drift.py --project`, #128) |
 | `pack` | string: pack directory, absolute or relative to this project file | none | records the org pack for resolution |
-| `eng_crew` | string: absolute path of the eng-crew checkout, so briefs cite its docs in any repo | none | `<eng-crew>` |
+| `mdstack` | string: absolute path of the mdstack checkout, so briefs cite its docs in any repo; the 6.x key `eng_crew` is a deprecated alias for one release, and the new key wins when a layer sets both ([migration](guides/migration.md#product-names-700)) | none | `<mdstack>` |
 | `checkout` | string: the git checkout that role worktrees, trains and host prepare use, absolute or relative to this project file (to `root` when set) | the project file's directory | none (lets a non-git runtime home name its repo checkout, #1178) |
-| `root` | string: one movable base; each relative `state_dir`, `worktree_root`, `live_dir`, `eng_crew` and `checkout` resolves under it. A set `CREW_ROOT` overrides it | none (relative values keep resolving as before) | none ([home-level layout](runtimes/tmux.md#home-level-layout-1178), #1178) |
+| `root` | string: one movable base; each relative `state_dir`, `worktree_root`, `live_dir`, `mdstack` and `checkout` resolves under it. A set `CREW_ROOT` overrides it | none (relative values keep resolving as before) | none ([home-level layout](runtimes/tmux.md#home-level-layout-1178), #1178) |
 
 A key with default "none" may be left out of one file; the
 [default profile](../profiles/default.toml) sets them except the optional `pack`.
@@ -542,7 +542,7 @@ crew (20.2, [#204](https://github.com/mw-ding/eng-crew/issues/204); design in
 With no `[hosts]` table the crew runs on one machine, as today. A host is
 named by its overlay network name only, never by an address, user, port or
 credential (spec R1). Keep these tables in the host-local project
-`crew.toml` or the org layer, never in eng-crew. They replace no template
+`crew.toml` or the org layer, never in mdstack. They replace no template
 placeholder; `validate` checks them, and placement that reads them is
 [#207](https://github.com/mw-ding/eng-crew/issues/207).
 
@@ -601,7 +601,7 @@ than `tmux`.
 `connectors/<backend>/manifest.toml` is a backend's own
 [capability declaration](interfaces.md#capability-declaration):
 `[pack]` with `name` (lowercase letters and digits separated by hyphens), `commands` (the doc holding its
-command mapping), for a pack outside eng-crew, `eng_crew_version`
+command mapping), for a pack outside mdstack, `mdstack_version`
 ([packs](packs.md#version-pin)), an optional SemVer `version` naming the
 pack's own release, distinct from that pin ([pack version](packs.md#pack-version)),
 an optional `harness` naming a pack-relative

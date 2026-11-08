@@ -199,7 +199,7 @@ def run(args):
             return 1
         print("ok prepare %s: project mirror" % reply["step"])
         if reply.get("toolkit"):
-            print("ok prepare toolkit: eng-crew %s %s" % (reply["toolkit"]["tag"], reply["toolkit"]["state"]))
+            print("ok prepare toolkit: mdstack %s %s" % (reply["toolkit"]["tag"], reply["toolkit"]["state"]))
         if "pruned" in reply:
             print("ok prepare prune: %s" % (", ".join(reply["pruned"]) or "nothing to remove"))
     facts = inspect_host(args, values, session, state, args.host)

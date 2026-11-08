@@ -14,7 +14,7 @@
 AGENTS.md
 AGENTS.md :: ## Review posture
 README.md
-README.md :: # eng-crew
+README.md :: # mdstack
 dev/tests/core/test-crew-config.py
 dev/tests/scripts/fixtures/metrics/ok.csv
 dev/tests/scripts/test-intake-sweep.py

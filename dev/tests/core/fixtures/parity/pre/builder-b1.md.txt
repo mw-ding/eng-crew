@@ -86,7 +86,7 @@ file (sandboxed engines cannot write outside the worktree by default). A claim
 silent for 15 min is flagged by the sweeper.
 
 Run block: before each build worker turn, re-read live state and run
-<eng-crew>/cli/mdstack brief --item "issue #<n>" --pass build --base
+<mdstack>/cli/mdstack brief --item "issue #<n>" --pass build --base
 <full-40-char-head-sha> --round 1 --claim
 <state-dir>/<owner>__<repo>/claims/builder-issue<n> --engine
 "<engine> <model> <effort>" --worktree <worktree>, where Base is the live
@@ -103,7 +103,7 @@ reproduction fallback in verification Q1. Docs-only work is N/A with a reason.
 A CLI change that only runs against test fakes may use a named test command
 that invokes it and asserts exit, stdout and stderr as its repro pair (Q2).
 Late evidence without a code push needs the coordinator's rereview steer.
-CLI, service and API proof must come from <eng-crew>/scripts/evidence-cli.py
+CLI, service and API proof must come from <mdstack>/scripts/evidence-cli.py
 or the templates/evidence/cli-exit-stdout.md script, run at the clean head and
 pasted verbatim with its header; never hand-write, paraphrase or re-split a
 capture. Put any fake or temp repo in a --setup file so the sh block is

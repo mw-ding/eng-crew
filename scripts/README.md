@@ -189,7 +189,7 @@ left to CI. A new rule goes in with a pass and a fail fixture in
 
 ## Denylist
 
-Portable spec P6: eng-crew never names an organization's internal tools
+Portable spec P6: mdstack never names an organization's internal tools
 ([docs/packs.md](../docs/packs.md#direction-rule)). The names themselves are
 never committed here. Keep them in a file outside the repo, one per line
 (`#` comments and blank lines are ignored), and point `CREW_DENYLIST` at it:
@@ -412,7 +412,7 @@ gh pr list --repo <owner>/<repo> --state open --limit 200 \
   | python3 scripts/intake-sweep.py --repo <owner>/<repo>
 ```
 
-Then the coordinator reviews the drafts and files the keepers as eng-crew
+Then the coordinator reviews the drafts and files the keepers as mdstack
 issues. Options: `--stale-days N` (default 7), `--label NAME` (default
 `crew:blocked`), `--repo OWNER/REPO` (shown on cards), `--now
 YYYY-MM-DDTHH:MM:SSZ` (override the clock). Empty input prints nothing and
@@ -599,7 +599,7 @@ replaced from resolved profile keys (the "Replaces" columns of
 | `<user-logins>` | `identities.owners`, joined with `", "` so `["<user-logins>"]` becomes one JSON string per login |
 | `<state-dir>`, `<worktree-root>`, `<toolchain-bin>` | `paths.state_dir`, `paths.worktree_root`, `paths.toolchain_bin` |
 | `<timezone>` | `runtime.timezone` |
-| `<eng-crew>`, `<merge-grant>`, `<hold-label-blocks>` | `paths.eng_crew`, `runtime.options.merge_grant`, `runtime.options.hold_label_blocks` (a boolean renders as `true` / `false`) |
+| `<mdstack>`, `<merge-grant>`, `<hold-label-blocks>` | `paths.mdstack`, `runtime.options.merge_grant`, `runtime.options.hold_label_blocks` (a boolean renders as `true` / `false`) |
 | `<merge-grant-scope>`, `<spec-paths>` | `runtime.options.merge_grant_scope`, `spec.paths`, rendered as JSON arrays; absent keys render the defaults `["approved"]` and `["docs/specs/**"]` |
 | `<fallback-engine>` | `engines.fallback_engine` |
 | `<tested-update>` | `strategy.update_from_base` from the change backend's pack manifest (`merge` when undeclared), as the synthesizer's update wording |

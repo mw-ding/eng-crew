@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Local markdown lint for eng-crew (issue #644): a dependency-free subset of
+"""Local markdown lint for mdstack (issue #644): a dependency-free subset of
 the markdownlint rules this repo configures (.markdownlint-cli2.yaml) and has
 failed in CI, so a builder catches them before pushing. CI's markdownlint stays
 the authority; this check aims to flag nothing markdownlint would not.

@@ -161,7 +161,7 @@ class Version(PackCase):
         with contextlib.redirect_stdout(io.StringIO()) as out, contextlib.redirect_stderr(io.StringIO()):
             self.assertEqual(pk.main(["check", self.pack, "--framework", "v5.3.0"]), 0)
             self.assertEqual(pk.main(["check", self.pack, "--framework", "v6.1.0"]), 1)
-        self.assertIn("pack example supports eng-crew >=5.0.0, <6.0.0; v6.1.0 is incompatible", out.getvalue())
+        self.assertIn("pack example supports mdstack >=5.0.0, <6.0.0; v6.1.0 is incompatible", out.getvalue())
 
 
 class Floors(PackCase):

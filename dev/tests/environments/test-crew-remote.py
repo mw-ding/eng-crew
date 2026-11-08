@@ -345,19 +345,21 @@ class Toolkit(Mirror):
             kind="mirror", location=self.releases, sha256sums_sha256=sums, pinned=False))
         self.toolkit = os.path.join(self.root, "toolkit", "eng-crew-5.1.0")
 
-    def publish(self, crew="#!/bin/sh\n", extra=()):
-        """Write releases/v5.1.0/{eng-crew-5.1.0.tar.gz,SHA256SUMS}; return both digests."""
-        where = os.path.join(self.releases, self.TAG)
+    def publish(self, crew="#!/bin/sh\n", extra=(), tag=None):
+        """Write releases/<tag>/{<name>.tar.gz,SHA256SUMS} (v5.1.0: eng-crew-5.1.0); return both digests."""
+        tag = tag or self.TAG
+        name = remote.crew_install().bundle_name(tag)
+        where = os.path.join(self.releases, tag)
         os.makedirs(where, exist_ok=True)
-        archive = os.path.join(where, "eng-crew-5.1.0.tar.gz")
+        archive = os.path.join(where, name + ".tar.gz")
         with tarfile.open(archive, "w:gz") as tar:
-            for path, data in (("VERSION", self.TAG + "\n"), ("scripts/crew", crew)) + tuple(extra):
-                info = tarfile.TarInfo("eng-crew-5.1.0/" + path)
+            for path, data in (("VERSION", tag + "\n"), ("scripts/crew", crew)) + tuple(extra):
+                info = tarfile.TarInfo(name + "/" + path)
                 info.size = len(data.encode())
                 tar.addfile(info, io.BytesIO(data.encode()))
         sha = remote.crew_install().digest(archive)
         with open(os.path.join(where, "SHA256SUMS"), "w") as f:
-            f.write("%s  eng-crew-5.1.0.tar.gz\n" % sha)
+            f.write("%s  %s.tar.gz\n" % (sha, name))
         return sha, remote.crew_install().digest(os.path.join(where, "SHA256SUMS"))
 
     def prepare(self, pin):
@@ -384,7 +386,7 @@ class Toolkit(Mirror):
         self.assertEqual(self.prepare(pin)["toolkit"]["state"], "installed")
         with mock.patch.dict(os.environ, FAKE_SSH_ENTRY=os.path.join(self.toolkit, "scripts/crew-remote.py")), \
                 mock.patch.object(remote, "version", return_value=self.TAG):
-            self.assertEqual(self.status(pin), dict(status="ok", detail="eng-crew v5.1.0 verified"))
+            self.assertEqual(self.status(pin), dict(status="ok", detail="mdstack v5.1.0 verified"))
             reply = self.prepare(pin)
             self.assertEqual(reply.get("toolkit"), dict(tag=self.TAG, state="reused"), reply)
             self.assertEqual(self.status(pin)["status"], "ok")
@@ -413,7 +415,7 @@ class Toolkit(Mirror):
                 reply = self.prepare(pin)
                 self.assertEqual((reply["result"], reply.get("step")), ("failed", "toolkit"), reply)
                 self.assertIn(message, reply["error"])
-                self.assertEqual(self.status(), dict(status="ok", detail="eng-crew v5.1.0 verified"))
+                self.assertEqual(self.status(), dict(status="ok", detail="mdstack v5.1.0 verified"))
         self.assertFalse([n for n in os.listdir(os.path.join(self.root, "toolkit")) if n.startswith(".staging-")])
         with open(os.path.join(self.toolkit, "scripts/crew"), "w") as f:
             f.write("tampered\n")
@@ -427,7 +429,7 @@ class Toolkit(Mirror):
         self.assertEqual(self.status()["status"], "fail")
         self.assertIn("pins no toolkit on this host", self.status()["detail"])
         self.prepare(self.pin)
-        self.assertEqual(self.status(), dict(status="ok", detail="eng-crew v5.1.0 verified"))
+        self.assertEqual(self.status(), dict(status="ok", detail="mdstack v5.1.0 verified"))
         cases = ((dict(self.pin, tag="v5.2.0"), "pins v5.1.0 on this host, the primary v5.2.0"),
                  (dict(self.pin, bundle_sha256="0" * 64), "record differs from the primary's pin"),
                  (dict(self.pin, transport=dict(self.pin["transport"], location="/elsewhere")), "record differs"))
@@ -461,6 +463,16 @@ class Toolkit(Mirror):
         self.assertEqual(reply["pruned"], ["eng-crew-5.0.0", "eng-crew-5.0.0.json"])
         self.assertEqual(sorted(os.listdir(toolkit)), ["eng-crew-5.1.0", "eng-crew-5.1.0.json"])
         self.assertEqual(self.status()["status"], "ok")
+
+    def test_7x_pin_installs_mdstack_toolkit_and_prunes_the_6x_one(self):  # #1312
+        self.prepare(self.pin)
+        sha, sums = self.publish(tag="v7.0.0")
+        pin = dict(self.pin, tag="v7.0.0", bundle_sha256=sha, transport=dict(self.pin["transport"], sha256sums_sha256=sums))
+        reply = remote.call("host-b", "prepare", project="acme__widgets", toolkit=pin, prune=True)
+        self.assertEqual((reply["result"], reply["toolkit"]), ("ok", dict(tag="v7.0.0", state="installed")), reply)
+        self.assertEqual(reply["pruned"], ["eng-crew-5.1.0", "eng-crew-5.1.0.json"])
+        self.assertEqual(sorted(os.listdir(os.path.join(self.root, "toolkit"))), ["mdstack-7.0.0", "mdstack-7.0.0.json"])
+        self.assertEqual(self.status(pin), dict(status="ok", detail="mdstack v7.0.0 verified"))
 
 
 # Stub forge-free scripts at the job's head: check-repo prints the env names it sees, run-tests prints its args and

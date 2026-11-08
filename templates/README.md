@@ -55,7 +55,7 @@ Grok Bot also renders `skills/eng-pr-pipeline/SKILL.md` and
 `docs/protocol.md` and `docs/roles.md` from the running bundle, respectively,
 with skill frontmatter. The include directives are restricted to those two
 reviewed docs. Their illustrative placeholders remain literal; relative
-Markdown links point into `paths.eng_crew`. Deploy the whole render to
+Markdown links point into `paths.mdstack`. Deploy the whole render to
 `paths.live_dir` so the existing render-vs-live drift check covers skills
 and routines together. Box skill installation uses these rendered files;
 routine creation remains a human step.
@@ -174,7 +174,7 @@ including file's, so a role's shared policy is authored once (#1184).
 | `<planned \| applied \| live>` | Status of a wiring step; pick one and add a date | none (run-time) |
 | `<timezone>` | IANA timezone for a schedule trigger | `runtime.timezone` |
 | `<toolchain-bin>` | Directory of the repo's required toolchain, put on `PATH` before any commit or push | `paths.toolchain_bin` |
-| `<eng-crew>` | Absolute path of the eng-crew checkout; tmux briefs cite `<eng-crew>/docs/` | `paths.eng_crew` |
+| `<mdstack>` | Absolute path of the mdstack checkout; tmux briefs cite `<mdstack>/docs/` | `paths.mdstack` |
 | `<max-active-milestones>` | Maximum open milestones for new coordinator build dispatch, in milestone order | `runtime.options.max_active_milestones` |
 | `<builder-cap>`, `<reviewer-cap>` | session coordinator's concurrent builder runs and reviewer passes | `runtime.options.builders`, `runtime.options.reviewers` |
 | `<session-backend>` | session coordinator's worker launcher: `native` subagents or `cli` runs | `runtime.options.session_backend` |

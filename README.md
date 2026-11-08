@@ -1,6 +1,6 @@
-# eng-crew
+# mdstack
 
-eng-crew is a versioned, reviewed rulebook for running a GitHub repo with a
+mdstack is a versioned, reviewed rulebook for running a GitHub repo with a
 small crew of bots. Each bot has one job: coordinate, build, review and
 validate, or merge. Together they take an issue from spec to merged PR with
 CI, evidence and a human-readable trail at every step. It exists because
@@ -20,7 +20,7 @@ and validator, a different identity from the author, post a verdict. When the
 gate passes, the synthesizer merges and the coordinator closes out. Loops are
 capped, and every handoff is a marker on the PR.
 
-![eng-crew collaboration flow](docs/diagrams/eng-crew-flow.png)
+![mdstack collaboration flow](docs/diagrams/eng-crew-flow.png)
 
 *Crew collaboration flow.* Editable source:
 [eng-crew-flow.excalidraw](docs/diagrams/eng-crew-flow.excalidraw)
@@ -48,15 +48,15 @@ capped, and every handoff is a marker on the PR.
   versioned and what each version promises is in
   [docs/deliverables.md](docs/deliverables.md); how a release is cut is in
   [docs/release.md](docs/release.md). Install a tagged version from
-  [GitHub Releases](https://github.com/mw-ding/eng-crew/releases), as in
+  [GitHub Releases](https://github.com/mw-ding/mdstack/releases), as in
   [Install](#install).
 
 ## Quickstart (tmux)
 
 Zero to a running local crew. Each step links to the runbook for depth;
 the [tmux binding](docs/runtimes/tmux.md) owns every command's exact
-behaviour. `<project>` is a clone of your target repo, `<eng-crew>` the
-extracted bundle, and `mdstack` below means `<eng-crew>/cli/mdstack` (`crew`, the
+behaviour. `<project>` is a clone of your target repo, `<mdstack>` the
+extracted bundle, and `mdstack` below means `<mdstack>/cli/mdstack` (`crew`, the
 old name, still runs it for one release with a deprecation note).
 
 1. **Install and verify** the release bundle: [Install](#install) steps 1 to 4.
@@ -64,7 +64,7 @@ old name, still runs it for one release with a deprecation note).
    [profiles/tmux.toml](profiles/tmux.toml) plus `[repo]` and real `[paths]`
    ([Set up the target repo](docs/runbook-new-repo.md#set-up-the-target-repo)),
    then check it:
-   `python3 <eng-crew>/scripts/crew-config.py validate <project>/crew.toml`.
+   `python3 <mdstack>/scripts/crew-config.py validate <project>/crew.toml`.
    Create the `crew:*` labels
    ([Step 1](docs/runbook-new-repo.md#step-1-create-the-crew-labels)) and
    make sure a CI check runs on every PR.
@@ -113,23 +113,23 @@ Default profile names; window indexes from the
 
 1. **Needs:** Python 3.11+, and `gh` logged in (it downloads the release;
    the repo is public, so the assets are also on the
-   [Releases](https://github.com/mw-ding/eng-crew/releases) page). The tmux
+   [Releases](https://github.com/mw-ding/mdstack/releases) page). The tmux
    runtime also needs tmux.
 2. **Download and verify** the latest release (to pin a version, pass its
    tag: `gh release download vX.Y.Z ...`):
 
    ```bash
-   gh release download -R mw-ding/eng-crew --pattern 'eng-crew-*.tar.gz' --pattern SHA256SUMS -D eng-crew-release
-   cd eng-crew-release && shasum -a 256 -c SHA256SUMS  # Linux: sha256sum -c SHA256SUMS
+   gh release download -R mw-ding/mdstack --pattern 'mdstack-*.tar.gz' --pattern SHA256SUMS -D mdstack-release
+   cd mdstack-release && shasum -a 256 -c SHA256SUMS  # Linux: sha256sum -c SHA256SUMS
    ```
 
-3. **Extract:** `tar -xzf eng-crew-*.tar.gz`. The `eng-crew-<version>/`
-   directory is `<eng-crew>` in the runbook, and its `VERSION` file
-   (`cat eng-crew-<version>/VERSION`) is the version to record
+3. **Extract:** `tar -xzf mdstack-*.tar.gz`. The `mdstack-<version>/`
+   directory is `<mdstack>` in the runbook, and its `VERSION` file
+   (`cat mdstack-<version>/VERSION`) is the version to record
    ([release.md: Update path](docs/release.md#update-path)).
 4. **Check the tools run:**
-   `python3 eng-crew-<version>/scripts/crew-config.py validate eng-crew-<version>/profiles/default.toml`
-   and `eng-crew-<version>/cli/mdstack --help`.
+   `python3 mdstack-<version>/scripts/crew-config.py validate mdstack-<version>/profiles/default.toml`
+   and `mdstack-<version>/cli/mdstack --help`.
 5. **Next:** write `crew.toml` and continue at the runbook's
    [Step 0](docs/runbook-new-repo.md#step-0-write-validate-and-render-the-profile)
    (Grok Bot) or its [tmux runtime](docs/runbook-new-repo.md#tmux-runtime)
@@ -139,7 +139,7 @@ The `v2.0.0` bundle lacks a file the install CLI needs, so step 4 fails on it;
 use a release with the [#275](https://github.com/mw-ding/eng-crew/issues/275) fix.
 
 tmux users upgrading to 2.1: read the "Upgrade note (2.1)" entry in the
-[release notes](https://github.com/mw-ding/eng-crew/releases) and the
+[release notes](https://github.com/mw-ding/mdstack/releases) and the
 runbook's [tmux prerequisites](docs/runbook-new-repo.md#tmux-prerequisites).
 
 ## Status
@@ -147,10 +147,10 @@ runbook's [tmux prerequisites](docs/runbook-new-repo.md#tmux-prerequisites).
 Status is not tracked on this page; it lives where it is recorded:
 
 - Shipped versions and their notes:
-  [GitHub Releases](https://github.com/mw-ding/eng-crew/releases).
+  [GitHub Releases](https://github.com/mw-ding/mdstack/releases).
 - Work in progress and done:
-  [open milestones](https://github.com/mw-ding/eng-crew/milestones) and
-  [closed milestones](https://github.com/mw-ding/eng-crew/milestones?state=closed).
+  [open milestones](https://github.com/mw-ding/mdstack/milestones) and
+  [closed milestones](https://github.com/mw-ding/mdstack/milestones?state=closed).
 - Every change: [CHANGELOG.md](CHANGELOG.md). Per-slice status:
   [docs/specs/portable.md](docs/specs/portable.md) §5.
 - Platform merge enforcement and its limits:

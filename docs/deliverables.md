@@ -7,7 +7,7 @@
 > - **Design only:** further harness layouts as render targets ([Packaging](#packaging)), decided in [bootstrap](bootstrap.md#q4-install-targets)
 > - **Last checked:** 2026-11-04 at `217cec5`
 
-What eng-crew ships, how it is packaged, how it is versioned and what each
+What mdstack ships, how it is packaged, how it is versioned and what each
 version promises (roadmap R1.1,
 [#145](https://github.com/mw-ding/eng-crew/issues/145); umbrella
 [#110](https://github.com/mw-ding/eng-crew/issues/110);
@@ -49,13 +49,13 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 
 | Path | Class | Runtime(s) | Why |
 |---|---|---|---|
-| `.gitattributes` | Internal | n/a | Repo process and CI: rules for building eng-crew itself |
-| `.github/**` | Internal | n/a | Repo process and CI: rules for building eng-crew itself |
-| `.gitignore` | Internal | n/a | Repo process and CI: rules for building eng-crew itself |
-| `.markdownlint-cli2.yaml` | Internal | n/a | Repo process and CI: rules for building eng-crew itself |
-| `AGENTS.md` | Internal | n/a | Repo process and CI: rules for building eng-crew itself |
+| `.gitattributes` | Internal | n/a | Repo process and CI: rules for building mdstack itself |
+| `.github/**` | Internal | n/a | Repo process and CI: rules for building mdstack itself |
+| `.gitignore` | Internal | n/a | Repo process and CI: rules for building mdstack itself |
+| `.markdownlint-cli2.yaml` | Internal | n/a | Repo process and CI: rules for building mdstack itself |
+| `AGENTS.md` | Internal | n/a | Repo process and CI: rules for building mdstack itself |
 | `CHANGELOG.md` | Deliverable | all | Bundle front page and release notes: shipped as is |
-| `CONTRIBUTING.md` | Internal | n/a | Repo process and CI: rules for building eng-crew itself |
+| `CONTRIBUTING.md` | Internal | n/a | Repo process and CI: rules for building mdstack itself |
 | `README.md` | Deliverable | all | Bundle front page and release notes: shipped as is |
 | `actions/*.md` | Internal | n/a | Design contract: generic action vocabulary, CLI contract and per-environment mapping; implemented in M32 ([#1218](https://github.com/mw-ding/eng-crew/issues/1218)) |
 | `actions/contract.py` | Deliverable | all | Conformance kit: the actions/ contract tests `mdstack pack test` runs against a pack's adapters ([#1236](https://github.com/mw-ding/eng-crew/issues/1236)) |
@@ -86,7 +86,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `docs/configuration/resolution.md` | Deliverable | all | Profile and pack contract: profile validation reference split from the profile ([#857](https://github.com/mw-ding/eng-crew/issues/857)) |
 | `docs/configuration/runtime-options.md` | Deliverable | all | Profile and pack contract: runtime keys and shared coordinator option split from the profile ([#859](https://github.com/mw-ding/eng-crew/issues/859)) |
 | `docs/configuration/team-files.md` | Deliverable | all | Profile and pack contract: team file schema and example split from the profile ([#855](https://github.com/mw-ding/eng-crew/issues/855)) |
-| `docs/decisions.md` | Internal | n/a | Maintainer docs: eng-crew's own decisions log, seeded from the #985 decision log ([#1219](https://github.com/mw-ding/eng-crew/issues/1219)) |
+| `docs/decisions.md` | Internal | n/a | Maintainer docs: mdstack's own decisions log, seeded from the #985 decision log ([#1219](https://github.com/mw-ding/eng-crew/issues/1219)) |
 | `docs/deliverables.md` | Deliverable | all | Install and upgrade docs: how to install, pin and upgrade |
 | `docs/diagrams/**` | Internal | n/a | Maintainer docs: diagrams, not loaded by roles |
 | `docs/express-lane.md` | Deliverable | tmux | Profile and pack contract: express flavor design for the tmux binding ([#636](https://github.com/mw-ding/eng-crew/issues/636)) |
@@ -154,7 +154,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `harnesses/*/adapter.py` | Deliverable | all | Runtime CLI: one adapter module per harness ([#1182](https://github.com/mw-ding/eng-crew/issues/1182)) |
 | `harnesses/README.md` | Deliverable | all | Module README: purpose, contents and how the module plugs in ([#1237](https://github.com/mw-ding/eng-crew/issues/1237)) |
 | `harnesses/crew-harness.py` | Deliverable | all | Runtime CLI: harness adapter discovery and the engine tables derived from `harnesses/<engine>/adapter.py` ([#1182](https://github.com/mw-ding/eng-crew/issues/1182)) |
-| `memory/**` | Internal | n/a | eng-crew's own crew core memory (owner profile, per-role files), injected into its briefs; another project keeps its own ([#1230](https://github.com/mw-ding/eng-crew/issues/1230)) |
+| `memory/**` | Internal | n/a | mdstack's own crew core memory (owner profile, per-role files), injected into its briefs; another project keeps its own ([#1230](https://github.com/mw-ding/eng-crew/issues/1230)) |
 | `packs/README.md` | Deliverable | all | Module README: purpose, contents and how the module plugs in ([#1237](https://github.com/mw-ding/eng-crew/issues/1237)) |
 | `packs/github/**` | Deliverable | all | Compatibility copy for one release of `connectors/github/manifest.toml` ([#1223](https://github.com/mw-ding/eng-crew/issues/1223)) |
 | `profiles/README.md` | Deliverable | all | Module README: purpose, contents and how the module plugs in ([#1237](https://github.com/mw-ding/eng-crew/issues/1237)) |
@@ -240,7 +240,7 @@ fail on an unclassified path ([release.md](release.md#follow-up-issues)).
 
 | Decision | Choice | Alternatives considered |
 |---|---|---|
-| Unit | One bundle per release, `eng-crew-<version>.tar.gz`, holding every deliverable at its repo path, plus `VERSION` and `SHA256SUMS` | One tarball per runtime: more build and install paths for a few small files; revisit when a runtime's files outgrow this. A committed `dist/<runtime>/` tree: generated files in git drift, the same problem as hand mirroring |
+| Unit | One bundle per release, `mdstack-<version>.tar.gz`, holding every deliverable at its repo path, plus `VERSION` and `SHA256SUMS` | One tarball per runtime: more build and install paths for a few small files; revisit when a runtime's files outgrow this. A committed `dist/<runtime>/` tree: generated files in git drift, the same problem as hand mirroring |
 | Per-runtime selection | At install: the renderer reads only the profile's `runtime.name` inputs, so one bundle serves every runtime | Rendering per runtime at release time: the render needs project values (`repo.owner`, identities, paths), which only the install has |
 | Rendered output | Generated at install by `crew-render.py` from the bundle and the resolved profile, then deployed and drift-checked ([#128](https://github.com/mw-ding/eng-crew/issues/128)) | Shipping a reference render of `profiles/default.toml`: its values are placeholders, so it adds nothing over the templates |
 | Harness layouts (Claude Code subagents and skills, Codex prompts, Grok Bot box skills) | Future render targets of the same bundle, decided by bootstrap ([#144](https://github.com/mw-ding/eng-crew/issues/144) install targets) | A Claude Code plugin as the release unit: one harness only |

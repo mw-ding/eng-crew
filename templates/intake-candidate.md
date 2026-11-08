@@ -1,6 +1,6 @@
 # Intake candidate card
 
-Use this as the body of an eng-crew issue titled `intake: <failure class> on
+Use this as the body of an mdstack issue titled `intake: <failure class> on
 <owner>/<repo>#<n>`. The coordinator files it from a trigger (see
 [self-improve](../docs/self-improve.md)); the helper
 [`scripts/intake-sweep.py`](../scripts/README.md#intake-sweep-weekly-stuck-pass)

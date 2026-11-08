@@ -12,14 +12,14 @@ SetEnv, forwarding or proxy from any config reaches the call; the entrypoint rea
 A request is one JSON object {verb, version, request_id?, ...}, never a shell string, never evaluated. Every reply
 is {"result": "ok", ...}, {"result": "refused", "reason"} or {"result": "failed", "error"}, exit 0; only the client
 yields {"result": "unreachable"}, on a transport failure. Refused: a verb outside the closed set or not built yet, a
-different eng-crew version, an SSH command other than crew-host, a `root` or path outside root, and a mutating verb
+different mdstack version, an SSH command other than crew-host, a `root` or path outside root, and a mutating verb
 without a request id. Built verbs: `version`; `check` (host readiness rows tools, project mirror, logins, runner and
 capacity, with projects and load, the reply mdstack host check reads); `prepare` (create or fetch
 mirrors/<owner>__<repo>.git with the host's gh login) and `seed` (a forge-less host: fetch the primary's base64
 one-ref git bundle into the mirror as refs/crew/heads/<sha>, and refs/heads/<branch> when given); both then make wt/
 and state/<owner>__<repo>/, and a failed reply names its `step`. With a `toolkit` pin (tag, bundle_sha256,
-transport) both also install that release into toolkit/eng-crew-<v>/ with the shared verifier (docs/bootstrap.md Host toolkit, #945): staged under
-toolkit/.staging-*, its record toolkit/eng-crew-<v>.json (pin, bundle digest, SHA-256 of every file) written last,
+transport) both also install that release into toolkit/mdstack-<v>/ (a 6.x release keeps eng-crew-<v>) with the shared verifier (docs/bootstrap.md Host toolkit, #945): staged under
+toolkit/.staging-*, its record toolkit/<name>.json (pin, bundle digest, SHA-256 of every file) written last,
 then state/<owner>__<repo>/toolkit.json names the version; a verified existing version is reused, any other is
 moved aside only after the replacement verifies, so a refused one leaves the previous install in place. The
 entrypoint writes no bytecode, so running it from the toolkit keeps every file hash. `prune` (with prepare or seed) then removes the toolkit versions and staging
@@ -179,8 +179,8 @@ def file_hashes(bundle):
 
 
 def toolkit_verified(root, pin):
-    """None when toolkit/eng-crew-<v> and its record match the pin and every file hash, else why not."""
-    name = "eng-crew-" + pin["tag"][1:]
+    """None when toolkit/<bundle name> and its record match the pin and every file hash, else why not."""
+    name = crew_install().bundle_name(pin["tag"])
     bundle, record_path = os.path.join(root, "toolkit", name), os.path.join(root, "toolkit", name + ".json")
     try:
         record = load(record_path)
@@ -212,7 +212,7 @@ def toolkit_status(request, root):
     if tag != pin["tag"]:
         return dict(status="fail", detail="%s pins %s on this host, the primary %s" % (project, tag, pin["tag"]))
     why = toolkit_verified(root, pin)
-    return dict(status="fail", detail=why) if why else dict(status="ok", detail="eng-crew %s verified" % tag)
+    return dict(status="fail", detail=why) if why else dict(status="ok", detail="mdstack %s verified" % tag)
 
 
 def prune_toolkit(root):
@@ -221,12 +221,12 @@ def prune_toolkit(root):
     pinned = set()
     for project in os.listdir(state) if os.path.isdir(state) else []:
         try:
-            pinned.add("eng-crew-" + load(os.path.join(state, project, "toolkit.json"))["tag"][1:])
+            pinned.add(crew_install().bundle_name(load(os.path.join(state, project, "toolkit.json"))["tag"]))
         except (OSError, ValueError, KeyError, TypeError):
             pass
     removed = []
     for name in sorted(os.listdir(toolkit)) if os.path.isdir(toolkit) else []:
-        if not (name.startswith(".staging-") or name.startswith("eng-crew-")) or name.removesuffix(".json") in pinned:
+        if not name.startswith((".staging-", "mdstack-", "eng-crew-")) or name.removesuffix(".json") in pinned:
             continue
         path = os.path.join(toolkit, name)
         if os.path.isdir(path) and not os.path.islink(path):
@@ -243,7 +243,7 @@ def install_toolkit(root, project, pin, request_id):
         install = pin_install(pin)
     except ValueError as e:
         raise Failed("toolkit", str(e))
-    toolkit, name = os.path.join(root, "toolkit"), "eng-crew-" + pin["tag"][1:]
+    toolkit, name = os.path.join(root, "toolkit"), crew_install().bundle_name(pin["tag"])
     bundle, record_path = os.path.join(toolkit, name), os.path.join(toolkit, name + ".json")
     state = "reused"
     if toolkit_verified(root, pin):

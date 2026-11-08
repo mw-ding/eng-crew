@@ -141,7 +141,7 @@ The rest of [portable spec §3](specs/portable.md#3-invariants) binds every
 flavor too, as part of a profile: I1 (author ≠ reviewer, or the
 single-identity rule), I2 (so `diversity` has no `off`) and I3 (evidence on
 the change head). So do the protocol's hard rules: caps of at most 3, a
-serial land, and a per-change merge-ok for `crew:spec` changes. In eng-crew
+serial land, and a per-change merge-ok for `crew:spec` changes. In mdstack
 itself, the gate-defining paths (`docs/protocol.md`, `docs/runtimes/*.md`,
 `docs/verification.md`, `docs/flavors.md`, `core/crew-config.py`) become
 `crew:sensitive` path rules in its own profile (a scope note for #184). That
@@ -290,7 +290,7 @@ no result; never use a partial match to relax rigor.
   `thorough` class for the paths that define your gates, such as the
   protocol, flavor and profile docs, the config validator and the CI
   workflows. Releases and security work get `thorough` through their item
-  record. For eng-crew:
+  record. For mdstack:
 
   ```toml
   [[flavor.classes]]
@@ -311,7 +311,7 @@ no result; never use a partial match to relax rigor.
 | Lighter lane | [§6](protocol.md#6-duties-on-wake-all-roles), Grok Bot binding | `lighter_lane` | Code, `.github/`, `templates/**` and `docs/protocol.md` never qualify; `docs+tests` adds test-only paths. The mirror hold stays path-derived |
 | Standing doc-only merge-ok (2026-10-25) | §6, §7 | `merge = "docs"` | The owner's grant stays the record that the value cites |
 | tmux `merge_grant` | `runtime.options` ([profile](profile.md#keys)) | `merge` | #195 replaces it, or checks that both agree, so there is one source |
-| Thin review posture | eng-crew [AGENTS.md](../AGENTS.md) | `review = "thin"` in eng-crew's own profile | Product repos keep their own `AGENTS.md` for repo specifics |
+| Thin review posture | mdstack [AGENTS.md](../AGENTS.md) | `review = "thin"` in mdstack's own profile | Product repos keep their own `AGENTS.md` for repo specifics |
 | Quota diversity waive | [roles](roles.md#quota-diversity-waive) | `diversity` | Its trigger, preference, record and per-PR owner OK for HIGH risk stay in roles; `required` removes the coordinator's standing grant |
 | Tiers | [roles](roles.md#tiers) | Stay separate | A tier measures difficulty, not rigor. `engines` may override a tier's order or effort; security and release infra work stays deep |
 | Round cap, CI-fix cap | Protocol hard rules, [§5](protocol.md#5-rounds-and-escalation) | `caps` | 3 stays the maximum |

@@ -55,9 +55,9 @@ class Feedback(Base):
     def test_files_one_redacted_card_then_comments(self):
         first = self.feedback()
         self.assertEqual(first.returncode, 0, first.stdout + first.stderr)
-        self.assertEqual(first.stdout.strip(), "filed: https://example.test/acme/eng-crew/issues/100")
+        self.assertEqual(first.stdout.strip(), "filed: https://example.test/acme/mdstack/issues/100")
         [card] = self.issues()
-        self.assertEqual((card["repo"], card["title"]), ("acme/eng-crew", "intake: spawn-failure on acme/widgets#7"))
+        self.assertEqual((card["repo"], card["title"]), ("acme/mdstack", "intake: spawn-failure on acme/widgets#7"))
         for line in ["**Source:** acme/widgets#7", "**Trigger:** runtime-blocker", "**Failure class:** spawn-failure",
                      "**Decision:** pending", "- Window: ben-7 (builder, issue #7)",
                      "- Engine: codex gpt-x high (harness codex)",
@@ -69,7 +69,7 @@ class Feedback(Base):
         for leak in leaks:
             self.assertNotIn(leak, card["body"])
         second = self.feedback()
-        self.assertEqual(second.stdout.strip(), "commented: acme/eng-crew#100")
+        self.assertEqual(second.stdout.strip(), "commented: acme/mdstack#100")
         [card] = self.issues()
         self.assertEqual(len(card["comments"]), 1)
         self.assertIn("Seen again on acme/widgets#7 (trigger `runtime-blocker`).", card["comments"][0])
@@ -90,7 +90,7 @@ class Feedback(Base):
     def test_unreadable_card_list_or_bad_slug_files_nothing(self):
         failed = self.feedback(FAKE_GH_FAIL="1")
         self.assertEqual(failed.returncode, 1)
-        self.assertIn("cannot list open cards in acme/eng-crew", failed.stdout)
+        self.assertIn("cannot list open cards in acme/mdstack", failed.stdout)
         self.assertFalse(os.path.exists(self.db))
         bad = self.crew("feedback", "--project", self.project, "--class", "Spawn Failure", "--summary", "x")
         self.assertEqual(bad.returncode, 1)

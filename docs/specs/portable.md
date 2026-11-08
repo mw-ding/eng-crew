@@ -1,4 +1,4 @@
-# Spec: portable eng-crew (pluggable runtimes and tools)
+# Spec: portable mdstack (pluggable runtimes and tools)
 
 Status: v0.4 (2026-11-07). Owner: coordinator. Changes land through
 `crew:spec` PRs (review pass only, merge on the owner's merge-ok). Umbrella:
@@ -16,7 +16,7 @@ does not restate them. v0.4 changes no live gate or marker rule: the
 
 ## 1. Goal
 
-Make eng-crew **installable on more than one agent runtime** and **workable
+Make mdstack **installable on more than one agent runtime** and **workable
 against more than one toolset**, chosen at install time. The protocol core
 becomes runtime- and tool-agnostic; runtimes and tools become configurable
 bindings. The first new runtime is a local tmux crew: one coordinator session
@@ -100,28 +100,28 @@ holds. Every roadmap issue in milestones M13 and M14 links this spec.
   (#110, #122, #125, #128)
 - **P5. Config layers.** The effective config resolves from four layers,
   lowest to highest precedence (#110 decision comment, resolver in #123):
-  1. **Core defaults** (in eng-crew): abstract protocol, role rules,
+  1. **Core defaults** (in mdstack): abstract protocol, role rules,
      invariants, concern interfaces.
-  2. **Default profile** (in eng-crew): today's GitHub setup for external
+  2. **Default profile** (in mdstack): today's GitHub setup for external
      projects.
-  3. **Org / environment pack** (outside eng-crew, optional): an
+  3. **Org / environment pack** (outside mdstack, optional): an
      organization's own adapter pack and profile, kept in its own repo and
-     pinned to an eng-crew version. It overrides default backends per
+     pinned to an mdstack version. It overrides default backends per
      concern. From v0.4 a pack can also plug in connectors, harnesses,
      environment defaults, extra skills and tightening-only rules
      ([§9](#9-extension-mechanism)).
   4. **Per-project config** (in the target project or the local install):
      runtime, backend per concern, identities, engines, overrides.
-- **P6. No org-internal names here.** eng-crew never contains
+- **P6. No org-internal names here.** mdstack never contains
   organization-internal tool names, commands, URLs or specs. Packs reference
-  eng-crew, never the reverse. (#110, guard in #127)
+  mdstack, never the reverse. (#110, guard in #127)
 - **P7. Default profile stays complete.** The default GitHub profile is a
   complete, working setup on its own, with no org pack. (#110, #124)
 - **P8. GitHub + Grok Bot keeps working after every merge.** Each roadmap PR
   leaves today's runtime and backend working; structural (move/reword) and
   behavioural changes never share a PR. Box skills follow the mirror
   deferral in [§6](#6-decisions). (#110, #112, #140)
-- **P9. Versioned releases.** eng-crew ships named deliverables as SemVer
+- **P9. Versioned releases.** mdstack ships named deliverables as SemVer
   releases: a tag and a GitHub Release with one bundle, cut by a workflow
   only after the owner approves it. Packs pin a tag and installs record
   one; nothing auto-updates an environment. Inventory, packaging and
@@ -401,7 +401,7 @@ tool drift and a size budget (#160 rows
 
 | ID | Issue | Scope | Depends on | Status |
 |---|---|---|---|---|
-| 17.1 | #144 | Bootstrap: install eng-crew into a new environment (design) | 13.8, 13.11, 13.13, 13.15, 14.1, R1.1–R1.4 | open |
+| 17.1 | #144 | Bootstrap: install mdstack into a new environment (design) | 13.8, 13.11, 13.13, 13.15, 14.1, R1.1–R1.4 | open |
 | 17.2 | #190 | `mdstack doctor`: read-only checks, `--fix` and human steps | 17.1 | open |
 | 17.3 | #191 | Bootstrap proposes, owner confirms, profile records | 17.1 | open |
 | 17.4 | #192 | Upgrade: re-render and reload running roles | 17.1 | open |
@@ -570,7 +570,7 @@ One cutover and a major release.
 
 | Date | Decision | Source |
 |---|---|---|
-| 2026-10-29 | **Config layers:** core defaults → default GitHub profile → org / environment pack outside eng-crew → per-project config. No org-internal names here; packs declare what they cannot support; default profile stays complete. | #110 (decision comment) |
+| 2026-10-29 | **Config layers:** core defaults → default GitHub profile → org / environment pack outside mdstack → per-project config. No org-internal names here; packs declare what they cannot support; default profile stays complete. | #110 (decision comment) |
 | 2026-10-29 | **Where the abstraction lives (Q9):** docs + `crew.toml` profile + renderer + small CLI. | [#110](https://github.com/mw-ding/eng-crew/issues/110) body, "Open questions → where they are settled" table, row Q9 ("decided: docs + `crew.toml` profile + renderer + small CLI"); approved by the owner with the roadmap |
 | 2026-10-29 | **Single identity:** all roles act from one GitHub account in the coordinator session. For roadmap PRs, verdicts are COMMENT reviews headed `[Vera/verdict] round <k> @ <sha7>` with review and validate markers and a final `pass=verdict` marker; this replaces the formal `APPROVED` gate for #110 roadmap PRs only. Every other §7 gate is unchanged; CI is never waived. | #111 |
 | 2026-10-29 | **Chat merge-ok:** the owner OKs each roadmap PR in the coordinator chat; the coordinator records it as an `[Ash/steer] merge-ok (owner, chat) @ <sha7>` COMMENT review with a `pass=steer cmd=merge-ok cmd-id=chat` marker; the synthesizer pass re-checks §7 and squashes with `--match-head-commit`. Roadmap PRs carry `crew:hold` so the live Grok Bot crew no-ops. Folded into #130 as the single-identity profile rule. | #111 |
@@ -581,7 +581,7 @@ One cutover and a major release.
 | 2026-10-30 | **Standing merge grant, all milestones:** extended from M13/M14 to every milestone of this project; it also covers status-only spec edits. | [#111 (all milestones)](https://github.com/mw-ding/eng-crew/issues/111#issuecomment-6535532827), [#111 (status-only spec edits)](https://github.com/mw-ding/eng-crew/issues/111#issuecomment-6537919568) |
 | 2026-10-30 | **Release owner and gate:** the release owner identity and the release approval gate's interim convention. | [#219](https://github.com/mw-ding/eng-crew/issues/219#issuecomment-6537273776), [#243](https://github.com/mw-ding/eng-crew/pull/243#issuecomment-6536532290) |
 | 2026-10-30 | **Spec bookends:** every milestone opens with a spec slice and closes with a status-sync slice. | [#259](https://github.com/mw-ding/eng-crew/issues/259), [#259 point 5](https://github.com/mw-ding/eng-crew/issues/259#issuecomment-6537919839) |
-| 2026-10-30 | **Runtime direction, option A (#160):** eng-crew keeps its own runtime and adopts firstmate's patterns and disciplines as contracts only, reimplemented with no code copied (#130 stands). The 19 row decisions are the overarching design for M15–M21 ([§5](#5-milestones-and-slices)). | [#160 final conclusion](https://github.com/mw-ding/eng-crew/issues/160#issuecomment-6532414226) |
+| 2026-10-30 | **Runtime direction, option A (#160):** mdstack keeps its own runtime and adopts firstmate's patterns and disciplines as contracts only, reimplemented with no code copied (#130 stands). The 19 row decisions are the overarching design for M15–M21 ([§5](#5-milestones-and-slices)). | [#160 final conclusion](https://github.com/mw-ding/eng-crew/issues/160#issuecomment-6532414226) |
 | 2026-10-30 | **M14 freeze exception (14.11):** one owner-approved addition to the frozen M14 scope, #172 (`mdstack kill` refuses to remove unlanded work), a data-loss fix. | [#160 M14 update](https://github.com/mw-ding/eng-crew/issues/160#issuecomment-6532824780) |
 | 2026-10-30 | **Changelog at cut time:** changes are recorded as per-PR fragments and assembled into `CHANGELOG.md` at release cut ([§2 P10](#2-requirements)), for every future milestone. Owner decision, recorded verbatim in #264. | [#264](https://github.com/mw-ding/eng-crew/issues/264) |
 | 2026-10-31 | **M15+ hold lifted:** the owner lifted the M15+ hold for overnight autonomous execution. Still held for the owner (the standing #111 exclusions): substantive spec edits, merge-gate changes, live Grok Bot rule changes, `crew:sensitive` and any release beyond v2.0.1. | [#110 comment](https://github.com/mw-ding/eng-crew/issues/110#issuecomment-6540455617) |
@@ -666,7 +666,7 @@ default profile and per-project config. Precedence is unchanged.
 and concern tests against the pack's adapters with fakes, so a pack can
 run it in its own CI.
 
-**Direction and wording.** Packs reference eng-crew, never the reverse, and
+**Direction and wording.** Packs reference mdstack, never the reverse, and
 this section stays generic (P6). An organisation's integrations are a pack
 in that organisation's repo, with its own `docs/specs/`, applied at install
 time.

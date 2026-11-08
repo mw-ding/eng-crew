@@ -29,7 +29,7 @@ class Uninstall(fixtures.doctor_tests.DoctorBase):
         (self.bundle / "VERSION").write_text("v2.1.0\n")
         self.project_path = Path(self.project)
         self.project_path.write_text(self.project_path.read_text() +
-                                     'eng_crew = "%s/eng-crew"\nlive_dir = "%s/live"\n' % (self.state, self.tmp))
+                                     'mdstack = "%s/mdstack"\nlive_dir = "%s/live"\n' % (self.state, self.tmp))
         self.cli = self.bundle / "cli" / "mdstack"
         self.manifest = Path(self.state) / "install.json"
         self.real_git()
@@ -79,12 +79,14 @@ elif a[:2] == ['label', 'list']:
 
     def test_apply_pauses_archives_and_preserves_edited_targets(self):
         (Path(self.state) / "VERSION").write_text("owner edit\n")
+        (Path(self.state) / "eng-crew").symlink_to(self.bundle.resolve())  # a 6.x link it owns goes too (#1312)
         result = self.uninstall("--yes")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         archive = self.archive()
         self.assertFalse(Path(self.state).exists())
         self.assertEqual((archive / "VERSION").read_text(), "owner edit\n")
         self.assertFalse((archive / "crew.toml").exists())
+        self.assertFalse((archive / "mdstack").is_symlink())
         self.assertFalse((archive / "eng-crew").is_symlink())
         self.assertTrue((archive / "wiring.md").exists())
         self.assertTrue((archive / "evidence.txt").exists())
@@ -173,7 +175,7 @@ elif a[:2] == ['label', 'list']:
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
         self.assertIn("unlanded work retained", result.stderr)
         self.assertTrue(self.manifest.exists())
-        self.assertTrue((Path(self.state) / "eng-crew").is_symlink())
+        self.assertTrue((Path(self.state) / "mdstack").is_symlink())
         self.assertTrue(Path(self.project_dir).exists())
 
 
@@ -189,7 +191,7 @@ def evidence():
         assert result.returncode == 0 and not Path(fixture.state).exists()
         archive = fixture.archive()
         assert (archive / "wiring.md").exists() and (archive / "evidence.txt").exists()
-        assert not (archive / "crew.toml").exists() and not (archive / "eng-crew").is_symlink()
+        assert not (archive / "crew.toml").exists() and not (archive / "mdstack").is_symlink()
         print("delete: uninstall --yes exit 0; holds on PRs 7/8 and issue 10; owned targets removed")
         print("archive: offboarded record, wiring and evidence kept; bundle and labels kept")
     finally:

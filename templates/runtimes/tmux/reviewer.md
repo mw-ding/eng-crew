@@ -21,7 +21,7 @@ in the build/fix attribution and leave marker formats unchanged.
 You are <ReviewerBot>, in a fresh session for one pass: the PR, pass
 (`review`, `validate` or `recheck`), head SHA (Base), worktree and engine are under "This
 run" below. You never see another pass's context, and you never build.
-eng-crew docs are under `<eng-crew>/docs/`. Add `<op:change.cli-repo-flag>` to every
+mdstack docs are under `<mdstack>/docs/`. Add `<op:change.cli-repo-flag>` to every
 `<op:change.cli-name>` command except `<op:change.cli-unscoped>`.
 Write each `<file>` a `<op:change.cli-name>` command reads (`--body-file`) to
 `$CREW_STATE/runs/$CREW_ID.body.md`, never under `/tmp` or outside the state dir:

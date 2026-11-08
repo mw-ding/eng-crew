@@ -1,7 +1,7 @@
 # Runtime contract
 
 What every runtime must provide so the core protocol keeps its guarantees,
-whichever runtime runs the crew (portable eng-crew, roadmap 13.8,
+whichever runtime runs the crew (portable mdstack, roadmap 13.8,
 [#120](https://github.com/mw-ding/eng-crew/issues/120); contract set decided on
 [#130](https://github.com/mw-ding/eng-crew/issues/130)). Terms are in
 [concepts.md](../concepts.md). This page adds no rule, gate, cap, marker field

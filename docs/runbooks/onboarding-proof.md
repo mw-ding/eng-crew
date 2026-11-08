@@ -178,7 +178,7 @@ Add one row per fix round, merge-up and nudge. List any gap found at the end
 ## Known gaps
 
 Open items found while writing this runbook. Each follow-up is tracked as an
-eng-crew issue:
+mdstack issue:
 
 - The templates' own open items still apply
   ([../../templates/README.md](../../templates/README.md#open-items)).

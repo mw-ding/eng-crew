@@ -5,7 +5,7 @@ Each scenario is `SCENARIOS/<Axx>.json`: {"id", "title", "requires": [tool...], 
 A step is either {"name", "run": SHELL, "exit": N} (a public CLI call; default expected exit 0) or
 {"name", "wait": PATH, "match": REGEX, "deadline": SECS}, an explicit completion wait that polls PATH until REGEX
 matches and fails at the deadline instead of sleeping a fixed time. `{state_dir}`, `{worktree_root}`, `{live_dir}`,
-`{run_id}`, `{seed}` and `{source}` (the pinned eng-crew checkout) expand in `run` and `wait`. Children get the
+`{run_id}`, `{seed}` and `{source}` (the pinned mdstack checkout) expand in `run` and `wait`. Children get the
 sandbox profile as CREW_PROJECT, no other inherited CREW_* variable, no TMUX or TMUX_PANE, no forge token or SSH
 agent (CREDENTIAL_ENV, #1106), GH_CONFIG_DIR `{state_dir}/gh-config`, `{state_dir}/bin` (the
 sandbox tmux shim and engine stubs) first on PATH, the stub logs `{state_dir}/stub.log` and `gh.log`, the fake

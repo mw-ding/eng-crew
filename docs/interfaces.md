@@ -1,7 +1,7 @@
 # Backend interfaces
 
 The minimum operations a backend must support for each concern, the guarantee
-each operation gives, and the invariant it protects (portable eng-crew, roadmap
+each operation gives, and the invariant it protects (portable mdstack, roadmap
 13.9, [#121](https://github.com/mw-ding/eng-crew/issues/121)). Terms are in
 [concepts.md](concepts.md). Invariants are numbered as in
 [portable spec §3](specs/portable.md#3-invariants): I1 author ≠ reviewer, I2

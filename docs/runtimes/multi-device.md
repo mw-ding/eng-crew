@@ -9,7 +9,7 @@
 
 How one coordinator runs role sessions on several hosts (laptops, a
 desktop, cloud VMs, a machine with a simulator or phone attached) joined by
-a private overlay network (portable eng-crew roadmap 20.1,
+a private overlay network (portable mdstack roadmap 20.1,
 [#158](https://github.com/mw-ding/eng-crew/issues/158); umbrella
 [#110](https://github.com/mw-ding/eng-crew/issues/110)). It extends the
 [tmux binding](tmux.md); it is not a new binding. It carries out the
@@ -62,7 +62,7 @@ Q1–Q5.
 | N3 | Overlay access rules let the primary open SSH to role hosts; role hosts need no route to the primary or to each other | Commands flow one way; a compromised role host has no lateral path | Works with a wider blast radius; the runbook lists it as a human step |
 | N4 | SSH on each host listens on the overlay only | Nothing public | Human step |
 | N5 | Role hosts reach GitHub and the engine vendors over their own internet access | Runs fetch, push, post and call engines themselves; the overlay carries crew control traffic only | `mdstack host check` fails *project mirror* or *logins*. A host that cannot is a [forge-less host](#forge-less-hosts-remote-test-runner): runner jobs only |
-| N6 | eng-crew configures no overlay | Direction rule; no product names, keys or rules in eng-crew or a profile | n/a |
+| N6 | mdstack configures no overlay | Direction rule; no product names, keys or rules in mdstack or a profile | n/a |
 
 ## Host inventory (profile extension)
 
@@ -127,7 +127,7 @@ other than `tmux`; and the existing secret-pattern and unknown-key checks.
 **Where it lives.** Host names are not secrets, but they are environment
 facts. Keep `[hosts]` and `[placement]` in the project `crew.toml`, which is
 already host-local (it holds absolute paths), or in the org / environment
-layer shared by several projects; never in eng-crew. `resolve` merges
+layer shared by several projects; never in mdstack. `resolve` merges
 `hosts` tables by key like any table ([layers](../profile.md#layers-and-precedence)).
 One coordinator still runs one repo, so `max_runs` is this crew's budget on
 a host; another crew on the same host has its own.
@@ -203,7 +203,7 @@ person can take, exit 1 on any `fail`.
 | # | Check | Read-only probe | `--fix` | Human step |
 |---|---|---|---|---|
 | 1 | Reachable | The entrypoint's `version` verb answers in time | none | Join the overlay; fix the SSH config or host key |
-| 2 | Version | The host's eng-crew version equals the primary's; with `[install]`, a `toolkit` row: the project's pinned toolkit matches the primary's install record and every file hash ([host toolkit](../bootstrap.md#host-toolkit)) | `mdstack host prepare` installs the pinned toolkit (with `[install]`) | Install the pinned version on the host (bootstrap, [#144](https://github.com/mw-ding/eng-crew/issues/144)) |
+| 2 | Version | The host's mdstack version equals the primary's; with `[install]`, a `toolkit` row: the project's pinned toolkit matches the primary's install record and every file hash ([host toolkit](../bootstrap.md#host-toolkit)) | `mdstack host prepare` installs the pinned toolkit (with `[install]`) | Install the pinned version on the host (bootstrap, [#144](https://github.com/mw-ding/eng-crew/issues/144)) |
 | 3 | Runner | The runner service is up | Install or restart the user-level runner | none |
 | 4 | Host doctor | The host's own `mdstack doctor` checks (tools, Python, tmux, state root) | Its `--fix` | Its human steps |
 | 5 | Capabilities | Declared `os` and `arch` match; each device is present (device adapter TBD: `unverified` until one exists, as in [verification](../verification.md)) | none | Correct the profile |
@@ -257,7 +257,7 @@ Contract for [#208](https://github.com/mw-ding/eng-crew/issues/208)
 | Paths | Every path stays under the host's `root`; `..` and absolute paths elsewhere are refused |
 | Idempotency | Mutating verbs carry a request id; a retry with the same id returns the first result, so a retried `spawn` never opens a second window |
 | Results | Structured: `ok`, `refused: <reason>` or `failed: <error>`. Only a transport failure, seen by the client, can yield `unreachable` |
-| Version | The entrypoint refuses a call from a different eng-crew version: no silent skew after an upgrade |
+| Version | The entrypoint refuses a call from a different mdstack version: no silent skew after an upgrade |
 | One primary per run | The runner tags each run with the primary that spawned it and refuses lifecycle verbs on it from any other primary, so two coordinators never drive one run |
 | Runner | A user-level service of the host account (for example a launchd agent or a systemd user unit), never root. It owns the host's crew tmux server, so runs outlive the SSH session and the client, and they start in the account's own session, where some harnesses keep their logins |
 | Probe | `probe` and `pull` read tmux and `ps` directly, so liveness still answers while the runner is down; `spawn` needs the runner |
@@ -337,11 +337,11 @@ unlanded work.
 
 | Asset | Lives on | Used for | Never |
 |---|---|---|---|
-| Overlay membership | Each host's overlay client | The network | In eng-crew, a profile or a brief |
+| Overlay membership | Each host's overlay client | The network | In mdstack, a profile or a brief |
 | Crew SSH client key | The primary only, by mechanism (agent or key file) | The remote call | On a role host, forwarded, or in a profile |
 | Its public half | Each role host's `authorized_keys`, forced to the entrypoint | Entrypoint verbs | A shell |
 | Host keys | The primary's known-hosts | Host authentication | Accepted on change without the owner |
-| GitHub login | Each host, for the identities of its `roles` only | `GH_TOKEN` derived in the window at launch ([Q5](tmux.md#q5-identities)) | Sent over SSH, put in argv, or written to disk by eng-crew |
+| GitHub login | Each host, for the identities of its `roles` only | `GH_TOKEN` derived in the window at launch ([Q5](tmux.md#q5-identities)) | Sent over SSH, put in argv, or written to disk by mdstack |
 | Engine logins | Each host, for the engines it lists | Harness launch | Copied between hosts |
 | Repo contents | Mirrors and worktrees | Runs | On a host the owner does not control |
 
@@ -466,18 +466,18 @@ Adds one [forge-less host](#forge-less-hosts-remote-test-runner) that runs
 the targeted local set for the primary (20.12,
 [#349](https://github.com/mw-ding/eng-crew/issues/349)). Every step is the
 owner's. `<host>` is the host's overlay name, `<root>` its `root`
-(default `~/.crew`), and `<bundle>` the eng-crew release bundle extracted on
+(default `~/.crew`), and `<bundle>` the mdstack release bundle extracted on
 the host. Real-device proof of each step is logged in
 [#716](https://github.com/mw-ding/eng-crew/issues/716).
 
 1. **Overlay.** Join the host to the overlay (N1) and check that `<host>`
    resolves on the primary (N2). Set the access rules so the primary can
    open SSH to the host while the host has no route to the primary (N3), and
-   make SSH listen on the overlay only (N4). eng-crew configures none of
+   make SSH listen on the overlay only (N4). mdstack configures none of
    this (N6).
-2. **Toolchain and eng-crew.** The host needs `python3`, `git` and `tmux`
+2. **Toolchain and mdstack.** The host needs `python3`, `git` and `tmux`
    on the runner account's `PATH`. Copy the primary's release bundle
-   (`eng-crew-<version>.tar.gz` and `SHA256SUMS`,
+   (`mdstack-<version>.tar.gz` and `SHA256SUMS`,
    [bootstrap](../bootstrap.md)) to the host, check the sum, then extract it
    to `<bundle>`. The host has no forge login, so it cannot download the
    bundle itself. The entrypoint refuses a call from a different version, so
@@ -513,7 +513,7 @@ the host. Real-device proof of each step is logged in
    The first prints `"result": "ok"`, the primary's version and
    `"runner": "up"`. The second prints `refused`: the key runs the
    entrypoint only.
-6. **Profile.** Add the host to the project `crew.toml`, never to eng-crew
+6. **Profile.** Add the host to the project `crew.toml`, never to mdstack
    (spec R1). A forge-less host takes no `engines`, `roles` or
    `placement.hosts` entry:
 
@@ -583,6 +583,6 @@ The hardened remote call, the account-owned runner, the readiness check with
 a repair mode and "an unreachable remote is never silently replaced" are
 adapted from firstmate's remote secondmates
 ([firstmate](https://github.com/kunchenguid/firstmate), MIT license).
-eng-crew takes the contracts only, as for the [tmux binding](tmux.md#design-credit):
+mdstack takes the contracts only, as for the [tmux binding](tmux.md#design-credit):
 no code or text is copied. Not adopted: whole homes per host, a
 sub-supervisor per host, and per-host merging (#160 row 6).

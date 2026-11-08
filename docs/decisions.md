@@ -1,7 +1,7 @@
 # Decisions
 
-Dated project decisions for eng-crew, newest first: what was decided, why,
-and the options rejected. It is eng-crew's own decisions doc in the
+Dated project decisions for mdstack, newest first: what was decided, why,
+and the options rejected. It is mdstack's own decisions doc in the
 [essential doc set](project-doc-set.md#essential-doc-set). Seeded on
 2026-11-07 ([#1219](https://github.com/mw-ding/eng-crew/issues/1219)) from
 the [decision log on #985](https://github.com/mw-ding/eng-crew/issues/985);
