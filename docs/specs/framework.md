@@ -3,6 +3,15 @@
 Status: draft v0.1 (bootstrap, Oct 19, 2026). Owner: coordinator. Changes land
 through `crew:spec` PRs (review pass only, merge on `/crew merge-ok`).
 
+> **Partly historical (2026-11-07, #1237).** The goal and requirements
+> R1–R8 (§1–§2) still apply and are cited by the protocol and
+> [CONTRIBUTING](../../CONTRIBUTING.md). The target layout, source material
+> and slices (§3–§5) are the October 2026 bootstrap record, all landed: the
+> current module layout is [team.md §4](team.md#4-target-module-layout), the
+> invariants and extension mechanism are in [portable.md](portable.md), and
+> the iteration process (§6) is owned by
+> [CONTRIBUTING](../../CONTRIBUTING.md).
+
 ## 1. Goal
 
 A **versioned, generic, sanitized source of truth** for the engineering-bot
@@ -64,6 +73,8 @@ crew learns. It covers:
   [protocol §8](../protocol.md#8-safety).
 
 ## 3. Target layout
+
+Historical: the bootstrap layout. Current layout: [team.md §4](team.md#4-target-module-layout).
 
 | Path | Contents | Slice |
 |---|---|---|

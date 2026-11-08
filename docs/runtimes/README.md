@@ -11,6 +11,12 @@ a contract table against it. The [session binding](session.md)
 declares the gaps of an attended interactive coordinator; its profile
 selector and briefs are built (#914), its runner is not.
 
+Naming: in the [four axes](../concepts.md#four-axes) a runtime is an
+**environment**; this directory keeps the older word and its paths. The
+terminal environment's code is in
+[../../environments/](../../environments/README.md) and harness adapters in
+[../../harnesses/](../../harnesses/README.md).
+
 ## Contract
 
 | # | Capability | Guarantee it protects |

@@ -161,7 +161,11 @@ change is recorded in `CHANGELOG.md`.
 
 ## More
 
-- Spec: [docs/specs/framework.md](docs/specs/framework.md)
+- Specs: [docs/specs/team.md](docs/specs/team.md) (module layout, four
+  axes, dependency rules), [docs/specs/portable.md](docs/specs/portable.md)
+  (invariants, extension mechanism) and
+  [docs/specs/framework.md](docs/specs/framework.md) (original requirements
+  R1–R8)
 - Adopting or running a role: [reading paths](docs/reading-paths.md) ·
   every doc: [docs index](docs/README.md)
 - Lessons log: [docs/lessons/](docs/lessons/README.md)
