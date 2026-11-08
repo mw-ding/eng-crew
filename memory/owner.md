@@ -23,3 +23,7 @@ through a reviewed memory PR (`docs/memory.md`).
   records, never in external documents.
 - Ship an approved release; a newly found non-test fix goes into the next
   one. Re-run a flaky CI job; never waive CI.
+- "Full speed" means the profile's FULL SPEED SETUP block: caps 10/10,
+  `max_load` 288, `load_high`/`load_low` 18/12 per CPU, `schedule_interval`
+  60 s, `schedule_ramp` 5; apply it as is when the owner asks (#985
+  c6726893407).
