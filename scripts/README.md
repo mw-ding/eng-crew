@@ -434,12 +434,17 @@ against the [project doc set](../docs/project-doc-set.md) and `homes`
 (`path#anchor` homes need the heading), `unbannered` design docs, `stale`
 banners, `broken_links` (file or anchor) and `oversize` docs. It reads git
 objects only, never fetches or touches a work tree, and writes nothing but
-each scan.json. With no `[docs]` table it does nothing and exits 0. With
+each scan.json. `--state-dir DIR` writes under `DIR` in place of the
+profile's state dir; a `--ref` scan needs it, so a branch or worktree scan
+never overwrites the live default-branch scan.json (#1320). With no `[docs]`
+table it does nothing and exits 0. With
 `[docs] enabled`, `mdstack watch`'s docs-pass timer runs it on the project's own
 checkout every `interval_days` before a docs-pass session (#1026).
 
 ```sh
 python3 scripts/docs-scan.py --project config.toml --checkout <owner>/<repo>=<clone>
+python3 scripts/docs-scan.py --project config.toml --checkout <owner>/<repo>=<worktree> \
+  --ref <owner>/<repo>=HEAD --state-dir <worktree>/.crew/docs-state
 python3 dev/tests/scripts/test-docs-scan.py   # fixture git repos, no network
 ```
 
