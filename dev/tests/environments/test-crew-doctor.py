@@ -163,6 +163,7 @@ class Doctor(DoctorBase):
         self.assertFalse(os.path.exists(os.path.join(self.state, "inbox")))
         r = self.doctor("--fix")
         self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertEqual(r.stderr, "mdstack: config %s\n" % self.project)  # a writing command names its config (#1324)
         self.assertEqual(self.rows(r)["state dir"], "ok")
         self.assertEqual(self.detail(r, "state dir"), "created locks/merge.lock, inbox/, wake/ in " + self.state)
         self.assertTrue(os.path.isfile(os.path.join(self.state, "locks", "merge.lock")))

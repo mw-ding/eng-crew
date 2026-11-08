@@ -685,9 +685,9 @@ def commands():
 
 
 # Commands that can write state, the install or the forge: each names the config it acts under on stderr (#1324).
-WRITES = {"action", "bootstrap", "dequeue", "down", "drain", "feedback", "handoff", "host", "kill", "land",
+WRITES = {"action", "bootstrap", "dequeue", "doctor", "down", "drain", "feedback", "handoff", "host", "kill", "land",
           "land-lock", "layout", "lead", "migrate", "notify", "poll", "restart", "reviewer-pool", "route", "runner",
-          "send", "spawn", "train", "up", "upgrade"}
+          "schedule", "send", "spawn", "train", "up", "upgrade", "watch"}
 
 
 def main(argv=None):
