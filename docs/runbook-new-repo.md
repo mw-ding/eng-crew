@@ -5,7 +5,7 @@ stage, merged, and closed out, with evidence". It ends with a verification
 checklist. Do the steps in order and capture the evidence named in each step;
 the [checklist](#verification-checklist) collects it.
 
-The install path starts with `mdstack bootstrap`: write one `crew.toml`, preview
+The install path starts with `mdstack bootstrap`: write one `config.toml`, preview
 the install, then apply it ([Step 0](#step-0-write-validate-and-render-the-profile)).
 The profile ([profile.md](profile.md)) replaces hand-filled placeholders.
 The manual validate, resolve, render and state setup remain below as a fallback.

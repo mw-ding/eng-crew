@@ -24,7 +24,7 @@ or specs (spec P6). The [denylist check](#denylist-check) guards it.
 | Path in the pack | Required | Contents |
 |---|---|---|
 | `manifest.toml` | yes | `[pack]` (`name`, `commands`; `mdstack_version` for a pack outside mdstack; optional `version`, the [pack's own release](#pack-version)) and the [capability declaration](#capability-declaration) |
-| `profile.toml` | no | Org-layer values for [`resolve`](profile.md#layers-and-precedence): any `crew.toml` key, usually `backends.<concern>.name` and overrides |
+| `profile.toml` | no | Org-layer values for [`resolve`](profile.md#layers-and-precedence): any `config.toml` key, usually `backends.<concern>.name` and overrides |
 | `docs/` | yes | Binding docs: one command or API call per operation of [interfaces](interfaces.md), as [backends/github.md](backends/github.md#interface-mapping) does for GitHub; `commands` points at it |
 | `render/` | no | Per-file [render overlay](#render-overlay): `backends/<name>.toml` and any template to change, laid out like `templates/` |
 | `harness.toml` (any name `pack.harness` gives) | no | [Harness pointers](#harness-pointers) the pack declares for `mdstack bootstrap --harness` |
@@ -83,16 +83,16 @@ manifest as `pack:<name>`. An operation neither declares counts as
 
 ## Wiring
 
-A project picks backends by name in its `crew.toml`
+A project picks backends by name in its `config.toml`
 (`backends.<concern>.name`) and points at an org pack when it resolves:
 
 ```sh
-python3 core/crew-config.py resolve --project crew.toml \
+python3 core/crew-config.py resolve --project config.toml \
   --org-profile <pack-path>/profile.toml \
   --pack-manifest <pack-path>/manifest.toml
 ```
 
-The project can instead record the pack directory in its own `crew.toml`:
+The project can instead record the pack directory in its own `config.toml`:
 
 ```toml
 [paths]
@@ -114,7 +114,7 @@ a backend alongside `github`. With an explicit or recorded org profile, its adja
 a recorded pack directory without `profile.toml` still supplies its `manifest.toml`.
 Names use lowercase letters and digits
 separated by hyphens; new backends require `pack.mdstack_version`.
-`validate crew.toml --pack-manifest <pack-path>/manifest.toml` uses the same
+`validate config.toml --pack-manifest <pack-path>/manifest.toml` uses the same
 declaration. Unknown names still fail. External capabilities fold below
 profile overrides with provenance `external-pack`; other backends continue
 to use their bundled manifests. Invalid or unreadable external manifests fail.

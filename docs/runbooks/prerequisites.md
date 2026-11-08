@@ -104,7 +104,7 @@ All bots on the box share one directory per repo:
 |---|---|
 | `claims/` | Per-pass claim files `<role>-pr<n>-<sha7>`, taken atomically, deleted after posting |
 | `locks/merge.lock` | The synthesizer's serial-merge lock (`flock`) |
-| `crew.toml` | The profile this install was rendered from ([Step 0](../runbook-new-repo.md#step-0-write-validate-and-render-the-profile)) |
+| `config.toml` | The profile this install was rendered from ([Step 0](../runbook-new-repo.md#step-0-write-validate-and-render-the-profile)) |
 | `wiring.md` | The filled-in wiring doc for this repo |
 | `reviewer-engines.md` | The reviewer's current engine choice |
 | `sweeper-state.json` | The stuck-PR sweeper's dedup state |

@@ -41,7 +41,7 @@ output and the installed version in the wiring doc.
    ```bash
    mkdir -p <state-dir>/<owner>__<repo>/claims <state-dir>/<owner>__<repo>/locks
    : > <state-dir>/<owner>__<repo>/locks/merge.lock
-   cp crew.toml <state-dir>/<owner>__<repo>/crew.toml
+   cp config.toml <state-dir>/<owner>__<repo>/config.toml
    cp <path-to-this-repo>/templates/runtimes/grok-bot/wiring.md <state-dir>/<owner>__<repo>/wiring.md
    cp <path-to-this-repo>/templates/runtimes/grok-bot/reviewer-engines.md <state-dir>/<owner>__<repo>/reviewer-engines.md
    ls -la <state-dir>/<owner>__<repo>/ <state-dir>/<owner>__<repo>/claims

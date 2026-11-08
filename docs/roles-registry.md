@@ -208,7 +208,7 @@ A new pass, event, lifecycle or gate is a machinery and protocol change, not
 a registration.
 
 Validate them with `python3 core/crew-roles.py roles/eng` (optionally
-`--project crew.toml` for resolved identity and cap keys). The equivalence test
+`--project config.toml` for resolved identity and cap keys). The equivalence test
 compares them with runtime metadata and the remaining renderer constants.
 
 ## Hard-coded locations to replace

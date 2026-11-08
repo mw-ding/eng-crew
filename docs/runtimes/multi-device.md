@@ -111,7 +111,7 @@ needs = { devices = ["ios-simulator"] }
 | `hosts.<name>.capabilities.engines` | non-empty list of `<engine>` ([profile](../profile.md#engines)) | *required* | Engines logged in on that host |
 | `hosts.<name>.max_runs` | integer ≥ 1 | *required* | This crew's concurrent role runs on that host, on top of the band caps |
 | `hosts.<name>.roles` | list from `builder`, `reviewer` | both | Roles placed there; the primary also runs the coordinator and synthesizer |
-| `hosts.<name>.root` | string: path on that host | `~/.crew` | Mirrors, worktrees and host state; ignored on the primary, which uses [`[paths]`](../profile.md#paths) |
+| `hosts.<name>.root` | string: path on that host | `~/.mdstack` | Mirrors, worktrees and host state; ignored on the primary, which uses [`[paths]`](../profile.md#paths) |
 | `hosts.<name>.toolchain_bin` | string: path on that host | none | `<toolchain-bin>` for builders there |
 | `placement.hosts` | non-empty list of host names, preferred first | the primary | Project affinity |
 | `placement.rules` | array of `{ role, pass?, paths?, needs }` | `[]` | Capability exceptions; first match wins; `needs` takes `os`, `arch`, `devices` |
@@ -125,7 +125,7 @@ whose `needs` no host taking that role can meet; `[hosts]` with a runtime
 other than `tmux`; and the existing secret-pattern and unknown-key checks.
 
 **Where it lives.** Host names are not secrets, but they are environment
-facts. Keep `[hosts]` and `[placement]` in the project `crew.toml`, which is
+facts. Keep `[hosts]` and `[placement]` in the project `config.toml`, which is
 already host-local (it holds absolute paths), or in the org / environment
 layer shared by several projects; never in mdstack. `resolve` merges
 `hosts` tables by key like any table ([layers](../profile.md#layers-and-precedence)).
@@ -195,7 +195,7 @@ override is a decision, so it is on the tool of record.
 
 ## Host readiness
 
-`mdstack host check <host> --project <project>/crew.toml [--fix]` has the shape
+`mdstack host check <host> [--project <config.toml>] [--fix]` has the shape
 of `mdstack doctor` ([#190](https://github.com/mw-ding/eng-crew/issues/190)):
 read-only by default, `--fix` repairs what it can and lists the steps only a
 person can take, exit 1 on any `fail`.
@@ -215,7 +215,7 @@ The result is kept on the primary per (host, project) with its time.
 `mdstack spawn` re-runs checks 1–3 (one cheap call) before it places a run
 there.
 
-`mdstack host prepare <host> --project <project>/crew.toml` creates the project
+`mdstack host prepare <host> [--project <config.toml>]` creates the project
 mirror with the host's own `gh` login, or fetches an existing one, creates
 the host's worktree and state directories, then runs `mdstack host check`. It
 is idempotent; a failed step leaves the host not ready and names the step
@@ -227,7 +227,7 @@ and the host installs that release under `toolkit/`; `--prune` removes the
 toolkit versions no project on the host pins
 ([host toolkit](../bootstrap.md#host-toolkit)).
 
-`mdstack hosts --project <project>/crew.toml` prints one row per host: name,
+`mdstack hosts [--project <config.toml>]` prints one row per host: name,
 primary, OS and arch, devices, engines, roles, ready projects, reachability
 (`reachable`, or `unreachable` since a time) and load (this crew's runs
 against `max_runs`, and the host's total from its runner).
@@ -465,7 +465,7 @@ Adds one [forge-less host](#forge-less-hosts-remote-test-runner) that runs
 the targeted local set for the primary (20.12,
 [#349](https://github.com/mw-ding/eng-crew/issues/349)). Every step is the
 owner's. `<host>` is the host's overlay name, `<root>` its `root`
-(default `~/.crew`), and `<bundle>` the mdstack release bundle extracted on
+(default `~/.mdstack`), and `<bundle>` the mdstack release bundle extracted on
 the host. Real-device proof of each step is logged in
 [#716](https://github.com/mw-ding/eng-crew/issues/716).
 
@@ -512,7 +512,7 @@ the host. Real-device proof of each step is logged in
    The first prints `"result": "ok"`, the primary's version and
    `"runner": "up"`. The second prints `refused`: the key runs the
    entrypoint only.
-6. **Profile.** Add the host to the project `crew.toml`, never to mdstack
+6. **Profile.** Add the host to the project `config.toml`, never to mdstack
    (spec R1). A forge-less host takes no `engines`, `roles` or
    `placement.hosts` entry:
 
@@ -525,8 +525,8 @@ the host. Real-device proof of each step is logged in
 
    With a first `[hosts]` table, the primary needs its own table too, with
    `primary = true` and its `engines`. Run
-   `core/crew-config.py validate <project>/crew.toml`.
-7. **Seed.** `mdstack host prepare <host> --project <project>/crew.toml`
+   `core/crew-config.py validate <project>/config.toml`.
+7. **Seed.** `mdstack host prepare <host> [--project <config.toml>]`
    fetches the primary's checkout and seeds the default branch into the
    host's mirror (`ok prepare seed: project mirror`). It then runs
    `mdstack host check`, which reports the logins check as `n/a`, or `warn`

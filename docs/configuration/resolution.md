@@ -14,8 +14,8 @@ and pack manifest stay in the profile's [Keys](../profile.md#keys) section.
 ## Validate
 
 ```sh
-python3 core/crew-config.py validate crew.toml
-python3 core/crew-config.py validate crew.toml --install
+python3 core/crew-config.py validate config.toml
+python3 core/crew-config.py validate config.toml --install
 ```
 
 Each problem prints as `file:key: reason`, where `key` is the dotted path
@@ -31,14 +31,14 @@ and a token-shaped value anywhere in the file.
 `--install` rejects remaining install-time placeholders, including embedded
 placeholders and entries in lists. The renderer's run-time placeholders
 (such as `<n>` and `<head-sha>`) stay allowed. Ordinary validation keeps
-allowing template profiles. `resolve --project crew.toml --install` applies
+allowing template profiles. `resolve --project config.toml --install` applies
 the same check to the effective profile after all layers and overrides
 (see [Layers and precedence](#layers-and-precedence)),
 so defaults replaced with concrete project/org values do not fail.
 
 ## Layers and precedence
 
-`core/crew-config.py resolve --project <crew.toml> [--org-profile <path>]`
+`core/crew-config.py resolve --project <config.toml> [--org-profile <path>]`
 builds the effective profile from four layers, lowest precedence first
 ([portable spec P5](../specs/portable.md#2-requirements), #110 decision):
 
@@ -47,7 +47,7 @@ builds the effective profile from four layers, lowest precedence first
 | `core` | Schema defaults in the script: `repo.default_branch`, role names/titles/emojis, `engines.coordinator`, each tier's `effort`, the `[triage]` defaults (`repos` from `[repo]`), the `[docs]` defaults when that table is present (`repos` from `[repo]`), and the chosen runtime's integer options | always |
 | `default` | `profiles/default.toml` in mdstack (13.12, [#124](https://github.com/mw-ding/eng-crew/issues/124)) | skipped while absent |
 | `org` | The org / environment pack profile, read from `--org-profile`, or `paths.pack/profile.toml` in the project; mdstack never holds or names one | only when given or recorded |
-| `project` | The project's `crew.toml` (`--project`) | always |
+| `project` | The project's `config.toml` (`--project`) | always |
 
 Merge rule: tables merge by key; scalars and arrays replace the lower
 layer's value whole. TOML has no null, so a layer drops keys only by
@@ -81,7 +81,7 @@ the layer that set it, and exits 0. Each problem prints as
 `(resolved)` for a key no layer set; exit 1.
 
 ```text
-$ python3 core/crew-config.py resolve --project crew.toml
+$ python3 core/crew-config.py resolve --project config.toml
 repo.owner = "acme"  # project
 repo.default_branch = "main"  # core
 runtime.options.builders = 3  # project

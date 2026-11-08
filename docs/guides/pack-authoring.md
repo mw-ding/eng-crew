@@ -14,7 +14,7 @@ A pack is a directory, usually a git repo of its own:
 ```text
 my-pack/
   pack.toml                          # name, framework range, what it provides
-  profile.toml                       # optional org layer: any crew.toml key
+  profile.toml                       # optional org layer: any config.toml key
   connectors/<name>/manifest.toml    # a connector's capability declaration
   connectors/<name>/action.py        # optional actions binding it names
   harnesses/<name>/adapter.py        # a harness adapter
@@ -65,7 +65,7 @@ loader refuses one that loosens a core floor
 
 ## Wire it into an install
 
-Record the pack directory in the project's `crew.toml`, then check what it
+Record the pack directory in the project's `config.toml`, then check what it
 contributes:
 
 ```toml
@@ -74,7 +74,7 @@ pack = "/path/to/my-pack"
 ```
 
 ```sh
-mdstack pack list --project ~/crew-home/crew.toml
+mdstack pack list --project ~/.mdstack/config.toml
 ```
 
 Each line names an item's kind, name, source (`core`, `pack:<name>` or

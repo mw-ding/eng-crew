@@ -31,8 +31,8 @@ invariant ([capability declaration](../interfaces.md#capability-declaration)).
 Check the result:
 
 ```sh
-python3 core/crew-config.py validate ~/crew-home/crew.toml
-python3 core/crew-config.py resolve --project ~/crew-home/crew.toml
+python3 core/crew-config.py validate ~/.mdstack/config.toml
+python3 core/crew-config.py resolve --project ~/.mdstack/config.toml
 ```
 
 A connector that is not built in comes from a pack: name it in

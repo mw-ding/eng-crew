@@ -69,7 +69,7 @@ resolves one (`crew-config.py resolve`, `sensitive`, the `mdstack` commands), an
 a team file with one repo needs no `#<name>`. Commands that also need the
 repo's clone (`mdstack spawn`, `mdstack train`) still find it from the file's
 directory. Until a per-repo clone key exists, run those from a team file in
-that clone. A legacy `crew.toml` is a
+that clone. A single-repo `config.toml` is a
 team file with one repo, and it resolves unchanged.
 
 One team instance serves all of its repos. In a team file,
@@ -88,7 +88,7 @@ defaults to `crew-team-<team>` (an explicit `runtime.options.session` wins).
 It starts no pool leads yet, because lead windows have fixed indexes per
 session. `mdstack down --project <file>#<name>` stops the whole shared session.
 
-## Migration: two `crew.toml` files to one team file
+## Migration: two `config.toml` files to one team file
 
 1. Create `<config-home>/teams/<team>.toml`. Move every table that is the same
    in both files under `[team]` (`[runtime]` becomes `[team.runtime]`, and so
@@ -100,9 +100,9 @@ session. `mdstack down --project <file>#<name>` stops the whole shared session.
 3. Any other key that differs between the two files is team-only. Pick one
    value, or keep that repo in its own team file.
 4. Check each repo: run `crew-config.py resolve --project <file>#<name>` and
-   compare the output with `resolve --project <old crew.toml>`. Only
+   compare the output with `resolve --project <old config.toml>`. Only
    provenance, `paths.state_dir` (now under `<team>/`) and
    `runtime.options.session` should differ.
-5. Stop both crews (`mdstack down --project <old crew.toml>`), move each
+5. Stop both crews (`mdstack down --project <old config.toml>`), move each
    repo's state folder under `<state_dir>/<team>/`, and run
    `mdstack up --team <file>`.

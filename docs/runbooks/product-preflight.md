@@ -97,7 +97,7 @@ answers go.
 6. **Toolchain.** Find what hooks and CI need (pre-push hooks that need a
    particular runtime, package-manager caches that need a writable home). Record
    the `PATH` and environment setup as `<toolchain-bin>` (`paths.toolchain_bin`
-   in `crew.toml`; re-run Step 0 if it changed); every build and fix worker
+   in `config.toml`; re-run Step 0 if it changed); every build and fix worker
    brief sets it before any commit or push.
 
 7. **Existing open PRs and issues.** `pr-opened` never fires for PRs that
