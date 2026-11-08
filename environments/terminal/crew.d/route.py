@@ -9,7 +9,8 @@ and a merge that an open issue's `Depends on` names stays queued so the coordina
 including red CI, changes, stale heads, holds, failed commands, dialogs, blocked runs and owner asks. Red CI for a
 superseded head and synthesizer gate-status blocks that only wait (`wait=ci,review,validation,selfgate,train`) are consumed.
 Routing is serialized; interrupted batches survive in wake/queue.jsonl.route-* and are retried. Reviewer spawns
-are deduplicated by PR/head/pass/round against live and queued runs, section files and posted pass markers.
+are deduplicated by PR/head/pass/round against live and queued runs, section files and pass markers posted by this
+runtime's reviewer (its login and signature; #1290).
 Synthesizers remain alive while land requests lack completion or other inbox messages lack acknowledgment;
 the inbox check and reap share the queue lock with send's inbox append.
 
@@ -72,6 +73,14 @@ def rereview_id(pr, head):
     return None
 
 
+def own_reviews(values, pr):
+    """Reviews this runtime's reviewer posted: its login and its signature (#1290). Another runtime's records on the
+    same PR, even under a shared login, never stand in for this runtime's pass."""
+    sign = re.compile(r"^— .*\b%s \(" % re.escape(values["identities.reviewer.name"]), re.M)
+    return [r for r in pr["reviews"] if (r.get("author") or {}).get("login") == values["identities.reviewer.gh_user"]
+            and sign.search(r["body"])]
+
+
 def merge_up_delta(pr, head):
     """A signed, head-pinned builder fix recording a resolved conflict or differing patch needs delta review."""
     for review in pr["reviews"]:
@@ -128,15 +137,16 @@ def review(args, state, pr, head, pass_, round_):
             if any(e.get("pr") == pr["number"] and e.get("head") == head and e["pass"] == pass_ and
                    e["round"] == round_ for e in (json.loads(line) for line in f if line.strip())):
                 return
-    text = "\n".join(r["body"] for r in pr["reviews"])
-    posted = markers(text)
+    own = own_reviews(profile(args)[0], pr)
+    posted = [(r in own, m) for r in pr["reviews"] for m in markers(r["body"])]
     pending = open_rereview(pr, head)
     if pending:
         for i in range(len(posted) - 1, -1, -1):
-            m = posted[i]
+            m = posted[i][1]
             if m.get("sha") == head and m.get("pass") == "steer" and m.get("cmd") == "rereview":
                 posted = posted[i + 1:]
                 break
+    posted = [m for mine, m in posted if mine]
     section = os.path.join(state, "verdicts", "pr%d-%s-r%d-%s.md" % (pr["number"], head[:7], round_, pass_))
     if os.path.exists(section) and not pending:
         with open(section) as f:

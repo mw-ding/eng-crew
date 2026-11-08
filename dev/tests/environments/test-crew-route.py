@@ -71,6 +71,10 @@ class Route(SpawnBase):
         with open(self.state_file) as f:
             return sorted(json.load(f)["crew-acme-widgets"].values())
 
+    @staticmethod
+    def signed(body, login="acme-reviewer", name="Vera"):
+        return dict(author={"login": login}, body=body + "\n— 🔍 %s (Reviewer) · codex · gpt-6.1-sol" % name)
+
     def gh_calls(self):
         with open(self.gh_log) as f:
             return [json.loads(line) for line in f]
@@ -358,7 +362,7 @@ class Route(SpawnBase):
         previous = self.approved_push()
         verdict = "<!-- crew:v1 role=reviewer-validator pass=verdict pr=12 sha=%s round=2 verdict=pass -->" % self.sha
         self.put("verdicts/pr12-%s-r2-review.md" % self.sha[:7], verdict)
-        self.live["reviews"] += [dict(body=verdict), dict(body="<!-- crew:v1 role=coordinator pass=steer "
+        self.live["reviews"] += [self.signed(verdict), dict(body="<!-- crew:v1 role=coordinator pass=steer "
                                                             "cmd=rereview pr=12 sha=%s -->" % self.sha)]
         self.save()
         self.queue(dict(reason="status", window="ben-7", line="done: #7 #12 " + self.sha),
@@ -395,8 +399,8 @@ class Route(SpawnBase):
         self.route()
         self.assertEqual(len(self.windows()), 1)
         self.assertEqual(self.crew("kill", "vera-12-r1-review", "--project", self.project).returncode, 0)
-        self.live["reviews"] = [{"body": "<!-- crew:v1 role=reviewer-validator pass=review pr=12 sha=%s "
-                                          "round=1 verdict=pass -->" % self.sha}]
+        self.live["reviews"] = [self.signed("<!-- crew:v1 role=reviewer-validator pass=review pr=12 sha=%s "
+                                            "round=1 verdict=pass -->" % self.sha)]
         self.save()
         self.queue(self.event())
         self.route()
@@ -411,6 +415,15 @@ class Route(SpawnBase):
         self.queue(dict(self.event(), round=2))
         self.route()
         self.assertIn("vera-12-r2-review", self.names())
+
+    def test_another_runtimes_posted_pass_never_suppresses_review(self):  # #1290
+        marker = "<!-- crew:v1 role=reviewer-validator pass=review pr=12 sha=%s round=1 verdict=pass -->" % self.sha
+        self.live["reviews"] = [dict(body=marker), self.signed(marker, login="other-bot"),
+                                self.signed(marker, name="Grok Bot")]
+        self.save()
+        self.queue(self.event())
+        self.route()
+        self.assertIn("vera-12-r1-review", self.names())
 
     def test_capped_validation_dequeues_after_review_kill(self):
         with open(self.project, "a") as f:
