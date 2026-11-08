@@ -185,6 +185,8 @@ def observe_ci(pr, repo):
             continue
         try:
             jobs = gh_json("api", "repos/%s/actions/runs/%s/jobs?per_page=100" % (repo, match[1]))["jobs"]
+        except RateLimited:  # a quota refusal ends the poll; each fallback below re-raises it too (#1300)
+            raise
         except (RuntimeError, KeyError):
             continue
         check["_ci_infra"] = bool(jobs) and all(j.get("steps") == [] for j in jobs) and len(jobs) < 100
@@ -198,6 +200,8 @@ def ci_state(pr, repo):
         if job and check.get("status") == "COMPLETED" and check.get("conclusion") in CI_BAD:
             try:
                 data = gh_json("api", "repos/%s/actions/jobs/%s" % (repo, job[1]))
+            except RateLimited:
+                raise
             except RuntimeError:
                 data = {}
             if data.get("status") == "completed" and data.get("conclusion", "").upper() in CI_BAD and \
@@ -236,6 +240,8 @@ def express_lane(args, values, view):
     try:
         return commands()["train"].train_express(args, values, "%s/%s" % (values["repo.owner"], values["repo.name"]),
                                                  view)[0]
+    except RateLimited:
+        raise
     except RuntimeError as e:
         print("crew: poll: #%d crew lane: %s" % (view["number"], e))
         return False
@@ -456,6 +462,8 @@ def triage_poll(values, state, project, read=gh_json):
             items = [read("issue", "list", "-R", repo, "--state", s, "--limit", "500", "--json",
                           TRIAGE_FIELDS if s == "open" else "number,title,body", retry=RETRY_DELAYS)
                      for s in ("open", "closed")]
+        except RateLimited:
+            raise
         except RuntimeError as e:
             queue["repos"][repo] = "unreadable: %s" % e
             continue
@@ -507,6 +515,8 @@ def triage_milestones(values, state, read=gh_json):
     try:
         closed = read("api", "repos/%s/milestones?state=closed&per_page=100" % repo, retry=RETRY_DELAYS)
         closed = {m["number"]: m["title"] for m in closed}
+    except RateLimited:
+        raise
     except (RuntimeError, ValueError, KeyError, TypeError):
         return pending
     if seen is not None:

@@ -321,6 +321,46 @@ class GhRetry(unittest.TestCase):
                 self.poll.run(mock.Mock(once=False))
         sleep.assert_called_once_with(600)
 
+    def refused(self, *argv, **kwargs):
+        raise self.poll.RateLimited("crew: gh %s rate-limited until 2027-01-15T08:30:00Z: API rate limit exceeded"
+                                    % " ".join(argv[:2]), 1_800_001_800)
+
+    def test_late_rate_limit_in_triage_exits_tempfail_without_more_reads(self):  # #1300 r1
+        values = {"repo.owner": "acme", "repo.name": "widgets", "repo.default_branch": "main", "triage.enabled": True}
+        reads, triage = [], self.poll.triage_poll
+
+        def read(*argv, **kwargs):
+            reads.append(argv[:2])
+            return self.refused(*argv) if argv[:2] == ("issue", "list") else []
+
+        with tempfile.TemporaryDirectory() as state, mock.patch("builtins.print") as out:
+            os.makedirs(os.path.join(state, "wake"))
+            with mock.patch.object(self.poll, "profile", return_value=(values, None, state)), \
+                    mock.patch.object(self.poll.ownership_module, "status", return_value="active"), \
+                    mock.patch.object(self.poll, "gh_json", return_value=[]), \
+                    mock.patch.object(self.poll, "triage_poll", lambda v, s, p: triage(v, s, p, read=read)):
+                code = self.poll.run(mock.Mock(once=True, project="crew.toml"))
+        self.assertEqual(code, 75)
+        self.assertEqual(reads, [("issue", "list")])  # no milestones read after the refusal
+        self.assertIn("rate-limited until 2027-01-15T08:30:00Z", str(out.call_args_list[-1].args[0]))
+
+    def test_every_read_fallback_reraises_a_rate_limit(self):  # #1300 r1: each would otherwise poll on as success
+        failed = {"status": "COMPLETED", "conclusion": "FAILURE",
+                  "detailsUrl": "https://github.com/acme/widgets/actions/runs/1/job/2"}
+        train = self.poll.commands()["train"]
+        with tempfile.TemporaryDirectory() as state:
+            for name, call in [
+                    ("observe_ci", lambda: self.poll.observe_ci({"statusCheckRollup": [failed]}, "acme/widgets")),
+                    ("ci_state", lambda: self.poll.ci_state({"statusCheckRollup": [failed]}, "acme/widgets")),
+                    ("triage_milestones", lambda: self.poll.triage_milestones(
+                        {"repo.owner": "acme", "repo.name": "widgets"}, state, read=self.refused)),
+                    ("express_lane", lambda: self.poll.express_lane(
+                        mock.Mock(project="crew.toml", org_profile=None), {"repo.owner": "acme", "repo.name": "widgets"},
+                        {"number": 9, "labels": [{"name": "crew:express"}]}))]:
+                with self.subTest(name), mock.patch.object(self.poll, "gh_json", side_effect=self.refused), \
+                        mock.patch.object(train.precheck.config, "resolve_profile", return_value=({},)):
+                    self.assertRaises(self.poll.RateLimited, call)
+
     def test_once_exits_tempfail_on_transient_and_one_otherwise(self):
         args = mock.Mock(once=True)
         for error, code in [(self.poll.Transient("crew: gh pr list failed: HTTP 504"), 75),
