@@ -19,8 +19,9 @@ PROMPTS = [(r"Would you like to .+\?", r"Press enter to confirm or esc to cancel
            (r"Trust this folder\?", r"enter continue · esc "),
            (r"(?i:Hooks need review)$", r"enter confirm · esc skip$")]
 FATAL = r'■\s(?=.*"type": ?"error")(?=.*"status": ?[45]\d\d\b)'  # ■ {"type":"error","status":400,...}
-TRANSIENT = re.compile(r'"status": ?(?:429|5\d\d)\b|\b(?:429|5\d\d)\b.*(?:Too Many Requests|Internal Server Error|'
-                       r"Bad Gateway|Unavailable|Gateway Timeout|retry)|rate.?limit", re.I)  # ■ … last status: 429 …
+# Its own error banner only, a line opening with ■: never tool output, file names or quoted text (#1366).
+TRANSIENT = re.compile(r'^■\s.*(?:"status": ?(?:429|5\d\d)\b|\b(?:429|5\d\d)\b.*(?:Too Many Requests|Internal Server '
+                       r"Error|Bad Gateway|Unavailable|Gateway Timeout|retry)|rate.?limit)", re.I)  # ■ … last status: 429 …
 COMPOSER = "›"
 BUSY = re.compile(r"esc to interrupt")  # a lowercased screen mid-turn
 

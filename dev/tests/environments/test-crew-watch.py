@@ -255,10 +255,25 @@ class Watch(LivenessBase):
     def test_scan_records_adapter_transient_text_once(self):  # #621
         claude = "  ⎿  API Error (529 {\"type\":\"error\"}) · Retrying in 2 seconds… (attempt 1/10)"
         codex = "■ exceeded retry limit, last status: 429 Too Many Requests"
+        fatal = '  ⎿  API Error: 529 {"type":"error","error":{"type":"overloaded_error"}}'
+        # Pane text that is not the harness's own error line (#1366): file names, tool output, diffs, quoted issue
+        # bodies and a docs table row naming the error line.
+        noise = "\n".join([
+            "  ⎿  Wrote 9 lines to changes/unreleased/1300-rate-limit-backoff.md",
+            "⏺ Bash(gh issue view 1395)", "  ⎿  title: back off on a rate limit", "     API Error (429) seen twice",
+            "     ⎿  API Error (529 …) · Retrying in 2 seconds… (attempt 1/10)",
+            "      12 +| Transient | A `⎿  API Error` line naming 429 or a 5xx status |",
+            "| C5 | `⎿  API Error (529 …) · Retrying` and `■ last status: 429 Too Many Requests` |",
+            "  └ grep -n rate-limit docs/scheduling.md: HTTP 429 Too Many Requests, retry",
+            '    {"type":"error","status":503} quoted from #621', "• 429 Too Many Requests is the rate limit retry"])
         errors = os.path.join(self.state, "schedule", "errors.jsonl")
-        for harness, text, want in [("claude", claude, [claude.strip()]), ("codex", codex, [codex]),
+        for harness, text, want in [("claude", claude, [claude.strip()]), ("claude", fatal, [fatal.strip()]),
+                                    ("codex", codex, [codex]),
                                     ("codex", '■ {"type":"error","status":503,…}', ['■ {"type":"error","status":503,…}']),
-                                    ("pi", claude, [])] + [(h, screen(n), []) for n in WORKING for h in ("claude", "codex")]:
+                                    ("pi", claude, []), ("claude", noise, []), ("codex", noise, []),
+                                    ("claude", noise + "\n" + claude, [claude.strip()]),
+                                    ("codex", noise + "\n" + codex, [codex])] + \
+                [(h, screen(n), []) for n in WORKING for h in ("claude", "codex")]:
             with self.subTest(harness=harness, text=text[:30]):
                 if os.path.exists(errors):
                     os.remove(errors)
