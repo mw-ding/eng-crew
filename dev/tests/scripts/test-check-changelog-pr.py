@@ -68,6 +68,22 @@ class ChangelogPRTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("exempt-only", result.stdout)
 
+    def test_memory_only_exempt(self):
+        self.write("memory/owner.md")
+        self.write("memory/roles/builder.md")
+        self.commit()
+        result = self.run_guard()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("exempt-only", result.stdout)
+
+    def test_memory_with_other_content_requires_fragment(self):
+        self.write("memory/owner.md")
+        self.write("docs/memory.md")
+        self.commit()
+        result = self.run_guard()
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("add changes/unreleased/<issue>-<slug>.md", result.stderr)
+
     def test_cut_pr(self):
         self.write("CHANGELOG.md", "Released\n")
         (self.root / "changes/unreleased/1-old.md").unlink()

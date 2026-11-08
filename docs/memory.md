@@ -80,6 +80,7 @@ size budget.
    decided. Dispatch it like any build.
 4. Its PR changes only `memory/`, corrects or replaces an entry before
    adding one, stays within the size limits and passes the memory lint.
+   It needs no changelog fragment: the changelog check exempts `memory/`.
    It lands only through review, like every change.
 5. Personal data found on the way goes to the knowledge connector as a
    proposed edit, or is dropped when no connector is configured; never

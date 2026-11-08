@@ -75,8 +75,8 @@ Use no relative links in the entry text: their paths break when it moves into
 CI also runs `scripts/check-changelog-pr.py` against the PR's merge base.
 It fails unless the PR adds a new `changes/unreleased/<issue>-<slug>.md`
 fragment or changes only exempt paths. The exempt path list lives in that
-script's `EXEMPT_PATHS`; it covers cut output, fragment-only changes and
-verification artifacts. An empty diff, including a CI-only train PR whose
+script's `EXEMPT_PATHS`; it covers cut output, fragment-only changes,
+verification artifacts and core memory (`memory/`). An empty diff, including a CI-only train PR whose
 changes are already in its base, also passes. A train with content changes
 needs a fragment like any other PR. Pushes to `main` skip the requirement.
 Editing an existing fragment does not satisfy a PR that changes other content.
