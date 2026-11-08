@@ -302,10 +302,10 @@ class Route(SpawnBase):
 
     def approved_push(self, merge=True):
         previous = self.sha
-        self.live["reviews"] = [dict(body=(
+        self.live["reviews"] = [self.signed(
             "<!-- crew:v1 role=reviewer-validator pass=verdict pr=12 sha=%s round=1 verdict=changes -->\n"
             "<!-- crew:v1 role=reviewer-validator pass=verdict pr=12 sha=%s round=2 verdict=pass -->"
-            % ("0" * 40, previous)))]
+            % ("0" * 40, previous))]
         self.git("commit", "-q", "--allow-empty", "-m", "default branch update")
         default = self.git("rev-parse", "HEAD")
         self.git("checkout", "-q", "--detach", previous)
@@ -345,6 +345,14 @@ class Route(SpawnBase):
         self.assertEqual(self.names(), ["ash", "vera-12-r2-review"])
         self.assertEqual(len(self.windows()), 1)
         self.assertEqual(self.pending(), [])
+
+    def test_merge_up_approved_only_by_another_runtime_gets_review(self):  # #1290
+        self.approved_push()
+        self.live["reviews"][0] = self.signed(self.live["reviews"][0]["body"].split("\n—")[0], name="Grok Bot")
+        self.save()
+        self.queue(dict(reason="status", window="ben-7", line="done: #7 #12 " + self.sha))
+        self.route()
+        self.assertEqual(self.names(), ["ash", "vera-12-r1-review"])
 
     def test_merge_up_with_open_rereview_gets_normal_review(self):
         previous = self.approved_push()
@@ -425,6 +433,22 @@ class Route(SpawnBase):
         self.route()
         self.assertIn("vera-12-r1-review", self.names())
 
+    def test_another_runtimes_verdict_at_head_never_gates_new_head_review(self):  # #1290
+        verdict = "<!-- crew:v1 role=reviewer-validator pass=verdict pr=12 sha=%s round=1 verdict=pass -->" % self.sha
+        self.live["reviews"] = [dict(body=verdict), self.signed(verdict, login="other-bot"),
+                                self.signed(verdict, name="Grok Bot")]
+        self.save()
+        self.queue(self.event())
+        self.route()
+        self.assertIn("vera-12-r1-review", self.names())
+        self.assertEqual(self.crew("kill", "vera-12-r1-review", "--project", self.project).returncode, 0)
+        self.live["reviews"].append(self.signed(verdict))
+        self.save()
+        self.queue(self.event())
+        self.route()
+        self.assertEqual(len(self.windows()), 1)
+        self.assertEqual(self.pending(), [])
+
     def test_capped_validation_dequeues_after_review_kill(self):
         with open(self.project, "a") as f:
             f.write('\n[runtime.options]\nreviewers = 1\n')
@@ -504,7 +528,7 @@ class Route(SpawnBase):
 
     def test_repeated_head_with_newest_verdict_opens_no_round(self):
         verdict = "<!-- crew:v1 role=reviewer-validator pass=verdict pr=12 sha=%s round=1 verdict=changes -->" % self.sha
-        self.live["reviews"] = [dict(body=verdict)]
+        self.live["reviews"] = [self.signed(verdict)]
         self.save()
         self.queue(dict(self.event(), round=2), dict(self.event("fix-at-head"), round=2))
         self.route()
