@@ -607,6 +607,21 @@ macOS VM on the primary. **R**: a real second device, logged in
 until the owner records them. A lab run says which of C or V it used, and a
 stub-engine run proves lifecycle and transport, not vendor logins or quota.
 
+The C host is built from `environments/terminal/remote/lab/` (#1356): a
+`Dockerfile` over an owner-approved, preloaded ARM64 Linux base pinned by
+digest that downloads nothing, a key-only `sshd_config`, and
+`crew-lab-host.py`. Its `supervise` mode is PID 1: it makes the container's
+own SSH host key at first start (the image deletes any the base carried),
+then keeps `sshd` and the
+runner up, restarting either on exit, with the runner as the non-root
+`crew` user in a scrubbed env; `ready`, the image health check, is the
+runner heartbeat. `activate` verifies the bundle and `SHA256SUMS` that
+`docker cp` copied in before moving it into place, and records the tag,
+digests and, for a dev tag, the exact source SHA. `authorize` writes the
+run's key as the only `authorized_keys` line, forced and `restrict`. No
+login, token, SSH agent or home is copied in. Container setup and teardown
+is lab item C.
+
 | Issue | Acceptance criteria | Lab | Real device |
 |---|---|---|---|
 | Host OS adapters | Each operation in the [adapter table](#host-os-adapters) on its OS; a mismatch fails check 5 | C: `linux` supervised; V: `macos` launchd | A systemd user unit with lingering needs a systemd host or VM |
