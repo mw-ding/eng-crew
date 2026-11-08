@@ -34,6 +34,8 @@ class Fixers(unittest.TestCase):
         self.calls = []
         self.writes = []
         self.scope = True
+        self.owner_type = "Organization"
+        self.scopes = "repo, project"
         patch = mock.patch.object(repo.subprocess, "run", side_effect=self.gh)
         patch.start()
         self.addCleanup(patch.stop)
@@ -63,6 +65,11 @@ class Fixers(unittest.TestCase):
                 self.options = list(repo.STATUS)
             else:
                 output = {"data": {"repository": {"projectsV2": {"nodes": [{"id": x} for x in self.linked], "pageInfo": {"hasNextPage": False}}}}}
+        elif a[:3] == ["api", "-i", "user"]:
+            headers = "HTTP/2.0 200 OK\r\n" + ("X-Oauth-Scopes: " + self.scopes + "\r\n" if self.scopes is not None else "")
+            return subprocess.CompletedProcess(args, 0, headers + "\r\n" + json.dumps({"login": "builder"}), "")
+        elif a[0] == "api" and a[1].startswith("users/"):
+            output = {"login": a[1][len("users/"):], "type": self.owner_type}
         elif a[0] == "api":
             path = a[1]
             if "/labels" in path:
@@ -178,6 +185,47 @@ class Fixers(unittest.TestCase):
         self.scope = False
         self.assertEqual(self.check(fix=True)["Project"][0], "human")
         self.assertFalse(any(a[0] == "project" for a in self.writes))
+
+    def test_bot_on_user_owned_repo_without_board_is_human_not_fail(self):
+        self.owner_type = "User"
+        for kwargs in ({}, {"fix": True}):
+            with self.subTest(kwargs=kwargs):
+                status, detail, hint = self.check(**kwargs)["Project"]
+                self.assertEqual(status, "human")
+                self.assertIn("recommended, not required", detail)
+                self.assertIn("gh project create --owner acme --title 'widgets crew board'", hint)
+                self.assertIn("gh project link <number> --owner acme --repo widgets", hint)
+                self.assertFalse(any(a[0] == "project" for a in self.writes))
+
+    def test_classic_token_without_project_scope_is_human(self):
+        self.scopes = "repo, read:project"
+        self.assertEqual(self.check(fix=True)["Project"][0], "human")
+        self.assertFalse(any(a[0] == "project" for a in self.writes))
+
+    def test_token_without_project_read_names_owner_commands(self):
+        self.scope, self.scopes = False, "repo"
+        for kwargs in ({}, {"fix": True}):
+            with self.subTest(kwargs=kwargs):
+                status, detail, hint = self.check(**kwargs)["Project"]
+                self.assertEqual(status, "human")
+                self.assertIn("recommended, not required", detail)
+                self.assertIn("gh project create --owner acme --title 'widgets crew board'", hint)
+                self.assertIn("gh project link <number> --owner acme --repo widgets", hint)
+                self.assertFalse(any(a[0] == "project" for a in self.writes))
+
+    def test_capable_identity_still_creates_and_links(self):
+        for owner_type, scopes in (("Organization", None), ("User", "repo, project")):
+            with self.subTest(owner_type=owner_type, scopes=scopes):
+                self.projects, self.linked, self.writes = [], [], []
+                self.owner_type, self.scopes = owner_type, scopes
+                if owner_type == "User":
+                    self.values["repo.owner"] = "builder"
+                    self.addCleanup(self.values.__setitem__, "repo.owner", "acme")
+                result = self.check(fix=True)
+                self.assertEqual(result["Project"][0], "ok")
+                self.assertEqual(self.linked, ["P1"])
+                self.assertIn(["project", "create"], [a[:2] for a in self.writes])
+                self.assertEqual(self.check()["Project"][0], "ok")
 
     def test_ambiguous_projects_are_not_changed(self):
         self.board()
