@@ -78,8 +78,9 @@ as above.
 
 ## Step 3: create Milestones and link a GitHub Project (v2)
 
-Every crew repo requires GitHub Milestones **M1, M2, …** and a GitHub Project
-board ([GitHub backend: Milestones and board](../backends/github.md#milestones-and-board)).
+Every crew repo requires GitHub Milestones **M1, M2, …**; a GitHub Project
+board is recommended, not required
+([GitHub backend: Milestones and board](../backends/github.md#milestones-and-board)).
 Create the current milestone before handoff and assign issues to the
 appropriate open `M*`. A **closed milestone is frozen**: no new issues may be
 added to it; follow-ups go to the next `M*`. Capture the milestone list and

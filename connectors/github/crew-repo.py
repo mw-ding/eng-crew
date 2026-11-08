@@ -3,7 +3,8 @@
 Read-only unless fix=True; dry_run prints shell-quoted operations without executing them. Uses the profile's builder
 identity without switching gh accounts. Only the ten runbook crew labels are managed; mismatches need this repo's
 install.json and extra crew labels always block. Milestone names are explicit; closed milestones stay frozen.
-Project Status options are replaced only on an empty board. Invitations are sent, never accepted. CI and branch
+Project Status options are replaced only on an empty board. The board is recommended, not required: an identity that
+cannot create one under the repo owner gets a human step naming the owner's commands. Invitations are sent, never accepted. CI and branch
 protection remain human steps. No product labels, workflows, webhooks or repository settings are changed.
 """
 import json
@@ -121,6 +122,16 @@ class Repo:
             raise RuntimeError("too many linked Projects to check safely")
         return {x["id"] for x in projects["nodes"]}
 
+    def can_create_project(self):
+        """A login other than a user owner cannot create that user's Project; a classic token needs the project scope."""
+        text = self.call("api", "-i", "user", decode=False).replace("\r\n", "\n")
+        head, _, body = text.partition("\n\n")
+        login = json.loads(body)["login"]
+        if self.api("users/" + self.owner)["type"] == "User" and login.lower() != self.owner.lower():
+            return False
+        scopes = re.search(r"^x-oauth-scopes:(.*)$", head, re.I | re.M)
+        return not scopes or "project" in [x.strip() for x in scopes.group(1).split(",")]
+
     def project(self):
         listing = self.call("project", "list", "--owner", self.owner, "--limit", "100", "--format", "json")
         projects = listing["projects"]
@@ -131,6 +142,11 @@ class Repo:
         if len(candidates) > 1:
             return "human", "multiple candidate Projects", "choose and link one crew board before retrying"
         if not candidates:
+            if not self.can_create_project():
+                title = shlex.quote(self.name + " crew board")
+                return "human", "no crew board (recommended, not required); this identity cannot create one under " + self.owner, (
+                    "optional: the owner runs gh project create --owner %s --title %s, then gh project link <number> --owner %s --repo %s"
+                    % (self.owner, title, self.owner, self.name))
             if self.operation("project", "create", "--owner", self.owner, "--title", self.name + " crew board", "--format", "json"):
                 return self.project()
             return "fail", "Project create, link and Status setup planned", "mdstack doctor --fix creates a board, links it and sets " + ", ".join(STATUS)

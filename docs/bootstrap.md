@@ -229,7 +229,7 @@ anything; exit 0 only with no `fail`. `--fix` runs the fixer where one exists.
 | 14 | Paths | all | A `paths.*` key in use is a placeholder; `state_dir` or `worktree_root` is inside a checkout or not writable | Set it in `crew.toml` |
 | 15 | State dir | all | `claims/`, `locks/merge.lock` or `inbox/` missing (tmux also `status/`, `wake/`) | `--fix` creates them |
 | 16 | Labels | all | A `crew:*` label of [runbook Step 1](runbook-new-repo.md#step-1-create-the-crew-labels) is missing or differs; another `crew:*` name exists | Missing: `--fix`. Collision: stop; `human`: decide who owns the namespace ([Step 5](runbook-new-repo.md#step-5-product-safety-checks)) |
-| 17 | Milestone and Project | all | No open `M*`; no linked Project with Todo, In Progress, In Review, Done | `--fix` with the `project` scope, else `human` |
+| 17 | Milestone and Project | all | No open `M*`; no linked Project with Todo, In Progress, In Review, Done | `--fix` when the identity can create and link the board, else `human` naming the owner's create and link commands. The board is recommended, not required: a missing one never fails |
 | 18 | CI | all | No check ran on recent PRs (`mdstack poll` wakes the reviewer only on green CI); no push CI on the default branch (`warn`) | `human`: add a PR check ([Step 4](runbook-new-repo.md#step-4-check-ci-and-branch-protection)) |
 | 19 | One automation | all | Webhooks or apps that also assign, open, review or merge ([protocol §8](protocol.md#8-safety)) | `human`: decide and record it |
 | 20 | Tool drift | all | A tool's running version differs from the installed one, or is below its pin ([#193](https://github.com/mw-ding/eng-crew/issues/193)) | Restart the tool or session; upgrade |
@@ -253,7 +253,7 @@ there, and apply re-reads live state before each one.
 |---|---|
 | The ten `crew:*` labels of runbook Step 1 | Created when missing. A differing `crew:*` label is updated only when `install.json` records this install; otherwise it is a collision and bootstrap stops |
 | Current `M*` milestone | Created when none is open, with the owner's confirmed name |
-| Project: create, link, Status options | With the `project` scope; else a `human` step |
+| Project: create, link, Status options | When the identity can create a Project under the repo owner (the `project` scope; for a user-owned repo, that user's own login); else a `human` step naming the owner's commands, since the board is recommended, not required |
 | Reviewer collaborator (two-identity profiles) | Invitation sent; acceptance is `human` |
 | Branch protection level, squash-only merges | `human`: the [Step 4](runbook-new-repo.md#step-4-check-ci-and-branch-protection) table is printed and the choice recorded; never applied by bootstrap |
 | Specs home ([essential doc set](project-doc-set.md#essential-doc-set), #1225) | When the checkout's specs home (`[docs] homes.specs`, default `docs/specs/`) holds no Markdown spec, the plan prints `Repo operation: scaffold <home>/project.md` and apply writes the [spec template](../templates/spec.md)'s skeleton there. The seed is the owner's to commit: not recorded in `install.json`, not excluded, and never written over an existing file or alongside another spec |

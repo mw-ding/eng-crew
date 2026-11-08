@@ -119,12 +119,15 @@ Setup commands are in
 
 - **Milestones** are named `M1`, `M2`, …. Each issue goes to an open `M*`. A
   closed milestone is frozen: no new issues; follow-ups go to the next `M*`.
-- **Project (v2) board** with a Status field of exactly Todo, In Progress, In
+- **Project (v2) board**, recommended, not required, with a Status field of exactly Todo, In Progress, In
   Review and Done. The coordinator adds issues and keeps item status current
   (Todo for new issues, In Progress while a PR is built, In Review while it is
   under review, Done after merge). The builder adds its PR by hand. Board
   auto-add and status workflows must not conflict with that; a built-in "item
-  closed" → Done workflow is fine.
+  closed" → Done workflow is fine. With no board, board status is skipped;
+  `mdstack doctor` reports a `human` step with the owner's create and link
+  commands when its identity cannot create one (a bot login on a user-owned
+  repo, or no `project` scope), and bootstrap proceeds.
 
 ### Linkage
 
