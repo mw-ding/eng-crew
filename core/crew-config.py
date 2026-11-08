@@ -1089,7 +1089,7 @@ def fold_manifests(merged, prov, files, err, external=None, land=None, strategy=
 TEAM_TABLES = ["runtime", "backends", "identities", "engines", "paths", "hosts", "placement", "sensitive", "spec",
                "tools", "size_budget", "builder", "flavor"]
 REPO_KEYS = dict({"default_branch": "repo.default_branch", "precheck": "builder.precheck", "sensitive": "sensitive.paths",
-                  "spec": "spec.paths"},
+                  "spec": "spec.paths", "checkout": "paths.checkout"},  # checkout: the repo's clone (#1287)
                  **{k: "runtime.options." + k for k in ("merge_grant", "merge_grant_scope", "mirror_deferral", "mirror",
                                                         "lone_pr_land", "train_min", "train_window",
                                                         "train_local_checks")})

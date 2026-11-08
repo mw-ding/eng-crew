@@ -54,6 +54,7 @@ train_window = 120
 
 [repos.widgets]
 repo = "<owner>/widgets"
+checkout = "~/src/widgets"
 default_branch = "trunk"
 sensitive = ["billing/**"]
 ```
@@ -67,9 +68,11 @@ in a repo section's value prints as `<file>[repos.<name>]:<key>: reason`.
 Name a repo with a project reference `<file>#<name>`. Every `--project` flag
 resolves one (`crew-config.py resolve`, `sensitive`, the `mdstack` commands), and
 a team file with one repo needs no `#<name>`. Commands that also need the
-repo's clone (`mdstack spawn`, `mdstack train`) still find it from the file's
-directory. Until a per-repo clone key exists, run those from a team file in
-that clone. A single-repo `config.toml` is a
+repo's clone (`mdstack spawn`, `mdstack train`) find it at the repo section's
+`checkout` key, which sets that repo's `paths.checkout`: absolute, or relative
+to the team file's directory (to `paths.root` when set). Without it, the clone
+is the team file's directory, so a team file outside every clone needs
+`checkout` in each repo section (#1287). A single-repo `config.toml` is a
 team file with one repo, and it resolves unchanged.
 
 One team instance serves all of its repos. In a team file,
@@ -94,15 +97,16 @@ session. `mdstack down --project <file>#<name>` stops the whole shared session.
    in both files under `[team]` (`[runtime]` becomes `[team.runtime]`, and so
    on), and drop `[repo]`.
 2. For each repo, add `[repos.<name>]` with `repo = "<owner>/<name>"`. Then
-   move in the allowlisted keys that differ: `default_branch`,
+   move in the allowlisted keys that differ: `paths.checkout` as `checkout`
+   (each repo's clone, needed once the team file sits outside it), `default_branch`,
    `builder.precheck` as `precheck`, `sensitive.paths` as `sensitive`,
    `spec.paths` as `spec`, and the landing options from `runtime.options`.
 3. Any other key that differs between the two files is team-only. Pick one
    value, or keep that repo in its own team file.
 4. Check each repo: run `crew-config.py resolve --project <file>#<name>` and
    compare the output with `resolve --project <old config.toml>`. Only
-   provenance, `paths.state_dir` (now under `<team>/`) and
-   `runtime.options.session` should differ.
+   provenance, `paths.state_dir` (now under `<team>/`),
+   `runtime.options.session` and a `paths.checkout` you added should differ.
 5. Stop both crews (`mdstack down --project <old config.toml>`), move each
    repo's state folder under `<state_dir>/<team>/`, and run
    `mdstack up --team <file>`.
