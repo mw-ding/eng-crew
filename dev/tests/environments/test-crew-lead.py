@@ -441,6 +441,7 @@ class BuilderReports(SendBase):
 
 if __name__ == "__main__":
     unittest.main(argv=[sys.argv[0], "BuilderLead.test_presence_switches_both_pools_without_stopping_workers"] if "--presence-transcript" in sys.argv else [sys.argv[0], "BuilderLead.test_done_builder_with_running_tool_session_still_counts",
+                       "BuilderLead.test_done_builder_with_unacked_spawn_build_message_is_idle",
                        "BuilderLead.test_helpers_are_idle_reclaimable_and_not_suites_but_tool_sessions_are_busy",
                        "BuilderLead.test_suite_probe_excludes_closed_and_merged_items",
                        "BuilderLead.test_restart_preserves_live_workers_and_pending_queue",
