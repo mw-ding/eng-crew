@@ -137,7 +137,7 @@ class Watch(LivenessBase):
     def test_retained_status_never_replays_across_identity_changes(self):  # #819
         old = "blocked: #5 hold\ndelivered: m1\n"
         self.put("status/ben-7.status", old)
-        self.assertEqual(len(self.scan(NOW)), 2)
+        self.assertEqual([w["line"] for w in self.scan(NOW) if w["reason"] == "status"], old.splitlines())
         rec = self.record("ben-7")
         for change in ({"start": "2033-05-18T00:00:00Z", "pane_id": None, "pane_pid": None, "pane_start": None},
                        {"pane_id": "%99", "pane_pid": "4242", "pane_start": "Thu May 18 00:00:01 2033"}):
