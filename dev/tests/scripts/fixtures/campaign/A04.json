@@ -20,7 +20,7 @@
     },
     {
       "name": "issue-assigned-once-under-replay",
-      "run": "C=\"python3 {source}/cli/mdstack\"; P=\"--project $CREW_PROJECT\"; S={state_dir}/campaign__sandbox-{run_id}; T=crew-campaign-{run_id}; G={state_dir}/gh; n() { grep -c \"\\\"event\\\": \\\"$1\\\"\" $S/wake/queue.jsonl 2>/dev/null || true; }; rm -f $S/wake/queue.jsonl; echo '[{\"number\":2,\"labels\":[{\"name\":\"crew:ready\"}],\"assignees\":[{\"login\":\"sandbox-builder\"}]}]' > $G/issue-list.json; for i in 1 2 3; do $C poll --once $P; done; test \"$(n issue-assigned)\" -eq 1",
+      "run": "C=\"python3 {source}/cli/mdstack\"; P=\"--project $CREW_PROJECT\"; S={state_dir}/campaign__sandbox-{run_id}; T=crew-campaign-{run_id}; G={state_dir}/gh; n() { grep -c \"\\\"event\\\": \\\"$1\\\"\" $S/wake/queue.jsonl 2>/dev/null || true; }; rm -f $S/wake/queue.jsonl; echo '[{\"number\":2,\"labels\":[{\"name\":\"crew:ready\"}],\"assignees\":[{\"login\":\"sandbox-builder\"}],\"body\":\"\"}]' > $G/issue-list.json; for i in 1 2 3; do $C poll --once $P; done; test \"$(n issue-assigned)\" -eq 1",
       "exit": 0,
       "deadline": 120
     },
