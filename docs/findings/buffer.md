@@ -109,3 +109,21 @@ The live buffer. How to append, when to batch and who owns it are in
 - **Proposed fix layer:** prose: a root `AGENTS.md` review posture that the
   builder and reviewer templates require reading (gap row 7).
 - **Status:** fixing -> #92
+
+### Consumer reads part of a gate or action contract and treats the gap as permission
+
+- **Date:** 2026-11-08 (recorded by #1342 from repaired cards; the last
+  sighting is #1296)
+- **PR / repo:** cards #1134, #1135, #1136, #1137, #1144, #1147, #1205,
+  #1206, #1292, #1293, #1294, #1295 and #1296; repairs #979, #981, #984,
+  #991, #996, #1008, #1119, #1154, #1163, #1275, #1277 and #1280. See
+  [complete-contract](../lessons/2026-11-08-complete-contract.md)
+- **Smell:** A gate or action consumed only the fields, lines or flags it
+  expected. A missing field, truncated status, unparsed flag, missing run
+  record, later changes request or replayed authority read then passed as
+  clean.
+- **Count:** 13
+- **Proposed fix layer:** types/schemas: validate the whole contract and
+  treat anything incomplete as unknown; per-site regression tests hold it.
+- **Status:** fixed by #979, #981, #984, #991, #996, #1008, #1154, #1163,
+  #1275, #1277 and #1280; every regression test survives at `main` (#1342).
