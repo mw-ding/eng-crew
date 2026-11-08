@@ -136,6 +136,8 @@ class Base(unittest.TestCase):
         self.state_file = os.path.join(self.tmp, "tmux.json")
         self.env = dict(os.environ, PATH=bindir + os.pathsep + os.environ["PATH"],
                         FAKE_TMUX_LOG=self.log, FAKE_TMUX_STATE=self.state_file)
+        for name in ("CREW_PROJECT", "MDSTACK_CONFIG", "CREW_ROOT"):  # a crew window's own config never leaks in (#1324)
+            self.env.pop(name, None)
         self.project_dir = os.path.join(self.tmp, "project")
         os.makedirs(self.project_dir)
         self.state = os.path.join(self.tmp, "state", "acme__widgets")
@@ -145,7 +147,7 @@ class Base(unittest.TestCase):
                     "args = sys.argv[1:]\n"
                     "solo = args[2] in os.environ.get('FAKE_SOLO_' + args[0].upper(), '').split(',')\n"
                     "print(json.dumps({'labels': [{'name': 'crew:solo'}] if solo else [], "
-                    "'closingIssuesReferences': [{'number': 7}]}))\n")
+                    "'closingIssuesReferences': [{'number': 7}], 'body': os.environ.get('FAKE_PR_BODY', '')}))\n")
         os.chmod(os.path.join(bindir, "gh"), 0o755)
 
     def write_profile(self, runtime="tmux", engine="claude-code"):
@@ -208,7 +210,7 @@ class SpawnBase(Base):
                     "if args[:2] in (['issue', 'view'], ['pr', 'view']):\n"
                     " solo = args[2] in os.environ.get('FAKE_SOLO_' + args[0].upper(), '').split(',')\n"
                     " print(json.dumps({'labels': [{'name': 'crew:solo'}] if solo else [], "
-                    "'closingIssuesReferences': [{'number': 7}]}))\n"
+                    "'closingIssuesReferences': [{'number': 7}], 'body': os.environ.get('FAKE_PR_BODY', '')}))\n"
                     "else:\n open(%r, 'a').write('called\\n')\n print(%r)\n" % (os.path.join(self.tmp, "gh.log"), SECRET))
         os.chmod(os.path.join(bindir, "gh"), 0o755)
         self.env["GH_TOKEN"] = SECRET

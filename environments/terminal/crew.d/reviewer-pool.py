@@ -73,7 +73,7 @@ def dispatch(args, values, state, wake):
         labels = {l["name"] for l in pr["labels"]}
         if labels & {"crew:escalated", "crew:hold"}:
             return False
-        if re.fullmatch(r"done: #\d+ [0-9a-f]{40} (review|validate|recheck) changes", wake.get("line", "")):
+        if re.fullmatch(r"done: #\d+ [0-9a-f]{40} (review|validate|recheck) changes(?:\s.*)?", wake.get("line", "")):
             return commands()["lead"].event(args, "builder", wake) == 0
     return False
 

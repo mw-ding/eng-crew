@@ -84,6 +84,24 @@ class ReviewerPool(route_tests.Route):
             print("completion: review reclaimed, retained output, fresh validation")
             print("validation completed: both workers reclaimed; lead stays; pending=0")
 
+    def test_done_line_with_trailing_note_still_routes(self):  # #1343
+        self.handoff("review", ["#12", self.sha, "1"])
+        self.pool()
+        self.assertIn("vera-12-r1-review", self.names())
+        note = "review pass Independent validation required; CI markdownlint red: stale link"
+        self.put("verdicts/pr12-%s-r1-review.md" % self.sha[:7], "review output")
+        self.put("status/vera-12-r1-review.status", "done: #12 %s %s\n" % (self.sha, note))
+        self.queue(self.status("vera-12-r1-review", note))
+        self.route()
+        self.pool()
+        self.assertNotIn("vera-12-r1-review", self.names())
+        self.assertIn("vera-12-r1-validate", self.names())
+        self.queue(self.status("vera-12-r1-validate", "validate pass all ACs proven"))
+        self.route()
+        self.pool()
+        self.assertEqual(self.names(), ["ash", "vera-lead"])
+        self.assertEqual(self.messages(), [])
+
     def test_no_ceiling_admits_under_high_load(self):
         self.target(4)
         result = self.spawn("reviewer", "--pr", "12", "--round", "3")

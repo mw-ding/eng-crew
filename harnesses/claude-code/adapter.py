@@ -86,23 +86,43 @@ def coordinator_setup(project_dir, state):
         f.write("\n")
 
 
-def coordinator_checks(values, project_dir):
-    """A Claude Code coordinator opens at the folder-trust dialog until it is accepted once for the project directory
-    or a parent (docs/runtimes/harness-adapters.md)."""
-    path = os.path.join(os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~"), ".claude.json")
+def trusted(path):
+    """The directory, path or a parent, whose folder-trust dialog was accepted, read from the Claude Code config; None
+    when none was."""
+    config = os.path.join(os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~"), ".claude.json")
     try:
-        with open(path, "rb") as f:
+        with open(config, "rb") as f:
             projects = json.load(f).get("projects", {})
     except FileNotFoundError:
         projects = {}
-    d = os.path.realpath(project_dir)
+    d = os.path.realpath(path)
     while not projects.get(d, {}).get("hasTrustDialogAccepted"):
         if d == os.path.dirname(d):
-            window = values.get("identities.coordinator.name", "ash").lower()
-            return [("human", "claude trust", "not accepted for " + project_dir, "after mdstack up, accept the folder-"
-                     "trust dialog once with mdstack attach %s --rw (never a blind Enter: it picks No, exit)" % window)]
+            return None
         d = os.path.dirname(d)
+    return d
+
+
+def coordinator_checks(values, project_dir):
+    """A Claude Code coordinator opens at the folder-trust dialog until it is accepted once for the project directory
+    or a parent (docs/runtimes/harness-adapters.md)."""
+    d = trusted(project_dir)
+    if d is None:
+        window = values.get("identities.coordinator.name", "ash").lower()
+        return [("human", "claude trust", "not accepted for " + project_dir, "after mdstack up, accept the folder-"
+                 "trust dialog once with mdstack attach %s --rw (never a blind Enter: it picks No, exit)" % window)]
     return [("ok", "claude trust", d, "")]
+
+
+def role_checks(values, checkout):
+    """A Claude Code role window opens at the folder-trust dialog until it is accepted for the repository root its
+    linked worktree comes from: the checkout, which a paths.checkout outside the project directory leaves uncovered by
+    the coordinator's answer (#408)."""
+    d = trusted(checkout)
+    if d is None:
+        return [("human", "claude role trust", "not accepted for " + checkout, "before dispatch, run claude once in %s "
+                 "and pick Yes, I trust this folder, then /exit (never a blind Enter: it picks No, exit)" % checkout)]
+    return [("ok", "claude role trust", d, "")]
 
 
 def install_targets(project, state, pointer, check):

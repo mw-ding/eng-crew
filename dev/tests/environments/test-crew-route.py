@@ -71,6 +71,10 @@ class Route(SpawnBase):
         with open(self.state_file) as f:
             return sorted(json.load(f)["crew-acme-widgets"].values())
 
+    @staticmethod
+    def signed(body, login="acme-reviewer", name="Vera"):
+        return dict(author={"login": login}, body=body + "\n— 🔍 %s (Reviewer) · codex · gpt-6.1-sol" % name)
+
     def gh_calls(self):
         with open(self.gh_log) as f:
             return [json.loads(line) for line in f]
@@ -298,10 +302,10 @@ class Route(SpawnBase):
 
     def approved_push(self, merge=True):
         previous = self.sha
-        self.live["reviews"] = [dict(body=(
+        self.live["reviews"] = [self.signed(
             "<!-- crew:v1 role=reviewer-validator pass=verdict pr=12 sha=%s round=1 verdict=changes -->\n"
             "<!-- crew:v1 role=reviewer-validator pass=verdict pr=12 sha=%s round=2 verdict=pass -->"
-            % ("0" * 40, previous)))]
+            % ("0" * 40, previous))]
         self.git("commit", "-q", "--allow-empty", "-m", "default branch update")
         default = self.git("rev-parse", "HEAD")
         self.git("checkout", "-q", "--detach", previous)
@@ -342,6 +346,14 @@ class Route(SpawnBase):
         self.assertEqual(len(self.windows()), 1)
         self.assertEqual(self.pending(), [])
 
+    def test_merge_up_approved_only_by_another_runtime_gets_review(self):  # #1290
+        self.approved_push()
+        self.live["reviews"][0] = self.signed(self.live["reviews"][0]["body"].split("\n—")[0], name="Grok Bot")
+        self.save()
+        self.queue(dict(reason="status", window="ben-7", line="done: #7 #12 " + self.sha))
+        self.route()
+        self.assertEqual(self.names(), ["ash", "vera-12-r1-review"])
+
     def test_merge_up_with_open_rereview_gets_normal_review(self):
         previous = self.approved_push()
         self.live["reviews"].append(dict(body="<!-- crew:v1 role=coordinator pass=steer cmd=rereview pr=12 "
@@ -358,7 +370,7 @@ class Route(SpawnBase):
         previous = self.approved_push()
         verdict = "<!-- crew:v1 role=reviewer-validator pass=verdict pr=12 sha=%s round=2 verdict=pass -->" % self.sha
         self.put("verdicts/pr12-%s-r2-review.md" % self.sha[:7], verdict)
-        self.live["reviews"] += [dict(body=verdict), dict(body="<!-- crew:v1 role=coordinator pass=steer "
+        self.live["reviews"] += [self.signed(verdict), dict(body="<!-- crew:v1 role=coordinator pass=steer "
                                                             "cmd=rereview pr=12 sha=%s -->" % self.sha)]
         self.save()
         self.queue(dict(reason="status", window="ben-7", line="done: #7 #12 " + self.sha),
@@ -413,8 +425,8 @@ class Route(SpawnBase):
         self.route()
         self.assertEqual(len(self.windows()), 1)
         self.assertEqual(self.crew("kill", "vera-12-r1-review", "--project", self.project).returncode, 0)
-        self.live["reviews"] = [{"body": "<!-- crew:v1 role=reviewer-validator pass=review pr=12 sha=%s "
-                                          "round=1 verdict=pass -->" % self.sha}]
+        self.live["reviews"] = [self.signed("<!-- crew:v1 role=reviewer-validator pass=review pr=12 sha=%s "
+                                            "round=1 verdict=pass -->" % self.sha)]
         self.save()
         self.queue(self.event())
         self.route()
@@ -429,6 +441,31 @@ class Route(SpawnBase):
         self.queue(dict(self.event(), round=2))
         self.route()
         self.assertIn("vera-12-r2-review", self.names())
+
+    def test_another_runtimes_posted_pass_never_suppresses_review(self):  # #1290
+        marker = "<!-- crew:v1 role=reviewer-validator pass=review pr=12 sha=%s round=1 verdict=pass -->" % self.sha
+        self.live["reviews"] = [dict(body=marker), self.signed(marker, login="other-bot"),
+                                self.signed(marker, name="Grok Bot")]
+        self.save()
+        self.queue(self.event())
+        self.route()
+        self.assertIn("vera-12-r1-review", self.names())
+
+    def test_another_runtimes_verdict_at_head_never_gates_new_head_review(self):  # #1290
+        verdict = "<!-- crew:v1 role=reviewer-validator pass=verdict pr=12 sha=%s round=1 verdict=pass -->" % self.sha
+        self.live["reviews"] = [dict(body=verdict), self.signed(verdict, login="other-bot"),
+                                self.signed(verdict, name="Grok Bot")]
+        self.save()
+        self.queue(self.event())
+        self.route()
+        self.assertIn("vera-12-r1-review", self.names())
+        self.assertEqual(self.crew("kill", "vera-12-r1-review", "--project", self.project).returncode, 0)
+        self.live["reviews"].append(self.signed(verdict))
+        self.save()
+        self.queue(self.event())
+        self.route()
+        self.assertEqual(len(self.windows()), 1)
+        self.assertEqual(self.pending(), [])
 
     def test_capped_validation_dequeues_after_review_kill(self):
         with open(self.project, "a") as f:
@@ -509,7 +546,7 @@ class Route(SpawnBase):
 
     def test_repeated_head_with_newest_verdict_opens_no_round(self):
         verdict = "<!-- crew:v1 role=reviewer-validator pass=verdict pr=12 sha=%s round=1 verdict=changes -->" % self.sha
-        self.live["reviews"] = [dict(body=verdict)]
+        self.live["reviews"] = [self.signed(verdict)]
         self.save()
         self.queue(dict(self.event(), round=2), dict(self.event("fix-at-head"), round=2))
         self.route()
@@ -585,6 +622,23 @@ class Route(SpawnBase):
         self.assertIn(["api", "-X", "DELETE", "repos/acme/widgets/git/refs/heads/builder/7-feature"], calls)
         self.assertEqual(self.names(), ["ash"])
         self.assertEqual(self.pending(), [])
+
+    def test_merged_closeout_keeps_synthesizer_through_main_ci(self):  # #1339
+        for completion in ("done: #12 " + "a" * 40, "blocked: main red after #12 https://ci/run/1"):
+            with self.subTest(completion=completion.split()[0]):
+                self.assertEqual(self.spawn("synthesizer", "--pr", "12").returncode, 0)
+                self.put("inbox/sam.jsonl", "")
+                self.put("status/sam.status", "")
+                self.live["state"] = "MERGED"
+                self.save()
+                self.queue(self.event("pr-merged"))
+                self.route()
+                self.assertIn("sam", self.names())
+                self.put("status/sam.status", completion + "\n")
+                self.queue(self.event("pr-merged"))
+                self.route()
+                self.assertNotIn("sam", self.names())
+                self.assertEqual(self.pending(), [])
 
     def test_synthesizer_done_preserves_pending_inbox(self):
         for kind, acknowledged in (("land", False), ("land", True), ("fix", False)):

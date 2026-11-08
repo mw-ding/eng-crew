@@ -3,14 +3,16 @@
 Covers: only fake tools on `PATH` and a fake home with Claude Code and Codex configs; a ready host passes (a missing
 tier-order engine warns), a missing tool or coordinator engine fails, one working engine fails diversity, a missing
 state dir fails read-only and `--fix` creates it idempotently, human steps (a `gh` login, an untrusted Codex hook,
-Claude Code folder trust) are listed with exit 0 and never fixed, trust on a parent counts, a placeholder path fails
+Claude Code folder trust) are listed with exit 0 and never fixed, trust on a parent counts, role-window trust is checked
+on a paths.checkout outside the project directory (#408), a placeholder path fails
 without touching state, grok-bot skips the tmux checks, a profile problem exits 1, and the installed version against the
 latest release (latest, behind, unreadable, no VERSION), and the handoff rows (no control item warns; this runtime owns,
 another owns, draining, in transit and no record; an unreadable control item fails; a native string id is shown as
 written and read through the same read-item binding as the guard, #937), and the grok-bot triage row
 (off is ok; triage.enabled warns that no Grok timer is installed; no row on tmux), the pack row (the install's
 recorded pack name and version; no row without one), the install source row (a recorded non-github transport; no row
-without one) and no latest-release query under a non-github source. Run in CI.
+without one), no latest-release query under a non-github source, the checkout row (a clone of another repo fails,
+no or a path origin warns, https and ssh URLs of [repo] pass) and the install and mdstack link rows (#1323). Run in CI.
 """
 import importlib.machinery
 import importlib.util
@@ -163,6 +165,7 @@ class Doctor(DoctorBase):
         self.assertFalse(os.path.exists(os.path.join(self.state, "inbox")))
         r = self.doctor("--fix")
         self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertEqual(r.stderr, "mdstack: config %s\n" % self.project)  # a writing command names its config (#1324)
         self.assertEqual(self.rows(r)["state dir"], "ok")
         self.assertEqual(self.detail(r, "state dir"), "created locks/merge.lock, inbox/, wake/ in " + self.state)
         self.assertTrue(os.path.isfile(os.path.join(self.state, "locks", "merge.lock")))
@@ -212,6 +215,52 @@ class Doctor(DoctorBase):
         self.assertNotIn("paths.state_dir", r.stdout)
         self.assertNotIn("state dir", self.rows(r))
 
+    def real_git(self):
+        os.remove(os.path.join(self.bindir, "git"))
+        os.symlink(shutil.which("git", path=os.environ["PATH"]), os.path.join(self.bindir, "git"))
+
+    def test_checkout_of_another_repo_fails(self):  # #1323
+        self.real_git()
+        subprocess.run(["git", "init", "-q", self.project_dir], check=True)
+        r = self.doctor()
+        self.assertEqual(self.rows(r)["checkout"], "warn", r.stdout)
+        self.assertEqual(self.detail(r, "checkout"),
+                         "%s has no forge origin URL; set paths.checkout to a clone of acme/widgets" % self.project_dir)
+        git = ["git", "-C", self.project_dir, "remote"]
+        subprocess.run(git + ["add", "origin", "https://github.com/other/widgets.git"], check=True)
+        r = self.doctor()
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertEqual(self.detail(r, "checkout"), "%s is a clone of other/widgets, not acme/widgets; set "
+                         "paths.checkout to a clone of acme/widgets, or clone acme/widgets there" % self.project_dir)
+        subprocess.run(git + ["set-url", "origin", os.path.join(self.tmp, "other", "widgets.git")], check=True)
+        r = self.doctor()  # a path origin names no forge repo: warn, never fail
+        self.assertEqual((r.returncode, self.rows(r)["checkout"]), (0, "warn"), r.stdout)
+        for url in ("https://github.com/acme/widgets.git", "git@github.com:Acme/widgets", "ssh://git@ghe.example:22/acme/widgets/"):
+            subprocess.run(git + ["set-url", "origin", url], check=True)
+            r = self.doctor()
+            self.assertEqual(r.returncode, 0, r.stdout)
+            self.assertEqual(self.rows(r)["checkout"], "ok", r.stdout)
+
+    def test_install_record_and_mdstack_link(self):  # #1323
+        link = os.path.join(self.state, "mdstack")
+        with open(self.project, "a") as f:
+            f.write('mdstack = "%s"\n' % link)
+        r = self.doctor()  # before bootstrap: both only warn, as bootstrap runs doctor first
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertEqual((self.rows(r)["install"], self.rows(r)["mdstack link"]), ("warn", "warn"), r.stdout)
+        self.assertEqual(self.detail(r, "install"), "no install.json in %s; run mdstack bootstrap" % self.state)
+        with open(os.path.join(self.state, "install.json"), "w") as f:
+            json.dump({"tag": "v2.1.0"}, f)
+        r = self.doctor()  # a recorded install without its link
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertEqual(self.rows(r)["install"], "ok", r.stdout)
+        self.assertEqual(self.detail(r, "mdstack link"), "paths.mdstack %s is missing; run mdstack bootstrap, "
+                         "which links the installed release there" % link)
+        os.makedirs(link)
+        r = self.doctor()
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertEqual(self.rows(r)["mdstack link"], "ok", r.stdout)
+
     def test_invalid_milestone_is_rejected(self):
         r = self.doctor("--fix", "--milestone", "release")
         self.assertEqual(r.returncode, 2)
@@ -241,6 +290,30 @@ class Doctor(DoctorBase):
         with open(os.path.join(self.home, ".claude.json"), "w") as f:
             json.dump({"projects": {os.path.realpath(self.tmp): {"hasTrustDialogAccepted": True}}}, f)
         self.assertEqual(self.rows(self.doctor())["claude trust"], "ok")
+
+    def test_claude_role_trust_keys_on_the_checkout(self):  # #408
+        self.assertNotIn("claude role trust", self.rows(self.doctor()))  # the coordinator's answer covers it
+        repo = os.path.join(self.tmp, "repo")
+        os.makedirs(repo)
+        with open(self.project, "a") as f:
+            f.write('checkout = "%s"\n' % repo)
+        config = os.path.join(self.home, ".claude.json")
+        before = read(config)
+        for args in ((), ("--fix",)):
+            r = self.doctor(*args)
+            self.assertEqual(r.returncode, 0, r.stdout)
+            self.assertEqual(self.rows(r)["claude trust"], "ok", r.stdout)
+            self.assertEqual(self.rows(r)["claude role trust"], "human", r.stdout)
+            self.assertEqual(self.detail(r, "claude role trust"), "not accepted for " + repo)
+            self.assertIn("- before dispatch, run claude once in %s and pick Yes, I trust this folder, then /exit "
+                          "(never a blind Enter: it picks No, exit)" % repo, self.humans(r))
+        self.assertEqual(read(config), before)  # never written
+        with open(config, "w") as f:
+            json.dump({"projects": {os.path.realpath(p): {"hasTrustDialogAccepted": True}
+                                    for p in (self.project_dir, repo)}}, f)
+        r = self.doctor()
+        self.assertEqual(self.rows(r)["claude role trust"], "ok", r.stdout)
+        self.assertEqual(self.detail(r, "claude role trust"), os.path.realpath(repo))
 
     def test_placeholder_path_fails_without_touching_state(self):
         with open(self.project) as f:

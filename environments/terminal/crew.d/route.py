@@ -9,8 +9,11 @@ and a merge that an open issue's `Depends on` names stays queued so the coordina
 including red CI, changes, stale heads, holds, failed commands, dialogs, blocked runs and owner asks. Red CI for a
 superseded head and synthesizer gate-status blocks that only wait (`wait=ci,review,validation,selfgate,train`) are consumed.
 Routing is serialized; interrupted batches survive in wake/queue.jsonl.route-* and are retried. Reviewer spawns
-are deduplicated by PR/head/pass/round against live and queued runs, section files and posted pass markers.
-Synthesizers remain alive while land requests lack completion or other inbox messages lack acknowledgment;
+are deduplicated by PR/head/pass/round against live and queued runs, section files and pass markers posted by this
+runtime's reviewer (its login and signature; #1290); the head-verdict check that gates a reviewer spawn counts only
+that reviewer's verdicts too.
+Synthesizers remain alive while land requests lack completion or other inbox messages lack acknowledgment, and through
+a merged PR's close-out while their own spawn PR lacks completion (its direct-land main CI check, #1339);
 the inbox check and reap share the queue lock with send's inbox append.
 
 Usage: mdstack route --project FILE [--org-profile FILE] [--timeout SECS]
@@ -30,6 +33,8 @@ from crew_shared import commands, heartbeat, profile, queue_lock, require_owners
 # running train.
 WAITING = re.compile(r"blocked: #\d+ [0-9a-f]{40} gate-status \S+ wait=(?:ci|review|validation|selfgate|train)"
                      r"(?:,(?:ci|review|validation|selfgate|train))*")
+# A reviewer's finished pass; a trailing note after the verdict is allowed (#1343), as on a builder's done line (#695).
+REVIEW_DONE = re.compile(r"done: #(\d+) ([0-9a-f]{40}) (review|validate|recheck) (pass|changes|escalate)(?:\s.*)?")
 
 
 def gh(*args):
@@ -70,6 +75,22 @@ def rereview_id(pr, head):
         return next(m.get("cmd-id", "rereview") for m in reversed(markers("\n".join(r["body"] for r in pr["reviews"])))
                     if m.get("sha") == head and m.get("pass") == "steer" and m.get("cmd") == "rereview")
     return None
+
+
+def own_reviews(values, pr):
+    """Reviews this runtime's reviewer posted: its login and its signature (#1290). Another runtime's records on the
+    same PR, even under a shared login, never stand in for this runtime's pass."""
+    sign = re.compile(r"^— .*\b%s \(" % re.escape(values["identities.reviewer.name"]), re.M)
+    return [r for r in pr["reviews"] if (r.get("author") or {}).get("login") == values["identities.reviewer.gh_user"]
+            and sign.search(r["body"])]
+
+
+def own_view(values, pr):
+    """The PR with another runtime's reviewer-validator records dropped (#1290), so a foreign verdict never gates
+    dispatch or approves a merge-up; builder and coordinator records stay."""
+    own = own_reviews(values, pr)
+    return dict(pr, reviews=[r for r in pr["reviews"] if any(r is o for o in own) or
+                             not any(m.get("role") == "reviewer-validator" for m in markers(r["body"]))])
 
 
 def merge_up_delta(pr, head):
@@ -128,15 +149,16 @@ def review(args, state, pr, head, pass_, round_):
             if any(e.get("pr") == pr["number"] and e.get("head") == head and e["pass"] == pass_ and
                    e["round"] == round_ for e in (json.loads(line) for line in f if line.strip())):
                 return
-    text = "\n".join(r["body"] for r in pr["reviews"])
-    posted = markers(text)
+    own = own_reviews(profile(args)[0], pr)
+    posted = [(r in own, m) for r in pr["reviews"] for m in markers(r["body"])]
     pending = open_rereview(pr, head)
     if pending:
         for i in range(len(posted) - 1, -1, -1):
-            m = posted[i]
+            m = posted[i][1]
             if m.get("sha") == head and m.get("pass") == "steer" and m.get("cmd") == "rereview":
                 posted = posted[i + 1:]
                 break
+    posted = [m for mine, m in posted if mine]
     section = os.path.join(state, "verdicts", "pr%d-%s-r%d-%s.md" % (pr["number"], head[:7], round_, pass_))
     if os.path.exists(section) and not pending:
         with open(section) as f:
@@ -191,6 +213,18 @@ def synthesizer_busy(state, name, done=""):
     return pending_inbox(state, name, done) or bool(open_trains(state)) or commands()["land-lock"].held(state)
 
 
+def land_open(state, name, n):
+    """The synthesizer's spawn PR #n has no `done:`/`blocked:` line yet: a direct land waits for main CI (#1339)."""
+    status = os.path.join(state, "status", name + ".status")
+    lines = []
+    if os.path.exists(status):
+        with open(status) as f:
+            lines = [line.split() for line in f]
+    ref = "#%d" % n
+    return not any(w[:2] in (["done:", ref], ["blocked:", ref]) or w[:5] == ["blocked:", "main", "red", "after", ref]
+                   for w in lines)
+
+
 def close_out(args, values, state, pr):
     repo = "%s/%s" % (values["repo.owner"], values["repo.name"])
     labels = {label["name"] for label in pr["labels"]}
@@ -223,7 +257,8 @@ def close_out(args, values, state, pr):
                  len(done) > 2 and done[2] == "#%d" % pr["number"]):
             if rec["role"] == "synthesizer":
                 with queue_lock(state):
-                    if not synthesizer_busy(state, name):
+                    if not synthesizer_busy(state, name) and \
+                            not (item.get("pr") == pr["number"] and land_open(state, name, pr["number"])):
                         reap(args, name, dequeue=False)
                 invoke(args, "dequeue")
             else:
@@ -291,7 +326,7 @@ def route_record(args, values, state, w):
     if event == "pr-closed" and lead.enabled(state, "reviewer"):
         lead.event(args, "reviewer", w)
     reviewer_event = event in ("new-head", "fix-at-head") or \
-        re.fullmatch(r"done: #\d+ [0-9a-f]{40} (review|validate|recheck) (pass|changes|escalate)", line)
+        REVIEW_DONE.fullmatch(line)
     if not getattr(args, "reviewer_lead", False) and lead.enabled(state, "reviewer") and reviewer_event:
         if rec and rec["role"] == "reviewer":
             w = dict(w, round=rec["args"]["round"])
@@ -299,7 +334,7 @@ def route_record(args, values, state, w):
     if event == "builder-queued":
         return True
     built = re.fullmatch(r"done: #(\d+) #(\d+) ([0-9a-f]{40})", line)
-    done = re.fullmatch(r"done: #(\d+) ([0-9a-f]{40}) (review|validate|recheck) (pass|changes|escalate)", line)
+    done = REVIEW_DONE.fullmatch(line)
     if done and done[4] in ("pass", "escalate") and rec is None and not getattr(args, "reviewer_lead", False):
         return True
     terminal = line.startswith("done:") and rec and rec["role"] in ("reviewer", "synthesizer")
@@ -308,7 +343,8 @@ def route_record(args, values, state, w):
     if built:
         n, head = int(built[2]), built[3]
     elif terminal or done:
-        if " stale" in line and rec and rec["role"] == "reviewer":
+        stale = not done and " stale" in line  # a verdict's note may say "stale"
+        if stale and rec and rec["role"] == "reviewer":
             pr = gh("pr", "view", str(rec["args"]["pr"]), "-R", "%s/%s" % (values["repo.owner"], values["repo.name"]),
                     "--json", "state")
             if pr["state"] != "OPEN":  # merged or closed by anyone, another runtime included: free the slot (#811)
@@ -320,7 +356,7 @@ def route_record(args, values, state, w):
                     reap(args, w["window"], dequeue=False)
             invoke(args, "dequeue")
             return True
-        if " stale" in line or (rec and rec["role"] == "reviewer" and not done):
+        if stale or (rec and rec["role"] == "reviewer" and not done):
             return False
         n, head = int(done[1]), done[2]
     else:
@@ -390,9 +426,10 @@ def route_record(args, values, state, w):
             rec["pr"] = n
             with open(os.path.join(state, "runs", w["window"] + ".json"), "w") as f:
                 json.dump(rec, f, indent=2)
-        snapshot = commands()["poll"].pr_snapshot(pr)
+        own = own_view(values, pr)
+        snapshot = commands()["poll"].pr_snapshot(own)
         pending = open_rereview(pr, head)
-        if not pending and not delta and approved_merge_up(pr, repo, values["repo.default_branch"]):
+        if not pending and not delta and approved_merge_up(own, repo, values["repo.default_branch"]):
             return True
         if pending or delta or snapshot["verdict"] is None or snapshot["fixed"]:
             review(args, state, pr, head, "review", snapshot["round"])
@@ -401,7 +438,7 @@ def route_record(args, values, state, w):
         if rec:
             reap(args, w["window"], state)
         return False  # findings stay queued, with their section files retained for the builder
-    round_ = rec["args"]["round"] if rec else w.get("round", commands()["poll"].pr_snapshot(pr)["round"])
+    round_ = rec["args"]["round"] if rec else w.get("round", commands()["poll"].pr_snapshot(own_view(values, pr))["round"])
     if terminal and done and getattr(args, "reviewer_lead", False):
         steer = rereview_id(pr, head)
         if steer and rec.get("rereview_id") != steer:
@@ -419,7 +456,7 @@ def route_record(args, values, state, w):
     elif event in ("new-head", "merge-up", "fix-at-head"):
         if event == "merge-up" and not open_rereview(pr, head) and not delta:
             return False
-        snapshot = commands()["poll"].pr_snapshot(pr)
+        snapshot = commands()["poll"].pr_snapshot(own_view(values, pr))
         if event != "merge-up" and snapshot["verdict"] and not snapshot["fixed"] and not open_rereview(pr, head):
             return True  # this head already has the newest round's verdict: a replayed event opens no round (#1124)
         review(args, state, pr, head, "review", w["round"])

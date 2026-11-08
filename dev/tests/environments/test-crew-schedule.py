@@ -128,14 +128,15 @@ class Snapshot(Fixture):
         events = [{"event": "new-head", "refs": ["#31", sha]}, {"reason": "status", "line": "done: #7 #32 " + sha},
                   {"reason": "status", "line": "done: #33 %s review pass" % sha},
                   {"reason": "status", "line": "done: #34 %s recheck escalate" % sha},
-                  {"reason": "status", "line": "done: #35 %s review changes" % sha}]
+                  {"reason": "status", "line": "done: #35 %s review changes" % sha},
+                  {"reason": "status", "line": "done: #36 %s review pass validation required; CI red" % sha}]  # #1343
         for i, e in enumerate(events):
             self.put("leads/reviewer-events/w%d.json" % i, json.dumps(e))
         self.put("inbox/vera-lead.jsonl", "".join(json.dumps(dict(id="w%d" % i, kind="work", refs=[
             os.path.join(self.state, "leads", "reviewer-events", "w%d.json" % i)])) + "\n" for i in range(len(events))))
         self.assertEqual([(d["kind"], d["refs"][0][-8:]) for d in self.snapshot()["demand"]["reviewer"]],
                          [("review", "#31"), ("review", "#32"), ("validate", "#33"), ("review", "#34"),
-                          ("work", "/w4.json")])
+                          ("work", "/w4.json"), ("validate", "#36")])
 
     def test_failed_reads_are_unknown_per_input(self):
         os.remove(self.event)
@@ -579,7 +580,7 @@ class Orphans(LivenessBase):
 class DecideCommand(Fixture):
     def call(self, *argv):
         r = self.crew("schedule", *argv, "--project", self.project)
-        self.assertEqual((r.returncode, r.stderr), (0, ""))
+        self.assertEqual((r.returncode, r.stderr), (0, "mdstack: config %s\n" % self.project))  # #1324
         return json.loads(r.stdout)
 
     def saved(self, name):
@@ -653,7 +654,8 @@ class DecideCommand(Fixture):
 
     def test_decide_and_release_require_a_pool(self):
         r = self.crew("schedule", "decide", "--project", self.project)
-        self.assertEqual((r.returncode, r.stdout, r.stderr), (2, "crew: schedule decide requires --pool\n", ""))
+        self.assertEqual((r.returncode, r.stdout, r.stderr), (2, "crew: schedule decide requires --pool\n",
+                                                                "mdstack: config %s\n" % self.project))
 
 
 if __name__ == "__main__":

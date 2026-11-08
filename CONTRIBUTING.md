@@ -61,7 +61,9 @@ What changed and why, in one paragraph.
   Changelog heading the entry goes under.
 - `issue`: the issue number, as in the file name.
 - `pr`: the PR number. Write `TBD` until the PR opens, then fill it in with a
-  follow-up commit.
+  follow-up commit before review: on a PR, CI fails a fragment the PR adds or
+  changes whose `pr` is `TBD` or another PR's number (a merge train only for
+  `TBD`).
 - `date`: `YYYY-MM-DD`, the merge date in America/Los_Angeles; for an unmerged
   PR, the date it was written.
 - `box-skill`: whether the box skill copy was mirrored, for example `none` or
@@ -73,8 +75,8 @@ Use no relative links in the entry text: their paths break when it moves into
 CI also runs `scripts/check-changelog-pr.py` against the PR's merge base.
 It fails unless the PR adds a new `changes/unreleased/<issue>-<slug>.md`
 fragment or changes only exempt paths. The exempt path list lives in that
-script's `EXEMPT_PATHS`; it covers cut output, fragment-only changes and
-verification artifacts. An empty diff, including a CI-only train PR whose
+script's `EXEMPT_PATHS`; it covers cut output, fragment-only changes,
+verification artifacts and core memory (`memory/`). An empty diff, including a CI-only train PR whose
 changes are already in its base, also passes. A train with content changes
 needs a fragment like any other PR. Pushes to `main` skip the requirement.
 Editing an existing fragment does not satisfy a PR that changes other content.
