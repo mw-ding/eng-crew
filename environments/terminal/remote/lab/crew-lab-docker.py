@@ -14,10 +14,12 @@ network and container ID the moment Docker returns it. Per host: its own network
 container with no mount, SSH published on 127.0.0.1 only (none with --n3), the staged bundle activated and the
 run's key authorized by crew-lab-host.py, and its host key in a per-run known_hosts. --n3 adds a driver container
 on every host network. Loopback runs get a per-run SSH config mapping each alias to 127.0.0.1:<port>. `n3` probes
-from each host to the other hosts, the Mac and the internet, with the driver as positive control; it writes
-lab/n3.json and exits 1 with `n3: unproved` unless every probe is denied. `teardown` refuses when the context now
-points elsewhere, saves each resource's inspect JSON and logs under lab/evidence/, removes only recorded IDs whose
-owner label still matches, then checks the state sentinel and a tmux decoy: no prune, wildcard or kill-server.
+from each host to the other hosts, the Mac (pinned to the host gateway with --n3) and the internet, with the driver
+as positive control; it writes lab/n3.json and exits 1 with `n3: unproved` unless every probe is denied (an
+unresolved name is not denied). `teardown` first inspects every recorded ID and refuses, removing nothing, when
+the context now points elsewhere or a live ID lost the run's owner or run label. Otherwise it saves each
+resource's inspect JSON and logs under lab/evidence/, removes only those IDs, then checks the state sentinel and a
+tmux decoy: no prune, wildcard or kill-server.
 Every child gets only PATH and locale plus the run's own HOME and auth dirs: no CREW_*, token, SSH agent or TMUX.
 """
 import argparse
@@ -47,6 +49,8 @@ for t in sys.argv[1:]:
         out[t] = "open"
     except ConnectionRefusedError:
         out[t] = "refused"
+    except socket.gaierror as e:
+        out[t] = "unresolved: %s" % e
     except OSError as e:
         out[t] = "denied: %s" % e
 print(json.dumps(out))"""
@@ -154,7 +158,7 @@ def add_host(a, m, h, name, labels, pub):
     lab = m["lab"]
     lab["networks"].append(docker(m, "network", "create", *(["--internal"] if a.n3 else []), *labels, name))
     save(a.manifest, m)
-    publish = [] if a.n3 else ["-p", "127.0.0.1::22"]
+    publish = ["--add-host", "host.docker.internal:host-gateway"] if a.n3 else ["-p", "127.0.0.1::22"]
     cid = docker(m, "create", "--name", name, "--hostname", h, *labels, "--network", lab["networks"][-1],
                  "--network-alias", h, *publish, lab["image"])
     host = lab["hosts"][h] = {"container": cid, "network": lab["networks"][-1]}
@@ -243,12 +247,10 @@ def teardown(a):
     if problems:
         return problems
     lab, ev = m["lab"], os.path.join(lab_dir(m), "evidence")
-    os.makedirs(ev, exist_ok=True)
-    decoy = runner.decoy_start()
     items = [("container", h, x["container"]) for h, x in lab["hosts"].items()]
     items += [("container", "driver", lab["driver"])] if lab["driver"] else []
     items += [("network", "net-%d" % i, n) for i, n in enumerate(lab["networks"])]
-    record = {"removed": [], "gone": [], "refused": []}
+    live, record = [], {"removed": [], "gone": []}
     for kind, name, rid in items:
         found = json.loads(docker(m, "inspect", "--type", kind, rid, check=False) or "[]")
         if not found:
@@ -256,8 +258,13 @@ def teardown(a):
             continue
         labels = (found[0].get("Config") or found[0]).get("Labels") or {}
         if labels.get("mdstack.lab.owner") != lab["owner"] or labels.get("mdstack.lab.run") != lab["run"]:
-            record["refused"].append(rid)
-            continue
+            problems.append("owner: %s %s no longer carries run %s's labels" % (kind, rid, lab["run"]))
+        live.append((kind, name, rid, found))
+    if problems:
+        return problems + ["teardown: nothing removed"]
+    os.makedirs(ev, exist_ok=True)
+    decoy = runner.decoy_start()
+    for kind, name, rid, found in live:
         Path(ev, name + ".inspect.json").write_text(json.dumps(found, indent=2) + "\n")
         if kind == "container":
             r = call(["docker", "logs", rid], child_env(m))
@@ -269,9 +276,8 @@ def teardown(a):
     if decoy:
         call(["tmux", "-S", decoy, "kill-session", "-t", "=decoy"], child_env(m))
     Path(lab_dir(m), "cleanup.json").write_text(json.dumps(record, indent=2) + "\n")
-    print("removed: %d, gone: %d, refused (owner mismatch): %d" % tuple(len(record[k]) for k in
-                                                                     ("removed", "gone", "refused")))
-    ok = not record["refused"] and record["sentinel_unchanged"] and record["tmux_decoy_alive"]
+    print("removed: %d, gone: %d" % (len(record["removed"]), len(record["gone"])))
+    ok = record["sentinel_unchanged"] and record["tmux_decoy_alive"]
     return 0 if ok else 1
 
 

@@ -546,15 +546,18 @@ python3 environments/terminal/remote/lab/crew-lab-docker.py teardown "$SANDBOX/s
 - **N3.** Each host gets its own network. With `--n3` those networks are
   internal, nothing is published, and a driver container joins all of them.
   `n3` probes from each host to the other hosts, the Mac and the internet,
-  with the driver reaching each host as the positive control. It reports
-  `n3: unproved` (exit 1) unless every lateral probe is denied; a loopback
-  setup is always unproved.
-- **Teardown.** It refuses when the context now points at another endpoint.
-  It saves each resource's inspect JSON and logs under `state/lab/evidence/`,
-  then removes only recorded IDs whose owner and run labels still match. It
+  with the driver reaching each host as the positive control; with `--n3`
+  each host maps `host.docker.internal` to the host gateway, so the Mac
+  probe tests routing, not name lookup. It reports `n3: unproved` (exit 1)
+  unless every lateral probe is denied; an unresolved name is not denied,
+  and a loopback setup is always unproved.
+- **Teardown.** It first inspects every recorded ID and refuses, removing
+  nothing, when the context now points at another endpoint or a live ID lost
+  the run's owner or run label. Otherwise it saves each resource's inspect
+  JSON and logs under `state/lab/evidence/`, then removes only those IDs. It
   never prunes, removes by wildcard or kills a tmux server. It records the
   sentinel check and a tmux decoy's survival in `state/lab/cleanup.json`;
-  exit 1 means an owner mismatch, a changed sentinel or a lost decoy.
+  exit 1 means a changed sentinel or a lost decoy.
 
 ### Level c: owner-run devices and second environment
 

@@ -262,7 +262,9 @@ class N3Test(Base):
         self.assertEqual(self.setup_lab("--n3"), 0)
         lab_ = self.m()["lab"]
         self.assertTrue(all(self.fake.objs[n]["internal"] for n in lab_["networks"]))
-        self.assertFalse(any("-p" in a for a in self.fake.docker_argv() if a[0] == "create"))
+        hosts = [a for a in self.fake.docker_argv() if a[0] == "create" and "--entrypoint" not in a]
+        self.assertFalse(any("-p" in a for a in hosts))
+        self.assertTrue(all(a[a.index("--add-host") + 1] == "host.docker.internal:host-gateway" for a in hosts))
         self.assertEqual(sorted(self.fake.objs[lab_["driver"]]["nets"]), sorted(lab_["networks"]))
         self.assertTrue(all("port" not in h for h in lab_["hosts"].values()))
 
@@ -280,7 +282,9 @@ class N3Test(Base):
                                "-> 1.1.1.1:443: open"),
                               (lambda cid, t: "refused" if cid != driver and t.startswith("host.") else
                                "open" if cid == driver else "denied: x", "host.docker.internal:22: refused"),
-                              (lambda cid, t: "denied: x", "no positive control")):
+                              (lambda cid, t: "denied: x", "no positive control"),
+                              (lambda cid, t: "open" if cid == driver else "unresolved: [Errno -2] Name or service"
+                               if t.startswith("host.") else "denied: x", "host.docker.internal:22: unresolved")):
             with self.subTest(needle=needle):
                 self.fake.probe = probe
                 self.assertEqual(lab.main(["n3", str(self.manifest)]), 1)
@@ -308,8 +312,8 @@ class TeardownTest(Base):
                          ["driver.inspect.json", "driver.log", "lab-a.inspect.json", "lab-a.log",
                           "lab-b.inspect.json", "lab-b.log", "net-0.inspect.json", "net-1.inspect.json"])
         record = json.loads((self.state / "lab" / "cleanup.json").read_text())
-        self.assertEqual((len(record["removed"]), record["refused"], record["sentinel_unchanged"],
-                          record["tmux_decoy_alive"]), (5, [], True, True))
+        self.assertEqual((len(record["removed"]), record["sentinel_unchanged"], record["tmux_decoy_alive"]),
+                         (5, True, True))
         lab_ = self.m()["lab"]
         ids = set(lab_["networks"]) | {lab_["driver"]} | {h["container"] for h in lab_["hosts"].values()}
         for argv, _ in self.fake.calls:
@@ -321,12 +325,18 @@ class TeardownTest(Base):
         self.assertIn(["tmux", "-S", "/tmp/decoy/s", "kill-session", "-t", "=decoy"],
                       [argv for argv, _ in self.fake.calls])
 
-    def test_owner_label_mismatch_is_refused_and_kept(self):
-        cid = self.m()["lab"]["hosts"]["lab-a"]["container"]
-        self.fake.objs[cid]["labels"]["mdstack.lab.owner"] = "someone-else"
-        self.assertEqual(lab.main(["teardown", str(self.manifest)]), 1)
-        self.assertIn(cid, self.fake.objs)
-        self.assertEqual(json.loads((self.state / "lab" / "cleanup.json").read_text())["refused"], [cid])
+    def test_owner_or_run_label_mismatch_refuses_before_any_removal(self):
+        lab_ = self.m()["lab"]
+        for rid, key in ((lab_["hosts"]["lab-b"]["container"], "mdstack.lab.owner"), (lab_["networks"][1],
+                                                                                         "mdstack.lab.run")):
+            with self.subTest(key=key):
+                before, labels = set(self.fake.objs), self.fake.objs[rid]["labels"]
+                saved, labels[key] = labels[key], "someone-else"
+                self.fake.calls.clear()
+                self.assertEqual(lab.main(["teardown", str(self.manifest)]), 2)
+                self.assertEqual((self.fake.mutations(), set(self.fake.objs)), ([], before))
+                self.assertFalse((self.state / "lab" / "cleanup.json").exists())
+                labels[key] = saved
 
     def test_already_gone_ids_are_noted_not_failed(self):
         self.fake.objs.pop(self.m()["lab"]["driver"])
@@ -344,6 +354,21 @@ class TeardownTest(Base):
             with self.subTest(attr=attr):
                 self.sentinel, self.decoy = (1, True) if attr == "sentinel" else (0, False)
                 self.assertEqual(lab.main(["teardown", str(self.manifest)]), 1)
+
+
+class ProbeTest(unittest.TestCase):
+    def probe(self, error):
+        out = []
+        with mock.patch("socket.create_connection", side_effect=error), \
+                mock.patch("sys.argv", ["probe", "host.docker.internal:22"]), mock.patch("builtins.print", out.append):
+            exec(lab.PROBE, {})
+        return json.loads(out[0])["host.docker.internal:22"]
+
+    def test_only_a_network_error_counts_as_denied(self):
+        import socket
+        self.assertTrue(self.probe(socket.gaierror(-2, "Name or service not known")).startswith("unresolved:"))
+        self.assertEqual(self.probe(ConnectionRefusedError()), "refused")
+        self.assertTrue(self.probe(OSError(101, "Network is unreachable")).startswith("denied:"))
 
 
 if __name__ == "__main__":
