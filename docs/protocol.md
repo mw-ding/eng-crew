@@ -1755,7 +1755,16 @@ blocker)` or `Land rule: waited 6 min to batch with #A and #B`.
    When the train ends, close the draft change and delete the branch.
 
 On tmux, `mdstack train` runs these steps
-([mdstack train](runtimes/tmux.md#mdstack-train)).
+([mdstack train](runtimes/tmux.md#mdstack-train)). The synthesizer
+delegates steps 1, 2 and 4 to a builder worker through the builder lead
+(handoff kind `train`: the train number, the base and each member's full
+head SHA) and keeps surveying, gating and landing other ready changes
+meanwhile, still one land at a time under the merge lock. The builder
+reports the train record and never squashes, lands or posts a verdict. A
+land made meanwhile moves `<default-branch>`, so that train no longer holds
+its tested state and its members train again. Steps 3 and 5 and every gate
+above stay with the synthesizer. A train builder that dies is restarted
+once; a second failure closes the train and the synthesizer re-surveys.
 
 ## 8. Safety
 

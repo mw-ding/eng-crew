@@ -86,7 +86,8 @@ def run(args):
         return relaunch(values, session, state, args.window, rec, items, args.timeout, args.project)
     if kill_run(values, session, state, args.window):
         return 1
-    argv = ["spawn", rec["role"], "--pass", a["pass"], "--round", str(a["round"]), "--tier", a["tier"],
+    mode = ["--train", str(a["train"])] if a.get("train") else ["--pass", a["pass"]]  # a train worker has no pass flag (#1391)
+    argv = ["spawn", rec["role"], *mode, "--round", str(a["round"]), "--tier", a["tier"],
             "--project", args.project] + (["--org-profile", args.org_profile] if args.org_profile else [])
     argv += (["--issue", str(a["issue"])] if a["issue"] else []) + (["--pr", str(a["pr"])] if a["pr"] else [])
     code = main(argv + ["--timeout", str(args.timeout)])
