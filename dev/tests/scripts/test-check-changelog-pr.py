@@ -132,6 +132,48 @@ class ChangelogPRTest(unittest.TestCase):
         self.commit()
         self.assertEqual(self.run_guard().returncode, 1)
 
+    def fragment(self, path, pr):
+        self.write("README.md")
+        self.write(path, "---\ntype: fixed\nissue: 2\npr: %s\ndate: 2026-11-08\n"
+                   "box-skill: none\n---\n\nText.\n" % pr)
+        self.commit()
+
+    def test_fragment_pr_tbd_refused(self):
+        self.fragment("changes/unreleased/2-new.md", "TBD")
+        result = self.run_guard("--pr", "7", "--head-ref", "builder/2-new")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("changes/unreleased/2-new.md has pr: TBD, want pr: 7", result.stderr)
+
+    def test_fragment_pr_wrong_number_refused(self):
+        self.fragment("changes/unreleased/2-new.md", "8")
+        result = self.run_guard("--pr", "7", "--head-ref", "builder/2-new")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("changes/unreleased/2-new.md has pr: 8, want pr: 7", result.stderr)
+
+    def test_fragment_pr_own_number_passes(self):
+        self.fragment("changes/unreleased/2-new.md", "7")
+        result = self.run_guard("--pr", "7", "--head-ref", "builder/2-new")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("new fragment added", result.stdout)
+
+    def test_changed_fragment_pr_checked(self):
+        self.fragment("changes/unreleased/1-old.md", "TBD")
+        result = self.run_guard("--pr", "7", "--head-ref", "builder/1-old")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("changes/unreleased/1-old.md has pr: TBD", result.stderr)
+
+    def test_train_skips_number_but_refuses_tbd(self):
+        self.fragment("changes/unreleased/2-new.md", "8")
+        self.assertEqual(self.run_guard("--pr", "7", "--head-ref", "crew/train-3").returncode, 0)
+        self.fragment("changes/unreleased/3-more.md", "TBD")
+        result = self.run_guard("--pr", "7", "--head-ref", "crew/train-3")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("changes/unreleased/3-more.md has pr: TBD", result.stderr)
+
+    def test_without_pr_number_skips_check(self):
+        self.fragment("changes/unreleased/2-new.md", "TBD")
+        self.assertEqual(self.run_guard().returncode, 0)
+
     def test_empty_train_diff(self):
         self.assertEqual(self.run_guard().returncode, 0)
 
