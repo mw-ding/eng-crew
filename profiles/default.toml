@@ -33,6 +33,7 @@ name = "github"
 
 [identities]
 owners = ["<user-login>"]
+# team = "mdp-m4"  # optional team name, default empty; window 0 becomes ash-mdp-m4
 coordinator = { gh_user = "<author-login>", name = "Ash" }
 builder = { gh_user = "<author-login>", name = "Builder" }
 reviewer = { gh_user = "<reviewer-login>", name = "Reviewer" }

@@ -105,6 +105,13 @@ class Render(unittest.TestCase):
                              "%s-name %s-title %s-emoji" % ((role,) * 3))
         self.assertEqual(fill.line("<author-login> <reviewer-login>"), "author reviewer")
 
+    def test_team_name_placeholder_empty_when_unset(self):  # #1329
+        values = cr.resolve(PROJECT, None)[0]
+        self.assertNotIn("identities.team", values)
+        self.assertEqual(cr.Renderer(values, self.inputs).line("[<TeamName>]"), "[]")
+        self.assertEqual(cr.Renderer(dict(values, **{"identities.team": "mdp-m4"}), self.inputs).line("[<TeamName>]"),
+                         "[mdp-m4]")
+
     def test_precheck_enabled_disabled_and_missing_commands(self):
         with open(PROJECT, encoding="utf-8") as f:
             profile = f.read()

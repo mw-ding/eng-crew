@@ -138,6 +138,16 @@ class Fixers(unittest.TestCase):
             self.assertFalse(any(a[0] == "label" for a in self.writes))
             self.labels.pop()
 
+    def test_sensitive_label_passes_and_unknown_still_collides(self):
+        self.labels.append({"name": "crew:sensitive", "color": "B60205",
+                            "description": "Requires per-change owner merge-ok; no standing grant applies."})
+        self.assertEqual(self.check(fix=True)["crew labels"][0], "ok")
+        self.assertEqual({x["name"] for x in self.labels if x["name"].startswith("crew:")}, {n for n, _, _ in repo.LABELS})
+        self.writes.clear()
+        self.labels.append({"name": "crew:unknown", "color": "000000", "description": "foreign"})
+        self.assertEqual(self.check(fix=True)["crew labels"][0], "fail")
+        self.assertFalse(any(a[0] == "label" for a in self.writes))
+
     def test_existing_install_repairs_mismatch(self):
         self.ready_labels()
         self.labels[1]["color"] = "000000"

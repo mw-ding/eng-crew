@@ -22,9 +22,9 @@ import shlex
 import subprocess
 import sys
 from crew_shared import (
-    brief_src, commands, coordinator_harness, CREW_BIN, crew_render, HERE, harnesses, kill_run, LAUNCH, load, NAMES,
-    POINTER, profile, ownership_module, proc, require_ownership, role_notes, ROLES, ROOT, runs, sandbox_env, show_icon,
-    stop_pid, tmux)
+    brief_src, commands, coordinator_harness, coordinator_window, CREW_BIN, crew_render, HERE, harnesses, kill_run,
+    LAUNCH, load, NAMES, POINTER, profile, ownership_module, proc, require_ownership, role_notes, ROLES, ROOT, runs,
+    sandbox_env, show_icon, stop_pid, tmux)
 
 
 TEMPLATES = os.path.join(os.path.dirname(HERE), "templates")
@@ -266,7 +266,7 @@ def start(values, session, state, project_dir, env):
         return 1
     env = {"CREW_ROLE": "coordinator", "CREW_STATE": state, "CREW_IDENTITY": values["identities.coordinator.gh_user"],
            "CREW_BIN": CREW_BIN, **env, **sandbox_env(values)}
-    window = values.get("identities.coordinator.name", "ash").lower()
+    window = coordinator_window(values)
     private = {values["runtime.options.slack_webhook_env"]: os.environ[values["runtime.options.slack_webhook_env"]]} \
         if values["backends.owner-channel.name"] == "slack" else None
     line = LAUNCH.removesuffix(' "%s"') % cmd if launch(values, "resume") == "ask" else LAUNCH % (cmd, POINTER)

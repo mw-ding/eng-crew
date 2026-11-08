@@ -20,7 +20,7 @@ import shutil
 import subprocess
 import sys
 import time
-from crew_shared import checkout, commands, fetch, GATEWAY, gateway_error, git, load, ownership, profile, require_ownership, runs
+from crew_shared import checkout, commands, coordinator_window, fetch, GATEWAY, gateway_error, git, load, ownership, profile, require_ownership, runs
 
 precheck = load("crew_precheck", "scripts/crew-precheck.py")
 item_flavor = load("crew_item_flavor", "scripts/item-flavor.py")
@@ -151,7 +151,7 @@ def train_route(args, values, state, repo, slug, rec):
                 d["merge_up"] = "solo"
                 train_save(state, rec)
                 sent = commands()["send"].run(argparse.Namespace(
-                    window=values["identities.coordinator.name"].lower(), kind="solo",
+                    window=coordinator_window(values), kind="solo",
                     refs=["#%d" % d["pr"], view["headRefOid"], train_path(state, rec["n"])],
                     wait_ack=None, project=args.project, org_profile=args.org_profile))
                 if sent not in (0, 4):

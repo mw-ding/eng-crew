@@ -29,7 +29,7 @@ grouped and stable:
 
 | Index | Window name | Role | Lifetime |
 |---|---|---|---|
-| 0 | `ash` | Coordinator | Session |
+| 0 | `ash`, or `ash-<team>` with `identities.team` set | Coordinator | Session |
 | 1 | `sam` | Synthesizer | Session; idle between lands |
 | 2 | `ben-lead` | Builder lead | Session; owns builder scheduling and lifecycle |
 | 10–19 | `ben-<issue>` | Builder | One per issue; fix rounds reuse it; closed with its worktree on merge, close or escalation |
@@ -38,6 +38,9 @@ grouped and stable:
 | 30 | `crew-status` | Optional dashboard | Runs `mdstack status` on a loop: role, item, head SHA, last status, liveness |
 
 Window names are the profile's role display names; the defaults are shown.
+With `identities.team` set (`mdp-m4`), window 0 is `ash-mdp-m4`; every command
+resolves it from the profile, and `mdstack attach ash` and `mdstack send ash`
+still reach it (#1329).
 `mdstack spawn` takes the next free index in the role's band. The owner watches
 or types by attaching (`mdstack attach <window>`, read-only by default);
 `mdstack attach builders` opens a temporary tiled view without changing the
@@ -539,7 +542,8 @@ each repo.
    setting. Role windows in worktrees of the project load it too; the guard
    is a no-op there (`CREW_ROLE` is not `coordinator`).
 5. Creates the session detached, with window 0 named after
-   `identities.coordinator.name` (`ash`) in the project directory. The
+   `identities.coordinator.name` (`ash`), then `-<identities.team>` when
+   set, in the project directory. The
    window gets `CREW_ROLE=coordinator`, `CREW_STATE`, `CREW_BRIEF`,
    `CREW_IDENTITY`, `CREW_BIN`, `CREW_PROJECT` and the sandbox variable
    (see `mdstack spawn`);

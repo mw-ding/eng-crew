@@ -142,6 +142,20 @@ class Status(LivenessBase):
         base = self.git("rev-parse", "--short=7", "origin/main")
         self.assertEqual(row.split()[:8], ["ben-7", "builder", "issue", "#7", base, "0m", "alive", "blocked:"])
 
+    def test_status_finds_team_window_0(self):  # #1329
+        with open(self.project) as f:
+            text = f.read()
+        with open(self.project, "w") as f:
+            f.write(text.replace('owners = ["acme-owner"]\n', 'owners = ["acme-owner"]\nteam = "mdp-m4"\n'))
+        with open(self.state_file) as f:
+            state = json.load(f)
+        state["crew-acme-widgets"]["0"] = "ash-mdp-m4"
+        with open(self.state_file, "w") as f:
+            json.dump(state, f)
+        r = self.crew("status", "--project", self.project)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(r.stdout.splitlines()[1].split()[:2], ["ash-mdp-m4", "coordinator"])
+
     def test_status_trust_dialog_is_ambiguous(self):
         dialog = "Do you trust the files in this folder?\n> 1. Yes, proceed\n  2. No, exit\nEnter to confirm · Esc to cancel"
         with open(self.panes, "w") as f:

@@ -64,6 +64,24 @@ class Send(SendBase):
         self.assertIn("sent ", r.stdout)
         self.assertGreater(len([c for c in self.calls() if c[0] == "send-keys"]), nudged)
 
+    def test_team_window_0_by_full_name_or_bare_alias(self):  # #1329
+        with open(self.project) as f:
+            text = f.read()
+        with open(self.project, "w") as f:
+            f.write(text.replace('owners = ["acme-owner"]\n', 'owners = ["acme-owner"]\nteam = "mdp-m4"\n'))
+        with open(self.state_file, "w") as f:
+            json.dump({"crew-acme-widgets": {"0": "ash-mdp-m4", "10": "ben-7"}}, f)
+        ref = os.path.join(self.state, "leads", "builder-delivery-7.json")
+        for window in ("ash", "ash-mdp-m4"):
+            r = self.send(window, "blocked", ref)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertIn("to ash-mdp-m4", r.stdout)
+        self.assertEqual([c[2] for c in self.calls() if c[0] == "send-keys"][0], "=crew-acme-widgets:0")
+        r = self.send("ash", "unblocked", ref)
+        self.assertIn("no nudge", r.stdout)
+        self.assertEqual([m["kind"] for m in self.inbox("ash-mdp-m4")], ["blocked", "blocked", "unblocked"])
+        self.assertFalse(os.path.exists(os.path.join(self.state, "inbox", "ash.jsonl")))
+
     def test_oversized_or_payload_rejected(self):
         diff = "diff --git a/x b/x\n--- a/x\n+++ b/x\n@@ -1 +1 @@\n-old\n+new\n"
         for refs in [["p" * 201], ["d/" + "y" * 198] * 5, [diff], ["---a/x"], ["@@"],

@@ -80,6 +80,7 @@ for knob in ("name", "review", "validation", "evidence", "caps", "merge", "build
     MAPPED["flavor-" + knob] = ["flavor." + knob]
 MAPPED["flavor-validation-scope"] = ["flavor.validation_scope"]
 MAPPED["flavor-selfgate-engine"] = ["flavor.selfgate_engine"]
+MAPPED["TeamName"] = ["identities.team"]  # optional; empty when unset (#1329)
 # <mirror-gate>: the tmux synthesizer's mirror-gate paragraph by runtime.options.mirror (#877, docs/runtimes/tmux.md).
 MIRROR_GATE = {
     "live-copy": "Mirror deferral: read the recorded owner decision named by `mirror_deferral`\n"
@@ -342,6 +343,8 @@ class Renderer:
             return self.line(LAND_RULE) if self.values.get("land.tests_against_tip") else ""
         if name == "land-publish":
             return self.line(LAND_PUBLISH) if self.values.get("land.opens_draft") else ""
+        if name == "TeamName":
+            return str(self.values.get("identities.team", ""))
         if name == "runtime-id":
             return self.values["runtime.name"] + "@" + self.values.get("runtime.instance", "unconfigured")
         keys = MAPPED[name]
