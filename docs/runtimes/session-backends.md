@@ -129,7 +129,9 @@ It provides every operation above as functions: `bind`, `has_session`,
 `kill_window`, `kill_session`, `pane` (the identity and state read:
 `id`, `pid`, `dead`, `activity`, `tty`, `command`), `pane_command`,
 `foreground`, `capture`, `cursor`, `press`, `send_keys`, `attach`,
-`attach_hint` and `view`. A call the backend cannot answer returns `None`
+`attach_hint` and `view`. `bind(session, tmux_server)` gets the session name
+and `runtime.options.tmux_server` (#1327); a backend with one server ignores
+the second. A call the backend cannot answer returns `None`
 (`pane`, `cursor`, `has_window`) or raises `RuntimeError`; the runtime treats
 an unanswered probe as `ambiguous`, never as proof of death.
 
