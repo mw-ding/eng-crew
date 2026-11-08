@@ -57,8 +57,14 @@ jobs:
             echo "::error::lychee $LYCHEE_VERSION checksum mismatch, expected sha256 $LYCHEE_SHA256"
             exit 1
           fi
-          mkdir -p "$HOME/.local/lychee"
-          tar -xzf "$tarball" -C "$HOME/.local/lychee" lychee
+          mkdir -p "$RUNNER_TEMP/lychee-x" "$HOME/.local/lychee"
+          tar -xzf "$tarball" -C "$RUNNER_TEMP/lychee-x"
+          bin=$(find "$RUNNER_TEMP/lychee-x" -type f -name lychee -print -quit)
+          if [ -z "$bin" ]; then
+            echo "::error::lychee $LYCHEE_VERSION binary not found in $url"
+            exit 1
+          fi
+          mv "$bin" "$HOME/.local/lychee/lychee"
       - name: Check relative links (offline)
         run: |
           "$HOME/.local/lychee/lychee" --offline --no-progress --include-fragments './**/*.md'

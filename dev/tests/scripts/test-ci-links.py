@@ -2,14 +2,16 @@
 """Tests for the `links` job in .github/workflows/ci.yml (#1352, offline).
 
 Runs the job's install step with a fake `curl` and `sleep` on PATH: a
-transient download error is retried with backoff, an exhausted retry and a
-checksum mismatch fail with a clear `::error::`, and the link-check step
-passes lychee's failing exit through. The pinned version and sha256 stay
-explicit and the job has no `continue-on-error`. Run in CI.
+transient download error is retried with backoff; an exhausted retry, a
+checksum mismatch or an archive without the binary fails with a clear
+`::error::`; the binary is found whatever the archive layout; and the
+link-check step passes lychee's failing exit through. The pinned version and
+sha256 stay explicit and the job has no `continue-on-error`. Run in CI.
 """
 import hashlib
 import io
 import os
+import shutil
 import subprocess
 import tarfile
 import tempfile
@@ -40,20 +42,23 @@ class LinksJobTest(unittest.TestCase):
         self.fake, self.home, self.runner = (os.path.join(d, n) for n in ("fake", "home", "runner"))
         for path in (self.fake, self.home, self.runner):
             os.mkdir(path)
-        buf = io.BytesIO()
-        with tarfile.open(fileobj=buf, mode="w:gz") as tar:
-            body = b"#!/bin/sh\necho fake lychee\n"
-            info = tarfile.TarInfo("lychee")
-            info.size, info.mode = len(body), 0o755
-            tar.addfile(info, io.BytesIO(body))
-        self.asset = buf.getvalue()
-        with open(os.path.join(self.fake, "asset.tar.gz"), "wb") as f:
-            f.write(self.asset)
+        self.make_asset("./lychee")
         for name, text in (("curl", FAKE_CURL), ("sleep", '#!/bin/sh\necho "$1" >> "$FAKE/sleeps"\n')):
             path = os.path.join(self.fake, name)
             with open(path, "w") as f:
                 f.write(text)
             os.chmod(path, 0o755)
+
+    def make_asset(self, member):
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w:gz") as tar:
+            body = b"#!/bin/sh\necho fake lychee\n"
+            info = tarfile.TarInfo(member)
+            info.size, info.mode = len(body), 0o755
+            tar.addfile(info, io.BytesIO(body))
+        self.asset = buf.getvalue()
+        with open(os.path.join(self.fake, "asset.tar.gz"), "wb") as f:
+            f.write(self.asset)
 
     def tearDown(self):
         self.tmp.cleanup()
@@ -78,6 +83,21 @@ class LinksJobTest(unittest.TestCase):
         self.assertEqual(self.read("calls"), ["3"])
         self.assertEqual(self.read("sleeps"), ["5", "10"])
         self.assertTrue(os.access(os.path.join(self.home, ".local", "lychee", "lychee"), os.X_OK))
+
+    def test_binary_found_whatever_the_archive_layout(self):
+        for member in ("lychee", "./lychee", "lychee-v0.24.2/lychee"):
+            with self.subTest(member=member):
+                shutil.rmtree(os.path.join(self.home, ".local"), ignore_errors=True)
+                self.make_asset(member)
+                out = self.install(fails=0)
+                self.assertEqual(out.returncode, 0, out.stdout + out.stderr)
+                self.assertTrue(os.access(os.path.join(self.home, ".local", "lychee", "lychee"), os.X_OK))
+
+    def test_archive_without_binary_fails_with_message(self):
+        self.make_asset("README.md")
+        out = self.install(fails=0)
+        self.assertEqual(out.returncode, 1)
+        self.assertIn("::error::lychee 0.24.2 binary not found in", out.stdout)
 
     def test_unrecoverable_download_fails_with_message(self):
         out = self.install(fails=99)
