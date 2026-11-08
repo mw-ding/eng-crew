@@ -3,8 +3,8 @@
 > - **Status:** partly built
 > - **Applies to:** a tmux primary plus forge-less runner hosts
 > - **Current rules:** [tmux binding](tmux.md), [protocol](../protocol.md)
-> - **Built:** host inventory, `mdstack host check`, `mdstack hosts`, `mdstack host prepare`, the remote call and runner, [Forge-less hosts](#forge-less-hosts-remote-test-runner) and its [runbook](#runbook-add-a-runner-host) (#204–#206, #208, #349, #726–#729)
-> - **Design only:** placement and remote role sessions (#207, #345–#348), the [host OS adapters](#host-os-adapters) (#1281) and the two-host dry run (#209), all open
+> - **Built:** host inventory, `mdstack host check`, `mdstack hosts`, `mdstack host prepare`, the remote call and runner, [Forge-less hosts](#forge-less-hosts-remote-test-runner) and its [runbook](#runbook-add-a-runner-host), the [host OS adapter](#host-os-adapters) dispatch and the `macos` adapter, proved on fakes (#204–#206, #208, #349, #726–#729, #1358)
+> - **Design only:** placement and remote role sessions (#207, #345–#348), the `linux` [host OS adapter](#host-os-adapters) (#1281) and the two-host dry run (#209), all open
 > - **Last checked:** 2026-11-08 at `0e80f1d`
 
 How one coordinator runs role sessions on several hosts (laptops, a
@@ -301,7 +301,10 @@ answering; only verbs that start runs need it.
 
 Owner, 2026-11-07 ([#1281](https://github.com/mw-ding/mdstack/issues/1281)
 decision 2): the host side is OS-neutral, and `macos` and `linux` are
-adapters. Design only (M20.1 lab items D and E). The entrypoint picks the
+adapters. The dispatch and `macos` are built in
+`environments/terminal/remote/hostos/` (#1358, lab item D, proved on
+fakes); no verb calls its install, start, stop or uninstall yet, and
+`linux` is design only (lab item E). The entrypoint picks the
 adapter from its own `uname -s` and reports it in `version` and `check`;
 `mdstack host check` and `mdstack host prepare` compare it with
 `hosts.<name>.capabilities.os`, and a mismatch fails check 5. An adapter
