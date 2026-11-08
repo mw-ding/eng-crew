@@ -13,7 +13,8 @@ directory order, so adding a backend adds its adapter module and tests only. Eac
 
 Every adapter provides the same operations: bind, has_session, new_session, new_window, pin_layout, list_windows,
 has_window, kill_window, kill_session, pane, pane_command, foreground, capture, cursor, press, send_keys, attach,
-attach_hint and view. OS process helpers live in crew-proc.py."""
+attach_hint and view; bind(session, tmux_server) gets runtime.options.tmux_server too (#1327). OS process helpers
+live in crew-proc.py."""
 import glob
 import importlib.util
 import os

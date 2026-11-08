@@ -23,7 +23,7 @@ WINDOWS = {}
 RUNG = []
 
 
-def bind(session):
+def bind(session, tmux_server):
     pass
 
 

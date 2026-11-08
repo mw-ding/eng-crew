@@ -15,7 +15,7 @@ RANK = 1
 CAPABILITIES = {"doorbell"}  # no cursor coordinates: it rings with its own screen-only doorbell
 
 
-def bind(session):
+def bind(session, tmux_server="default"):
     pass  # The local default server; nothing is bound per session.
 
 

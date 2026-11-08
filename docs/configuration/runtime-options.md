@@ -43,6 +43,7 @@ sessions; running workers drain naturally when the cap drops:
 |---|---|---|---|
 | `session` | string | `crew-<owner>-<repo>` | the session name in [Layout and naming](../runtimes/tmux.md#layout-and-naming) |
 | `session_backend` | string: `tmux` or `herdr` | `"tmux"` | The local [session adapter](../runtimes/session-backends.md). `runtime.name` stays `tmux`; herdr uses the existing local default server, with one labelled workspace per run |
+| `tmux_server` | string: `default` or `dedicated` | `"default"` | The tmux server every crew call uses ([mdstack up](../runtimes/tmux.md#mdstack-up), #1327). `default`: the owner's default server, so plain `tmux ls` and `tmux attach -t <session>` find the crew, but a stray `tmux kill-server` from a pane also takes down the owner's own sessions. `dedicated`: the crew's own `tmux -L <session>` server (#818), out of reach of a pane's bare `tmux`; attach with `tmux -L <session> attach -t <session>`. The tmux session backend only |
 | `builders` | integer | `5` | builder band cap ([Q6](../runtimes/tmux.md#q6-concurrency)) |
 | `reviewers` | integer | `2` | reviewer pass cap ([Q6](../runtimes/tmux.md#q6-concurrency)) |
 | `researchers` | nonnegative integer | `2` | researcher session cap ([roles.md Researcher](../roles.md#researcher-riley)); 2 so a [triage sweep](../triage.md#host) never blocks a deep dive. `0` runs no researcher: the render writes no researcher brief and needs none of its operations, and `triage.enabled = true` is refused |

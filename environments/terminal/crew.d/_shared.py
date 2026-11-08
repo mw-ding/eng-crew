@@ -108,7 +108,7 @@ def profile(args, *keys):
     owner, repo = values["repo.owner"], values["repo.name"]
     tmux.name = values.get("runtime.options.session_backend", "tmux")
     session = values.get("runtime.options.session") or "crew-%s-%s" % (owner, repo)
-    tmux.bind(session)
+    tmux.bind(session, values.get("runtime.options.tmux_server") or "default")
     return values, session, os.path.join(os.path.abspath(values["paths.state_dir"]), "%s__%s" % (owner, repo))
 
 

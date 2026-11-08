@@ -7,7 +7,8 @@ import shlex
 EXECUTABLE = "tmux"
 RANK = 0
 CAPABILITIES = {"reload", "dead-keeps-pid"}  # its doorbell is the core's cursor-checked composer nudge (mdstack send)
-SOCKET = None  # the crew's own tmux server (`-L SOCKET`, the session name), set by crew_shared.profile (#818)
+SOCKET = None  # the session name, set by crew_shared.profile; names the dedicated server `-L SOCKET` (#818)
+DEDICATED = False  # runtime.options.tmux_server = "dedicated": the crew's own `-L SOCKET` server (#818, opt-in #1327)
 _server = {}
 
 
@@ -17,23 +18,26 @@ def default_socket():
 
 
 def server():
-    """`-L SOCKET`, so an agent's tmux mistake stays off the owner's server; the default server, named by path, while
-    a crew session started before #818 still runs there, until its next mdstack up. None of SOCKET keeps that default
-    server. Never the inherited $TMUX: under a private TMUX_TMPDIR a test cannot reach the caller's server."""
-    if SOCKET not in _server:
+    """The chosen server: the owner's default server, named by path, or with DEDICATED `-L SOCKET`, so an agent's tmux
+    mistake stays off the owner's server. A crew session still running on the other server is used there until its next
+    mdstack up (#1327; pre-#818 sessions likewise). None of SOCKET keeps the default server. Never the inherited $TMUX:
+    under a private TMUX_TMPDIR a test cannot reach the caller's server."""
+    key = (SOCKET, DEDICATED)
+    if key not in _server:
         default = ["-S", default_socket()]
-        own = ["-L", SOCKET] if SOCKET else default
+        dedicated = ["-L", SOCKET] if SOCKET else default
+        own, other = (dedicated, default) if DEDICATED else (default, dedicated)
         probe = ["has-session", "-t", "=%s" % SOCKET]
-        legacy = SOCKET and subprocess.run(["tmux", *own, *probe], capture_output=True).returncode and \
-            not subprocess.run(["tmux", *default, *probe], capture_output=True).returncode
-        _server[SOCKET] = default if legacy else own
-    return _server[SOCKET]
+        moved = own != other and subprocess.run(["tmux", *own, *probe], capture_output=True).returncode and \
+            not subprocess.run(["tmux", *other, *probe], capture_output=True).returncode
+        _server[key] = other if moved else own
+    return _server[key]
 
 
-def bind(session):
-    """The crew's own server for this session (#818)."""
-    global SOCKET
-    SOCKET = session
+def bind(session, tmux_server="default"):
+    """The session and its tmux server, runtime.options.tmux_server: "default" or "dedicated" (#818, #1327)."""
+    global SOCKET, DEDICATED
+    SOCKET, DEDICATED = session, tmux_server == "dedicated"
 
 
 def tmux(*args):
@@ -135,8 +139,9 @@ def attach(target, read_only=True):
 
 
 def attach_hint(session):
-    """The owner's attach line on the crew's own server (#818)."""
-    return shlex.join(["tmux", *server(), "attach", "-t", session])
+    """The owner's attach line on the crew's server: plain `tmux attach` on the default server (#818, #1327)."""
+    own = server()
+    return shlex.join(["tmux", *(own if own[0] == "-L" else []), "attach", "-t", session])
 
 
 def hold(name, index):

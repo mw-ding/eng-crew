@@ -4,8 +4,8 @@ Covers: session created, engine command, brief path (default inputs give the tmu
 from `templates/`), Stop hook install, idempotent, other runtime refused, a pre-trusted
 Codex coordinator (projects table: the project dir and a linked worktree's repo root),
 `CREW_BIN`, `CREW_PROJECT` and the sandbox variable in window 0, no render chatter,
-rebuilding `ash` from disk without respawning runs, the crew's own tmux server (#818: `-L <session>`, a pre-#818
-session kept on the default server named by path, never an inherited $TMUX, and a stopped lead orphaned by a lost server, never another process), and `mdstack up --team` (one session and coordinator for every
+rebuilding `ash` from disk without respawning runs, the crew's tmux server (#1327: the default server by default, plain `tmux ls`; #818: `-L <session>` when dedicated, a session on the other
+server kept until its next up, the default server named by path, never an inherited $TMUX, and a stopped lead orphaned by a lost server, never another process), and `mdstack up --team` (one session and coordinator for every
 repo of a team file, a render per repo under the team state root), and the #606 launch topology (hosted or no
 role windows, preflight-only coordinator, resume, schema refusals, the pack ownership read). Run in CI.
 """
@@ -587,21 +587,38 @@ class UpLiveness(LivenessBase):
 
 
 class OwnServer(Base):
-    """#818: every crew tmux call names the crew's own server, so an agent's tmux mistake stays off the owner's."""
-    def test_up_puts_every_call_on_the_session_socket(self):
+    """#818/#1327: every crew tmux call names one server: the owner's default server by path, or with
+    tmux_server = "dedicated" the crew's own `-L <session>` server, so an agent's tmux mistake stays off the owner's."""
+    def sockets(self):
+        with open(self.log + ".sockets") as f:
+            return f.read().split()
+
+    def test_up_puts_every_call_on_the_default_server_by_path(self):
         r = self.up()
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        with open(self.log + ".sockets") as f:
-            sockets = f.read().split()
+        sockets = self.sockets()
         default = os.path.join(self.env.get("TMUX_TMPDIR") or "/tmp", "tmux-%d" % os.getuid(), "default")
-        self.assertEqual(sockets[1], default)  # the one probe for a pre-#818 session (server()), by path, never $TMUX
+        self.assertEqual(sockets[1], "crew-acme-widgets")  # the one probe for a session on the dedicated server
+        self.assertEqual(set(sockets[:1] + sockets[2:]), {default})  # by path, never $TMUX
+        self.assertEqual(len(sockets), len(self.calls()))
+        r = self.up()
+        self.assertIn("already running; attach with: tmux attach -t crew-acme-widgets", r.stdout)
+
+    def test_up_puts_every_call_on_the_session_socket_when_dedicated(self):
+        with open(self.project, "a") as f:
+            f.write('\n[runtime.options]\ntmux_server = "dedicated"\n')
+        r = self.up()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        sockets = self.sockets()
+        default = os.path.join(self.env.get("TMUX_TMPDIR") or "/tmp", "tmux-%d" % os.getuid(), "default")
+        self.assertEqual(sockets[1], default)  # the one probe for a session on the default server, by path, never $TMUX
         self.assertEqual(set(sockets[:1] + sockets[2:]), {"crew-acme-widgets"})  # the fake logs each -L/-S apart
         bare = ["has-session", "-t", "=crew-acme-widgets"]
         self.assertEqual(len(sockets), len(self.calls()))
-        self.assertEqual(self.calls()[:3], [bare, bare, bare])  # server(): own and default probes; has_session
+        self.assertEqual(self.calls()[:3], [bare, bare, bare])  # server(): own and other probes; has_session
         self.assertIn("attach with: tmux -L crew-acme-widgets attach -t crew-acme-widgets", r.stdout)
 
-    def server(self, lives_on):
+    def server(self, lives_on, tmux_server="dedicated"):
         """sessions/tmux/adapter.py server() against a fake tmux whose session lives on `own` (-L), the `default` server or none,
         with an inherited $TMUX naming a decoy server; probes show the default socket as DEFAULT."""
         bindir = tempfile.mkdtemp(dir=self.tmp)
@@ -612,7 +629,7 @@ class OwnServer(Base):
         spec = importlib.util.spec_from_file_location("crew_tmux_818", os.path.join(os.path.dirname(SCRIPTS), "environments", "terminal", "sessions", "tmux", "adapter.py"))
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
-        mod.SOCKET = "crew-acme-widgets"
+        mod.bind("crew-acme-widgets", tmux_server)
         with mock.patch.dict(os.environ, PATH=bindir + os.pathsep + os.environ["PATH"], LIVES_ON=lives_on,
                              TMUX="/decoy/default,1,0", TMUX_TMPDIR=bindir):
             first, second = mod.server(), mod.server()
@@ -633,7 +650,7 @@ class OwnServer(Base):
         spec = importlib.util.spec_from_file_location("crew_tmux_818_live", os.path.join(os.path.dirname(SCRIPTS), "environments", "terminal", "sessions", "tmux", "adapter.py"))
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
-        mod.SOCKET = "crew-acme-widgets"
+        mod.bind("crew-acme-widgets", "dedicated")
         with mock.patch.dict(os.environ, env, clear=True):
             mod.new_session("crew-acme-widgets", "ash", self.tmp, {}, "tmux kill-server; sleep 300")
             for _ in range(100):
@@ -651,6 +668,34 @@ class OwnServer(Base):
         self.assertEqual(self.server("none"), (own, ["-L crew-acme-widgets " + probe, "-S DEFAULT " + probe]))
         self.assertEqual(self.server("default"), (["-S", "DEFAULT"],
                                                   ["-L crew-acme-widgets " + probe, "-S DEFAULT " + probe]))
+
+    def test_server_is_the_default_server_unless_the_session_runs_on_the_dedicated_server(self):  # #1327
+        default = ["-S", "DEFAULT"]
+        probe = "has-session -t =crew-acme-widgets"
+        self.assertEqual(self.server("default", "default"), (default, ["-S DEFAULT " + probe]))  # cached: one probe
+        self.assertEqual(self.server("none", "default"), (default, ["-S DEFAULT " + probe, "-L crew-acme-widgets " + probe]))
+        self.assertEqual(self.server("own", "default"), (["-L", "crew-acme-widgets"],
+                                                         ["-S DEFAULT " + probe, "-L crew-acme-widgets " + probe]))
+
+    @unittest.skipUnless(shutil.which("tmux"), "tmux not installed")
+    def test_default_server_session_is_listed_by_plain_tmux_ls(self):
+        """#1327: under a private TMUX_TMPDIR with no inherited $TMUX, the crew's session is on the default server:
+        plain `tmux ls` lists it and plain `tmux attach -t <session>` would find it."""
+        env = {k: v for k, v in os.environ.items() if k not in ("TMUX", "TMUX_PANE")}
+        env["TMUX_TMPDIR"] = tempfile.mkdtemp(prefix="t1327.", dir="/tmp")  # short: socket paths are length-limited
+        self.addCleanup(shutil.rmtree, env["TMUX_TMPDIR"], True)
+        self.addCleanup(subprocess.run, ["tmux", "kill-server"], env=env, capture_output=True)
+        spec = importlib.util.spec_from_file_location("crew_tmux_1327_live", os.path.join(os.path.dirname(SCRIPTS), "environments", "terminal", "sessions", "tmux", "adapter.py"))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        mod.bind("crew-acme-widgets")
+        with mock.patch.dict(os.environ, env, clear=True):
+            mod.new_session("crew-acme-widgets", "ash", env["TMUX_TMPDIR"], {}, "sleep 300")
+            self.assertEqual(mod.attach_hint("crew-acme-widgets"), "tmux attach -t crew-acme-widgets")
+        ls = subprocess.run(["tmux", "ls", "-F", "#{session_name}"], env=env, capture_output=True, text=True)
+        self.assertEqual(ls.stdout.split(), ["crew-acme-widgets"], ls.stderr)
+        has = subprocess.run(["tmux", "has-session", "-t", "=crew-acme-widgets"], env=env, capture_output=True)
+        self.assertEqual(has.returncode, 0)
 
     @unittest.skipUnless(shutil.which("tmux"), "tmux not installed")
     def test_inherited_tmux_decoy_is_never_followed(self):
@@ -670,7 +715,7 @@ class OwnServer(Base):
         spec = importlib.util.spec_from_file_location("crew_tmux_818_decoy", os.path.join(os.path.dirname(SCRIPTS), "environments", "terminal", "sessions", "tmux", "adapter.py"))
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
-        mod.SOCKET = "crew-acme-widgets"
+        mod.bind("crew-acme-widgets", "dedicated")
         with mock.patch.dict(os.environ, dict(env, TMUX="%s,%s,0" % (decoy, pid)), clear=True):
             self.assertEqual(mod.server(), ["-L", "crew-acme-widgets"])
             self.assertFalse(mod.has_session("crew-acme-widgets"))
