@@ -17,7 +17,7 @@ The `<author-login>` identity is defined in the runbook's prerequisite
 
 ## Step 1: create the `crew:*` labels
 
-Ten labels. Labels are safe state because no listener fires on them
+Thirteen labels. Labels are safe state because no listener fires on them
 ([architecture.md](../architecture.md#labels) says who sets and clears each;
 [GitHub backend: Labels](../backends/github.md#labels) has the label mechanics). The
 names, colors and descriptions below are the ones used on the framework repo.
@@ -30,7 +30,7 @@ export GH_TOKEN=$(gh auth token --user <author-login>)
 gh label list -R <owner>/<repo> --search crew: --json name,color,description
 ```
 
-If it returns no labels, proceed. If it returns exactly the ten labels below,
+If it returns no labels, proceed. If it returns exactly the thirteen labels below,
 with these colors and descriptions, and
 `<state-dir>/<owner>__<repo>/wiring.md` exists, this is an existing crew install;
 rerunning with `--force` is safe. Any other result (other `crew:*` names,
@@ -54,6 +54,9 @@ crew:external|C5DEF5|External/fork PR: sandboxed validation, no tokens
 crew:spec|0052CC|Spec PR: review pass only, merges on /crew merge-ok
 crew:needs-md|F9D0C4|Blocked on an owner decision (recommended default + deadline)
 crew:needs-mirror|E99695|Protocol/template change: merge blocked until the box skill is mirrored
+crew:sensitive|B60205|Requires per-change owner merge-ok; no standing grant applies.
+crew:express|BFD4F2|Express lane: builder builds and self-gates; no reviewer verdict
+crew:solo|FEF2C0|Solo lane: the owner session builds and fixes; reviewer stays independent
 EOF
 ```
 
@@ -73,7 +76,7 @@ Verify (capture this output):
 gh label list -R <owner>/<repo> --search crew: --json name,color,description
 ```
 
-Expect exactly ten rows, no extra `crew:*` label, and every color/description
+Expect exactly thirteen rows, no extra `crew:*` label, and every color/description
 as above.
 
 ## Step 3: create Milestones and link a GitHub Project (v2)

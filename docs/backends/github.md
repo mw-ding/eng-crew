@@ -74,7 +74,7 @@ marker format itself is core ([protocol §4](../protocol.md#4-marker-conventions
 
 ### Labels
 
-Each state tag is a GitHub label in the `crew:*` namespace. These are the ten
+Each state tag is a GitHub label in the `crew:*` namespace. These are the thirteen
 labels. What each means and who sets and clears it is the role view in
 [architecture: Labels](../architecture.md#labels); the commands that create
 them are in [runbook Step 1](../runbook-new-repo.md#step-1-create-the-crew-labels).
@@ -91,6 +91,9 @@ them are in [runbook Step 1](../runbook-new-repo.md#step-1-create-the-crew-label
 | `crew:spec` | `0052CC` | Spec PR: review pass only, merges on /crew merge-ok |
 | `crew:needs-md` | `F9D0C4` | Blocked on an owner decision (recommended default + deadline) |
 | `crew:needs-mirror` | `E99695` | Protocol/template change: merge blocked until the box skill is mirrored |
+| `crew:sensitive` | `B60205` | Requires per-change owner merge-ok; no standing grant applies. |
+| `crew:express` | `BFD4F2` | Express lane: builder builds and self-gates; no reviewer verdict |
+| `crew:solo` | `FEF2C0` | Solo lane: the owner session builds and fixes; reviewer stays independent |
 
 The [always-on triage](../triage.md) sweep adds its own labels, outside the
 `crew:*` namespace and never state tags ([protocol §4](../protocol.md#4-marker-conventions)):
