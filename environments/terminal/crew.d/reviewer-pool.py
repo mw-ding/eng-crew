@@ -52,7 +52,9 @@ def dispatch(args, values, state, wake):
                 return False
             route.invoke(args, "restart", window=name)
             return True
-        if liveness == "alive" and wake.get("reason") == "stale":
+        if liveness == "alive" and wake.get("reason") == "stale" and wake.get("liveness") == "idle":
+            liveness = "idle at its prompt"  # the watcher's idle stall; a re-probe still says alive (#1283)
+        elif liveness == "alive" and wake.get("reason") == "stale":
             return True  # the lead has just re-probed; silence alone permits no restart
         raise RuntimeError("crew: reviewer %s is %s; coordinator escalation required" % (name, liveness))
     result = route.route_record(args, values, state, wake)

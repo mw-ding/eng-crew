@@ -75,6 +75,9 @@ Build pass:
    file's `heartbeat:` line; where it answers `unsupported`, as in a session
    run, edit that line yourself) at least every 5 min and after each commit,
    push and post (§6).
+   Never start a background loop that refreshes the claim, heartbeat or
+   status file; for a long wait (CI, a test rerun) use the harness's own
+   background-task notification (#1283).
 4. Classify full diff paths with `core/crew-config.py sensitive --project "$CREW_PROJECT"`
    per protocol `Sensitive class`; with `[[sensitive.content]]` rules, pipe
    `git diff --no-color --no-renames origin/main...HEAD` to

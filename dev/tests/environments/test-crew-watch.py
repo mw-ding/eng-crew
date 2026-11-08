@@ -18,7 +18,8 @@ without touching the armed one's PID file, and a watcher removing the PID file o
 line followed by the schedule summary (#628); the triage sweep timer (#748): due, overdue on wake, an empty queue
 skipped, disabled, queued and failed spawns, never a wake, and closed milestones swept at once and kept until a started sweep takes them (#374), and the timer
 running after the scan's `--source` commands, so a resumed crew's overdue slot reads the queue that scan's poll wrote
-(#1098). Run in CI.
+(#1098); a run whose pane printed nothing for `idle_stall` waking stale with liveness `idle` despite a fresh claim,
+status file and live child, once per silence and never after `done:` (#1283). Run in CI.
 """
 import json
 import os
@@ -53,6 +54,25 @@ class Watch(LivenessBase):
                     json.dump({}, f)
                 self.set_pane(10, activity=str(activity))
                 self.assertEqual([w["reason"] for w in self.scan(NOW + 901, self.seen)], ["stale"])
+
+    def test_idle_pane_with_fresh_claim_is_stalled(self):  # #1283
+        claim = os.path.join(self.state, "claims", "builder-issue7")
+        self.put("claims/builder-issue7", "heartbeat: 2033-05-18T03:33:00Z\n")
+        os.utime(claim, (NOW, NOW))
+        self.beat(NOW - 10)
+        with open(self.ps, "w") as f:  # the refresh loop: a live detached child beneath the harness
+            json.dump({"children": [[42, 9000010, "S", "codex.real"], [43, 42, "Ss", "sh"]]}, f)
+        self.set_pane(10, activity=str(NOW - 1799))
+        self.assertEqual(self.scan(NOW), [])
+        self.set_pane(10, activity=str(NOW - 1800))
+        self.assertEqual([(w["reason"], w["liveness"], w["action"], w["silent"]) for w in self.scan(NOW)],
+                         [("stale", "idle", "escalate", 1800)])
+        self.assertEqual(self.scan(NOW + 60, self.seen), [])  # once per silence
+        with mock.patch.dict(os.environ, self.env):
+            self.assertEqual(self.mod.scan(self.state, "crew-acme-widgets", NOW, 900, {"offsets": {}, "keys": {}},
+                                           idle_stall=0), [])  # off
+        self.put("status/ben-7.status", "done: #7 #12 %s\n" % HEAD)
+        self.assertEqual([w["reason"] for w in self.scan(NOW)], ["status"])  # after done: it waits for its inbox
 
     def test_persistent_helpers_only_are_stale_but_detached_work_refreshes(self):
         for harness in ("codex", "claude"):
@@ -240,10 +260,25 @@ class Watch(LivenessBase):
     def test_scan_records_adapter_transient_text_once(self):  # #621
         claude = "  ⎿  API Error (529 {\"type\":\"error\"}) · Retrying in 2 seconds… (attempt 1/10)"
         codex = "■ exceeded retry limit, last status: 429 Too Many Requests"
+        fatal = '  ⎿  API Error: 529 {"type":"error","error":{"type":"overloaded_error"}}'
+        # Pane text that is not the harness's own error line (#1366): file names, tool output, diffs, quoted issue
+        # bodies and a docs table row naming the error line.
+        noise = "\n".join([
+            "  ⎿  Wrote 9 lines to changes/unreleased/1300-rate-limit-backoff.md",
+            "⏺ Bash(gh issue view 1395)", "  ⎿  title: back off on a rate limit", "     API Error (429) seen twice",
+            "     ⎿  API Error (529 …) · Retrying in 2 seconds… (attempt 1/10)",
+            "      12 +| Transient | A `⎿  API Error` line naming 429 or a 5xx status |",
+            "| C5 | `⎿  API Error (529 …) · Retrying` and `■ last status: 429 Too Many Requests` |",
+            "  └ grep -n rate-limit docs/scheduling.md: HTTP 429 Too Many Requests, retry",
+            '    {"type":"error","status":503} quoted from #621', "• 429 Too Many Requests is the rate limit retry"])
         errors = os.path.join(self.state, "schedule", "errors.jsonl")
-        for harness, text, want in [("claude", claude, [claude.strip()]), ("codex", codex, [codex]),
+        for harness, text, want in [("claude", claude, [claude.strip()]), ("claude", fatal, [fatal.strip()]),
+                                    ("codex", codex, [codex]),
                                     ("codex", '■ {"type":"error","status":503,…}', ['■ {"type":"error","status":503,…}']),
-                                    ("pi", claude, [])] + [(h, screen(n), []) for n in WORKING for h in ("claude", "codex")]:
+                                    ("pi", claude, []), ("claude", noise, []), ("codex", noise, []),
+                                    ("claude", noise + "\n" + claude, [claude.strip()]),
+                                    ("codex", noise + "\n" + codex, [codex])] + \
+                [(h, screen(n), []) for n in WORKING for h in ("claude", "codex")]:
             with self.subTest(harness=harness, text=text[:30]):
                 if os.path.exists(errors):
                     os.remove(errors)

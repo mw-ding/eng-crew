@@ -138,7 +138,8 @@ On every wake (watcher, owner, start), run
   `pr-merged` / `pr-closed`, remove all retained review files for that PR.
 - `pr-merged` close-out: remove `crew:approved`, `crew:hold`, `crew:in-review`
   and `crew:changes` (each if present) from the PR, remove `crew:ready` from
-  the issue it closed. Delete the head branch with
+  the issue it closed, and close that issue with a note if GitHub left it
+  open (never one that was reopened). Delete the head branch with
   `<op:change.delete-branch>` only when
   ALL of these hold, read from `<op:change.read-state>`
   and `<op:change.read-default-branch>`: the PR is

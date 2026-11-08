@@ -3,7 +3,9 @@ at `--source-timeout`, default 60 s, queue growth from another poller, and an `a
 wake at each open owner ask's deadline in `asks/<n>.json`; a signal during a scan is held until its children exit)
 and retries pending lead admission every 60 s, then exits with one reason line; runs without `start` skip liveness
 wakes while their record mtime is less than 60 s
-old. Verified panes with a live tool session or recent output get a supervisor heartbeat instead of a stale wake.
+old. Verified panes with a live tool session or recent output get a supervisor heartbeat instead of a stale wake; a
+working run whose tmux pane printed nothing for `--idle-stall` (default 1800 s) is idle at its prompt and wakes stale with
+liveness `idle` even while its claim or status file keeps being refreshed (#1283).
 Each live run's screen is matched against its harness adapter's transient-error text; each new match is a line in
 `schedule/errors.jsonl` (docs/scheduling.md#inputs). Finishing work deferred by the scheduler past `stuck_after` is one
 `schedule-stuck` wake per (pool, ref, first deferral), and the exit line is followed by `mdstack schedule summary`'s line
@@ -83,9 +85,10 @@ def run_identity(rec):
     return [rec.get(k) for k in ("start", "pane_id", "pane_pid", "pane_start", "worktree")]
 
 
-def scan(state, session, now, stale, seen, idle_ttl=1800, stuck_after=1800):
+def scan(state, session, now, stale, seen, idle_ttl=1800, stuck_after=1800, idle_stall=1800):
     """Wake records: new status lines, runs dead, missing or silent past stale, owner asks past their deadline and
-    finishing work deferred past stuck_after; each fires once per key."""
+    finishing work deferred past stuck_after; each fires once per key. A working run whose pane printed nothing for
+    idle_stall seconds is idle at its prompt and wakes stale (liveness `idle`), however fresh its status file (#1283)."""
     windows = dict((n, i) for i, n in tmux.list_windows(session))
     wakes = []
     for name, rec in list(runs(state)) + list(commands()["lead"].records(state)):
@@ -144,6 +147,16 @@ def scan(state, session, now, stale, seen, idle_ttl=1800, stuck_after=1800):
             if seen["keys"].get(name) != "dialog %s" % beat:  # wakes on the next scan, never after --stale (#234 N3)
                 seen["keys"][name] = "dialog %s" % beat
                 wakes.append({"reason": "dialog", "window": name, "liveness": cls, "silent": int(now - beat),
+                              "action": "escalate"})
+            continue
+        p = tmux.pane(session, rec["index"]) if cls == "alive" and idle_stall else None
+        quiet = now - float(p["activity"]) if p and float(p["activity"]) else None  # herdr reports no activity ("0")
+        if quiet is not None and quiet >= idle_stall and not finished(rec, last) and not last.startswith("done:") and \
+                work(state, name, rec):
+            key = "idle %s" % p["activity"]  # a self-refreshed claim or status file never hides it (#1283)
+            if seen["keys"].get(name) != key:
+                seen["keys"][name] = key
+                wakes.append({"reason": "stale", "window": name, "liveness": "idle", "silent": int(quiet),
                               "action": "escalate"})
             continue
         if finished(rec, last) or (cls in ("alive", "ambiguous") and (last.startswith("done:") or now - beat <= stale)):
@@ -386,6 +399,8 @@ def register(sub):
     p.add_argument("--stale", type=float, default=900, help="seconds without status progress before a stale wake")
     p.add_argument("--backstop", type=float, help="seconds to a backstop wake, x2 per idle wake up to idle_backoff "
                    "times (default: the coordinator's stale-sweep routine, 30m and x16)")
+    p.add_argument("--idle-stall", type=float, default=1800,
+                   help="seconds with no pane output before a working run counts as idle at its prompt (0: off)")
     p.add_argument("--interval", type=float, default=5, help="seconds between scans")
     p.add_argument("--source-timeout", type=float, default=60, help="seconds before a --source run is cut off")
     p.add_argument("--source-failures", type=int, default=3,
@@ -469,7 +484,7 @@ def run(args):
             triage_tick(values, state, time.time(), args.project, args.org_profile)
             trial = json.loads(json.dumps(seen))  # committed only once its wakes are queued
             wakes = scan(state, session, time.time(), args.stale, trial, values["runtime.options.idle_builder_ttl"],
-                         values["runtime.options.stuck_after"]) + found
+                         values["runtime.options.stuck_after"], args.idle_stall) + found
             others = queued(state, wake, trial)
             if code_sig() != code and not held:  # before route resolves the live profile with old code (#702)
                 reexec()  # trial is not committed, so the new image finds this scan's status lines and records again

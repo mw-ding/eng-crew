@@ -34,6 +34,8 @@ install = cli.commands()["install"]
 
 
 class UserInstall(bootstrap_tests.Bootstrap):
+    share_bundle = False  # renames its bundle
+
     def setUp(self):
         super().setUp()
         self.root = Path(self.home) / ".mdstack"
