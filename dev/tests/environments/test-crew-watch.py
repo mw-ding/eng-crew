@@ -577,7 +577,7 @@ class Watch(LivenessBase):
         counter = os.path.join(self.tmp, "calls")
         cmd = shlex.join([sys.executable, "-c", "import sys; open(%r, 'a').write('x'); print(%r); sys.exit(%d)"
                           % (counter, line, code)])
-        return cmd, lambda: len(open(counter).read()) if os.path.exists(counter) else 0
+        return cmd, lambda: os.path.getsize(counter) if os.path.exists(counter) else 0
 
     def run_for(self, seconds, *args):
         p = self.watch(*args, "--no-nudge")
