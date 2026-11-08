@@ -27,12 +27,15 @@ import json
 import os
 import re
 import shutil
+import sys
 import tempfile
 import unittest
 
 TESTS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # dev/tests/
 SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(TESTS)), "scripts")
 ROOT = os.path.dirname(SCRIPTS)
+sys.path.insert(0, TESTS)  # crew_testlib
+from crew_testlib import example_profile  # noqa: E402
 spec = importlib.util.spec_from_file_location("crew_render", os.path.join(os.path.dirname(SCRIPTS), "core", "crew-render.py"))
 cr = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(cr)
@@ -108,11 +111,11 @@ def lint(name, text, merge_grant):
 
 def render():
     """Render the real tmux briefs; return ({name: text}, merge_grant)."""
-    project = os.path.join(ROOT, "profiles", "tmux.toml")
-    values, problems = cr.resolve(project, None)
-    assert not problems, problems
     tmp = tempfile.mkdtemp()
     try:
+        project = example_profile(tmp)
+        values, problems = cr.resolve(project, None)
+        assert not problems, problems
         out = io.StringIO()
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
             code = cr.main(["--project", project, "--out", tmp])
@@ -444,7 +447,7 @@ class GateStatus(unittest.TestCase):
         cls.briefs = {}
         for runtime, profile in (("tmux", "tmux.toml"), ("grok-bot", "default.toml")):
             with tempfile.TemporaryDirectory() as tmp, contextlib.redirect_stdout(io.StringIO()):
-                code = cr.main(["--project", os.path.join(ROOT, "profiles", profile), "--out", tmp])
+                code = cr.main(["--project", example_profile(tmp, profile), "--out", tmp])
                 assert code == 0
                 with open(os.path.join(tmp, "runtime", "synthesizer.md"), encoding="utf-8") as f:
                     cls.briefs[runtime] = f.read()

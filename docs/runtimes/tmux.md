@@ -93,7 +93,8 @@ mdstack = "state/acme__widgets/mdstack"
 checkout = "~/widgets"
 ```
 
-`profiles/tmux.toml` carries this block for you to fill in, and
+`profiles/tmux.toml` ships this block as its default, with `<owner>` and
+`<repo>` taking the `[repo]` owner and name at resolve, and
 `mdstack bootstrap` proposes it with your repo filled in. With `paths.root`
 set, each relative `state_dir`, `worktree_root`, `live_dir`, `mdstack` and
 `checkout` resolves under it; absolute and `~` values stay as they are. A set

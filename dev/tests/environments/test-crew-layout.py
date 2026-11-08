@@ -142,6 +142,25 @@ class Layout(Base):
                            capture_output=True, text=True, env=dict(self.env, HOME=home, MDSTACK_CONFIG=self.project))
         self.assertIn("home          %s" % root, r.stdout)  # --project beats both
 
+    def test_shipped_tmux_profile_defaults_to_the_one_root_layout(self):  # #1316 AC1
+        home = os.path.join(self.tmp, "home")
+        os.makedirs(os.path.join(home, ".mdstack"))
+        with open(os.path.join(os.path.dirname(os.path.dirname(CREW)), "profiles", "tmux.toml")) as f:
+            text = f.read().replace("<author-login>", "acme-bot")
+        with open(os.path.join(home, ".mdstack", "config.toml"), "w") as f:
+            f.write('[repo]\nowner = "acme"\nname = "widgets"\n\n' + text)
+        r = subprocess.run([sys.executable, CREW, "layout"], capture_output=True, text=True,
+                           env=dict(self.env, HOME=home), cwd="/")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        rows = dict(line.split(None, 1) for line in r.stdout.splitlines())
+        root = os.path.join(home, ".mdstack")
+        self.assertEqual((rows["root"], rows["home"]), (root, root))
+        self.assertEqual(rows["state"], os.path.join(root, "state", "acme__widgets"))
+        self.assertEqual(rows["worktree_root"], os.path.join(root, "runs", "widgets"))
+        self.assertEqual(rows["live_dir"], os.path.join(root, "live"))
+        self.assertEqual(rows["mdstack"], os.path.join(root, "state", "acme__widgets", "mdstack"))
+        self.assertEqual(rows["checkout"], os.path.join(home, "widgets"))
+
     def test_missing_user_level_config_fails_without_fallback(self):  # #1316 AC9
         home = os.path.join(self.tmp, "home")
         os.makedirs(os.path.join(home, ".mdstack"))

@@ -1226,11 +1226,18 @@ def classify_binding(merged, prov, files, pack_dir, err):
 ROOT_CHILDREN = ("state_dir", "worktree_root", "live_dir", "mdstack", "checkout")
 
 
-def resolve_root(paths, prov):
+def resolve_root(paths, prov, repo=None):
     """paths.root, which a set CREW_ROOT overrides: each relative ROOT_CHILDREN value resolves under it, so moving
-    the whole layout changes one value (#1178). Without paths.root nothing changes; a <placeholder> stays as it is."""
+    the whole layout changes one value (#1178). Without paths.root nothing changes; a <placeholder> stays as it is.
+    `<owner>` and `<repo>` in a ROOT_CHILDREN value take [repo] owner and name, so the shipped default layout needs
+    only [repo] filled in (#1316)."""
     if not isinstance(paths, dict) or not isinstance(paths.get("root"), str):
         return
+    names = {k: v for k, v in (("owner", (repo or {}).get("owner")), ("repo", (repo or {}).get("name")))
+             if isinstance(v, str) and not re.search(r"<[^<>]+>", v)}
+    for key in ROOT_CHILDREN:
+        if isinstance(paths.get(key), str) and names:
+            paths[key] = re.sub(r"<(owner|repo)>", lambda m: names.get(m.group(1), m.group(0)), paths[key])
     root = os.environ.get("CREW_ROOT") or paths["root"]
     if re.search(r"<[^<>]+>", root):
         return
@@ -1393,7 +1400,7 @@ def resolve_profile(project, org_profile=None, pack_manifest=None, meta=None):
         if len(problems) == count:
             cross_check(merged, verr)
         if len(problems) == count:
-            resolve_root(merged.get("paths"), prov)
+            resolve_root(merged.get("paths"), prov, merged.get("repo"))
         if len(problems) == count:  # one resolved copy for every consumer; a profile layer cannot set [ids]
             merged["ids"] = {key: pattern for key, (pattern, _) in ids.items()}
             prov.update({"ids." + key: "backend-map:" + name if name else "core" for key, (_, name) in ids.items()})

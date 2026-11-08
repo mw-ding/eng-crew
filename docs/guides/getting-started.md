@@ -36,7 +36,7 @@ when you pass no `--project`. A project-level `config.toml`, passed with
 Download, verify and extract a release bundle into `~/.mdstack/releases/`
 ([README Install](../../README.md#install) steps 1 to 4). Write
 `~/.mdstack/config.toml` from the bundle's `profiles/tmux.toml`, with your
-`[repo]`, identities and its `[paths]` block filled in
+`[repo]` and identities; its default `[paths]` block already names this layout
 ([Set up the target repo](../runbook-new-repo.md#set-up-the-target-repo)).
 Then install with one command, a dry run first:
 

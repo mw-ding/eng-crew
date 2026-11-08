@@ -66,8 +66,8 @@ from 6.x or older? 7.0.0 is a fresh install
 1. **Install and verify** the release bundle: [Install](#install) steps 1 to 4.
 2. **Write `config.toml`** at `~/.mdstack/config.toml`, the user-level
    config every command uses without `--project`, from
-   [profiles/tmux.toml](profiles/tmux.toml) plus `[repo]` and its `[paths]`
-   block filled in
+   [profiles/tmux.toml](profiles/tmux.toml) plus `[repo]` (its default
+   `[paths]` block already names the `~/.mdstack/` layout)
    ([Set up the target repo](docs/runbook-new-repo.md#set-up-the-target-repo)),
    then check it:
    `python3 <mdstack>/core/crew-config.py validate ~/.mdstack/config.toml`.
