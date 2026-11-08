@@ -401,7 +401,10 @@ class A22OracleTest(unittest.TestCase):
                 fh.write(self.forge)
             subprocess.run(["python3", os.path.join(d, "forge.py"), "seed", repo], check=True,
                            env=dict(os.environ, CAMPAIGN_GH_DIR=d))
-            items = [json.load(open(os.path.join(d, "issue-list-%s.json" % s))) for s in ("open", "closed")]
+            items = []
+            for s in ("open", "closed"):
+                with open(os.path.join(d, "issue-list-%s.json" % s)) as fh:
+                    items.append(json.load(fh))
             entries = self.crew.triage_scan(repo, *items, self.crew.TRIAGE_RULES, {"sandbox-owner"},
                                             self.crew.triage_card_fields(), ("sandbox-coordinator", "Ash"))
             with open(os.path.join(d, "queue.json"), "w") as fh:
