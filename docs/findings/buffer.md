@@ -109,3 +109,162 @@ The live buffer. How to append, when to batch and who owns it are in
 - **Proposed fix layer:** prose: a root `AGENTS.md` review posture that the
   builder and reviewer templates require reading (gap row 7).
 - **Status:** fixing -> #92
+
+### Consumer reads part of a gate or action contract and treats the gap as permission
+
+- **Date:** 2026-11-08 (recorded by #1342 from repaired cards; the last
+  sighting is #1296)
+- **PR / repo:** cards #1134, #1135, #1136, #1137, #1144, #1147, #1205,
+  #1206, #1292, #1293, #1294, #1295 and #1296; repairs #979, #981, #984,
+  #991, #996, #1008, #1119, #1154, #1163, #1275, #1277 and #1280. See
+  [complete-contract](../lessons/2026-11-08-complete-contract.md)
+- **Smell:** A gate or action consumed only the fields, lines or flags it
+  expected. A missing field, truncated status, unparsed flag, missing run
+  record, later changes request or replayed authority read then passed as
+  clean.
+- **Count:** 13
+- **Proposed fix layer:** types/schemas: validate the whole contract and
+  treat anything incomplete as unknown; per-site regression tests hold it.
+- **Status:** fixed by #979, #981, #984, #991, #996, #1008, #1154, #1163,
+  #1275, #1277 and #1280; every regression test survives at `main` (#1342).
+
+### Sandbox boundary checked once, not at every effect
+
+- **Date:** 2026-11-08 (recorded by #1342 from repaired cards; the last
+  sighting is #1204)
+- **PR / repo:** cards #1191, #1192, #1193, #1194 and #1204; repairs #810,
+  #815, #816, #820 and #1152 (#1186 reran them). See
+  [sandbox-every-effect](../lessons/2026-11-08-sandbox-every-effect.md)
+- **Smell:** The campaign sandbox guarded one channel once. An output path,
+  a profile changed between steps, a branch that was not checked out, a
+  grouped socket flag and inherited credentials each crossed the boundary.
+- **Count:** 5
+- **Proposed fix layer:** architecture: check the boundary at every effect,
+  with a decoy test per channel.
+- **Status:** fixed by #810, #815, #816, #820 and #1152; every regression test
+  survives at `main` (#1342).
+
+### Test or check bypasses the path production uses
+
+- **Date:** 2026-11-08 (recorded by #1342 from repaired cards; the last
+  sighting is #1272)
+- **PR / repo:** cards #1126, #1138, #1198, #1210, #1248, #1260 and #1272;
+  repairs #888, #992, #1066, #1073, #1080, #1169, #1243, #1253 and #1264. See
+  [real-entrypoint-fixtures](../lessons/2026-11-08-real-entrypoint-fixtures.md)
+- **Smell:** A fixture or check took a shortcut around the production path.
+  Examples are a moved doc source, a skipped render stage, a shell that
+  masks exit codes, a snapshot over git internals, a lint that knew one
+  syntax form and a checker that reads only tracked files.
+- **Count:** 7
+- **Proposed fix layer:** CI check: route tests through the production
+  pipeline and make every assertion fail closed.
+- **Status:** fixed by #888, #992, #1066, #1073, #1080, #1169, #1243, #1253
+  and #1264; every regression test survives at `main` (#1342). Leftovers ->
+  #1412, #1413, #1414.
+
+### Release or install rewrite changes the meaning of what it touches
+
+- **Date:** 2026-11-08 (recorded by #1342 from repaired cards; the last
+  sighting is #1308)
+- **PR / repo:** cards #1129, #1130, #1139, #1140, #1146, #1207, #1208, #1209,
+  #1297, #1306, #1269, #1270 and #1308; repairs #913, #920, #1000, #1016,
+  #1148, #1153, #1159, #1181, #1186, #1278, #1301 and #1304
+- **Smell:** A release cut, upgrade or migration rewrote owner-visible state
+  and changed its meaning. A minor bump made capabilities newly required
+  (#1129). A `Closes` reference auto-closed an issue before publication
+  (#1130). A failed toolkit replacement had already moved the working copy
+  (#1139). A pinned toolkit was written into (#1140). The last launch note
+  hit a no-change shortcut (#1146). Reload killed a window before respawn
+  (#1207). A guard hook had two identities (#1208). A retry lost verified
+  provenance (#1209). Core memory was counted against the brief budget
+  (#1297). A released CHANGELOG section was edited (#1306). Unrelated hook
+  text was requoted (#1269). Rollback paths were left unquoted (#1270). A
+  single-quoted TOML name was skipped (#1308).
+- **Count:** 13
+- **Proposed fix layer:** CI check: verify before displacing, never write
+  pinned content, keep one identity per invocation path, leave unrelated text
+  byte-for-byte, quote anything printed for re-running, parse the result
+  before moving state. The modern relocation and rename paths (#1269, #1270,
+  #1308) stay supported and tested.
+- **Status:** fixed by #1000, #1016, #1148, #1153, #1159, #1181, #1278 and
+  #1304; their regression tests survive at `main` (#1342). The release-process
+  cards (#913, #920 and #1301 were manual repairs) have no guard yet:
+  leftovers -> #1415, #1416, #1417.
+
+### Moved or quoted prose loses its consumer contract
+
+- **Date:** 2026-11-08 (recorded by #1342 from repaired cards; the last
+  sighting is #1212)
+- **PR / repo:** cards #1125, #1127, #1128, #1131, #1133, #1142, #1143, #1211
+  and #1212; repairs #830, #950, #972, #973, #1008, #1043, #1046, #1048,
+  #1094 and #1186
+- **Smell:** Text that moved or was quoted kept its words but not what its
+  readers relied on. Runtime qualifiers were dropped (#1125). Numbered lists
+  were split under new headings (#1127). A code span gained a separator
+  space (#1128). A slice PR body kept stale linkage (#1131). A renamed
+  heading broke an anchor (#1133). Generated commands lost `--project` or
+  their order (#1142, #1143). A descriptive phrase parsed as a closing
+  reference (#1211). A wrapped `#N` line became a heading (#1212).
+- **Count:** 9
+- **Proposed fix layer:** lint and CI check for the mechanical half
+  (markdownlint, the CI `links` job, `check-markdown.py` MD018 and the render
+  test's `assert_crew_commands_parse`); prose only for qualifiers, slice
+  linkage and closing keywords, because those depend on meaning and live PR
+  bodies.
+- **Status:** fixed by #830, #950, #972, #973, #1008, #1043, #1046, #1048,
+  #1094 and #1186; the mechanical guards survive at `main` (#1342). MD029 is
+  now off repo-wide (#1190). Leftovers for #1125, #1131 and #1211 -> #1418.
+
+### Terminal record lost or mismatched by a downstream consumer
+
+- **Date:** 2026-11-08 (recorded by #1342 from repaired cards; the last
+  sighting is #1199)
+- **PR / repo:** cards #1141, #1145, #1195, #1196, #1197, #1199 and #1070;
+  repairs #1007, #1009, #1063, #1065, #1071, #1073, #1081, #1150 and #1186.
+  See [terminal-record-consumers](../lessons/2026-11-08-terminal-record-consumers.md)
+- **Smell:** A record was produced correctly, then lost downstream. The
+  consumers were accuracy history, ID parsing, the wake matcher, the reaper,
+  scheduler inputs and the reservation ledger.
+- **Count:** 7
+- **Proposed fix layer:** CI check: key records by stable identity and test
+  each consumer with the record as the runtime produces it.
+- **Status:** fixed by #1007, #1009, #1063, #1065, #1071, #1081 and #1150;
+  every regression test survives at `main` (#1342). #1266 is a later,
+  separate capacity report.
+
+### Evidence gate keyed on incidental prose, not typed proof
+
+- **Date:** 2026-11-08 (recorded by #1342 from repaired cards; the last
+  sighting is #1203)
+- **PR / repo:** cards #1200, #1201, #1202 and #1203; repairs #1080, #1084,
+  #1085, #1104, #1110 and #1113. See
+  [inline-evidence](../lessons/2026-11-01-inline-evidence.md) and
+  [typed-verify-evidence](../lessons/2026-10-29-typed-verify-evidence.md)
+- **Smell:** The train evidence check judged surface text. It refused valid
+  `user-attachments` media (#1200). It kept blocking on uncited files after a
+  signed inline fix proof at head (#1201). It read paths quoted in code as
+  required artifacts (#1202). Separately, every campaign PR appended to one
+  shared scenario list and conflicted (#1203).
+- **Count:** 4
+- **Proposed fix layer:** CI check: the precheck keys on typed or signed proof;
+  `merge=union` with a `check-repo.py` guard for the shared list.
+- **Status:** fixed by #1084, #1085, #1110 and #1113; every regression test
+  survives at `main` (#1342). #1203's optional one-file-per-scenario
+  alternative -> #1419.
+
+### Optional pack input assumed present, or a floor checked per layer
+
+- **Date:** 2026-11-08 (recorded by #1342 from repaired cards; the last
+  sighting is #1273)
+- **PR / repo:** cards #1132 and #1273; repairs #919, #972 and #1265
+- **Smell:** Pack handling validated each input alone. A pack without
+  `profile.toml` lost `pack.version` and a backend without a render map
+  raised TypeError (#1132). A weaker custom flavor split across environment
+  and pack layers passed the floor check (#1273).
+- **Count:** 2
+- **Proposed fix layer:** types/schemas: validate the merged view across every
+  layer and every supported absence, through the real discovery path.
+- **Status:** fixed by #919, #972 and #1265; every regression test survives at
+  `main` (#1342). #1132's absence cases through `pack.toml` discovery ->
+  #1411. The floor-selector false positive #1325 and VCS pinning #1326 are
+  separate.

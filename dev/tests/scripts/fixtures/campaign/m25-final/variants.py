@@ -1,6 +1,6 @@
 """Build the M25 final-run variant specs (#806) from the committed campaign specs.
 
-Usage: python3 variants.py SCENARIO_DIR OUT_DIR. Writes A03 (row 36 probe), A04 (fixture body + #814 dependency
+Usage: python3 variants.py SCENARIO_DIR OUT_DIR. Writes A03 (row 36 probe), A04 (#814 dependency
 wake), A17 (no #1070 release workaround), A23 (#743 automatic pick) and A26 (#1098, row 34) to OUT_DIR.
 """
 import json, sys
@@ -41,14 +41,9 @@ for x in d["steps"]:
     n += old != x["run"]
 assert n, "no release call found"
 json.dump(d, open(f"{out}/A17.json", "w"), indent=1)
-# A04 (diagnostic): issue fixtures carry a body, as real `gh --json number,body` would.
-d = load("A04"); n = 0
-d["title"] = "A04 diagnostic (#806): issue-list fixtures include body"
-for x in d["steps"]:
-    old = x.get("run", "")
-    x["run"] = old.replace('"assignees":[{"login":"sandbox-builder"}]}', '"assignees":[{"login":"sandbox-builder"}],"body":""}')
-    n += old != x["run"]
-json.dump(d, open(f"{out}/A04.json", "w"), indent=1); assert n == 1
+# A04: the committed issue fixtures carry a body since #1174, so the variant only adds row 44.
+d = load("A04")
+d["title"] = "A04 variant (#806): #814 dependency wake"
 # Row 44 (#814): a composed dependency merge dispatches its dependent at once, not at the backstop.
 m = {x["name"]: x for x in d["steps"]}["merge-missed-while-watcher-down-reconciled"]["run"]
 pre = m.split(" rm -f $S/wake/queue.jsonl;")[0]
