@@ -1739,7 +1739,11 @@ neither that file nor the watch state, #591), then scans every `--interval` seco
 (default 5) and blocks until one of these is actionable:
 
 - `status:` a new line in any `status/<window>.status` of a recorded run
-  (read offsets persist in `wake/watch-state.json`, so a line wakes once);
+  (read offsets persist in `wake/watch-state.json` with a digest of the read
+  prefix, so a line wakes once, across watcher restarts and run-identity
+  changes such as a lead restart that keeps its status file; a file shorter
+  than its offset or with a changed prefix is a new run's and is read from the
+  start, #819);
 - `stale:` a run that probes `dead` or `missing`, or one with no status
   progress (status file, else run record) for `--stale` seconds (default 900),
   with no live tool session and no pane output within that interval. Tool
