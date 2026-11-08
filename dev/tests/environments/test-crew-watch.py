@@ -134,6 +134,26 @@ class Watch(LivenessBase):
         self.assertEqual(self.scan(NOW, self.seen), [])
         self.assertEqual(self.record("ben-7")["pr"], 13)
 
+    def test_retained_status_never_replays_across_identity_changes(self):  # #819
+        old = "blocked: #5 hold\ndelivered: m1\n"
+        self.put("status/ben-7.status", old)
+        self.assertEqual(len(self.scan(NOW)), 2)
+        rec = self.record("ben-7")
+        for change in ({"start": "2033-05-18T00:00:00Z", "pane_id": None, "pane_pid": None, "pane_start": None},
+                       {"pane_id": "%99", "pane_pid": "4242", "pane_start": "Thu May 18 00:00:01 2033"}):
+            rec.update(change)  # a restart saves its record without, then with, the new pane identity
+            self.put("runs/ben-7.json", json.dumps(rec))
+            self.assertEqual([w for w in self.scan(NOW, self.seen) if w["reason"] == "status"], [])
+        self.put("status/ben-7.status", old + "ack: m2\n")
+        self.assertEqual([w["line"] for w in self.scan(NOW, self.seen) if w["reason"] == "status"], ["ack: m2"])
+
+    def test_rewritten_status_reads_from_the_start(self):  # #819: same prefix length, other content
+        self.put("status/ben-7.status", "done: #7 #12 %s\n" % HEAD)
+        self.scan(NOW)
+        self.put("status/ben-7.status", "done: #7 #13 %s\nack: m2\n" % HEAD)
+        self.assertEqual([w["line"] for w in self.scan(NOW, self.seen) if w["reason"] == "status"],
+                         ["done: #7 #13 " + HEAD, "ack: m2"])
+
     def missing_window(self, starting=False):
         with open(self.state_file, "w") as f:
             json.dump({"crew-acme-widgets": {"0": "ash"}}, f)
