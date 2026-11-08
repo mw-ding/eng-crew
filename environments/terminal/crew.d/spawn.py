@@ -4,9 +4,10 @@ Refuses solo-labelled builder items before creating a claim, queue entry or wind
 a triage sweep window, riley-sweep, with no item (docs/triage.md#host, #748); its Item names the queued closed
 milestones it takes for a milestone-close sweep (#374). `researcher --docs-pass` starts a docs pass window, riley-docs,
 with no item (docs/project-docs.md#docs-pass, #1026); its Item names each repo's scan.json, and it is refused unless
-`[docs] enabled` is true.
+`[docs] enabled` is true. `builder --train N` starts a train worker, ben-trainN, for the synthesizer's delegated merge
+train N (#1391); its Item names the delegation record.
 
-Usage: mdstack spawn ROLE --issue N | --pr N | --sweep | --docs-pass [--pass PASS] [--round K] [--tier T] --project FILE [--org-profile FILE]
+Usage: mdstack spawn ROLE --issue N | --pr N | --sweep | --docs-pass | --train N [--pass PASS] [--round K] [--tier T] --project FILE [--org-profile FILE]
 """
 import json
 import os
@@ -69,6 +70,8 @@ def enqueue(state, args, pass_):
         entry["sweep"] = True
     if getattr(args, "docs_pass", False):
         entry["docs_pass"] = True
+    if getattr(args, "train", None):
+        entry["train"] = args.train
     os.makedirs(state, exist_ok=True)
     with open(os.path.join(state, "spawn-queue.jsonl"), "a") as f:
         f.write(json.dumps(entry) + "\n")
@@ -76,7 +79,7 @@ def enqueue(state, args, pass_):
         with queue_lock(state), open(os.path.join(state, "wake", "queue.jsonl"), "a") as f:
             f.write(json.dumps(dict(event="builder-queued", reason="spawn")) + "\n")
     print("queued: %s %s %s (%s cap reached; run mdstack dequeue when a window closes)" % (
-        args.role, pass_, "sweep" if entry.get("sweep") else "docs pass" if entry.get("docs_pass") else "issue #%s" % args.issue if args.issue else "PR #%s" % args.pr,
+        args.role, pass_, "train %d" % entry["train"] if entry.get("train") else "sweep" if entry.get("sweep") else "docs pass" if entry.get("docs_pass") else "issue #%s" % args.issue if args.issue else "PR #%s" % args.pr,
         args.role))
     return 0
 
@@ -88,6 +91,7 @@ def register(sub):
     p.add_argument("--pr", type=int)
     p.add_argument("--sweep", action="store_true", help="researcher only: a triage sweep, no item (docs/triage.md)")
     p.add_argument("--docs-pass", action="store_true", help="researcher only: a docs pass, no item (docs/project-docs.md)")
+    p.add_argument("--train", type=int, help="builder only: build the delegated merge train N, no item (#1391)")
     p.add_argument("--pass", dest="pass_", choices=sorted({p for v in PASSES.values() for p in v}))
     p.add_argument("--head", help="expected PR head; refuse a changed head, including a queued spawn")
     p.add_argument("--round", type=int, default=1, help="verdict round k, for reviewer window names")
@@ -103,9 +107,13 @@ def run(args):
     args.tier = args.tier or data.get("default_tier", "default")  # the researcher's research row: high effort (#584)
     tool = ("toolchain_bin",) if data["lifetime"] == "issue" else ()
     values, session, state = profile(args, "worktree_root", *tool)
-    pass_ = args.pass_ or (data.get("change_pass", PASSES[role][0]) if args.pr else PASSES[role][0])
+    train = getattr(args, "train", None)
+    pass_ = "train" if train else args.pass_ or (data.get("change_pass", PASSES[role][0]) if args.pr else PASSES[role][0])
     inputs = data["inputs"].get(pass_, [])
     sweep, docs_pass = getattr(args, "sweep", False), getattr(args, "docs_pass", False)
+    if train and (role != "builder" or args.issue or args.pr or args.pass_ or sweep or docs_pass):
+        print("crew: --train is builder-only and takes no --issue, --pr or --pass")
+        return 2
     if sweep and (role != "researcher" or args.issue or args.pr or docs_pass):
         print("crew: --sweep is researcher-only and takes no --issue, --pr or --docs-pass")
         return 2
@@ -117,7 +125,7 @@ def run(args):
         return 1
     if sweep or docs_pass:
         inputs = []
-    if pass_ not in PASSES[role] or bool(args.issue) != ("issue" in inputs) or \
+    if (pass_ not in PASSES[role] and not train) or bool(args.issue) != ("issue" in inputs) or \
             bool(args.pr) != ("change" in inputs):
         error_inputs = next((v["inputs"][pass_] for v in ROLES.values() if v.get("change_pass") == pass_),
                             data["inputs"][PASSES[role][0]])
@@ -134,7 +142,7 @@ def run(args):
             return 1
     nm = values.get(data["identity_key"] + ".name", NAMES[role]).lower()
     instance = getattr(args, "instance", None)  # mdstack up <role>: an on-demand instance, named by mdstack up (#1231)
-    name = instance or data["window_name"].format(name=nm, issue="sweep" if sweep else "docs" if docs_pass else args.issue, change=args.pr, round=args.round, **{"pass": pass_})
+    name = instance or data["window_name"].format(name=nm, issue="sweep" if sweep else "docs" if docs_pass else "train%d" % train if train else args.issue, change=args.pr, round=args.round, **{"pass": pass_})
     if not tmux.has_session(session):
         print("crew: session %s not reachable (tmux socket, or run mdstack up first)" % session)
         return 1
@@ -165,7 +173,7 @@ def run(args):
         return 1
     run = "%s-pr%d-%s" % (role, args.pr, sha[:7]) if args.pr else ""
     run += "-r%d-%s" % (args.round, pass_) if data["lifetime"] == "pass" else ""  # review and validate coexist (#139 F3)
-    claim = os.path.join(state, "claims", "%s-sweep" % role if sweep else "%s-docs" % role if docs_pass else
+    claim = os.path.join(state, "claims", "%s-train%d" % (role, train) if train else "%s-sweep" % role if sweep else "%s-docs" % role if docs_pass else
                          "%s-%s" % (role, instance) if instance else "%s-issue%s" % (role, args.issue) if not args.pr else run)
     for d in ["claims", "runs", "inbox", "status"]:
         os.makedirs(os.path.join(state, d), exist_ok=True)
@@ -176,6 +184,8 @@ def run(args):
         return 1
     item = ", ".join("issue #%s" % args.issue if i == "issue" else "PR #%d" % args.pr for i in inputs) or \
         ("on demand (mdstack up %s)" % role if instance else "triage sweep (docs/triage.md)")
+    if train:
+        item = "merge train %d (%s)" % (train, commands()["train"].delegation_path(state, train))
     if docs_pass:  # each repo's scan, docs-scan.py's output path
         item = "docs pass (docs/project-docs.md); scans: " + ", ".join(os.path.join(
             os.path.dirname(state), r.replace("/", "__"), "docs", "scan.json") for r in values["docs.repos"])
@@ -184,7 +194,7 @@ def run(args):
         item += "; milestone close: " + ", ".join("%s milestone %d (%s)" % (m["repo"], m["number"], m["title"])
                                                   for m in milestones)
     wt = os.path.join(os.path.abspath(values["paths.worktree_root"]), "%s-%s-%s-%s%s" % (
-        args.pr or args.issue or ("docs" if docs_pass else instance or "sweep"), sha[:7], role, "r%d-" % args.round if data["lifetime"] == "pass" else "", pass_))
+        args.pr or args.issue or ("train%d" % train if train else "docs" if docs_pass else instance or "sweep"), sha[:7], role, "r%d-" % args.round if data["lifetime"] == "pass" else "", pass_))
     rec = {"index": free[0], "role": role, "item": item, "pass": pass_, "repo": repo, "worktree": None, "claim": claim,
            "engine": engine, "model": model, "effort": effort, "harness": ENGINE_CMD[engine], "head": sha}
     if role == "reviewer":  # the brief's verdict file, removed by mdstack kill
@@ -241,7 +251,8 @@ def run(args):
         return 1
     rec["start"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     rec.update(identity(session, free[0]), args=dict({"issue": args.issue, "pr": args.pr, "pass": pass_,
-                                                      "round": args.round, "tier": args.tier}, **({"sweep": True} if sweep else {"docs_pass": True} if docs_pass else {})))
+                                                      "round": args.round, "tier": args.tier}, **({"sweep": True} if sweep else {"docs_pass": True} if docs_pass else
+                                                                               {"train": train} if train else {})))
     save()
     if role in ("builder", "reviewer"):  # its run record has appeared: the grant ends here, not at the next decide (#1050)
         commands()["schedule"].release(state, role, ["#%d" % n for n in (args.issue, args.pr) if n])

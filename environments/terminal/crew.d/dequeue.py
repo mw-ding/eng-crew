@@ -76,7 +76,7 @@ def run(args, role=None):
         return 0
     ref = getattr(args, "ref", None)
     pick = next((e for e in entries if (role is None or e["role"] == role) and
-                 (ref is None or ref == "#%s" % (e["issue"] if e["pass"] == "build" else e["pr"])) and
+                 (ref is None or ref == ("train-%d" % e["train"] if e.get("train") else "#%s" % (e["issue"] if e["pass"] == "build" else e["pr"]))) and
                  (not commands()["lead"].enabled(state, e["role"]) or os.environ.get("CREW_POOL") == e["role"]) and
                  not over_cap(values, e["role"], windows, state)), None)
 
@@ -89,7 +89,7 @@ def run(args, role=None):
         f.writelines(json.dumps(e) + "\n" for e in entries)
     spawn = commands()["spawn"].run
     rc = spawn(argparse.Namespace(role=pick["role"], issue=pick["issue"], pr=pick["pr"], sweep=pick.get("sweep", False),
-                                    docs_pass=pick.get("docs_pass", False), pass_=pick["pass"],
+                                    docs_pass=pick.get("docs_pass", False), train=pick.get("train"), pass_=None if pick.get("train") else pick["pass"],
                                     head=pick.get("head"), round=pick["round"], tier=pick["tier"],
                                     timeout=getattr(args, "timeout", 15.0),
                                     project=args.project, org_profile=args.org_profile, messages=pick.get("messages", [])))

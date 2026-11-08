@@ -387,6 +387,21 @@ class Spawn(SpawnBase):
             self.assertEqual([json.loads(line).get("sweep") for line in f], [None, True])  # mdstack dequeue passes it on
         self.assertEqual(self.spawn("researcher", "--pr", "9").returncode, 2)
 
+    def test_builder_train_worker_has_no_item(self):  # #1391
+        r = self.spawn("builder", "--train", "5")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        call = self.windows()[0]
+        self.assertEqual(call[call.index("-n") + 1], "ben-train5")
+        rec = self.record("ben-train5")
+        self.assertEqual((rec["item"], rec["pass"], rec["args"]["train"]), (
+            "merge train 5 (%s)" % os.path.join(self.state, "trains", "delegated-5.json"), "train", 5))
+        self.assertTrue(rec["claim"].endswith("builder-train5"))
+        self.assertTrue(os.path.basename(rec["worktree"]).startswith("train5-"))
+        self.assertEqual(self.spawn("builder", "--train", "5").returncode, 1)  # already running
+        for argv in (("builder", "--train", "6", "--issue", "7"), ("builder", "--train", "6", "--pass", "fix"),
+                     ("researcher", "--train", "6")):
+            self.assertEqual(self.spawn(*argv).returncode, 2, argv)
+
     def test_researcher_sweep_spawns_a_window_with_no_item(self):  # #748
         r = self.spawn("researcher", "--sweep")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)

@@ -178,26 +178,23 @@ Merge train (tmux doc, mdstack train):
   reports gates per PR without a build or writes. Filter `blocked` members;
   resolve every `manual` gate with the step 2 check. Share blockers with
   the coordinator early. This snapshot never replaces the land-time check.
-- Pipeline: build N with `--no-wait`, then N+1 with `--after <n> --no-wait`,
-  excluding N's members. Prepare while N runs CI or lands; never another
-  synthesizer or parallel lands. Collect CI with
-  `$CREW_BIN train wait <n> --project "$CREW_PROJECT"`.
-  Per crew train: a real predecessor
-  stop/early close rebuilds N+1 with a new number and current main; read the
-  new record, never land the old one. A transient pause preserves N+1/CI.
-  Never build `--after` on a predecessor with `ci=fail`, even if still open.
-  Land N+1 only after N finishes, under the same serial land lock.
-- Build: `$CREW_BIN train build <pr>... --project "$CREW_PROJECT"`, in
-  `Depends on` then approval order. Read `member`, `dropped`, `deferred`,
-  `ci-link`, and `train n=<n>` (`local=` / `ci=`). Copy `train-report` to
-  `$CREW_STATUS` with members, landed, dropped reasons and stop cause.
-  PRs sharing paths stay together in input order; only a real merge conflict
-  drops one (`reason=conflict`). Supply only ready candidates whose
-  dependencies permit that order.
-  `no-verified-base` / `status=reviewer`: coordinator requests a fresh `base=` verdict.
-  Local checks default to `local=skipped`; `--local` or
-  `train_local_checks = true` opts in. They are not a merge gate; green train
-  CI remains required. The draft train PR is CI only: never merge it.
+- Delegate: a builder builds every train. Run
+  `$CREW_BIN train delegate <pr>... --project "$CREW_PROJECT"` in
+  `Depends on` then approval order, only ready candidates. It reserves
+  train `<n>` and hands `train-<n>`, the base and each `#<pr> <head-sha>` to
+  the builder lead. The builder builds, waits for CI, bisects a red train,
+  then sends `train-done train-<n>` with its record; it never lands. If delegate
+  refuses the handoff, run `train build <pr>...` yourself. Meanwhile keep
+  surveying, gating and landing ready non-members under the lock and note
+  new ready PRs for the next train; a land moves main, so that train
+  stops at `train land` and its members re-train. `--after <n>` speculates
+  on open train n, excluding its members; land it only after n finishes.
+  `train-failed train-<n>` (its builder failed twice): run
+  `$CREW_BIN train close <n> --project "$CREW_PROJECT"` and re-survey.
+  Read the record: `members`, `dropped` (`conflict`; `head-moved`;
+  `no-verified-base`: the coordinator requests a fresh `base=` verdict),
+  `ci`, `bisect`. Copy its `report` to `$CREW_STATUS`, then `done: train-<n>`.
+  The draft train PR is CI only: never merge it.
 - Land only on `ci=pass`, holding the step 3 land lock across members.
   For each `member` line in order, immediately before landing, re-run the
   WHOLE step 2 §7 check at its
@@ -218,18 +215,9 @@ Merge train (tmux doc, mdstack train):
   update-branched or sent to builders for conflicts. On later wakes, run
   `$CREW_BIN train route <n> --project "$CREW_PROJECT"` for closed trains
   with queued merge-ups; record failures without redispatching successes.
-- Red: on `ci=fail`, the train closes without landing. Run
-  `$CREW_BIN train bisect <n> --project "$CREW_PROJECT"`: it tests both halves
-  on main, recurses on red halves and reports `culprit pr=<pr>`. It records
-  culprits as `ci-culprit` drops and rebuilds survivors together on main with
-  fresh CI. Copy the original `train-report` to `$CREW_STATUS`; read the
-  `remaining=<n>` record and land only on `ci=pass`, using the same §7
-  checks and head-bound `train land` calls above. Diagnostic trains never land.
-  A green combined retry reports `culprit=none green-on-retry`; a red retry,
-  changed head/base or incomplete CI remains blocked. Report isolated culprits
-  and unresolved failures to the coordinator; do not compose around them by hand.
-  On `ci=timeout` or `local=fail`, collect/fix that failure before bisection.
-
-Do not read step summaries or raw logs to decide a merge. Asks go in
-`blocked:` lines, never to the owner here. Never start a line with the
-steering prefix.
+- Red: the builder bisected it: `bisect.culprits` are `ci-culprit` drops and
+  `bisect.remaining` names the survivors' train, rebuilt on main with fresh
+  CI. Land that train only on `ci=pass`, with the same §7 checks and
+  head-bound `train land` calls; diagnostic trains never land. A red retry,
+  changed head/base or incomplete CI stays blocked. Report culprits and
+  unresolved failures to the coordinator; never compose around them by hand.
