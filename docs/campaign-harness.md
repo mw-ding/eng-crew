@@ -514,6 +514,47 @@ the source, and the control issue. Once the owner has provided the repo:
    [docs/runbook-new-repo.md](runbook-new-repo.md) for the first crew run.
    Each scenario passes only on its recorded markers, heads, CI and cleanup.
 
+### Lab hosts in Docker
+
+`environments/terminal/remote/lab/crew-lab-docker.py` (M20.1 lab C, #1357)
+adds role-host containers, built from the [lab image](runtimes/multi-device.md#remote-acceptance-criteria-and-the-local-lab),
+to a level-a run. Each command runs the guard check first.
+
+```sh
+python3 environments/terminal/remote/lab/crew-lab-docker.py setup "$SANDBOX/state/manifest.json" \
+  --image "$LAB_IMAGE" --stage "$BUNDLE_STAGE" --tag "$TAG" [--source-sha SHA] [--n3]
+python3 environments/terminal/remote/lab/crew-lab-docker.py n3 "$SANDBOX/state/manifest.json"
+python3 environments/terminal/remote/lab/crew-lab-docker.py teardown "$SANDBOX/state/manifest.json"
+```
+
+- **Manifest.** `setup` adds a `lab` section to the run manifest: the Docker
+  context and its endpoint, the run ID, the owner label, the image ID, the
+  staged bundle hashes, and each network, container and volume ID as Docker
+  returns it, with each host's published port and activation record (bundle,
+  SHA256SUMS and source SHA). It refuses before any Docker mutation when the
+  manifest already has a `lab` section, an alias is not lowercase, or a
+  container or network with a planned name or the run's label exists. A new
+  lab run needs a new manifest.
+- **Isolation.** Every child gets only `PATH` and locale plus the run's own
+  `HOME` and config directories under `state/lab/`: no inherited
+  `CREW_*`, forge token, SSH agent, `TMUX` or `TMUX_PANE`. Docker calls go
+  to the pinned endpoint. No host gets a mount: not the owner's home, the
+  Docker socket or a tmux socket. SSH is published on `127.0.0.1` only, and
+  `state/lab/home/.ssh/config` maps each alias to `127.0.0.1:<port>` with
+  a per-run key and `known_hosts`.
+- **N3.** Each host gets its own network. With `--n3` those networks are
+  internal, nothing is published, and a driver container joins all of them.
+  `n3` probes from each host to the other hosts, the Mac and the internet,
+  with the driver reaching each host as the positive control. It reports
+  `n3: unproved` (exit 1) unless every lateral probe is denied; a loopback
+  setup is always unproved.
+- **Teardown.** It refuses when the context now points at another endpoint.
+  It saves each resource's inspect JSON and logs under `state/lab/evidence/`,
+  then removes only recorded IDs whose owner and run labels still match. It
+  never prunes, removes by wildcard or kills a tmux server. It records the
+  sentinel check and a tmux decoy's survival in `state/lab/cleanup.json`;
+  exit 1 means an owner mismatch, a changed sentinel or a lost decoy.
+
 ### Level c: owner-run devices and second environment
 
 Level c reuses
