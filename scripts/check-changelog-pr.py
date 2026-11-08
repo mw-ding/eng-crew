@@ -2,7 +2,7 @@
 """Require a new CHANGELOG fragment when a PR changes non-exempt content.
 
 Exempt paths are listed only in EXEMPT_PATHS below: cut output, unreleased
-fragments and verification artifacts. Empty diffs (including CI-only train
+fragments, verification artifacts and core memory (`memory/`). Empty diffs (including CI-only train
 PRs whose changes are already in their base) are exempt too. A train with
 content changes follows the same fragment rule as any other PR.
 One case needs no fragment: a release cut (CHANGELOG.md changed, fragments
@@ -30,7 +30,7 @@ import re
 import subprocess
 import sys
 
-EXEMPT_PATHS = ("CHANGELOG.md", "changes/unreleased/*", "evidence/**")
+EXEMPT_PATHS = ("CHANGELOG.md", "changes/unreleased/*", "evidence/**", "memory/**")
 RELEASE_PATHS = (".github/workflows/release.yml", ".github/workflows/ci.yml",
                  "scripts/release-*.py", "scripts/changelog-cut.py")
 ISSUE_REF = re.compile(r"\bissue #\d+")
