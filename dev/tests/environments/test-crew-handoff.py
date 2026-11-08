@@ -175,7 +175,7 @@ class Handoff(Fixture):
     def test_secret_scan_and_owner_checks_refuse(self):
         self.write(self.comments(), issues=[issue(10, ["crew:ready", SECRET])], pulls=[])
         r = self.handoff("manifest")
-        self.assertEqual((r.returncode, r.stderr), (1, ""))
+        self.assertEqual((r.returncode, r.stderr), (1, "mdstack: config %s\n" % self.project))  # #1324
         self.assertIn("secret scan refused", r.stdout)
         self.write([marker("claimed", "none", "tmux@local")])
         self.assertEqual(self.handoff("manifest").stdout.strip(), "crew: handoff: no open handoff from tmux@local")
@@ -194,7 +194,7 @@ class Handoff(Fixture):
 
     def test_duplicate_ack_ignored_and_nothing_reposted(self):
         r = self.handoff("manifest", "--post", "--signature", "— Ash")  # a normal successful POST
-        self.assertEqual((r.returncode, r.stderr), (0, ""))
+        self.assertEqual((r.returncode, r.stderr), (0, "mdstack: config %s\n" % self.project))  # #1324
         self.assertIn("already offered", r.stdout)
         ack = marker("acked")
         self.write(self.comments() + [ack, ack, marker("acked", to="tmux@other")])

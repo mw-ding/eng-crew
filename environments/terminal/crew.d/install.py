@@ -1,14 +1,16 @@
 """`mdstack install` puts a stable `mdstack` on the user's PATH for the release bundle it runs from (#1317).
 
-Usage: mdstack install [--dry-run]
+Usage: mdstack install [--name NAME] [--dry-run]
 
-Run it from a bundle extracted into ~/.mdstack/releases/. It points releases/current at that bundle and writes
-the launcher ~/.mdstack/bin/mdstack, a shell script that runs releases/current/cli/mdstack, so a later
-`mdstack upgrade --version` moves the launcher with no PATH change. When ~/.mdstack/bin is not on PATH, it links
-mdstack into the first directory on PATH under your home that it can write and that holds no other mdstack (for
-example ~/.local/bin), else prints the one line to add to your shell profile. It never edits a shell rc file.
---dry-run prints the plan and writes nothing. Doctor reports a missing or stale launcher and a PATH that resolves
-mdstack to something else. Re-running is idempotent.
+Run it from a bundle extracted into <root>/releases/, root being ~/.mdstack by default or any other root (#1324).
+It points that root's releases/current at the bundle and writes the launcher <root>/bin/mdstack, a shell script
+that runs releases/current/cli/mdstack, so a later `mdstack upgrade --version` moves the launcher with no PATH
+change. When <root>/bin is not on PATH, it links mdstack into the first directory on PATH under your home that it
+can write and that holds no other mdstack (for example ~/.local/bin), else prints the one line to add to your
+shell profile. It never edits a shell rc file. --name NAME names the launcher and its PATH link NAME instead, so a
+second root does not take the first root's `mdstack`; it never replaces another root's command. --dry-run prints
+the plan and writes nothing. Doctor reports a missing or stale launcher and a PATH that resolves its name to
+something else. Re-running is idempotent.
 """
 import json
 import os
@@ -19,8 +21,8 @@ from crew_shared import crew_render, ROOT
 
 
 def home():
-    """The user-level root, ~/.mdstack (#1316)."""
-    return Path(os.path.expanduser(os.path.join("~", ".mdstack")))
+    """The default root: $CREW_ROOT, else ~/.mdstack (#1316, #1324)."""
+    return Path(crew_render.crew_config.user_root())
 
 
 def launcher_text(root):
@@ -46,11 +48,11 @@ def flip(releases, bundle):
 
 def path_dir(launcher):
     """(directory on PATH that resolves mdstack to the launcher, True), else (a directory under your home it can
-    write, to link it there, False), else (None, False). Any other mdstack on PATH leaves (None, False)."""
+    write, to link it there, False), else (None, False). Any other command of that name on PATH leaves (None, False)."""
     dirs = [Path(e) for e in os.environ.get("PATH", "").split(os.pathsep) if e and Path(e).is_absolute()]
     dirs = [d for d in dirs if d.is_dir()]
     for d in dirs:
-        target = d / "mdstack"
+        target = d / launcher.name
         if d.resolve() == launcher.parent.resolve() or target.is_symlink() and target.resolve() == launcher.resolve():
             return d, True
         if target.exists() or target.is_symlink():
@@ -122,6 +124,7 @@ def follow(args, bundle, argv, env):
 
 def register(sub):
     p = sub.add_parser("install", help="put a stable mdstack launcher on PATH for this release bundle")
+    p.add_argument("--name", default="mdstack", help="the launcher's command name on PATH (default mdstack)")
     p.add_argument("--dry-run", action="store_true", help="print the plan; write nothing")
 
 
@@ -134,12 +137,15 @@ def run(args):
 
 
 def install(args):
-    root, bundle = home(), Path(ROOT).resolve()
+    root, bundle = Path(ROOT).parent.parent, Path(ROOT).resolve()  # the bundle's own root (#1324)
     releases = root / "releases"
     if bundle.parent != releases.resolve() or not (bundle / "VERSION").is_file():
-        print("crew install: run mdstack install from a release bundle extracted into %s/" % releases)
+        print("crew install: run mdstack install from a release bundle extracted into %s/" % (home() / "releases"))
         return 1
-    launcher = root / "bin" / "mdstack"
+    if os.sep in args.name or args.name in ("", ".", ".."):
+        print("crew install: --name must be a plain command name")
+        return 1
+    launcher = root / "bin" / args.name
     current = releases / "current"
     plan = []
     if not current.is_symlink() or current.resolve() != bundle:
@@ -148,7 +154,7 @@ def install(args):
         plan.append(("launcher", str(launcher)))
     directory, linked = path_dir(launcher)
     if directory and not linked:
-        plan.append(("PATH link", "%s -> %s" % (directory / "mdstack", launcher)))
+        plan.append(("PATH link", "%s -> %s" % (directory / launcher.name, launcher)))
     for step, detail in plan:
         if args.dry_run:
             pass
@@ -156,15 +162,15 @@ def install(args):
             flip(releases, bundle)
         elif step == "launcher":
             launcher.parent.mkdir(parents=True, exist_ok=True)
-            tmp = launcher.with_name(".mdstack.tmp")
+            tmp = launcher.with_name("." + launcher.name + ".tmp")
             tmp.write_text(launcher_text(root))
             tmp.chmod(0o755)
             os.replace(tmp, launcher)
         else:
-            (directory / "mdstack").symlink_to(launcher)
+            (directory / launcher.name).symlink_to(launcher)
         print("crew install: %s %s %s" % ("would write" if args.dry_run else "wrote", step, detail))
     if not plan:
         print("crew install: no changes")
     if not directory:
-        print("crew install: mdstack is not on PATH; " + path_hint(root))
+        print("crew install: %s is not on PATH; %s" % (launcher.name, path_hint(root)))
     return 0

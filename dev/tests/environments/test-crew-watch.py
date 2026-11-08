@@ -595,7 +595,8 @@ class Watch(LivenessBase):
         self.put("status/ben-7.status", "done: PR #12\n")
         out, err = p.communicate(timeout=20)
         self.assertEqual((p.returncode, out), (0, "status: ben-7 done: PR #12\n"), err)
-        self.assertEqual(err, "crew: watch: crew code changed on disk; re-exec\n")
+        config = "mdstack: config %s\n" % self.project  # at start and again after the re-exec (#1324)
+        self.assertEqual(err, config + "crew: watch: crew code changed on disk; re-exec\n" + config)
 
     def test_watch_reexecs_when_crew_code_changes(self):  # #702
         scripts, p = self.crew_home("--interval", "0.05")
@@ -608,7 +609,8 @@ class Watch(LivenessBase):
         self.put("status/ben-7.status", "done: PR #12\n")
         out, err = p.communicate(timeout=10)
         self.assertEqual((p.returncode, out), (0, "status: ben-7 done: PR #12\n"), err)
-        self.assertEqual(err, "crew: watch: crew code changed on disk; re-exec\nreloaded\n")
+        config = "mdstack: config %s\n" % self.project  # at start and again after the re-exec (#1324)
+        self.assertEqual(err, config + "crew: watch: crew code changed on disk; re-exec\nreloaded\n" + config)
         self.assertFalse(os.path.exists(os.path.join(self.state, "wake", "watcher.pid")))
 
     def test_watch_source_timeout_floor_outlasts_a_short_interval(self):  # #272
