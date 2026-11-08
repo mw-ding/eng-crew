@@ -407,6 +407,21 @@ class ReviewerPool(route_tests.Route):
             self.assertTrue(pool.dispatch(args, self.mod.profile(args)[0], self.state, wake))
         self.assertEqual(self.record("vera-12-r1-review")["restarts"], 1)
 
+    def test_idle_stall_wake_escalates_while_plain_silence_does_not(self):  # #1283
+        self.handoff("review", ["#12", self.sha, "1"])
+        self.pool()
+        args = argparse.Namespace(**vars(self.args), reviewer_lead=True) if not hasattr(self.args, "reviewer_lead") else self.args
+        pool = self.mod.commands()["reviewer-pool"]
+        with mock.patch.dict(os.environ, dict(self.env, CREW_POOL="reviewer")), \
+                mock.patch.object(pool, "probe", return_value="alive"):
+            values = self.mod.profile(args)[0]
+            self.assertTrue(pool.dispatch(args, values, self.state, dict(reason="stale", window="vera-12-r1-review",
+                                                                         liveness="alive")))
+            with self.assertRaisesRegex(RuntimeError, "idle at its prompt; coordinator escalation required"):
+                pool.dispatch(args, values, self.state, dict(reason="stale", window="vera-12-r1-review",
+                                                             liveness="idle", action="escalate"))
+        self.assertFalse(self.record("vera-12-r1-review").get("restarts"))  # never a restart of a live worker
+
     def test_infra_ci_allows_validation_real_failure_keeps_it_pending(self):
         self.handoff("review", ["#12", self.sha, "1"])
         self.pool()

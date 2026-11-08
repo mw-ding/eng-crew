@@ -1734,7 +1734,7 @@ batches leave the watcher running without a model turn or coordinator nudge.
 ### mdstack watch
 
 ```sh
-cli/mdstack watch [--project <config.toml>] [--stale <s>] [--backstop <s>] [--source <command>]... [--source-timeout <s>] [--source-failures <n>] [--no-nudge]
+cli/mdstack watch [--project <config.toml>] [--stale <s>] [--idle-stall <s>] [--backstop <s>] [--source <command>]... [--source-timeout <s>] [--source-failures <n>] [--no-nudge]
 ```
 
 The zero-token watcher of [Q1](#q1-wake) (#135). The coordinator runs it as
@@ -1767,7 +1767,15 @@ neither that file nor the watch state, #591), then scans every `--interval` seco
   `dead` / `missing`, otherwise `escalate`, never a restart of a live run.
   A live lead with no undone inbox message, or a live synthesizer with no
   unacked message, uncompleted land, open train or held land lock, is idle,
-  not stale (#578);
+  not stale (#578). A live run with work whose tmux pane printed nothing for
+  `--idle-stall` seconds (default 1800, 30 min; `0` turns it off) is idle at
+  its prompt with no tool call or turn: it wakes `stale` with liveness `idle`
+  and action `escalate`, once per silence, however fresh its claim, heartbeat
+  or status file and whatever runs beneath it (#1283); the reviewer pool
+  escalates it even when its re-probe says `alive`. A builder after `done:`
+  is exempt, and the herdr backend reports no pane activity, so it is not
+  checked there. A long wait belongs in the harness's own background-task
+  notification, never in a loop that refreshes a liveness file;
 - `dialog:` a run that probes `ambiguous` with a blocking prompt or a
   fatal API error on its screen (the list under
   [mdstack status](#mdstack-status)), on the next scan (well inside
