@@ -494,7 +494,7 @@ def triage_milestones(values, state, read=gh_json):
 def register(sub):
     p = sub.add_parser("poll")
     p.add_argument("--once", action="store_true", help="one poll, then exit (default: every poll_interval seconds)")
-    p.add_argument("--project", required=True)
+    p.add_argument("--project")
     p.add_argument("--org-profile")
 
 

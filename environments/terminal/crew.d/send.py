@@ -89,7 +89,7 @@ def register(sub):
     p.add_argument("kind")
     p.add_argument("refs", nargs="+")
     p.add_argument("--wait-ack", type=float, help="seconds to wait for ack: <msg-id> in the status file")
-    p.add_argument("--project", required=True)
+    p.add_argument("--project")
     p.add_argument("--org-profile")
 
 

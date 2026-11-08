@@ -78,7 +78,7 @@ class Bootstrap(doctor_tests.DoctorBase):
         record = json.loads(self.manifest.read_text())
         self.assertEqual((record["tag"], record["runtime"], record["status"]), ("v2.1.0", "tmux", "installed"))
         self.assertEqual((Path(self.state) / "VERSION").read_text(), "v2.1.0\n")
-        self.assertEqual((Path(self.state) / "crew.toml").read_text(), self.project_path.read_text())
+        self.assertEqual((Path(self.state) / "config.toml").read_text(), self.project_path.read_text())
         self.assertEqual((Path(self.state) / "mdstack").resolve(), self.bundle.resolve())
         self.assertFalse((Path(self.state) / "render").exists())
         self.assertEqual((Path(self.project_dir) / ".git/info/exclude").read_text().count(".crew/"), 1)
@@ -153,10 +153,25 @@ class Bootstrap(doctor_tests.DoctorBase):
             self.assertEqual(profile["runtime"]["name"], "tmux")
             self.assertEqual({p["name"] for p in profile["backends"].values()}, {"github"})
             self.assertEqual(profile["flavor"]["name"], "standard")
+            self.assertEqual(profile["paths"], dict(  # the one-root default layout (#1316)
+                root="~/.mdstack", state_dir="state", worktree_root="runs/widgets", live_dir="live",
+                mdstack="state/acme__widgets/mdstack", checkout=str(Path(self.project_dir).absolute())))
         self.assertTrue(all("config --local --get remote.origin.url" in line for line in log.read_text().splitlines()))
         self.assertFalse(self.project_path.exists())
         self.assertFalse(self.manifest.exists())
         self.assertEqual(self.calls(), [])
+
+    def test_user_level_proposal_takes_the_repo_from_the_current_checkout(self):  # #1316 AC1, AC7
+        self.missing_project()
+        home = Path(self.home)
+        r = subprocess.run([sys.executable, str(self.cli), "bootstrap", "--runtime", "tmux", "--dry-run"],
+                           input="", capture_output=True, text=True, env=self.env, cwd=self.project_dir)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("Project proposal: %s" % (home / ".mdstack" / "config.toml"), r.stdout)
+        profile = tomllib.loads(r.stdout.split("\n", 1)[1].split("Review identities", 1)[0])
+        self.assertEqual(profile["repo"], dict(owner="acme", name="widgets"))
+        self.assertEqual(os.path.realpath(profile["paths"]["checkout"]), os.path.realpath(self.project_dir))
+        self.assertFalse((home / ".mdstack").exists())
 
     def test_confirmation_accepts_and_keeps_record_when_origin_changes(self):
         self.missing_project()
@@ -192,7 +207,7 @@ class Bootstrap(doctor_tests.DoctorBase):
         r = self.bootstrap("--yes", "--proposal", str(edited))
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual(self.project_path.read_text(), edited.read_text())
-        self.assertEqual((Path(self.state) / "crew.toml").read_text(), edited.read_text())
+        self.assertEqual((Path(self.state) / "config.toml").read_text(), edited.read_text())
         self.assertEqual(json.loads(self.manifest.read_text())["status"], "installed")
         r = self.bootstrap("--yes", "--proposal", "/missing", "--flavor", "fast")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
@@ -1238,7 +1253,7 @@ def evidence():
             print(result.stdout.splitlines()[-1].replace(str(fixture.manifest), "<state>/install.json"))
         record = json.loads(fixture.manifest.read_text())
         assert record["tag"] == "v2.1.0" and record["status"] == "installed"
-        assert (Path(fixture.state) / "crew.toml").read_text() == fixture.project_path.read_text()
+        assert (Path(fixture.state) / "config.toml").read_text() == fixture.project_path.read_text()
         assert (Path(fixture.state) / "mdstack").resolve() == fixture.bundle.resolve()
         print("record: v2.1.0 tmux installed; profile copy and bundle link verified")
         (Path(fixture.state) / "VERSION").write_text("owner edit\n")
@@ -1392,16 +1407,16 @@ def proposal_evidence():
         fixture.missing_project()
         r = fixture.bootstrap("--dry-run", "--runtime", "tmux")
         assert r.returncode == 0 and not fixture.project_path.exists(), r.stdout + r.stderr
-        print("$ mdstack bootstrap --project <project>/crew.toml --runtime tmux --dry-run")
+        print("$ mdstack bootstrap --project <project>/config.toml --runtime tmux --dry-run")
         print("exit=0; proposal: acme/widgets, tmux, GitHub for every concern, flavor standard")
         print(r.stdout.splitlines()[-1])
         r = fixture.bootstrap("--runtime", "tmux")
         assert r.returncode == 1 and not fixture.project_path.exists()
-        print("$ mdstack bootstrap --project <project>/crew.toml --runtime tmux < /dev/null")
+        print("$ mdstack bootstrap --project <project>/config.toml --runtime tmux < /dev/null")
         print("exit=1; " + r.stderr.strip())
         r = fixture.bootstrap("--yes", "--proposal", str(edited))
         assert r.returncode == 0 and fixture.project_path.read_text() == edited.read_text(), r.stdout + r.stderr
-        print("$ mdstack bootstrap --project <project>/crew.toml --proposal <edited.toml> --yes")
+        print("$ mdstack bootstrap --project <project>/config.toml --proposal <edited.toml> --yes")
         print("exit=0; recorded owner edit: flavor thorough; install status installed")
         for line in r.stdout.splitlines():
             if line.startswith("Self-test:"):
@@ -1410,7 +1425,7 @@ def proposal_evidence():
         subprocess.run(["git", "-C", fixture.project_dir, "config", "remote.origin.url", "https://example.invalid/other"], check=True)
         r = fixture.bootstrap("--yes", "--proposal", "/missing", "--flavor", "fast")
         assert r.returncode == 0 and fixture.project_path.read_bytes() == before, r.stdout + r.stderr
-        print("$ mdstack bootstrap --project <project>/crew.toml --proposal /missing --flavor fast --yes")
+        print("$ mdstack bootstrap --project <project>/config.toml --proposal /missing --flavor fast --yes")
         print("exit=0; changed origin and proposal flags ignored; recorded profile byte-identical")
     finally:
         fixture.doCleanups()

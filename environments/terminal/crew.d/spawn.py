@@ -75,7 +75,7 @@ def register(sub):
     p.add_argument("--round", type=int, default=1, help="verdict round k, for reviewer window names")
     p.add_argument("--tier", choices=["trivial", "default", "deep"], help="default: the role's default_tier, else default")
     p.add_argument("--timeout", type=float, default=15.0, help="seconds to see the harness in the foreground")
-    p.add_argument("--project", required=True)
+    p.add_argument("--project")
     p.add_argument("--org-profile")
 
 

@@ -13,7 +13,7 @@ def register(sub):
     p.add_argument("window")
     p.add_argument("-n", "--lines", type=int, default=20)
     p.add_argument("-f", "--follow", action="store_true")
-    p.add_argument("--project", required=True)
+    p.add_argument("--project")
     p.add_argument("--org-profile")
 
 

@@ -242,7 +242,7 @@ def register(sub):
     p.add_argument("--timeout", type=float, default=15)
     p.add_argument("--wait-ack", type=float)
     p.add_argument("--detail", default="", help="report: observed admission inputs or actionable block details")
-    p.add_argument("--project", required=True)
+    p.add_argument("--project")
     p.add_argument("--org-profile")
 
 

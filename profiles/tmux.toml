@@ -25,3 +25,17 @@ researcher = { gh_user = "<author-login>", name = "Riley", title = "Researcher",
 # Research row (docs/roles.md Current routing); mdstack spawn researcher runs at deep tier (#584).
 [engines.roles]
 researcher = { order = ["codex/gpt-6.1-sol", "claude-code/opus", "opencode/deepseek/deepseek-v4-pro"] }
+
+# Default layout (docs/runtimes/tmux.md#home-level-layout-1178, #1316): every
+# installed piece under one ~/.mdstack/ root, with only the repo checkout
+# outside it. Save this file as ~/.mdstack/config.toml (the user-level config
+# every command uses without --project) and uncomment the block with your
+# repo; the example renders keep it commented so their output stays
+# machine-independent. `mdstack bootstrap` proposes the same block.
+# [paths]
+# root = "~/.mdstack"
+# state_dir = "state"
+# worktree_root = "runs/<repo>"
+# live_dir = "live"
+# mdstack = "state/<owner>__<repo>/mdstack"
+# checkout = "~/<repo>"

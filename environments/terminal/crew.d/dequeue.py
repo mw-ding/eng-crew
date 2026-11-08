@@ -46,7 +46,7 @@ def register(sub):
     p.add_argument("--timeout", type=float, default=15.0, help="seconds to see the harness in the foreground")
     p.add_argument("--idle-only", action="store_true", help="reclaim expired idle builders without spawning")
     p.add_argument("--ref", help="spawn only this request: #issue for a build, else #PR (a `schedule decide` grant)")
-    p.add_argument("--project", required=True)
+    p.add_argument("--project")
     p.add_argument("--org-profile")
 
 

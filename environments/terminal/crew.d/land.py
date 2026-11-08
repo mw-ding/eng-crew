@@ -39,7 +39,7 @@ SHA = re.compile(r"[0-9a-f]{40}|[0-9a-f]{64}")
 def register(sub):
     p = sub.add_parser("land")
     p.add_argument("action", choices=["status", "request", "resume", "done"])
-    p.add_argument("--project", required=True)
+    p.add_argument("--project")
     p.add_argument("--org-profile")
     p.add_argument("--pr", type=int)
     p.add_argument("--head")

@@ -8,7 +8,7 @@ Runs doctor read-only before planning; any fail stops without writing an install
 mdstack doctor --fix first. Apply requires confirmation. tmux keeps rendering and hooks in mdstack up; Grok Bot
 deploys the preview to paths.live_dir; its plan notes that triage.enabled installs no Grok timer. Refuses tracked or
 locally edited targets. With --harness, also installs the pack.harness registry's entries for the selected
-harnesses as data (copy, pointer, Codex launch notes) under the same refusals. Records VERSION, crew.toml, install.json and the mdstack link in per-repo state. Never starts
+harnesses as data (copy, pointer, Codex launch notes) under the same refusals. Records VERSION, config.toml, install.json and the mdstack link in per-repo state. Never starts
 roles or changes credentials.
 --version fetches the release from the profile's [install] source (gh for github, the default; url, mirror and git
 never call gh), verifies SHA256SUMS (git: the tag against the pinned commit, then that commit's release-bundle.py
@@ -20,7 +20,8 @@ After apply, validates the profile, re-renders every brief, checks path-normaliz
 and checks deployed targets and doctor again.
 Records failed checks in install.json. --smoke queues a real docs-only issue on a started crew, once per install;
 it does not claim the asynchronous pipeline passed. Missing profiles are proposed from local git config,
-confirmed (or supplied as edited TOML), and recorded once, including flavor.name.
+confirmed (or supplied as edited TOML), and recorded once, including flavor.name; a tmux proposal adds the one-root
+~/.mdstack [paths] layout. Without --project the profile is the user-level ~/.mdstack/config.toml (#1316).
 """
 import contextlib
 from argparse import Namespace
@@ -268,7 +269,7 @@ def fetch(args):
 
 def register(sub, name="bootstrap"):
     p = sub.add_parser(name, help="preview and install this bundle for a project")
-    p.add_argument("--project", required=True)
+    p.add_argument("--project")
     p.add_argument("--org-profile")
     p.add_argument("--proposal", help="owner-edited TOML for a missing project file")
     p.add_argument("--runtime", choices=("tmux", "grok-bot"), help="proposed runtime; default is the bundle profile")
@@ -407,7 +408,8 @@ def propose_project(args, project):
     if args.proposal:
         text = Path(args.proposal).read_text()
     else:
-        remote = git(str(project.parent), "config", "--local", "--get", "remote.origin.url")
+        repo_dir = project.parent if (project.parent / ".git").exists() else Path.cwd()  # a user-level config (#1316)
+        remote = git(str(repo_dir), "config", "--local", "--get", "remote.origin.url")
         match = re.fullmatch(r"(?:https://github\.com/|git@github\.com:|ssh://git@github\.com/)([\w.-]+)/([\w.-]+?)(?:\.git)?/?", remote)
         if not match:
             raise ValueError("local origin is not a recognized GitHub URL; supply --proposal with your binding")
@@ -422,6 +424,10 @@ def propose_project(args, project):
             text += '\n[backends.%s]\nname = "github"\n' % concern
             if runtime == "tmux" and concern == "review":
                 text += 'capabilities = { post-verdict = "emulated (COMMENT-review verdict + recorded owner merge-ok)" }\n'
+        if runtime == "tmux":  # the one-root default layout (docs/runtimes/tmux.md#home-level-layout-1178, #1316)
+            text += ('\n[paths]\nroot = "~/.mdstack"\nstate_dir = "state"\nworktree_root = %s\nlive_dir = "live"\n'
+                     'mdstack = %s\ncheckout = %s\n' % (json.dumps("runs/" + repo), json.dumps(
+                         "state/%s__%s/mdstack" % (owner, repo)), json.dumps(str(repo_dir.absolute()))))
     if "flavor" not in tomllib.loads(text):
         text += '\n[flavor]\nname = %s\n' % json.dumps(args.flavor or "standard")
     print("Project proposal: %s\n%s" % (project, text), end="" if text.endswith("\n") else "\n")
@@ -498,7 +504,7 @@ def bootstrap(args):
         if code:
             raise ValueError(out.getvalue())
         live = Path(values["paths.live_dir"]).absolute() if not tmux else state / "render"
-        targets = {state / "VERSION": tag + "\n", state / "crew.toml": project.read_text()}
+        targets = {state / "VERSION": tag + "\n", state / "config.toml": project.read_text()}
         rendered = {live / p.relative_to(preview): p.read_text() for p in preview.rglob("*") if p.is_file()}
         registry, notes, owned = pack_pointers(harnesses, args.org_profile, project)
         pointers, launches = harness_targets(harnesses, project, state, live, preview, old, doctor, notes)

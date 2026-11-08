@@ -49,7 +49,7 @@ def register(sub):
     p = sub.add_parser("restart")
     p.add_argument("window")
     p.add_argument("--timeout", type=float, default=15.0)
-    p.add_argument("--project", required=True)
+    p.add_argument("--project")
     p.add_argument("--org-profile")
 
 

@@ -19,7 +19,7 @@ def register(sub):
     p = sub.add_parser("attach")
     p.add_argument("target", help="window name, role (builder, reviewer, synthesizer, coordinator) or builders")
     p.add_argument("--rw", action="store_true", help="interactive attach; read-only by default")
-    p.add_argument("--project", required=True)
+    p.add_argument("--project")
     p.add_argument("--org-profile")
 
 

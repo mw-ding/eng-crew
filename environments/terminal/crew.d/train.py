@@ -930,7 +930,7 @@ def register(sub):
     p.add_argument("--grace", type=float, default=20.0, help="seconds after the train PR opens before reading CI")
     p.add_argument("--interval", type=float, default=20.0, help="seconds between CI reads")
     p.add_argument("--timeout", type=float, default=1800.0, help="seconds to wait for CI after the grace period")
-    p.add_argument("--project", required=True)
+    p.add_argument("--project")
     p.add_argument("--org-profile")
 
 

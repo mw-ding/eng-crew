@@ -58,7 +58,7 @@ def register(sub):
     p = sub.add_parser("handoff")
     p.add_argument("action", choices=["to", "abort", "takeover", "manifest", "reconcile", "ack", "stopped", "lift"])
     p.add_argument("runtime", nargs="?", help="target runtime id for to; outgoing runtime id for takeover")
-    p.add_argument("--project", required=True)
+    p.add_argument("--project")
     p.add_argument("--org-profile")
     p.add_argument("--mode", choices=["drain", "stop"], default="drain")
     p.add_argument("--post", action="store_true")

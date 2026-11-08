@@ -16,7 +16,7 @@ WATCHER_GRACE = 5.0
 
 def register(sub):
     p = sub.add_parser("down")
-    p.add_argument("--project", required=True)
+    p.add_argument("--project")
     p.add_argument("--org-profile")
     p.add_argument("--preserve", action="store_true", help="stop the watcher and panes; keep every run's work")
 

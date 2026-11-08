@@ -1,7 +1,7 @@
 """`mdstack doctor` checks whether this host can run the crew (docs/bootstrap.md Q5) and prints one line per check, ok,
 warn, fail or human, with its fix hint: Python, git, gh, tmux, each profile login in gh, engines, each harness
-adapter's host and coordinator checks (Codex hook trust, Claude Code folder trust), placeholder paths, the state dir
-layout, the installed version against the latest release (not queried under a non-github [install] source), the
+adapter's host and coordinator checks (Codex hook trust, Claude Code folder trust), placeholder paths, a state dir
+or worktree root inside a git checkout, the state dir layout, the installed version against the latest release (not queried under a non-github [install] source), the
 recorded install source and the running/installed/minimum versions for [tools] in the profile, and the runtime
 handoff rows (docs/handoff.md): control item set and readable, `runtime.instance` set and the current owning
 runtime. On grok-bot a triage row reports that triage.enabled installs no Grok timer (warn) and never claims one.
@@ -71,6 +71,21 @@ def engines(values):
                          "install it, or drop it from [engines]"))
     if sum(r[0] == "ok" for r in rows) < 2:
         rows.append(("fail", "engine diversity", "fewer than two working engines", "install a second engine"))
+    return rows
+
+
+def in_checkout(values):
+    """A fail row for each of paths.state_dir and paths.worktree_root inside a git checkout; a profile directory that
+    is not one may hold state/, runs/ and live/ itself (#1316)."""
+    rows = []
+    for key in ("state_dir", "worktree_root"):
+        path = os.path.abspath(values["paths." + key])
+        while not os.path.isdir(path) and os.path.dirname(path) != path:
+            path = os.path.dirname(path)
+        code, out = sh("git", "-C", path, "rev-parse", "--show-toplevel")
+        if code == 0 and os.path.isabs(out.strip()) and os.path.isdir(out.strip()):
+            rows.append(("fail", "paths", "paths.%s is inside the git checkout %s" % (key, out.strip()),
+                         "move it outside, for example under ~/.mdstack/"))
     return rows
 
 
@@ -174,7 +189,7 @@ def triage(values):
 
 def register(sub):
     p = sub.add_parser("doctor", help="check this host can run the crew; --fix repairs what it safely can")
-    p.add_argument("--project", required=True)
+    p.add_argument("--project")
     p.add_argument("--org-profile")
     p.add_argument("--fix", action="store_true", help="repair local state and GitHub prerequisites (idempotent)")
     p.add_argument("--dry-run", action="store_true", help="print repair plans without local or remote writes")
@@ -239,7 +254,8 @@ def run(args):
     if tmux and hasattr(coordinator, "coordinator_checks"):
         rows += coordinator.coordinator_checks(values, os.path.dirname(os.path.abspath(args.project)))
     bad = placeholder_paths(args, values, ("state_dir", "worktree_root"))
-    rows += [("fail", "paths", b, "") for b in bad] if bad else state_dir(values, args.fix and not args.dry_run)
+    rows += [("fail", "paths", b, "") for b in bad] if bad else in_checkout(values) or state_dir(
+        values, args.fix and not args.dry_run)
     if not bad:
         rows += repo_fixers.checks(values, args.fix, args.dry_run, args.milestone)
     rows += handoff(values) + triage(values) + version(values) + pack(values) + install_source(values) + tool_drift(values)
