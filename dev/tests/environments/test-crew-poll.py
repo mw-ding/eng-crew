@@ -344,6 +344,32 @@ class GhRetry(unittest.TestCase):
         self.assertEqual(reads, [("issue", "list")])  # no milestones read after the refusal
         self.assertIn("rate-limited until 2027-01-15T08:30:00Z", str(out.call_args_list[-1].args[0]))
 
+    def test_late_rate_limit_in_express_spec_read_exits_tempfail(self):  # #1300 r2: train_spec's files read
+        pr = dict(fixture("prs-pending.json")[0], labels=[{"name": "crew:express"}])
+        values = {"repo.owner": "acme", "repo.name": "widgets", "repo.default_branch": "main"}
+        replies = {("pr", "list"): [pr], ("pr", "view"): {"closingIssuesReferences": [{"number": 1300}]},
+                   ("issue", "view"): {"comments": [], "labels": []}}
+        reads = []
+
+        def read(*argv, **kwargs):
+            reads.append(argv[:2])
+            return self.refused(*argv) if "/files?" in argv[1] else replies.get(argv[:2], [])
+
+        train = self.poll.commands()["train"]
+        with tempfile.TemporaryDirectory() as state, mock.patch("builtins.print") as out:
+            os.makedirs(os.path.join(state, "wake"))
+            with mock.patch.object(self.poll, "profile", return_value=(values, None, state)), \
+                    mock.patch.object(self.poll.ownership_module, "status", return_value="active"), \
+                    mock.patch.object(self.poll, "gh_json", side_effect=read), \
+                    mock.patch.object(train.precheck.config, "resolve_profile", return_value=({},)):
+                code = self.poll.run(mock.Mock(once=True, project="crew.toml", org_profile=None))
+            self.assertFalse(os.path.exists(os.path.join(state, "poll-state.json")))  # no baseline recorded
+        self.assertEqual(code, 75)
+        self.assertEqual(reads[-1], ("api", "repos/acme/widgets/pulls/171/files?per_page=100"))
+        self.assertEqual(str(out.call_args_list[-1].args[0]),
+                         "crew: gh api repos/acme/widgets/pulls/171/files?per_page=100 rate-limited until "
+                         "2027-01-15T08:30:00Z: API rate limit exceeded")
+
     def test_every_read_fallback_reraises_a_rate_limit(self):  # #1300 r1: each would otherwise poll on as success
         failed = {"status": "COMPLETED", "conclusion": "FAILURE",
                   "detailsUrl": "https://github.com/acme/widgets/actions/runs/1/job/2"}

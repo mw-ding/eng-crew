@@ -630,6 +630,8 @@ def train_spec(poll, values, slug, view):
     try:
         rules = values.get("spec.paths", precheck.config.SPEC_PATHS)
         return bool(precheck.config.spec_matches({"spec": {"paths": rules}}, train_paths(poll, slug, view["number"])))
+    except poll.RateLimited:  # poll's caller holds until the reset (#1300)
+        raise
     except (KeyError, TypeError, ValueError, RuntimeError) as e:
         raise RuntimeError("spec classification unreadable: %s" % e)
 
