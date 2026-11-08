@@ -1,7 +1,7 @@
 ---
 type: changed
 issue: 1391
-pr: TBD
+pr: 1401
 date: 2026-11-08
 box-skill: deferred (profile mirror_deferral)
 ---
