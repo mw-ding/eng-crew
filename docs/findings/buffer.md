@@ -214,3 +214,20 @@ The live buffer. How to append, when to batch and who owns it are in
 - **Status:** fixed by #830, #950, #972, #973, #1008, #1043, #1046, #1048,
   #1094 and #1186; the mechanical guards survive at `main` (#1342). MD029 is
   now off repo-wide (#1190). Leftovers for #1125, #1131 and #1211 -> #1418.
+
+### Terminal record lost or mismatched by a downstream consumer
+
+- **Date:** 2026-11-08 (recorded by #1342 from repaired cards; the last
+  sighting is #1199)
+- **PR / repo:** cards #1141, #1145, #1195, #1196, #1197, #1199 and #1070;
+  repairs #1007, #1009, #1063, #1065, #1071, #1073, #1081, #1150 and #1186.
+  See [terminal-record-consumers](../lessons/2026-11-08-terminal-record-consumers.md)
+- **Smell:** A record was produced correctly, then lost downstream. The
+  consumers were accuracy history, ID parsing, the wake matcher, the reaper,
+  scheduler inputs and the reservation ledger.
+- **Count:** 7
+- **Proposed fix layer:** CI check: key records by stable identity and test
+  each consumer with the record as the runtime produces it.
+- **Status:** fixed by #1007, #1009, #1063, #1065, #1071, #1081 and #1150;
+  every regression test survives at `main` (#1342). #1266 is a later,
+  separate capacity report.
