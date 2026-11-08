@@ -161,3 +161,32 @@ The live buffer. How to append, when to batch and who owns it are in
 - **Status:** fixed by #888, #992, #1066, #1073, #1080, #1169, #1243, #1253
   and #1264; every regression test survives at `main` (#1342). Leftovers ->
   #1412, #1413, #1414.
+
+### Release or install rewrite changes the meaning of what it touches
+
+- **Date:** 2026-11-08 (recorded by #1342 from repaired cards; the last
+  sighting is #1308)
+- **PR / repo:** cards #1129, #1130, #1139, #1140, #1146, #1207, #1208, #1209,
+  #1297, #1306, #1269, #1270 and #1308; repairs #913, #920, #1000, #1016,
+  #1148, #1153, #1159, #1181, #1186, #1278, #1301 and #1304
+- **Smell:** A release cut, upgrade or migration rewrote owner-visible state
+  and changed its meaning. A minor bump made capabilities newly required
+  (#1129). A `Closes` reference auto-closed an issue before publication
+  (#1130). A failed toolkit replacement had already moved the working copy
+  (#1139). A pinned toolkit was written into (#1140). The last launch note
+  hit a no-change shortcut (#1146). Reload killed a window before respawn
+  (#1207). A guard hook had two identities (#1208). A retry lost verified
+  provenance (#1209). Core memory was counted against the brief budget
+  (#1297). A released CHANGELOG section was edited (#1306). Unrelated hook
+  text was requoted (#1269). Rollback paths were left unquoted (#1270). A
+  single-quoted TOML name was skipped (#1308).
+- **Count:** 13
+- **Proposed fix layer:** CI check: verify before displacing, never write
+  pinned content, keep one identity per invocation path, leave unrelated text
+  byte-for-byte, quote anything printed for re-running, parse the result
+  before moving state. The modern relocation and rename paths (#1269, #1270,
+  #1308) stay supported and tested.
+- **Status:** fixed by #1000, #1016, #1148, #1153, #1159, #1181, #1278 and
+  #1304; their regression tests survive at `main` (#1342). The release-process
+  cards (#913, #920 and #1301 were manual repairs) have no guard yet:
+  leftovers -> #1415, #1416, #1417.
