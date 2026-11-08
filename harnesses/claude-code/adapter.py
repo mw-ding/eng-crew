@@ -19,7 +19,8 @@ PROMPTS = [(r"Do you want to .+\?", r"Esc to cancel"),
            (r"Do you trust the files in this folder\?$", r"Enter to confirm · Esc to cancel"),
            (r"Accessing workspace:$", r"Enter to confirm · Esc to cancel")]
 FATAL = r'⎿\s+API Error: [45]\d\d\b.*"type": ?"error"'  # ⎿  API Error: 400 {"type":"error",...}
-TRANSIENT = re.compile(r"⎿\s+API Error\b.*\b(?:429|5\d\d)\b|⎿\s+.*\brate.?limit", re.I)  # API Error (529 …) · Retrying
+# Its own error line only, at the result gutter's indent: never tool output, file names or quoted text (#1366).
+TRANSIENT = re.compile(r"^ {0,2}⎿\s+API Error\W{1,3}(?:429|5\d\d)\b")  # ⎿  API Error (529 …) · Retrying
 COMPOSER = "❯"
 BUSY = re.compile(r"esc to interrupt|^[✽✻✶✢·*] .+… \([^\n]+\)", re.M)  # a lowercased screen mid-turn
 INSTALL_ROLES = ("coordinator", "builder", "reviewer", "synthesizer")
