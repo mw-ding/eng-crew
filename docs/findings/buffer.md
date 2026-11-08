@@ -251,3 +251,20 @@ The live buffer. How to append, when to batch and who owns it are in
 - **Status:** fixed by #1084, #1085, #1110 and #1113; every regression test
   survives at `main` (#1342). #1203's optional one-file-per-scenario
   alternative -> #1419.
+
+### Optional pack input assumed present, or a floor checked per layer
+
+- **Date:** 2026-11-08 (recorded by #1342 from repaired cards; the last
+  sighting is #1273)
+- **PR / repo:** cards #1132 and #1273; repairs #919, #972 and #1265
+- **Smell:** Pack handling validated each input alone. A pack without
+  `profile.toml` lost `pack.version` and a backend without a render map
+  raised TypeError (#1132). A weaker custom flavor split across environment
+  and pack layers passed the floor check (#1273).
+- **Count:** 2
+- **Proposed fix layer:** types/schemas: validate the merged view across every
+  layer and every supported absence, through the real discovery path.
+- **Status:** fixed by #919, #972 and #1265; every regression test survives at
+  `main` (#1342). #1132's absence cases through `pack.toml` discovery ->
+  #1411. The floor-selector false positive #1325 and VCS pinning #1326 are
+  separate.
