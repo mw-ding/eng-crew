@@ -3,7 +3,7 @@
 Covers: only when dead or missing and only once (fresh worktree when clean, relaunch in place
 keeping unlanded work), a finished run refused, a builder after `done:` restarts as its PR's fix
 pass (fresh or in place), an in-place relaunch accepts a Claude Code pane whose command reads as
-its version (#286). Run in CI.
+its version (#286), a dead train worker respawns with --train and keeps the pending train record (#1391). Run in CI.
 """
 import json
 import os
@@ -137,6 +137,22 @@ class Restart(LivenessBase):
         self.assertEqual((rec["restarts"], rec["worktree"]), (1, wt))  # same base SHA, so the same fresh path
         self.assertEqual(self.git("status", "--porcelain", cwd=wt), "")
         self.assertEqual(len(self.windows()), 2)
+
+    def test_restart_dead_train_worker_respawns_with_its_train(self):  # #1391 AC 4: the one restart through the lead
+        self.assertEqual(self.spawn("builder", "--train", "3").returncode, 0)
+        before = self.record("ben-train3")
+        self.put("trains/train-3.json", json.dumps({"n": 3, "ci": "pending", "members": [{"pr": 12}]}))
+        self.set_pane(before["index"], dead="1")
+        r = self.crew("restart", "ben-train3", "--project", self.project, "--timeout", "1")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        after = self.record("ben-train3")
+        self.assertEqual((after["restarts"], after["pass"], after["args"]["train"], after["item"]),
+                         (1, "train", 3, before["item"]))
+        self.assertTrue(os.path.exists(after["claim"]))
+        self.assertTrue(os.path.exists(os.path.join(self.state, "trains", "train-3.json")))  # the worker resumes with train wait
+        self.set_pane(after["index"], dead="1")
+        again = self.crew("restart", "ben-train3", "--project", self.project, "--timeout", "1")
+        self.assertIn("already restarted once; escalate", again.stdout)  # the lead then sends train-failed
 
     def test_restart_in_place_accepts_claude_version_pane(self):  # #286: the relaunch takes spawn's start evidence
         self.assertEqual(self.spawn("builder", "--issue", "8", "--tier", "trivial").returncode, 0)
