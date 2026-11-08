@@ -19,9 +19,10 @@ This page adds no rule, gate, cap, marker field or label; the
 
 ## Where the file lives
 
-The default is the user-level `~/.mdstack/config.toml`: every `mdstack` and
-`core/crew-config.py` command uses it when given no `--project` and no
-`MDSTACK_CONFIG`. A project-level `config.toml`, passed with
+The default is the user-level `~/.mdstack/config.toml` (`<root>/config.toml`
+under a set `CREW_ROOT`): every `mdstack` and `core/crew-config.py` command
+uses it when given no `--project`, no `CREW_PROJECT` and no
+`MDSTACK_CONFIG`; an explicitly named file always wins (#1324). A project-level `config.toml`, passed with
 `--project FILE`, is the secondary option for a separate project-group
 stack. The two never merge; precedence and what belongs where are in
 [user-level and project-level config](runtimes/tmux.md#user-level-and-project-level-config-1316)
