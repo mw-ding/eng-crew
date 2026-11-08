@@ -866,8 +866,12 @@ step 1, the band cap queue, is under [mdstack dequeue](#mdstack-dequeue) (#136):
   stale base); so do a path inside the primary checkout and an existing path.
 - Engine: the first `claude-code` or `codex` entry of `engines.<tier>.order`
   (`--tier`, default `default`) with that tier's effort. A reviewer or
-  validator skips every engine named in the PR's `Engine:` commit trailers;
-  with no trailer the builder counts as non-Claude, so Claude Code goes first.
+  validator skips every engine named on an `Engine:` line in the PR's commit
+  messages, in the trailer block or not (`none` merge-ups excluded). With no
+  such line it skips the engine in the PR-body builder marker and in each
+  builder run record for the PR or its closing issues. With none of these
+  the builder engine is unknown and spawn refuses; it never assumes
+  non-Claude (#442).
   The synthesizer takes the tier's first engine as is, like a builder.
   Muse Code and OpenCode have no interactive launch yet and are skipped.
 - Window: `-e` passes `CREW_ROLE`, `CREW_ID`, `CREW_STATE`, `CREW_STATUS`,
