@@ -866,7 +866,7 @@ class Route(SpawnBase):
                     "if os.path.exists(p):\n"
                     "    print('owner asks for status')\n" % os.path.join(self.state, "runs", "vera-12-r1-review.json"))
         r = self.crew("watch", "--project", self.project, "--no-nudge", "--interval", ".01",
-                      "--source", shlex.join([sys.executable, source]), "--backstop", "2")
+                      "--source", shlex.join([sys.executable, source]), "--source-interval", "0", "--backstop", "2")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn("vera-12-r1-review", self.names())
         self.assertEqual([w["event"] for w in self.pending()], ["owner asks for status"])

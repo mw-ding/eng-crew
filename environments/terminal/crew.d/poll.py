@@ -4,6 +4,8 @@ head and approval round). Queued ci-failed records for a superseded head are dro
 steps emit ci-infra to the coordinator, never ci-passed. Non-active ownership emits one coordinator ownership wake per
 mode change and no work events; `lost` (another runtime owns, after the ack) is the prompt-stop wake. A transient `gh` failure (5xx, timeout, connection reset) is retried with bounded
 backoff; if it persists, `--once` exits 75 (EX_TEMPFAIL) so `mdstack watch` records an incident instead of waking (#702).
+A rate-limited `gh` read is never retried: `--once` exits 75 with `rate-limited until <UTC>`, the reset from `gh api
+rate_limit` (60 s for a secondary limit), and `mdstack watch` holds its sources until then (#1300).
 A change that resolves express (express-lane.md, routing) emits no reviewer event; `ci-passed` needs a selfgate pass at
 head (or carried by an express merge-up atop a selfgate-passed head) and a new selfgate pass with CI green emits
 `selfgate-passed`, all to the synthesizer. When the lane falls back, the head emits `new-head` for normal review.
@@ -36,10 +38,31 @@ CI_OK, CI_BAD = {"SUCCESS", "NEUTRAL", "SKIPPED"}, {"FAILURE", "ERROR", "CANCELL
                                                     "STARTUP_FAILURE"}
 TRANSIENT_GH = re.compile(r"HTTP 5\d\d|time(d ?)?out|connection reset|unexpected EOF|TLS handshake", re.IGNORECASE)
 RETRY_DELAYS = (1, 2, 4)  # seconds between poll's attempts; well inside mdstack watch's default --source-timeout
+RATE_LIMIT_GH = re.compile(r"rate limit|HTTP 429", re.IGNORECASE)
+SECONDARY_WAIT = 60  # seconds; GitHub asks a secondary-rate-limited client to wait at least a minute
 
 
 class Transient(RuntimeError):
     """A gh failure that persisted through every retry but looks like a GitHub hiccup, not a crew bug."""
+
+
+class RateLimited(Transient):
+    """GitHub refused a read for quota; any call before `until` (epoch) spends more of the shared budget (#1300)."""
+
+    def __init__(self, message, until):
+        super().__init__(message)
+        self.until = until
+
+
+def rate_reset(now):
+    """Epoch at which the exhausted GitHub quota resets, read from `gh api rate_limit` (which counts against none);
+    a secondary limit or an unreadable reply waits SECONDARY_WAIT."""
+    r = subprocess.run(["gh", "api", "rate_limit"], capture_output=True, text=True)
+    try:
+        resets = [v["reset"] for v in json.loads(r.stdout)["resources"].values() if v["remaining"] == 0]
+    except (ValueError, KeyError, TypeError, AttributeError):
+        resets = []
+    return max([now + SECONDARY_WAIT, *resets])
 
 
 def landing_steers(reviews):
@@ -139,6 +162,10 @@ def gh_json(*args, retry=()):
         r = subprocess.run(["gh", *args], capture_output=True, text=True)
         if not r.returncode:
             return json.loads(r.stdout)
+        if RATE_LIMIT_GH.search(r.stderr):
+            until = rate_reset(time.time())
+            raise RateLimited("crew: gh %s rate-limited until %s: %s" % (
+                " ".join(args[:2]), time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(until)), r.stderr.strip()), until)
         transient = bool(TRANSIENT_GH.search(r.stderr))
         if delay is None or not transient:
             break
@@ -158,6 +185,8 @@ def observe_ci(pr, repo):
             continue
         try:
             jobs = gh_json("api", "repos/%s/actions/runs/%s/jobs?per_page=100" % (repo, match[1]))["jobs"]
+        except RateLimited:  # a quota refusal ends the poll; each fallback below re-raises it too (#1300)
+            raise
         except (RuntimeError, KeyError):
             continue
         check["_ci_infra"] = bool(jobs) and all(j.get("steps") == [] for j in jobs) and len(jobs) < 100
@@ -171,6 +200,8 @@ def ci_state(pr, repo):
         if job and check.get("status") == "COMPLETED" and check.get("conclusion") in CI_BAD:
             try:
                 data = gh_json("api", "repos/%s/actions/jobs/%s" % (repo, job[1]))
+            except RateLimited:
+                raise
             except RuntimeError:
                 data = {}
             if data.get("status") == "completed" and data.get("conclusion", "").upper() in CI_BAD and \
@@ -209,6 +240,8 @@ def express_lane(args, values, view):
     try:
         return commands()["train"].train_express(args, values, "%s/%s" % (values["repo.owner"], values["repo.name"]),
                                                  view)[0]
+    except RateLimited:
+        raise
     except RuntimeError as e:
         print("crew: poll: #%d crew lane: %s" % (view["number"], e))
         return False
@@ -429,6 +462,8 @@ def triage_poll(values, state, project, read=gh_json):
             items = [read("issue", "list", "-R", repo, "--state", s, "--limit", "500", "--json",
                           TRIAGE_FIELDS if s == "open" else "number,title,body", retry=RETRY_DELAYS)
                      for s in ("open", "closed")]
+        except RateLimited:
+            raise
         except RuntimeError as e:
             queue["repos"][repo] = "unreadable: %s" % e
             continue
@@ -480,6 +515,8 @@ def triage_milestones(values, state, read=gh_json):
     try:
         closed = read("api", "repos/%s/milestones?state=closed&per_page=100" % repo, retry=RETRY_DELAYS)
         closed = {m["number"]: m["title"] for m in closed}
+    except RateLimited:
+        raise
     except (RuntimeError, ValueError, KeyError, TypeError):
         return pending
     if seen is not None:
@@ -501,12 +538,14 @@ def register(sub):
 def run(args):
     values, _, state = profile(args)
     while True:
+        until = 0
         try:
             poll_once(values, state, args)
         except RuntimeError as e:
             print(e)
             if args.once:
                 return os.EX_TEMPFAIL if isinstance(e, Transient) else 1
+            until = getattr(e, "until", 0)
         if args.once:
             return 0
-        time.sleep(values["runtime.options.poll_interval"])
+        time.sleep(max(values["runtime.options.poll_interval"], until - time.time()))

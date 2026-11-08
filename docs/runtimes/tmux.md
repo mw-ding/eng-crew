@@ -1264,6 +1264,10 @@ no `poll-state.json`, records a baseline and emits nothing; the
 older. Without `--once` it polls every `runtime.options.poll_interval` seconds
 (default 60), in a dedicated window or under the watcher (#135); a failed `gh`
 call is printed and retried on the next tick, and exits 1 with `--once`.
+A rate-limited `gh` read is never retried: poll reads the exhausted quota's
+reset from `gh api rate_limit` (60 s for a secondary limit), prints
+`crew: gh <cmd> rate-limited until <UTC>: <error>`, sleeps until then without
+`--once`, and exits 75 with it (#1300).
 Labels such as `crew:hold` are not filtered: the consumer applies its own
 guard.
 
@@ -1793,7 +1797,14 @@ neither that file nor the watch state, #591), then scans every `--interval` seco
   exits 75 (`EX_TEMPFAIL`) if it persists. A cut-off run or an exit 75 is a
   line in `wake/incidents.jsonl`, not a wake; `--source-failures`
   (default 3) of them in a row from one source send one `source-failing:`
-  wake with the count, and a clean run resets the count (#702). A
+  wake with the count, and a clean run resets the count (#702). The
+  sources run at most once per `--source-interval` seconds (default
+  `runtime.options.poll_interval`, 60), not on every `--interval` scan, and
+  the next due time persists in `wake/watch-state.json`, so a re-armed
+  watcher does not poll at once. An exit-75 line
+  `rate-limited until <UTC>` holds every source until that reset, at most
+  an hour, so the watchers and roles sharing one GitHub login stop spending
+  its quota (#1300). A
   source that grows `wake/queue.jsonl` itself during the call, as
   `mdstack poll` does, has its stdout ignored, so its events are queued once;
 - `poll:` (or the record's own `reason`) new records in `wake/queue.jsonl`

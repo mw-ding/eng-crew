@@ -630,6 +630,8 @@ def train_spec(poll, values, slug, view):
     try:
         rules = values.get("spec.paths", precheck.config.SPEC_PATHS)
         return bool(precheck.config.spec_matches({"spec": {"paths": rules}}, train_paths(poll, slug, view["number"])))
+    except poll.RateLimited:  # poll's caller holds until the reset (#1300)
+        raise
     except (KeyError, TypeError, ValueError, RuntimeError) as e:
         raise RuntimeError("spec classification unreadable: %s" % e)
 
@@ -663,6 +665,8 @@ def train_express(args, values, slug, view):
             labels.append("crew:spec")
         item = item_flavor.resolve_item(profile_, issues[0], bodies, labels=labels)
         result = precheck.config.class_flavor(profile_, train_paths(poll, slug, n), express=True)
+    except poll.RateLimited:  # poll's caller holds until the reset (#1300)
+        raise
     except (KeyError, TypeError, ValueError, RuntimeError) as e:
         raise RuntimeError("express resolution unreadable: %s" % e)
     if item["flavor"] != "express":
