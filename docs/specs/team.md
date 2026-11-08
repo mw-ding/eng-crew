@@ -1,16 +1,16 @@
 # Spec: team and modular design
 
-Status: v0.1 (2026-11-07). Owner: coordinator. Changes land through
-`crew:spec` PRs (review pass only, merge on the owner's merge-ok). Tracking:
-[#1180](https://github.com/mw-ding/eng-crew/issues/1180). Issue:
-[#1216](https://github.com/mw-ding/eng-crew/issues/1216).
-
 > - **Status:** partly built
 > - **Applies to:** this repo's layout, axes, roles, actions and modules
 > - **Current rules:** the [protocol](../protocol.md) and its gate registry; each requirement's **Delivered by** issues
 > - **Built:** M29–M33 (roles, connectors, environments, harnesses, core, cli and dev modules; the dependency lint; the actions CLI in part; the `mdstack` rename)
 > - **Design only:** the `protocols/` and `install/` modules ([§4](#4-target-module-layout)) and the rest of the actions implementation
 > - **Last checked:** 2026-11-07 at `02ca805`
+
+Status: v0.1 (2026-11-07). Owner: coordinator. Changes land through
+`crew:spec` PRs (review pass only, merge on the owner's merge-ok). Tracking:
+[#1180](https://github.com/mw-ding/eng-crew/issues/1180). Issue:
+[#1216](https://github.com/mw-ding/eng-crew/issues/1216).
 
 ## 1. Goal
 
