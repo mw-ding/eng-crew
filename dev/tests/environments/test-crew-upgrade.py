@@ -25,6 +25,8 @@ upgrade = cli.commands()["upgrade"]
 
 
 class Upgrade(bootstrap_tests.Bootstrap):
+    share_bundle = False  # edits its bundle
+
     def test_reload_cursor_coordinator_preserves_harness(self):
         values = {"engines.coordinator": "cursor", "runtime.options.permission_mode": "bypass"}
         with mock.patch.object(upgrade, "runs", return_value=[]), \

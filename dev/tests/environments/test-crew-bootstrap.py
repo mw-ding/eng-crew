@@ -7,6 +7,7 @@ Use --self-test-evidence for post-apply success, failure and opt-in smoke eviden
 Use --size-budget-evidence for deterministic size-budget success/failure and cleanup evidence.
 Use --proposal-evidence for local detection, confirmation, edited-record/rerun and cleanup evidence.
 """
+import atexit
 import functools
 import importlib.util
 import hashlib
@@ -20,6 +21,7 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import tempfile
 import threading
 import tomllib
 import unittest
@@ -35,20 +37,59 @@ doctor_tests = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(doctor_tests)
 
 
+def copy_bundle(bundle):
+    for name in ("scripts", "cli", "core", "environments", "harnesses", "connectors", "profiles", "templates",
+                 "packs", "roles", "docs"):
+        shutil.copytree(ROOT / name, bundle / name)
+    (bundle / "VERSION").write_text("v2.1.0\n")
+    return bundle
+
+
+def files(bundle):
+    """{path: (size, mtime)} for every bundle file but bytecode, which running the CLI may write."""
+    return {str(p.relative_to(bundle)): (p.lstat().st_size, p.lstat().st_mtime_ns) for p in bundle.rglob("*")
+            if "__pycache__" not in p.parts and not p.is_dir()}
+
+
+SHARED = {}
+
+
+def shared_bundle():
+    """One read-only v2.1.0 bundle per process: copying ~300 files per test dominated the file's run time (#1333)."""
+    if not SHARED:
+        root = tempfile.mkdtemp(prefix="mdstack-bundle-")
+        atexit.register(shutil.rmtree, root, True)
+        bundle = copy_bundle(Path(root) / "mdstack-v2.1.0")
+        SHARED.update(bundle=bundle, files=files(bundle))
+    return SHARED["bundle"]
+
+
 class Bootstrap(doctor_tests.DoctorBase):
+    share_bundle = True  # a subclass that renames or edits self.bundle in setUp sets False
+
     def setUp(self):
         super().setUp()
-        self.bundle = Path(self.tmp) / "mdstack-v2.1.0"
-        for name in ("scripts", "cli", "core", "environments", "harnesses", "connectors", "profiles", "templates",
-                     "packs", "roles", "docs"):
-            shutil.copytree(ROOT / name, self.bundle / name)
-        (self.bundle / "VERSION").write_text("v2.1.0\n")
+        if self.share_bundle:
+            self.bundle = shared_bundle()
+            self.addCleanup(self.assert_shared_bundle_unchanged)
+        else:
+            self.bundle = copy_bundle(Path(self.tmp) / "mdstack-v2.1.0")
         self.project_path = Path(self.project)
         self.project_path.write_text(self.project_path.read_text() +
                                      'mdstack = "%s/mdstack"\nlive_dir = "%s/live"\n' % (self.state, self.tmp))
         self.cli = self.bundle / "cli" / "mdstack"
         self.manifest = Path(self.state) / "install.json"
         self.tool("git", 'case "$1" in --version) echo 1.0;; *) exit 1;; esac')
+
+    def own_bundle(self):
+        """A private copy in self.tmp, before the first bootstrap, for a test that edits the bundle or fetches a
+        release beside it (fetch extracts next to the running bundle)."""
+        self.bundle = copy_bundle(Path(self.tmp) / "mdstack-v2.1.0")
+        self.cli = self.bundle / "cli" / "mdstack"
+
+    def assert_shared_bundle_unchanged(self):
+        if files(SHARED["bundle"]) != SHARED["files"]:
+            raise AssertionError("%s changed the shared bundle; call own_bundle() first" % self.id())
 
     def bootstrap(self, *args):
         return subprocess.run([sys.executable, str(self.cli), "bootstrap", "--project", self.project, *args],
@@ -256,6 +297,7 @@ class Bootstrap(doctor_tests.DoctorBase):
         self.assertEqual(tomllib.loads(self.project_path.read_text())["runtime"]["name"], "tmux")
 
     def test_render_notes_count_toward_size_budget(self):
+        self.own_bundle()
         self.real_git()
         subprocess.run(["git", "init", "-q", self.project_dir], check=True)
         (self.bundle / "templates/runtimes/tmux/builder.md").write_text("é" * 8000)
@@ -270,6 +312,7 @@ class Bootstrap(doctor_tests.DoctorBase):
         self.assertEqual(json.loads(self.manifest.read_text())["self_test"]["size_budget"], "fail")
 
     def test_size_budget_under_at_over_and_default(self):
+        self.own_bundle()
         self.real_git()
         subprocess.run(["git", "init", "-q", self.project_dir], check=True)
         for runtime in ("tmux", "grok-bot"):
@@ -350,6 +393,7 @@ class Bootstrap(doctor_tests.DoctorBase):
                     self.assertLessEqual(counts[0]["runtime/" + role + ".md"], 16384 - 1024)
 
     def test_missing_brief_records_failed_self_test(self):
+        self.own_bundle()
         self.real_git()
         subprocess.run(["git", "init", "-q", self.project_dir], check=True)
         (self.bundle / "templates/runtimes/tmux/reviewer.md").unlink()
@@ -468,6 +512,7 @@ class Bootstrap(doctor_tests.DoctorBase):
                 self.assertNotRegex(r.stdout.lower(), r"timer (installed|created)|install(ed|ing) (a|the) .*timer")
 
     def test_failures_do_not_write_install(self):
+        self.own_bundle()
         for version in (None, "v2.2.0-rc.1"):
             path = self.bundle / "VERSION"
             if version is None:
@@ -498,6 +543,7 @@ class Bootstrap(doctor_tests.DoctorBase):
         os.symlink(shutil.which("git"), Path(self.bindir) / "git")
 
     def test_clone_requires_exact_stable_tag_or_explicit_dev(self):
+        self.own_bundle()
         self.real_git()
         argv = ["git", "-C", str(self.bundle), "-c", "user.name=t", "-c", "user.email=t"]
         for args in (["init", "-q"], ["commit", "-q", "--allow-empty", "-m", "base"]):
@@ -545,6 +591,7 @@ class Bootstrap(doctor_tests.DoctorBase):
 
 
     def release(self, tag="v2.2.0", checksum=True, version=None, unsafe=False):
+        assert self.bundle != SHARED.get("bundle"), "call own_bundle() before release()"
         assets = Path(self.tmp) / "assets"
         assets.mkdir(exist_ok=True)
         name = "mdstack-" + tag[1:]
@@ -585,6 +632,7 @@ class Bootstrap(doctor_tests.DoctorBase):
         return str(org / "profile.toml")
 
     def test_fetch_verifies_runs_selected_bundle_and_records_digest(self):
+        self.own_bundle()
         self.real_git()
         subprocess.run(["git", "init", "-q", self.project_dir], check=True)
         destination, sha = self.release()
@@ -604,6 +652,7 @@ class Bootstrap(doctor_tests.DoctorBase):
         self.assertEqual(json.loads(self.manifest.read_text())["bundle_sha256"], sha)
 
     def test_fetch_of_a_7x_release_uses_the_mdstack_names(self):  # #1312
+        self.own_bundle()
         self.real_git()
         subprocess.run(["git", "init", "-q", self.project_dir], check=True)
         destination, sha = self.release("v7.0.0")
@@ -672,6 +721,7 @@ class Bootstrap(doctor_tests.DoctorBase):
         self.assertIn("to every `ex` command except\n`gh api`", (runtime / "builder.md").read_text())
 
     def test_fetch_preserves_smoke_opt_in_and_self_tests(self):
+        self.own_bundle()
         self.smoke_host()
         destination, sha = self.release()
         r = self.bootstrap("--version", "v2.2.0", "--yes", "--smoke")
@@ -685,6 +735,7 @@ class Bootstrap(doctor_tests.DoctorBase):
         self.assertEqual((Path(self.state) / "mdstack").resolve(), destination.resolve())
 
     def test_fetch_dry_run_preserves_live_install_and_existing_versions(self):
+        self.own_bundle()
         self.real_git()
         subprocess.run(["git", "init", "-q", self.project_dir], check=True)
         self.assertEqual(self.bootstrap("--yes").returncode, 0)
@@ -706,6 +757,7 @@ class Bootstrap(doctor_tests.DoctorBase):
         self.assertFalse(list(Path(self.tmp).glob(".crew-refetch-*")))
 
     def test_fetch_rejects_checksum_version_and_unsafe_archive_before_publish(self):
+        self.own_bundle()
         for options, message in ((dict(checksum=False), "SHA256SUMS mismatch"),
                                  (dict(version="v9.9.9"), "VERSION"),
                                  (dict(unsafe=True), "unsafe release archive")):
@@ -719,6 +771,7 @@ class Bootstrap(doctor_tests.DoctorBase):
         self.assertFalse((Path(self.tmp) / "escape").exists())
 
     def test_prereleases_need_pre_and_never_satisfy_pin(self):
+        self.own_bundle()
         destination, _ = self.release(tag="v2.2.0-rc.1")
         r = self.bootstrap("--version", "v2.2.0-rc.1", "--dry-run")
         self.assertEqual(r.returncode, 1)
@@ -755,6 +808,7 @@ class ReleaseSources(Bootstrap):
 
     def setUp(self):
         super().setUp()
+        self.own_bundle()
         self.real_git()
         subprocess.run(["git", "init", "-q", self.project_dir], check=True)
         self.mirror = Path(self.tmp) / "mirror"
@@ -906,6 +960,7 @@ class HarnessTargets(Bootstrap):
         self.exclude = Path(self.project_dir) / ".git/info/exclude"
 
     def test_fetch_preserves_harness_selection_and_self_tests(self):
+        self.own_bundle()
         destination, sha = self.release()
         r = self.bootstrap("--version", "v2.2.0", "--harness", "claude-code",
                            "--harness", "codex", "--yes")
@@ -966,6 +1021,7 @@ class HarnessTargets(Bootstrap):
 
     def test_new_bundle_repoints_the_guard_and_reruns(self):
         """#1088: installing a newer bundle re-points the Stop guard at it; a rerun is not refused as edited."""
+        self.own_bundle()
         r = self.bootstrap("--harness", "claude-code", "--yes")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         destination, _ = self.release()
@@ -1241,9 +1297,10 @@ launch_note = "harness/codex-note.md"
 
 
 def load_tests(loader, tests, pattern):
-    """ReleaseSources reuses the Bootstrap fixture; run only its own tests, not the inherited ones again."""
+    """ReleaseSources and HarnessTargets reuse the Bootstrap fixture; run only their own tests, not the inherited
+    ones again (#1333)."""
     def own(test):
-        return type(test) is not ReleaseSources or test._testMethodName in ReleaseSources.__dict__
+        return type(test) is Bootstrap or test._testMethodName in type(test).__dict__
 
     def flat(suite):
         for test in suite:
@@ -1313,6 +1370,7 @@ def evidence():
 def fetch_evidence():
     fixture = Bootstrap()
     fixture.setUp()
+    fixture.own_bundle()
     try:
         fixture.real_git()
         subprocess.run(["git", "init", "-q", fixture.project_dir], check=True)
@@ -1353,6 +1411,7 @@ def fetch_evidence():
 def size_budget_evidence():
     fixture = Bootstrap()
     fixture.setUp()
+    fixture.own_bundle()
     try:
         fixture.real_git()
         subprocess.run(["git", "init", "-q", fixture.project_dir], check=True)
@@ -1383,6 +1442,7 @@ def size_budget_evidence():
 def self_test_evidence():
     fixture = Bootstrap()
     fixture.setUp()
+    fixture.own_bundle()
     try:
         fixture.smoke_host()
         result = fixture.bootstrap("--dry-run", "--smoke")
