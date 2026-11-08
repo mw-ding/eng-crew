@@ -1731,7 +1731,8 @@ neither that file nor the watch state, #591), then scans every `--interval` seco
   `--idle-stall` seconds (default 1800, 30 min; `0` turns it off) is idle at
   its prompt with no tool call or turn: it wakes `stale` with liveness `idle`
   and action `escalate`, once per silence, however fresh its claim, heartbeat
-  or status file and whatever runs beneath it (#1283). A builder after `done:`
+  or status file and whatever runs beneath it (#1283); the reviewer pool
+  escalates it even when its re-probe says `alive`. A builder after `done:`
   is exempt, and the herdr backend reports no pane activity, so it is not
   checked there. A long wait belongs in the harness's own background-task
   notification, never in a loop that refreshes a liveness file;
