@@ -1435,8 +1435,9 @@ waived, and the merge record names `lone_pr_land=direct` and the lone-ready
 condition. Every other §7 gate still applies at head.
 
 After a direct land, the synthesizer waits for the default-branch push CI run
-at the PR's exact merge commit SHA, checking all required jobs; the coordinator
-keeps the synthesizer alive through the check after `pr-merged`. Missing or
+at the PR's exact merge commit SHA, checking all required jobs. On
+`pr-merged`, `mdstack route` keeps a synthesizer whose spawn PR is the merged
+one alive until it writes `done: #<n>` or `blocked:` for it. Missing or
 pending CI is not green. On red it reports
 `blocked: main red after #<n> <run-url>`; the coordinator files a blocking
 `crew:ready` fix issue titled `main-red: <summary>` linking the landed PR and
