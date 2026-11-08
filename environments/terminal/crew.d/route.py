@@ -199,9 +199,14 @@ def close_out(args, values, state, pr):
             gh("pr", "edit", str(pr["number"]), "-R", repo, "--remove-label", label)
     issues = {i["number"] for i in pr["closingIssuesReferences"]}
     for n in sorted(issues):
-        issue = gh("issue", "view", str(n), "-R", repo, "--json", "labels")
+        issue = gh("issue", "view", str(n), "-R", repo, "--json", "labels,state,stateReason")
         if any(label["name"] == "crew:ready" for label in issue["labels"]):
             gh("issue", "edit", str(n), "-R", repo, "--remove-label", "crew:ready")
+        # GitHub's auto-close can miss (train lands, #846); a reopened issue stays open on purpose (#917)
+        if issue["state"] == "OPEN" and issue.get("stateReason") != "REOPENED":
+            gh("issue", "close", str(n), "-R", repo, "--comment",
+               "[%s/close-out] #%d merged and closes this issue, but GitHub left it open; closed by close-out." % (
+                   values.get("identities.coordinator.name", "Ash"), pr["number"]))
     default = gh("repo", "view", repo, "--json", "defaultBranchRef")["defaultBranchRef"]["name"]
     branch = pr["headRefName"]
     if not pr["isCrossRepository"] and pr["headRepositoryOwner"]["login"] == values["repo.owner"] and \
