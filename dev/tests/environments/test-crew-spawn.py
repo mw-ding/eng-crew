@@ -1,7 +1,8 @@
 """Tests for mdstack spawn, moved from test-crew.py; fixtures in crew_testlib.py (stdlib only).
 
 Covers, against a temp git repo: unique worktree, next free band index, identity by
-`CREW_IDENTITY` only, reviewer engine != builder engine (no trailer counts as non-Claude), the
+`CREW_IDENTITY` only, reviewer engine != builder engine (an Engine: line outside the trailer block, the PR-body
+builder marker or a builder run record names it; unknown refuses, #442), the
 synthesizer engine ignores the builder engine, review and validate claims and worktrees per
 round and pass coexist, failed start cleaned up, a dead pane reads `dead` and fails fast, a
 Claude Code pane whose command reads as its version (`2.1.314`, a symlinked install) starts on
@@ -469,11 +470,47 @@ class Spawn(SpawnBase):
         shown = [c for c in self.calls() if c[0] == "display-message"]
         self.assertEqual(shown[0][-1], "#{?pane_dead,dead,#{pane_current_command}}")
 
-    def test_reviewer_unknown_builder_engine_treated_as_non_claude(self):
-        self.git("commit", "-q", "--allow-empty", "-m", "no trailer")
-        self.git("push", "-q", "origin", "HEAD:refs/pull/11/head")
-        self.assertEqual(self.spawn("reviewer", "--pr", "11").returncode, 0)
-        self.assertIn("exec claude ", self.windows()[0][-1])
+    def push_pr(self, n, message):
+        self.git("commit", "-q", "--allow-empty", "-m", message)
+        self.git("push", "-q", "origin", "HEAD:refs/pull/%d/head" % n)
+        self.git("reset", "-q", "--hard", "origin/main")
+
+    def assert_codex_reviewer(self, n):
+        r = self.spawn("reviewer", "--pr", str(n))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("exec codex ", self.windows()[-1][-1])
+        self.assertEqual(self.record("vera-%d-r1-review" % n)["engine"], "codex")
+
+    def test_claude_trailer_gets_non_claude_reviewer(self):  # #442
+        self.pr(9, "claude-code sonnet low")
+        self.assert_codex_reviewer(9)
+
+    def test_engine_line_outside_trailer_block_counts(self):  # #442: md-mt/mdstack#19
+        self.push_pr(10, "feat: x\n\nEngine: claude-code sonnet low\n\nCo-Authored-By: A <a@example.com>")
+        self.assert_codex_reviewer(10)
+
+    def test_builder_marker_names_engine_without_trailer(self):  # #442: md-mt/mdstack#15, #16
+        self.push_pr(11, "feat: no trailer")
+        self.env["FAKE_PR_BODY"] = "x\n<!-- crew:v1 role=builder issue=7 tier=trivial engine=claude-code model=sonnet -->"
+        self.assert_codex_reviewer(11)
+
+    def test_builder_run_record_names_engine_without_trailer_or_marker(self):  # #442
+        self.push_pr(11, "feat: no trailer")
+        os.makedirs(os.path.join(self.state, "runs"), exist_ok=True)
+        with open(os.path.join(self.state, "runs", "ben-7.json"), "w") as f:
+            json.dump(dict(index=10, role="builder", item="issue #7", worktree=None, claim="c", engine="claude-code",
+                           model="sonnet", effort="low", harness="claude", repo="r", head="h", **{"pass": "build"}), f)
+        self.assert_codex_reviewer(11)
+
+    def test_reviewer_refuses_unknown_builder_engine(self):  # #442: unknown is never non-Claude
+        self.push_pr(11, "feat: no trailer")
+        r = self.spawn("reviewer", "--pr", "11")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("PR #11's builder engine is unknown", r.stdout)
+        self.assertEqual(self.windows(), [])
+        self.assertFalse(os.path.exists(os.path.join(self.state, "runs", "vera-11-r1-review.json")))
+        self.assertEqual(os.listdir(os.path.join(self.state, "claims")) if os.path.isdir(
+            os.path.join(self.state, "claims")) else [], [])
 
     def test_no_token_in_argv_env_or_files(self):
         self.pr(9, "claude-code opus-5.5 default")

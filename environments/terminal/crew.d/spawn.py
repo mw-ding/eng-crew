@@ -10,25 +10,43 @@ Usage: mdstack spawn ROLE --issue N | --pr N | --sweep | --docs-pass [--pass PAS
 """
 import json
 import os
+import re
 import shlex
 import time
 from crew_shared import (
     BANDS, brief_src, checkout, commands, ENGINE_CMD, fetch, git, harness, identity, kill_run, LAUNCH, NAMES, over_cap, PASSES, POINTER,
-    profile, queue_lock, role_notes, ROLES, show_icon, tmux, wait_harness, window_env, open_trains, synthesizer_work)
+    profile, queue_lock, role_notes, ROLES, runs, show_icon, tmux, wait_harness, window_env, open_trains, synthesizer_work)
 
 
 def pick_engine(values, tier, avoid=None, role=None):
     """First interactive engine in the role's override order, else the tier's (#597); a reviewer avoids every actual
-    builder engine of the PR, and an unknown builder engine counts as non-Claude (roles.md Reviewer engine selection)."""
+    builder engine of the PR (roles.md Reviewer engine selection)."""
     key = "engines.roles.%s.order" % role if "engines.roles.%s.order" % role in values else "engines.%s.order" % tier
     order = [e.split("/", 1) for e in values[key]]
     order = [e for e in order if e[0] in ENGINE_CMD and e[0] not in (avoid or ())]
-    if avoid == set():
-        order.sort(key=lambda e: e[0] != "claude-code")
     if not order:
         raise RuntimeError("crew: no %s engine in %s differs from the builder's %s" %
                            ("/".join(ENGINE_CMD), key, sorted(avoid or ())))
     return order[0][0], order[0][1], values["engines.%s.effort" % tier]
+
+
+def builder_engines(values, state, repo, base, sha, pr):
+    """The PR's actual builder engines: every `Engine:` line in its commit messages, trailer block or not (#442);
+    else the PR-body builder marker and the builder run records for the PR or its closing issues. Unknown refuses."""
+    found = {e for e in re.findall(r"^Engine:[ \t]*(\S+)", git(repo, "log", "--format=%B", "%s..%s" % (base, sha)), re.M)
+             if e != "none"}
+    if found:
+        return found
+    change = commands()["route"].gh("pr", "view", str(pr), "-R", "%s/%s" % (values["repo.owner"], values["repo.name"]),
+                                    "--json", "body,closingIssuesReferences")
+    found = set(re.findall(r"<!-- crew:v1 role=builder [^>]*?\bengine=([^\s>]+)", change.get("body") or ""))
+    issues = {"issue #%d" % i["number"] for i in change["closingIssuesReferences"]}
+    found |= {rec["engine"] for _, rec in runs(state) if rec["role"] == "builder" and (
+        rec.get("args", {}).get("pr") == pr or rec["item"].split(",")[0] in issues)}
+    if not found:
+        raise RuntimeError("crew: refusing spawn: PR #%d's builder engine is unknown (no Engine: line, builder marker "
+                           "or builder run record); an unknown engine is never assumed non-Claude" % pr)
+    return found
 
 
 def exclude_crew(wt):
@@ -141,10 +159,7 @@ def run(args):
         if getattr(args, "head", None) and args.head != sha:
             raise RuntimeError("crew: stale spawn: expected %s, live head %s" % (args.head, sha))
         engine, model, effort = pick_engine(values, args.tier, role=role) if "engine_independent_of" not in data else pick_engine(
-            values, args.tier, {line.split()[0] for line in git(
-                repo, "log", "--format=%(trailers:key=Engine,valueonly)",
-                "%s..%s" % (fetch(repo, values["repo.default_branch"]), sha)).splitlines()
-                if line.strip() and not line.startswith("none")}, role)
+            values, args.tier, builder_engines(values, state, repo, fetch(repo, values["repo.default_branch"]), sha, args.pr), role)
     except RuntimeError as e:
         print(e)
         return 1

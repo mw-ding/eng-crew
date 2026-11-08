@@ -145,7 +145,7 @@ class Base(unittest.TestCase):
                     "args = sys.argv[1:]\n"
                     "solo = args[2] in os.environ.get('FAKE_SOLO_' + args[0].upper(), '').split(',')\n"
                     "print(json.dumps({'labels': [{'name': 'crew:solo'}] if solo else [], "
-                    "'closingIssuesReferences': [{'number': 7}]}))\n")
+                    "'closingIssuesReferences': [{'number': 7}], 'body': os.environ.get('FAKE_PR_BODY', '')}))\n")
         os.chmod(os.path.join(bindir, "gh"), 0o755)
 
     def write_profile(self, runtime="tmux", engine="claude-code"):
@@ -208,7 +208,7 @@ class SpawnBase(Base):
                     "if args[:2] in (['issue', 'view'], ['pr', 'view']):\n"
                     " solo = args[2] in os.environ.get('FAKE_SOLO_' + args[0].upper(), '').split(',')\n"
                     " print(json.dumps({'labels': [{'name': 'crew:solo'}] if solo else [], "
-                    "'closingIssuesReferences': [{'number': 7}]}))\n"
+                    "'closingIssuesReferences': [{'number': 7}], 'body': os.environ.get('FAKE_PR_BODY', '')}))\n"
                     "else:\n open(%r, 'a').write('called\\n')\n print(%r)\n" % (os.path.join(self.tmp, "gh.log"), SECRET))
         os.chmod(os.path.join(bindir, "gh"), 0o755)
         self.env["GH_TOKEN"] = SECRET
