@@ -2,9 +2,9 @@
 
 docs/bootstrap.md Release sources: `fetch` stages a release from the [install] source and verifies it into place.
 `stage` copies the archive and SHA256SUMS (gh for github, an HTTP GET for url, a file copy for mirror; only github
-calls gh). `verify` runs verifier steps 2 to 5 over an archive and SHA256SUMS already staged by a source, and moves
-the bundle into place only after every check passes; nothing is extracted before the SHA256SUMS pin and entry
-checks. `build_git` is the git source (#945): it fetches the tag into a temporary bare repository with no checkout
+calls gh). `latest` reads the latest GitHub release's tag for upgrade --latest. `verify` runs verifier steps 2 to 5
+over an archive and SHA256SUMS already staged by a source, and moves the bundle into place only after every check
+passes; nothing is extracted before the SHA256SUMS pin and entry checks. `build_git` is the git source (#945): it fetches the tag into a temporary bare repository with no checkout
 and no hooks, refuses unless the tag peels to the pinned commit, and only then runs that commit's own
 scripts/release-bundle.py; `unpack` applies the member, VERSION and entry point checks to the built archive.
 `transport` builds install.json's `transport` field for a non-GitHub source, and `transport_kind` reads a record,
@@ -91,6 +91,15 @@ def stage(install, tag, where):
                 shutil.copyfile(source, Path(where) / name)
         except (OSError, ValueError) as e:
             raise ValueError("release fetch failed for %s from %s %s: %s" % (tag, kind, source, e))
+
+
+def latest():
+    """The latest GitHub release's tag, for `mdstack upgrade --latest` (#1317)."""
+    result = subprocess.run(["gh", "release", "view", "-R", "mw-ding/mdstack", "--json", "tagName", "--jq", ".tagName"],
+                            capture_output=True, text=True, stdin=subprocess.DEVNULL)
+    if result.returncode or not result.stdout.strip():
+        raise ValueError("could not read the latest release with gh")
+    return result.stdout.strip()
 
 
 def build_git(location, tag, commit, where):

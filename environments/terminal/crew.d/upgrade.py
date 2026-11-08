@@ -19,7 +19,6 @@ import json
 import os
 from pathlib import Path
 import shlex
-import subprocess
 import tempfile
 import time
 from crew_shared import (
@@ -122,11 +121,7 @@ def run(args):
         if args.latest:
             if args.version or values.get("install.source", "github") != "github":
                 raise ValueError("--latest needs the github source and no --version")
-            latest = subprocess.run(["gh", "release", "view", "-R", "mw-ding/mdstack", "--json", "tagName", "--jq",
-                                     ".tagName"], capture_output=True, text=True, stdin=subprocess.DEVNULL)
-            if latest.returncode or not latest.stdout.strip():
-                raise ValueError("could not read the latest release with gh")
-            args.version = latest.stdout.strip()
+            args.version = bootstrap.crew_install.latest()
         if args.version:
             if args.dev:
                 raise ValueError("--version and --dev cannot be combined")

@@ -1,9 +1,10 @@
 """Tests for the user-level install (#1317) on a fake host whose HOME is a temp dir: `mdstack install` (refused
 outside ~/.mdstack/releases/, a dry run writes nothing, the releases/current link and the launcher, a PATH link
 into a user directory or the one line to add, never over another mdstack, idempotent), `mdstack --version`, the
-doctor launcher and PATH rows (missing, stale, ok, resolves elsewhere), and `mdstack upgrade --version` through
-the launcher (re-renders, flips releases/current so the launcher follows, rolls back to a release on disk; a dry
-run flips nothing; the other projects the install serves are upgraded first). Run in CI.
+doctor launcher and PATH rows (missing, stale, ok, resolves elsewhere), and `mdstack upgrade` through the launcher
+(--latest takes the latest release's tag and refuses with --version; re-renders, flips releases/current so the
+launcher follows, --version of the previous tag rolls back to the release on disk; a dry run flips nothing; the
+other projects the install serves are upgraded first, and a failed one keeps current). Run in CI.
 """
 from argparse import Namespace
 import importlib.util
@@ -116,12 +117,16 @@ class UserInstall(bootstrap_tests.Bootstrap):
         subprocess.run(["git", "init", "-q", self.project_dir], check=True)
         self.assertEqual(self.install().returncode, 0)
         self.assertEqual(self.bootstrap("--yes").returncode, 0)
+        self.gh(["acme-bot", "acme-reviewer"], "v2.2.0")  # --latest reads this tag
         _, sha = self.release()
         new = self.releases / "mdstack-2.2.0"
         r = self.run_launcher("upgrade", "--project", self.project, "--version", "v2.2.0", "--dry-run")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual(os.readlink(self.releases / "current"), "mdstack-2.1.0")
-        r = self.run_launcher("upgrade", "--project", self.project, "--version", "v2.2.0", "--yes")
+        r = self.run_launcher("upgrade", "--project", self.project, "--latest", "--version", "v2.2.0")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("--latest needs the github source and no --version", r.stdout)
+        r = self.run_launcher("upgrade", "--project", self.project, "--latest", "--yes")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn("releases/current -> mdstack-2.2.0", r.stdout)
         self.assertEqual(os.readlink(self.releases / "current"), "mdstack-2.2.0")
