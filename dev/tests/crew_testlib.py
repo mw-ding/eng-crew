@@ -136,6 +136,8 @@ class Base(unittest.TestCase):
         self.state_file = os.path.join(self.tmp, "tmux.json")
         self.env = dict(os.environ, PATH=bindir + os.pathsep + os.environ["PATH"],
                         FAKE_TMUX_LOG=self.log, FAKE_TMUX_STATE=self.state_file)
+        for name in ("CREW_PROJECT", "MDSTACK_CONFIG", "CREW_ROOT"):  # a crew window's own config never leaks in (#1324)
+            self.env.pop(name, None)
         self.project_dir = os.path.join(self.tmp, "project")
         os.makedirs(self.project_dir)
         self.state = os.path.join(self.tmp, "state", "acme__widgets")

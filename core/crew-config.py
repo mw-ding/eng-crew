@@ -18,7 +18,8 @@ prints JSON; exit 3 on unowned code, 4 on an owners query failure (stop).
 With a bound classify.sensitive extension it also runs that command on the same stdin and unions its matches,
 fail-closed (#880).
 paths.pack records an org pack directory relative to the project file.
-Without --project, the project file is $MDSTACK_CONFIG, else the user-level ~/.mdstack/config.toml (#1316).
+Without --project, the project file is $CREW_PROJECT, else $MDSTACK_CONFIG, else <root>/config.toml, root being
+$CREW_ROOT or ~/.mdstack (#1316, #1324).
 Schema: docs/profile.md and docs/flavors.md (flavor presets, compositions and floor).
 """
 import argparse
@@ -920,12 +921,19 @@ import copy  # noqa: E402  (kept with the resolve block)
 import json  # noqa: E402
 
 DEFAULT_PROFILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "profiles", "default.toml")
-USER_CONFIG = os.path.join("~", ".mdstack", "config.toml")
+
+
+def user_root():
+    """The single root a command defaults to: $CREW_ROOT, else ~/.mdstack (#1316), so a second crew on the same
+    machine is one variable away (#1324)."""
+    return os.path.abspath(os.path.expanduser(os.environ.get("CREW_ROOT") or os.path.join("~", ".mdstack")))
 
 
 def default_config():
-    """The project file a command uses without --project: $MDSTACK_CONFIG, else ~/.mdstack/config.toml (#1316)."""
-    return os.environ.get("MDSTACK_CONFIG") or os.path.expanduser(USER_CONFIG)
+    """The project file a command uses without --project: $CREW_PROJECT (a role window's own config), else
+    $MDSTACK_CONFIG, else <user_root>/config.toml (#1316, #1324). An explicitly named file always wins."""
+    return (os.environ.get("CREW_PROJECT") or os.environ.get("MDSTACK_CONFIG")
+            or os.path.join(user_root(), "config.toml"))
 CORE_DEFAULTS = {"repo": {"default_branch": "main"},
                  "size_budget": {r: 16384 for r in ROLE_REGISTRY},
                  "builder": {"precheck": {"enabled": False, "max_fix_attempts": 2}},
