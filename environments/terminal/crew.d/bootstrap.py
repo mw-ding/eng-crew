@@ -264,7 +264,10 @@ def fetch(args):
     transport = crew_install.transport(install, sums_sha, commit)
     if transport:
         env["CREW_BOOTSTRAP_TRANSPORT"] = json.dumps(transport)
-    return subprocess.run(argv, env=env).returncode
+    code = subprocess.run(argv, env=env).returncode
+    if code or getattr(args, "cmd", "bootstrap") != "upgrade":
+        return code
+    return commands()["install"].follow(args, destination, argv, env)  # the other projects, then releases/current
 
 
 def register(sub, name="bootstrap"):
@@ -613,7 +616,8 @@ def bootstrap(args):
         bundle_sha = os.environ.get("CREW_BOOTSTRAP_BUNDLE_SHA256")
         if not bundle_sha and previous.get("source") == str(ROOT):
             bundle_sha = previous.get("bundle_sha256")
-        record = dict(tag=tag, source=str(ROOT), bundle_sha256=bundle_sha, runtime=values["runtime.name"],
+        record = dict(tag=tag, source=str(ROOT), project=str(project), bundle_sha256=bundle_sha,
+                      runtime=values["runtime.name"],
                       targets={**{p: sha for p, sha in old.items() if Path(p) not in stale},
                                **{str(p): digest(p) for p in targets}}, harnesses=harnesses,
                       launches=launches, pending_human_steps=pending, status="installed")

@@ -1,9 +1,13 @@
 """Upgrade a tmux install from this bundle (or --version), previewing before restarting roles.
 
-Usage: mdstack upgrade --project FILE [--version vX.Y.Z] [--dry-run] [--yes]
+Usage: mdstack upgrade --project FILE [--version vX.Y.Z | --latest] [--dry-run] [--yes]
                      [--wait-timeout SECONDS] [--timeout SECONDS]
 
---version fetches from the profile's [install] source; a source change without --version is refused.
+--version fetches from the profile's [install] source; a source change without --version is refused. --latest is
+--version with the latest release's tag (github source only). Under a user-level install (mdstack install,
+releases/current present), a --version upgrade also upgrades every other project whose install.json, under the
+same state root, runs from that releases directory, then flips releases/current, so the ~/.mdstack/bin/mdstack
+launcher follows (#1317). A release already on disk is reused once a fresh fetch matches it: that is rollback.
 Run from a separate operator terminal with dispatch paused. Waits for every current pass to finish
 before applying; a timeout leaves the install and sessions untouched. Restarts preserve worktrees,
 claims, inboxes and run metadata. Coordinator is last. Grok Bot routine reload remains manual.
@@ -15,6 +19,7 @@ import json
 import os
 from pathlib import Path
 import shlex
+import subprocess
 import tempfile
 import time
 from crew_shared import (
@@ -24,6 +29,7 @@ from crew_shared import (
 
 def register(sub):
     p = commands()["bootstrap"].register(sub, "upgrade")
+    p.add_argument("--latest", action="store_true", help="--version of the latest release (github source)")
     p.add_argument("--wait-timeout", type=float, default=300)
     p.add_argument("--timeout", type=float, default=15)
 
@@ -113,6 +119,14 @@ def run(args):
             raise ValueError("%s: in-place upgrade unsupported; stop the crew and restart the updated install" % tmux.name)
         if not require_ownership(values):
             return 1
+        if args.latest:
+            if args.version or values.get("install.source", "github") != "github":
+                raise ValueError("--latest needs the github source and no --version")
+            latest = subprocess.run(["gh", "release", "view", "-R", "mw-ding/mdstack", "--json", "tagName", "--jq",
+                                     ".tagName"], capture_output=True, text=True, stdin=subprocess.DEVNULL)
+            if latest.returncode or not latest.stdout.strip():
+                raise ValueError("could not read the latest release with gh")
+            args.version = latest.stdout.strip()
         if args.version:
             if args.dev:
                 raise ValueError("--version and --dev cannot be combined")

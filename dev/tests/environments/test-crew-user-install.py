@@ -1,0 +1,196 @@
+"""Tests for the user-level install (#1317) on a fake host whose HOME is a temp dir: `mdstack install` (refused
+outside ~/.mdstack/releases/, a dry run writes nothing, the releases/current link and the launcher, a PATH link
+into a user directory or the one line to add, never over another mdstack, idempotent), `mdstack --version`, the
+doctor launcher and PATH rows (missing, stale, ok, resolves elsewhere), and `mdstack upgrade --version` through
+the launcher (re-renders, flips releases/current so the launcher follows, rolls back to a release on disk; a dry
+run flips nothing; the other projects the install serves are upgraded first). Run in CI.
+"""
+from argparse import Namespace
+import importlib.util
+from importlib.machinery import SourceFileLoader
+import json
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import tempfile
+import unittest
+from unittest import mock
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # dev/tests/: crew_testlib
+from crew_testlib import CREW
+
+HERE = Path(__file__).parent
+spec = importlib.util.spec_from_file_location("bootstrap_tests", HERE / "test-crew-bootstrap.py")
+bootstrap_tests = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(bootstrap_tests)
+spec = importlib.util.spec_from_loader("crew_cli", SourceFileLoader("crew_cli", CREW))
+cli = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(cli)
+install = cli.commands()["install"]
+
+
+class UserInstall(bootstrap_tests.Bootstrap):
+    def setUp(self):
+        super().setUp()
+        self.root = Path(self.home) / ".mdstack"
+        self.releases = self.root / "releases"
+        self.releases.mkdir(parents=True)
+        self.bundle = self.bundle.rename(self.releases / "mdstack-2.1.0")
+        self.cli = self.bundle / "cli" / "mdstack"
+        self.launcher = self.root / "bin" / "mdstack"
+        self.tool("python3", 'exec %s "$@"' % sys.executable)  # the launcher runs cli/mdstack by its shebang
+        self.tool("tmux", "exit 1")  # no live session, as the python fake tmux saw before python3 was on PATH
+
+    def install(self, *args, cli=None):
+        return subprocess.run([sys.executable, str(cli or self.cli), "install", *args], capture_output=True,
+                              text=True, env=self.env)
+
+    def run_launcher(self, *args):
+        return subprocess.run([str(self.launcher), *args], input="", capture_output=True, text=True, env=self.env)
+
+    def test_refused_outside_releases(self):
+        r = self.install(cli=CREW)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("run mdstack install from a release bundle extracted into", r.stdout)
+        self.assertFalse(self.launcher.exists())
+
+    def test_dry_run_writes_nothing(self):
+        r = self.install("--dry-run")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("would write link", r.stdout)
+        self.assertIn("would write launcher " + str(self.launcher), r.stdout)
+        self.assertFalse((self.releases / "current").is_symlink() or self.launcher.exists())
+
+    def test_install_without_a_user_path_dir_prints_the_line(self):
+        r = self.install()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(os.readlink(self.releases / "current"), "mdstack-2.1.0")
+        self.assertTrue(os.access(self.launcher, os.X_OK))
+        self.assertIn('export PATH="$HOME/.mdstack/bin:$PATH"', r.stdout)
+        v = self.run_launcher("--version")
+        self.assertEqual((v.returncode, v.stdout), (0, "mdstack v2.1.0\n"), v.stderr)
+
+    def test_install_links_into_a_user_path_dir_and_reruns_clean(self):
+        local = Path(self.home) / ".local" / "bin"
+        local.mkdir(parents=True)
+        self.env["PATH"] = os.pathsep.join([self.bindir, str(local)])
+        r = self.install()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(Path(os.readlink(local / "mdstack")), self.launcher)
+        self.assertNotIn("not on PATH", r.stdout)
+        self.assertEqual(shutil.which("mdstack", path=self.env["PATH"]), str(local / "mdstack"))
+        r = self.install()
+        self.assertEqual(r.stdout, "crew install: no changes\n")
+
+    def test_install_never_replaces_another_mdstack_on_path(self):
+        local = Path(self.home) / ".local" / "bin"
+        local.mkdir(parents=True)
+        self.tool("mdstack", "echo other")
+        self.env["PATH"] = os.pathsep.join([self.bindir, str(local)])
+        r = self.install()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse((local / "mdstack").exists())
+        self.assertIn("mdstack is not on PATH", r.stdout)
+        self.assertEqual(Path(self.bindir, "mdstack").read_text(), "#!/bin/sh\necho other\n")
+
+    def test_doctor_rows(self):
+        r = self.doctor()
+        self.assertEqual(self.rows(r)["launcher"], "warn")
+        self.assertIn("missing", self.detail(r, "launcher"))
+        self.assertEqual(self.rows(r)["mdstack on PATH"], "warn")
+        self.assertEqual(self.install().returncode, 0)
+        self.env["PATH"] = os.pathsep.join([str(self.launcher.parent), self.bindir])
+        r = self.doctor()
+        self.assertEqual((self.rows(r)["launcher"], self.rows(r)["mdstack on PATH"]), ("ok", "ok"), r.stdout)
+        self.assertIn("-> mdstack-2.1.0", self.detail(r, "launcher"))
+        self.env["PATH"] = os.pathsep.join([self.bindir, str(self.launcher.parent)])
+        self.tool("mdstack", "echo other")
+        self.launcher.write_text("#!/bin/sh\nexec /old/cli/mdstack \"$@\"\n")
+        r = self.doctor()
+        self.assertIn("stale", self.detail(r, "launcher"))
+        self.assertIn("resolves to %s/mdstack, not the launcher" % self.bindir, self.detail(r, "mdstack on PATH"))
+
+    def test_upgrade_flips_current_and_rolls_back(self):
+        self.real_git()
+        subprocess.run(["git", "init", "-q", self.project_dir], check=True)
+        self.assertEqual(self.install().returncode, 0)
+        self.assertEqual(self.bootstrap("--yes").returncode, 0)
+        _, sha = self.release()
+        new = self.releases / "mdstack-2.2.0"
+        r = self.run_launcher("upgrade", "--project", self.project, "--version", "v2.2.0", "--dry-run")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(os.readlink(self.releases / "current"), "mdstack-2.1.0")
+        r = self.run_launcher("upgrade", "--project", self.project, "--version", "v2.2.0", "--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("releases/current -> mdstack-2.2.0", r.stdout)
+        self.assertEqual(os.readlink(self.releases / "current"), "mdstack-2.2.0")
+        record = json.loads(self.manifest.read_text())
+        self.assertEqual((record["tag"], record["source"], record["bundle_sha256"], record["project"]),
+                         ("v2.2.0", str(new.resolve()), sha, self.project))
+        self.assertEqual(self.run_launcher("--version").stdout, "mdstack v2.2.0\n")
+        self.release("v2.1.0")  # rollback: the same bundle, already on disk, is fetched again and reused
+        r = self.run_launcher("upgrade", "--project", self.project, "--version", "v2.1.0", "--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("reusing matching " + str(self.bundle.resolve()), r.stdout)
+        self.assertEqual(os.readlink(self.releases / "current"), "mdstack-2.1.0")
+        self.assertEqual(self.run_launcher("--version").stdout, "mdstack v2.1.0\n")
+        self.assertEqual(json.loads(self.manifest.read_text())["tag"], "v2.1.0")
+
+
+class Follow(unittest.TestCase):
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.tmp = Path(tmp.name)
+        self.releases = self.tmp / "releases"
+        (self.releases / "mdstack-2.2.0").mkdir(parents=True)
+        (self.releases / "mdstack-2.1.0").mkdir()
+        (self.releases / "current").symlink_to("mdstack-2.1.0")
+        self.projects = {}
+        for name, source in (("primary", "mdstack-2.1.0"), ("other", "mdstack-2.1.0"), ("elsewhere", None)):
+            project = self.tmp / name / "config.toml"
+            project.parent.mkdir()
+            project.write_text("x")
+            self.projects[name] = str(project)
+            state = self.tmp / "state" / ("acme__" + name)
+            state.mkdir(parents=True)
+            (state / "install.json").write_text(json.dumps(
+                {"project": str(project), "source": str(self.releases / source) if source else "/opt/mdstack-2.1.0"}))
+        resolved = {"paths.state_dir": str(self.tmp / "state")}
+        patcher = mock.patch.object(install.crew_render, "resolve", return_value=(resolved, []))
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def follow(self, returncode=0, dry_run=False):
+        argv = ["python3", "cli/mdstack", "upgrade", "--project", self.projects["primary"], "--yes"]
+        args = Namespace(project=self.projects["primary"], dry_run=dry_run)
+        with mock.patch.object(install.subprocess, "run", return_value=Namespace(returncode=returncode)) as run:
+            code = install.follow(args, self.releases / "mdstack-2.2.0", argv, {})
+        return code, [call.args[0][4] for call in run.call_args_list]
+
+    def test_other_served_projects_then_current(self):
+        self.assertEqual(install.served(self.projects["primary"], self.releases), [self.projects["other"]])
+        self.assertEqual(self.follow(), (0, [self.projects["other"]]))
+        self.assertEqual(os.readlink(self.releases / "current"), "mdstack-2.2.0")
+
+    def test_a_failed_project_or_dry_run_keeps_current(self):
+        self.assertEqual(self.follow(returncode=1), (1, [self.projects["other"]]))
+        self.assertEqual(os.readlink(self.releases / "current"), "mdstack-2.1.0")
+        self.assertEqual(self.follow(dry_run=True)[0], 0)
+        self.assertEqual(os.readlink(self.releases / "current"), "mdstack-2.1.0")
+
+    def test_no_user_level_install_is_left_alone(self):
+        (self.releases / "current").unlink()
+        self.assertEqual(self.follow(), (0, []))
+        self.assertFalse((self.releases / "current").is_symlink())
+
+
+def load_tests(loader, tests, pattern):
+    """Only this file's own tests, not the inherited bootstrap ones."""
+    return unittest.TestSuite(case(name) for case in (UserInstall, Follow) for name in case.__dict__
+                              if name.startswith("test_"))
+
+
+if __name__ == "__main__":
+    unittest.main()
