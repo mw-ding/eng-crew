@@ -735,9 +735,12 @@ running bundle's tag.
 release) then works like an end-user upgrade: it fetches and verifies the
 bundle into `releases/`, upgrades `--project`, then every other project whose
 `install.json`, under the same state root, runs from that `releases/`
-directory (bootstrap records the project path there), and only then flips
-`releases/current`, so the launcher follows with no `PATH` change. A dry run
-or a failed project leaves `current` where it was. Rollback is the same
+directory, and only then flips `releases/current`, so the launcher follows
+with no `PATH` change. Bootstrap records the project path in `install.json`;
+a record from before #1317 gives it through its `Run mdstack up --project`
+step when that file still matches the state's `config.toml` copy. A dry run,
+a failed project or a record whose project cannot be found leaves `current`
+where it was, and the last names the `--project` upgrade to run first. Rollback is the same
 command with the previous tag: the bundle still on disk is fetched again,
 reused once it matches, and `current` flips back
 ([bootstrap Q8](../bootstrap.md#q8-idempotency-upgrade-and-uninstall)).

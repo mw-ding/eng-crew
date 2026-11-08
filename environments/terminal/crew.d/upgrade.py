@@ -6,8 +6,8 @@ Usage: mdstack upgrade --project FILE [--version vX.Y.Z | --latest] [--dry-run] 
 --version fetches from the profile's [install] source; a source change without --version is refused. --latest is
 --version with the latest release's tag (github source only). Under a user-level install (mdstack install,
 releases/current present), a --version upgrade also upgrades every other project whose install.json, under the
-same state root, runs from that releases directory, then flips releases/current, so the ~/.mdstack/bin/mdstack
-launcher follows (#1317). A release already on disk is reused once a fresh fetch matches it: that is rollback.
+same state root, runs from that releases directory (a record from before #1317 by its `Run mdstack up --project`
+step), then flips releases/current, so the ~/.mdstack/bin/mdstack launcher follows (#1317). A release already on disk is reused once a fresh fetch matches it: that is rollback.
 Run from a separate operator terminal with dispatch paused. Waits for every current pass to finish
 before applying; a timeout leaves the install and sessions untouched. Restarts preserve worktrees,
 claims, inboxes and run metadata. Coordinator is last. Grok Bot routine reload remains manual.

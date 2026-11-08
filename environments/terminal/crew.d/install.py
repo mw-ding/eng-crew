@@ -59,37 +59,60 @@ def path_dir(launcher):
     return next(((d, False) for d in dirs if d.resolve().is_relative_to(user) and os.access(d, os.W_OK)), (None, False))
 
 
+UP_STEP = "Run mdstack up --project "  # the tmux human step every install.json records with its project path
+
+
+def recorded_project(manifest, record):
+    """The project file an install.json names: `project`, else (a record from before #1317) the path in its
+    `Run mdstack up --project` step whose bytes still equal the state's config.toml copy; None when neither holds."""
+    if record.get("project"):
+        return record["project"] if Path(record["project"]).is_file() else None
+    copy = manifest.parent / "config.toml"
+    for step in record.get("pending_human_steps", []):
+        path = Path(step.removeprefix(UP_STEP))
+        if step.startswith(UP_STEP) and path.is_file() and copy.is_file() and path.read_bytes() == copy.read_bytes():
+            return str(path)
+    return None
+
+
 def served(project, releases):
-    """The other project files whose install, under the same state root as project, runs from a bundle in
-    releases: what `mdstack upgrade --version` re-renders after project (#1317). install.json records `project`."""
+    """(other project files, install.json paths whose project cannot be recovered) for every install under the same
+    state root as project that runs from a bundle in releases: what `mdstack upgrade --version` re-renders after
+    project before it moves releases/current (#1317)."""
     values, problems = crew_render.resolve(project, None)
     if problems:
-        return []
-    found = []
+        return [], []
+    found, unknown = [], []
     for manifest in sorted(Path(values["paths.state_dir"]).absolute().glob("*/install.json")):
         record = json.loads(manifest.read_text())
-        other = record.get("project")
-        if (other and Path(other).is_file() and Path(other).resolve() != Path(project).resolve()
-                and Path(record.get("source") or "/").resolve().parent == releases.resolve()):
+        if Path(record.get("source") or "/").resolve().parent != releases.resolve():
+            continue
+        other = recorded_project(manifest, record)
+        if other is None:
+            unknown.append(str(manifest))
+        elif Path(other).resolve() != Path(project).resolve():
             found.append(other)
-    return found
+    return found, unknown
 
 
 def follow(args, bundle, argv, env):
     """After `mdstack upgrade --version` upgraded --project from bundle: run the same upgrade for every other
     project this install serves, then flip releases/current to bundle. No user-level install (no current link),
-    a dry run or a failed project flips nothing."""
+    a dry run, a failed project or an install whose project cannot be recovered flips nothing."""
     releases = bundle.parent
     if not (releases / "current").is_symlink():
         return 0
+    projects, unknown = served(args.project, releases)
     failed = []
-    for project in served(args.project, releases):
+    for project in projects:
         print("crew upgrade: also upgrading " + project, flush=True)
         argv[argv.index("--project") + 1] = project
         if subprocess.run(argv, env=env).returncode:
             failed.append(project)
-    if failed:
-        print("crew upgrade: releases/current not moved; failed: " + ", ".join(failed))
+    if failed or unknown:
+        print("crew upgrade: releases/current not moved; failed: " + ", ".join(failed) if failed else
+              "crew upgrade: releases/current not moved; no project file found for " + ", ".join(unknown) +
+              ": run mdstack upgrade --version %s --project <its config.toml> --yes, then re-run" % args.version)
         return 1
     if not args.dry_run:
         flip(releases, bundle)

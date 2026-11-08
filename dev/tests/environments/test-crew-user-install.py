@@ -4,10 +4,12 @@ into a user directory or the one line to add, never over another mdstack, idempo
 doctor launcher and PATH rows (missing, stale, ok, resolves elsewhere), and `mdstack upgrade` through the launcher
 (--latest takes the latest release's tag and refuses with --version; re-renders, flips releases/current so the
 launcher follows, --version of the previous tag rolls back to the release on disk; a dry run flips nothing; the
-other projects the install serves are upgraded first, and a failed one keeps current). Run in CI.
+other projects the install serves are upgraded first, including a prior-format install.json recovered from its
+`Run mdstack up --project` step, and a failed or unrecoverable one keeps current). Run in CI.
 """
 from argparse import Namespace
 import importlib.util
+import io
 from importlib.machinery import SourceFileLoader
 import json
 import os
@@ -169,15 +171,39 @@ class Follow(unittest.TestCase):
 
     def follow(self, returncode=0, dry_run=False):
         argv = ["python3", "cli/mdstack", "upgrade", "--project", self.projects["primary"], "--yes"]
-        args = Namespace(project=self.projects["primary"], dry_run=dry_run)
+        args = Namespace(project=self.projects["primary"], dry_run=dry_run, version="v2.2.0")
         with mock.patch.object(install.subprocess, "run", return_value=Namespace(returncode=returncode)) as run:
             code = install.follow(args, self.releases / "mdstack-2.2.0", argv, {})
         return code, [call.args[0][4] for call in run.call_args_list]
 
     def test_other_served_projects_then_current(self):
-        self.assertEqual(install.served(self.projects["primary"], self.releases), [self.projects["other"]])
+        self.assertEqual(install.served(self.projects["primary"], self.releases), ([self.projects["other"]], []))
         self.assertEqual(self.follow(), (0, [self.projects["other"]]))
         self.assertEqual(os.readlink(self.releases / "current"), "mdstack-2.2.0")
+
+    def legacy(self, copy="x", project=None):
+        """Rewrite the other project's install.json in the format before #1317: no `project` field."""
+        state = self.tmp / "state" / "acme__other"
+        (state / "install.json").write_text(json.dumps({"source": str(self.releases / "mdstack-2.1.0"),
+                                                        "pending_human_steps": ["Run mdstack up --project %s" % (
+                                                            project or self.projects["other"])]}))
+        (state / "config.toml").write_text(copy)
+        return str(state / "install.json")
+
+    def test_a_prior_format_install_is_recovered_and_upgraded_before_current(self):  # R1
+        self.legacy()
+        self.assertEqual(install.served(self.projects["primary"], self.releases), ([self.projects["other"]], []))
+        self.assertEqual(self.follow(), (0, [self.projects["other"]]))
+        self.assertEqual(os.readlink(self.releases / "current"), "mdstack-2.2.0")
+
+    def test_an_unrecoverable_prior_format_install_keeps_current(self):  # R1
+        for manifest in (self.legacy(copy="edited since install"), self.legacy(project=self.tmp / "gone.toml")):
+            self.assertEqual(install.served(self.projects["primary"], self.releases), ([], [manifest]))
+            with mock.patch("sys.stdout", new_callable=io.StringIO) as out:
+                self.assertEqual(self.follow(), (1, []))
+            self.assertIn("no project file found for " + manifest, out.getvalue())
+            self.assertIn("--version v2.2.0 --project <its config.toml>", out.getvalue())
+            self.assertEqual(os.readlink(self.releases / "current"), "mdstack-2.1.0")
 
     def test_a_failed_project_or_dry_run_keeps_current(self):
         self.assertEqual(self.follow(returncode=1), (1, [self.projects["other"]]))
