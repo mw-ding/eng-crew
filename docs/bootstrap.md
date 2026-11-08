@@ -360,7 +360,10 @@ directory's git origin, else the current directory's.
   `paths.mdstack` names the state directory's install link.
 - **Later releases.** `mdstack upgrade --project ~/.mdstack/config.toml
   --version vX.Y.Z --dry-run`, then `--yes`; each bundle lands beside the
-  last.
+  last. After `mdstack install` (#1317), the same command, run through the
+  `~/.mdstack/bin/mdstack` launcher, also upgrades the other projects the
+  install serves and then moves `releases/current`, so the launcher follows
+  ([mdstack install](runtimes/tmux.md#mdstack-install)).
 - **Relocating a running crew.** `mdstack down --preserve`, then
   `mdstack migrate --project OLD --to NEW` to preview and `--apply` to move
   ([mdstack migrate](runtimes/tmux.md#mdstack-migrate)), then the install step

@@ -22,7 +22,7 @@ with only your repo checkout outside it
 
 | Path | Holds |
 |---|---|
-| `~/.mdstack/` | The home root: `config.toml`, the `start` and `start-owner` wrappers and `releases/mdstack-X.Y.Z/` bundles. It is not a git checkout |
+| `~/.mdstack/` | The home root: `config.toml`, the `start` and `start-owner` wrappers, `releases/mdstack-X.Y.Z/` bundles with the `releases/current` link, and the `bin/mdstack` launcher. It is not a git checkout |
 | `~/.mdstack/state/` | State, including the install link |
 | `~/.mdstack/runs/<repo>/` | Role worktrees |
 | `~/.mdstack/live/` | The live copy |
@@ -38,13 +38,20 @@ Download, verify and extract a release bundle into `~/.mdstack/releases/`
 `~/.mdstack/config.toml` from the bundle's `profiles/tmux.toml`, with your
 `[repo]` and identities; its default `[paths]` block already names this layout
 ([Set up the target repo](../runbook-new-repo.md#set-up-the-target-repo)).
-Then install with one command, a dry run first:
+Put a stable `mdstack` on your `PATH`, then install with one command, a dry
+run first:
 
 ```sh
-B=~/.mdstack/releases/mdstack-X.Y.Z
-$B/cli/mdstack bootstrap --dry-run
-$B/cli/mdstack bootstrap --yes
+~/.mdstack/releases/mdstack-X.Y.Z/cli/mdstack install
+mdstack bootstrap --dry-run
+mdstack bootstrap --yes
 ```
+
+`mdstack install` writes the launcher `~/.mdstack/bin/mdstack`, which runs
+the release `~/.mdstack/releases/current` points at, and links it into a
+user directory already on your `PATH` (for example `~/.local/bin`), or
+prints the one line to add to your shell profile; it never edits one
+([mdstack install](../runtimes/tmux.md#mdstack-install)).
 
 Bootstrap checks the bundle, validates and records the profile, sets up the
 repo side (the `crew:*` labels, a milestone, the reviewer invitation),
@@ -54,10 +61,15 @@ renders the briefs and records the install in `install.json`. Its refusals and o
 one-command start wrappers:
 
 ```sh
-$B/cli/mdstack layout --write
+mdstack layout --write
 ```
 
-Below, `mdstack` means the bundle's `cli/mdstack`.
+Later releases upgrade in place, like any end-user tool:
+`mdstack upgrade --version vX.Y.Z` (or `--latest`) fetches and verifies the
+release, re-renders every project this install serves and moves
+`releases/current`, so `mdstack --version` reports the new tag; the same
+command with the previous tag rolls back
+([update path](../release.md#update-path)).
 
 ## 2. First `up`
 

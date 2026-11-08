@@ -80,7 +80,7 @@ one movable root (`paths.root = "~/.mdstack"`):
 
 | Path | `[paths]` key | Holds |
 |---|---|---|
-| `~/.mdstack/` | `root`; the profile's directory | `config.toml`, the `start` and `start-owner` wrappers and `releases/mdstack-X.Y.Z/` bundles; the coordinator and leads start here, and it is not a git checkout |
+| `~/.mdstack/` | `root`; the profile's directory | `config.toml`, the `start` and `start-owner` wrappers, `releases/mdstack-X.Y.Z/` bundles with the `releases/current` link, and the `bin/mdstack` launcher ([mdstack install](#mdstack-install)); the coordinator and leads start here, and it is not a git checkout |
 | `~/.mdstack/state/` | `state_dir = "state"` | `<owner>__<repo>/` state, including the install link `mdstack` |
 | `~/.mdstack/runs/<repo>/` | `worktree_root = "runs/<repo>"` | Role worktrees |
 | `~/.mdstack/live/` | `live_dir = "live"` | The deployed live copy, when one is used |
@@ -712,6 +712,37 @@ hold absolute, shell-quoted paths and a generated marker line; rerun
 `--write` after the layout moves. A wrapper file without the marker is
 refused and left unchanged. It writes nothing under `~/.claude` or other
 user-level config; an alias to either wrapper is the owner's choice.
+
+### mdstack install
+
+```sh
+<bundle>/cli/mdstack install [--dry-run]
+```
+
+`mdstack install` (#1317) puts a stable `mdstack` on your `PATH`. Run it
+from a bundle extracted into `~/.mdstack/releases/`; elsewhere it refuses.
+It points `releases/current` at that bundle and writes the launcher
+`~/.mdstack/bin/mdstack`, a shell script that runs
+`releases/current/cli/mdstack`. When `~/.mdstack/bin` is not on `PATH`, it
+links `mdstack` into the first directory on `PATH` under your home that it
+can write (for example `~/.local/bin`), unless another `mdstack` is already
+on `PATH`; otherwise it prints the one line to add to your shell profile. It
+never edits a shell rc file. `--dry-run` prints the plan; a re-run with
+nothing to change prints `no changes`. `mdstack --version` prints the
+running bundle's tag.
+
+`mdstack upgrade --version vX.Y.Z` (or `--latest`, the latest GitHub
+release) then works like an end-user upgrade: it fetches and verifies the
+bundle into `releases/`, upgrades `--project`, then every other project whose
+`install.json`, under the same state root, runs from that `releases/`
+directory (bootstrap records the project path there), and only then flips
+`releases/current`, so the launcher follows with no `PATH` change. A dry run
+or a failed project leaves `current` where it was. Rollback is the same
+command with the previous tag: the bundle still on disk is fetched again,
+reused once it matches, and `current` flips back
+([bootstrap Q8](../bootstrap.md#q8-idempotency-upgrade-and-uninstall)).
+`mdstack doctor` warns on a missing or stale launcher and on a `PATH` that
+resolves `mdstack` to something else.
 
 ### mdstack migrate
 

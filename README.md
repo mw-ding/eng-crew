@@ -56,14 +56,14 @@ capped, and every handoff is a marker on the PR.
 Zero to a running local crew. Each step links to the runbook for depth;
 the [tmux binding](docs/runtimes/tmux.md) owns every command's exact
 behaviour. `<repo>` is your target repo, cloned at `~/<repo>`, `<mdstack>`
-the extracted bundle under `~/.mdstack/releases/`, and `mdstack` below means
-`<mdstack>/cli/mdstack`. Everything installed lives in `~/.mdstack/`; only
+the extracted bundle under `~/.mdstack/releases/`, and `mdstack` below is
+the launcher [Install](#install) step 5 puts on your `PATH`. Everything installed lives in `~/.mdstack/`; only
 the checkout is outside it
 ([home-level layout](docs/runtimes/tmux.md#home-level-layout-1178)). Coming
 from 6.x or older? 7.0.0 is a fresh install
 ([migration](docs/guides/migration.md)).
 
-1. **Install and verify** the release bundle: [Install](#install) steps 1 to 4.
+1. **Install and verify** the release bundle: [Install](#install) steps 1 to 5.
 2. **Write `config.toml`** at `~/.mdstack/config.toml`, the user-level
    config every command uses without `--project`, from
    [profiles/tmux.toml](profiles/tmux.toml) plus `[repo]` (its default
@@ -136,10 +136,20 @@ Default profile names; window indexes from the
 4. **Check the tools run:**
    `python3 ~/.mdstack/releases/mdstack-<version>/core/crew-config.py validate ~/.mdstack/releases/mdstack-<version>/profiles/default.toml`
    and `~/.mdstack/releases/mdstack-<version>/cli/mdstack --help`.
-5. **Next:** write `~/.mdstack/config.toml` and continue at the runbook's
+5. **Put `mdstack` on `PATH`:**
+   `~/.mdstack/releases/mdstack-<version>/cli/mdstack install`. It points
+   `~/.mdstack/releases/current` at that bundle, writes the launcher
+   `~/.mdstack/bin/mdstack` and links it into a user directory already on
+   your `PATH` (for example `~/.local/bin`), or prints the one line to add to
+   your shell profile; it never edits one. `mdstack --version` then prints
+   the tag.
+6. **Next:** write `~/.mdstack/config.toml` and continue at the runbook's
    [Step 0](docs/runbook-new-repo.md#step-0-write-validate-and-render-the-profile)
    (Grok Bot) or its [tmux runtime](docs/runbook-new-repo.md#tmux-runtime)
-   section. Upgrades follow [release.md: Update path](docs/release.md#update-path).
+   section. Upgrades follow [release.md: Update path](docs/release.md#update-path):
+   `mdstack upgrade --version vX.Y.Z` (or `--latest`) fetches, verifies and
+   re-renders, then moves `releases/current`, so the launcher follows with no
+   `PATH` change; the previous tag rolls back.
 
 The `v2.0.0` bundle lacks a file the install CLI needs, so step 4 fails on it;
 use a release with the [#275](https://github.com/mw-ding/eng-crew/issues/275) fix.
