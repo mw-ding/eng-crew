@@ -27,13 +27,41 @@ jobs:
   links:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    # Pinned lychee release asset and its sha256. A transient download error
+    # is retried with backoff; an exhausted retry or a bad checksum fails.
+    env:
+      LYCHEE_VERSION: "0.24.2"
+      LYCHEE_SHA256: "1f4e0ef7f6554a6ed33dd7ac144fb2e1bbed98598e7af973042fc5cd43951c9a"
     steps:
       - uses: actions/checkout@v4
-      - name: Check relative links (offline)
-        uses: lycheeverse/lychee-action@v2
+      - name: Cache the pinned lychee binary
+        id: lychee-cache
+        uses: actions/cache@v4
         with:
-          args: --offline --no-progress --include-fragments './**/*.md'
-          fail: true
+          path: ~/.local/lychee
+          key: lychee-${{ env.LYCHEE_VERSION }}-${{ env.LYCHEE_SHA256 }}
+      - name: Install lychee (retry with backoff, checksum verified)
+        if: steps.lychee-cache.outputs.cache-hit != 'true'
+        run: |
+          url="https://github.com/lycheeverse/lychee/releases/download/lychee-v$LYCHEE_VERSION/lychee-x86_64-unknown-linux-gnu.tar.gz"
+          tarball="$RUNNER_TEMP/lychee.tar.gz"
+          for attempt in 1 2 3 4 5; do
+            curl -fsSL --connect-timeout 20 --max-time 60 -o "$tarball" "$url" && break
+            if [ "$attempt" = 5 ]; then
+              echo "::error::lychee $LYCHEE_VERSION download failed after 5 attempts: $url"
+              exit 1
+            fi
+            sleep $((attempt * 5))
+          done
+          if ! echo "$LYCHEE_SHA256  $tarball" | sha256sum -c --quiet -; then
+            echo "::error::lychee $LYCHEE_VERSION checksum mismatch, expected sha256 $LYCHEE_SHA256"
+            exit 1
+          fi
+          mkdir -p "$HOME/.local/lychee"
+          tar -xzf "$tarball" -C "$HOME/.local/lychee" lychee
+      - name: Check relative links (offline)
+        run: |
+          "$HOME/.local/lychee/lychee" --offline --no-progress --include-fragments './**/*.md'
 
   repo-guard:
     runs-on: ubuntu-latest
