@@ -111,10 +111,18 @@ layout and writes the start wrappers ([mdstack layout](#mdstack-layout)).
 
 ### User-level and project-level config (#1316)
 
-Every command takes its profile from `--project FILE`, else
-`$MDSTACK_CONFIG`, else the user-level `~/.mdstack/config.toml`. Role
-windows get `--project "$CREW_PROJECT"` from their brief, and `mdstack
-action` and `mdstack host` read `$CREW_PROJECT` before the default.
+Every command takes its profile from the first of (#1324):
+
+1. `--project FILE`;
+2. `$CREW_PROJECT`, which every role window sets to its own crew's file;
+3. `$MDSTACK_CONFIG`;
+4. the user-level `<root>/config.toml`, where root is `$CREW_ROOT`, else
+   `~/.mdstack`.
+
+An explicitly named file always wins over the user-level default, and the
+two never merge. Every command that can write (`bootstrap`, `upgrade`,
+`up`, `spawn`, `action` and the rest) prints the file it acts under on
+stderr as `mdstack: config <path>`.
 
 - **User-level (the default).** `~/.mdstack/config.toml` is the owner's own
   install: one repo, or a [team file](../configuration/team-files.md) for
@@ -124,6 +132,20 @@ action` and `mdstack host` read `$CREW_PROJECT` before the default.
   checkouts, and passes it with `--project FILE` (or `MDSTACK_CONFIG`). It is
   a separate crew: its own `[repo]`, identities, `[paths]` and session. Its
   state must still live outside every git checkout.
+
+#### A second root on one machine (#1324)
+
+Two independent crews, each with its own pinned release, config, state and
+identities, can share one machine with one root each. `~/.mdstack` is only
+the default root. A second crew sets `CREW_ROOT=<root>`, or its own
+`paths.root`, and gets the same layout under it: `<root>/config.toml`, its
+state, `releases/` and `bin/` launcher. Bootstrap's proposal writes that root.
+Run its bundle's `mdstack install --name <name>` so its launcher,
+`<root>/bin/<name>`, links onto `PATH` under a name of its own and never
+replaces the first root's `mdstack`. Its `upgrade` and rollback fetch into
+its own `releases/` and flip only its own `current`. A command run for it
+without `--project` needs `CREW_ROOT` or `MDSTACK_CONFIG` set; with neither
+set it acts under the first root's config, and prints that path.
 
 The two files never merge: the chosen file is the `project` layer of
 [layers and precedence](../profile.md#layers-and-precedence), on top of the
@@ -721,18 +743,20 @@ user-level config; an alias to either wrapper is the owner's choice.
 ### mdstack install
 
 ```sh
-<bundle>/cli/mdstack install [--dry-run]
+<bundle>/cli/mdstack install [--name NAME] [--dry-run]
 ```
 
 `mdstack install` (#1317) puts a stable `mdstack` on your `PATH`. Run it
-from a bundle extracted into `~/.mdstack/releases/`; elsewhere it refuses.
-It points `releases/current` at that bundle and writes the launcher
-`~/.mdstack/bin/mdstack`, a shell script that runs
-`releases/current/cli/mdstack`. When `~/.mdstack/bin` is not on `PATH`, it
+from a bundle extracted into `<root>/releases/` (`~/.mdstack/releases/` by
+default); elsewhere it refuses. It points that root's `releases/current` at
+the bundle and writes the launcher `<root>/bin/mdstack`, a shell script that
+runs `releases/current/cli/mdstack`. When `<root>/bin` is not on `PATH`, it
 links `mdstack` into the first directory on `PATH` under your home that it
 can write (for example `~/.local/bin`), unless another `mdstack` is already
 on `PATH`; otherwise it prints the one line to add to your shell profile. It
-never edits a shell rc file. `--dry-run` prints the plan; a re-run with
+never edits a shell rc file. `--name NAME` names the launcher and its link
+`NAME` instead, for a [second root](#a-second-root-on-one-machine-1324).
+`--dry-run` prints the plan; a re-run with
 nothing to change prints `no changes`. `mdstack --version` prints the
 running bundle's tag.
 
@@ -749,8 +773,9 @@ where it was, and the last names the `--project` upgrade to run first. Rollback 
 command with the previous tag: the bundle still on disk is fetched again,
 reused once it matches, and `current` flips back
 ([bootstrap Q8](../bootstrap.md#q8-idempotency-upgrade-and-uninstall)).
-`mdstack doctor` warns on a missing or stale launcher and on a `PATH` that
-resolves `mdstack` to something else.
+`mdstack doctor` warns on a missing or stale launcher in the profile's
+root (`paths.root`, else `$CREW_ROOT` or `~/.mdstack`) and on a `PATH` that
+resolves its name to something else.
 
 ### mdstack migrate
 
@@ -846,8 +871,12 @@ step 1, the band cap queue, is under [mdstack dequeue](#mdstack-dequeue) (#136):
   stale base); so do a path inside the primary checkout and an existing path.
 - Engine: the first `claude-code` or `codex` entry of `engines.<tier>.order`
   (`--tier`, default `default`) with that tier's effort. A reviewer or
-  validator skips every engine named in the PR's `Engine:` commit trailers;
-  with no trailer the builder counts as non-Claude, so Claude Code goes first.
+  validator skips every engine named on an `Engine:` line in the PR's commit
+  messages, in the trailer block or not (`none` merge-ups excluded). With no
+  such line it skips the engine in the PR-body builder marker and in each
+  builder run record for the PR or its closing issues. With none of these
+  the builder engine is unknown and spawn refuses; it never assumes
+  non-Claude (#442).
   The synthesizer takes the tier's first engine as is, like a builder.
   Muse Code and OpenCode have no interactive launch yet and are skipped.
 - Window: `-e` passes `CREW_ROLE`, `CREW_ID`, `CREW_STATE`, `CREW_STATUS`,

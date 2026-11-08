@@ -21,7 +21,8 @@ and checks deployed targets and doctor again.
 Records failed checks in install.json. --smoke queues a real docs-only issue on a started crew, once per install;
 it does not claim the asynchronous pipeline passed. Missing profiles are proposed from local git config,
 confirmed (or supplied as edited TOML), and recorded once, including flavor.name; a tmux proposal adds the one-root
-~/.mdstack [paths] layout. Without --project the profile is the user-level ~/.mdstack/config.toml (#1316).
+[paths] layout under $CREW_ROOT, else ~/.mdstack. Without --project the profile is $CREW_PROJECT, else
+$MDSTACK_CONFIG, else that root's config.toml (#1316, #1324).
 """
 import contextlib
 from argparse import Namespace
@@ -428,8 +429,9 @@ def propose_project(args, project):
             if runtime == "tmux" and concern == "review":
                 text += 'capabilities = { post-verdict = "emulated (COMMENT-review verdict + recorded owner merge-ok)" }\n'
         if runtime == "tmux":  # the one-root default layout (docs/runtimes/tmux.md#home-level-layout-1178, #1316)
-            text += ('\n[paths]\nroot = "~/.mdstack"\nstate_dir = "state"\nworktree_root = %s\nlive_dir = "live"\n'
-                     'mdstack = %s\ncheckout = %s\n' % (json.dumps("runs/" + repo), json.dumps(
+            text += ('\n[paths]\nroot = %s\nstate_dir = "state"\nworktree_root = %s\nlive_dir = "live"\n'
+                     'mdstack = %s\ncheckout = %s\n' % (json.dumps(os.environ.get("CREW_ROOT") or "~/.mdstack"),
+                                                         json.dumps("runs/" + repo), json.dumps(
                          "state/%s__%s/mdstack" % (owner, repo)), json.dumps(str(repo_dir.absolute()))))
     if "flavor" not in tomllib.loads(text):
         text += '\n[flavor]\nname = %s\n' % json.dumps(args.flavor or "standard")

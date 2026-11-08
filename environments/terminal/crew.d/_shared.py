@@ -4,7 +4,8 @@ cli/mdstack is the entry point; it loads this module as `crew_shared`, which the
 Helpers: profile resolve (refusing a `<placeholder>` in a path key the command uses) and state paths, the harness
 launch line and window variables (every window gets `CREW_BIN`, `CREW_PROJECT` and the pack's `CREW_SANDBOX_ENV`
 variable), run removal with the unlanded-work check, the pane stop (SIGTERM then SIGKILL the process group),
-liveness probe and dialog check, queue lock and the command loader."""
+liveness probe and dialog check, queue lock and the command loader. A writing command names its resolved config
+on stderr (#1324)."""
 import argparse
 import contextlib
 import fcntl
@@ -683,6 +684,12 @@ def commands():
     return _COMMANDS
 
 
+# Commands that can write state, the install or the forge: each names the config it acts under on stderr (#1324).
+WRITES = {"action", "bootstrap", "dequeue", "doctor", "down", "drain", "feedback", "handoff", "host", "kill", "land",
+          "land-lock", "layout", "lead", "migrate", "notify", "poll", "restart", "reviewer-pool", "route", "runner",
+          "schedule", "send", "spawn", "train", "up", "upgrade", "watch"}
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=DESCRIPTION, formatter_class=argparse.RawDescriptionHelpFormatter)
     version = os.path.join(ROOT, "VERSION")  # the release bundle's tag; a clone has none (#1317)
@@ -697,6 +704,8 @@ def main(argv=None):
     args = ap.parse_args(argv)
     if getattr(args, "project", "") is None and not getattr(args, "team", None):
         args.project = crew_render.crew_config.default_config()  # the user-level config by default (#1316)
+    if args.cmd in WRITES and getattr(args, "project", None):
+        print("mdstack: config " + os.path.abspath(args.project), file=sys.stderr)  # the file it acts under (#1324)
     guarded = args.cmd in ("spawn", "restart", "send", "train") or (
         args.cmd == "land-lock" and args.action == "acquire" or args.cmd == "kill" and args.discard)
     if guarded:

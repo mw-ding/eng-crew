@@ -296,8 +296,8 @@ Always close stdin with `</dev/null` for non-interactive runs.
 
 **The reviewer engine must differ from the builder engine.** The builder engine
 is the engine that actually wrote the round under review (see
-[Actual builder engine](#actual-builder-engine)). If it is unknown, treat it as
-non-Claude.
+[Actual builder engine](#actual-builder-engine)). If it is unknown, do not
+guess: never treat an unknown engine as non-Claude (#442).
 
 | Builder engine | Reviewer engine |
 |---|---|
@@ -416,7 +416,7 @@ On Oct 19, 2026 the Codex weekly quota was at 38% until Oct 24 while Claude Code
 was about 99% free. The reviewer's engine file was updated to prefer Claude Code
 as the first choice:
 
-- Builder = Codex (or unknown or other non-Claude): Claude Code Opus (high).
+- Builder = Codex (or other non-Claude): Claude Code Opus (high).
   Fallback: Muse Code with `--reasoning-effort ultra` (`xhigh` if ultra is
   gated). Public repos only.
 - Builder = Claude Code (any model): Codex `codex exec -s read-only`

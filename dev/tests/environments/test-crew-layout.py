@@ -4,10 +4,13 @@ Covers: relative children resolve under paths.root from any caller cwd, CREW_ROO
 without paths.root keeps its values, absolute children and placeholders stay as they are, --write writes runnable
 start wrappers whose quoting survives spaces (start-owner in the profile directory, #1316), an unmarked wrapper file is
 refused and left unchanged, and without --project the user-level ~/.mdstack/config.toml (or $MDSTACK_CONFIG) is the
-profile, merged with state/, runs/ and live/ in one directory (#1316). Run in CI.
+profile, merged with state/, runs/ and live/ in one directory (#1316); $CREW_PROJECT outranks $MDSTACK_CONFIG, a
+writing command names its config on stderr, and $CREW_ROOT moves the default config to <root>/config.toml (#1324).
+Run in CI.
 """
 import os
 import shlex
+import shutil
 import subprocess
 import sys
 import unittest
@@ -141,6 +144,29 @@ class Layout(Base):
         r = subprocess.run([sys.executable, CREW, "layout", "--project", os.path.join(root, "config.toml")],
                            capture_output=True, text=True, env=dict(self.env, HOME=home, MDSTACK_CONFIG=self.project))
         self.assertIn("home          %s" % root, r.stdout)  # --project beats both
+
+    def test_explicit_config_outranks_the_user_level_one_and_crew_root_moves_it(self):  # #1324 AC1, AC2
+        home = os.path.join(self.tmp, "home")
+        self.write_user_config(home)
+        user = os.path.join(home, ".mdstack", "config.toml")
+        r = subprocess.run([sys.executable, CREW, "layout"], capture_output=True, text=True, cwd="/",
+                           env=dict(self.env, HOME=home, CREW_PROJECT=self.project, MDSTACK_CONFIG=user))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("state         %s" % self.state, r.stdout)  # a role window's CREW_PROJECT beats both
+        self.assertIn("mdstack: config %s\n" % self.project, r.stderr)
+        r = subprocess.run([sys.executable, CREW, "layout", "--project", self.project], capture_output=True,
+                           text=True, cwd="/", env=dict(self.env, HOME=home))
+        self.assertIn("state         %s" % self.state, r.stdout)
+        self.assertEqual(r.stderr, "mdstack: config %s\n" % self.project)
+        other = os.path.join(self.tmp, "crew-b")
+        os.makedirs(other)
+        shutil.copyfile(user, os.path.join(other, "config.toml"))
+        r = subprocess.run([sys.executable, CREW, "layout"], capture_output=True, text=True, cwd="/",
+                           env=dict(self.env, HOME=home, CREW_ROOT=other))
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        rows = dict(line.split(None, 1) for line in r.stdout.splitlines())
+        self.assertEqual((rows["root"], rows["state"]), (other, os.path.join(other, "state", "acme__widgets")))
+        self.assertIn("mdstack: config %s\n" % os.path.join(other, "config.toml"), r.stderr)
 
     def test_shipped_tmux_profile_defaults_to_the_one_root_layout(self):  # #1316 AC1
         home = os.path.join(self.tmp, "home")
