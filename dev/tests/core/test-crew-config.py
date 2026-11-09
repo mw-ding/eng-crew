@@ -336,12 +336,16 @@ class ValidateTest(unittest.TestCase):
     def test_session_runtime_selector_and_options(self):  # #914
         session = VALID.replace('name = "tmux"\noptions = { builders = 3 }', 'name = "session"\noptions = { %s }')
         for options in ("", 'session_backend = "cli", builders = 2, reviewers = 1, max_active_milestones = 2',
-                        'merge_grant = "none", lone_pr_land = "direct", train_min = 3, mirror = "none", notes = {}'):
+                        'merge_grant = "none", lone_pr_land = "direct", train_min = 3, mirror = "none", notes = {}',
+                        'researchers = 0'):  # #1057: the documented no-researcher statement survives a tmux migration
             code, lines = validate(session % options)
             self.assertEqual(code, 0, lines)
         for options, expected in [
                 ('session_backend = "tmux"', "session_backend: unknown value 'tmux' (expected one of: native, cli)"),
-                ('researchers = 1', "researchers: unknown key"),
+                ('researchers = 1', "researchers: the session runtime has no researcher; only 0 (no researcher) "
+                                    "is accepted, got 1"),
+                ('researchers = -1', "researchers: must be >= 0, got -1"),
+                ('researchers = "0"', "researchers: expected integer, got string"),
                 ('permission_mode = "bypass"', "permission_mode: unknown key"),
                 ('max_active_milestones = 0', "max_active_milestones: must be >= 1, got 0")]:
             self.assertFails(session % options, "crew.toml:runtime.options." + expected)

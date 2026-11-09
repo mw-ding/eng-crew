@@ -1004,6 +1004,12 @@ class SessionRuntime(unittest.TestCase):
                      "Exit 2 (a missing Item, Pass or Base) means do not dispatch."):
             self.assertIn(rule, coordinator)
 
+    def test_researchers_zero_renders_the_same_briefs(self):  # #1057: a no-op, the binding has no researcher
+        upstream = self.render()
+        self.base = self.base.replace("reviewers = 1 }", "reviewers = 1, researchers = 0 }")
+        self.assertIn("researchers = 0", self.base)
+        self.assertEqual(self.render(), upstream)
+
     def test_render_note_for_unrendered_role_fails(self):  # #1054
         for name in ("note.md", "lead.md"):
             with open(os.path.join(self.tmp, name), "w") as f:
