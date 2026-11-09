@@ -7,7 +7,8 @@ an unpushed branch that is not checked out) and the sentinel, `--remove` only wi
 session-targeted tmux kill on the sandbox socket, the tmux shim's socket pin and refusals, a scenario's bare
 `tmux kill-server` under an inherited decoy TMUX (#817), the fake forge's `--label` answers, per-state `issue list`
 answers, kept `--body-file -` bodies, the `gh api` forge stub (kept posts, a lost post, the post probe, a label
-delete), the print-only level-b forge plan, and A28's two-team setup and `a28/teams.py` lifecycle (#1440). tmux tests
+delete), the print-only level-b forge plan, A28's two-team setup and `a28/teams.py` lifecycle (#1440), and A29's
+handoff round trip (`teams.py --handoff`, #1441). tmux tests
 use throwaway sockets only. Run in CI.
 """
 import contextlib
@@ -172,12 +173,12 @@ class CampaignSandboxTest(unittest.TestCase):
         self.assertIsNone(watcher.poll(), "the outside watcher is untouched")
         self.assertFalse(os.path.exists(os.path.join(self.root, "state", "cleanup.json")))
 
-    def teams(self, parent, env=None):
+    def teams(self, parent, env=None, *extra, timeout=400):
         teams = os.path.join(TESTS, "scripts", "fixtures", "campaign", "a28", "teams.py")
         env = env or {k: v for k, v in os.environ.items() if not k.startswith(("CREW_", "TMUX"))}
         p = subprocess.run([sys.executable, teams, os.path.dirname(SCRIPTS), parent, "--production", self.prod,
-                            "--sentinel", self.sentinel, "--ready", "120"], capture_output=True, text=True, env=env,
-                           timeout=400)
+                            "--sentinel", self.sentinel, "--ready", "120", *extra], capture_output=True, text=True,
+                           env=env, timeout=timeout)
         return p, {r["phase"]: r for r in (json.loads(x) for x in p.stdout.splitlines() if x.startswith("{"))}
 
     @unittest.skipUnless(shutil.which("tmux"), "tmux not installed")
@@ -206,6 +207,23 @@ class CampaignSandboxTest(unittest.TestCase):
         self.assertEqual([s["stopped"] for s in phases["teardown"]["teams"]], [True, True])
         run = os.path.join(self.root, phases["setup"]["run"])
         self.assertEqual(phases["teardown"]["retained"], [os.path.join(run, d) for d in ("repo", "repo-b")])
+        self.assertEqual(self.read(self.sentinel), "untouched\n")
+
+    @unittest.skipUnless(shutil.which("tmux"), "tmux not installed")
+    def test_a29_handoff_round_trip_between_two_full_teams(self):
+        """a28/teams.py --handoff (#1441): b starts read-only, a -> b -> a with one ack per handoff id, one writer at
+        every step, the outgoing session gone before stopped and the same sets, stages and heads both ways."""
+        p, phases = self.teams(self.root, None, "--handoff", timeout=1500)
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertEqual(list(phases), ["cleanup", "setup", "preflight", "up-a", "up-b", "ready", "handoff", "teardown"])
+        self.assertIn("crew: ownership: read-only; refusing start", phases["up-b"]["out"])
+        self.assertEqual(phases["ready"]["roles"]["b"], {"coordinator": "alive"})
+        h = phases["handoff"]
+        self.assertEqual(h["writers"], {"a->b": ["a", "-", "b", "b"], "b->a": ["b", "-", "a", "a"]})
+        self.assertEqual([s for _, s, _ in h["record"]], ["claimed"] + ["draining", "offered", "acked", "stopped"] * 2)
+        self.assertEqual(h["sets"], [["#3", "#4", "#5"], ["#7", "#8"], ["#9"]])
+        self.assertEqual(set(h["versions"]), {"tmux@a", "tmux@b"})
+        self.assertTrue(any("tmux@b owns; already acked" in x for x in h["log"]))
         self.assertEqual(self.read(self.sentinel), "untouched\n")
 
     def test_a28_teams_refuses_cleanup_without_a_manifest(self):
