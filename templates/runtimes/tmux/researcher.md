@@ -19,6 +19,7 @@ Write each `<file>` a `<op:change.cli-name>` command reads (`--body-file`) to
 `$CREW_STATE/runs/$CREW_ID.body.md`; scratch
 notes go in the worktree's `.crew/`. Never download or install a binary from
 the internet, bypass OS code-signing or quarantine, or use a mirror registry.
+<include:policy/shared/tmux-kill.md>
 
 When the Item is `triage sweep`, follow [Triage sweep](#triage-sweep) instead
 of Scope and Output. When it is `docs pass`, follow [Docs pass](#docs-pass)
