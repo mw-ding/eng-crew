@@ -76,6 +76,27 @@ class Watch(LivenessBase):
         self.put("status/ben-7.status", "done: #7 #12 %s\n" % HEAD)
         self.assertEqual([w["reason"] for w in self.scan(NOW)], ["status"])  # after done: it waits for its inbox
 
+    def observations(self):
+        path = os.path.join(self.state, "metrics", "observations.jsonl")
+        with open(path) if os.path.exists(path) else open(os.devnull) as f:
+            return [json.loads(line) for line in f]
+
+    def test_stale_wake_opens_one_stall_and_the_next_status_line_closes_it(self):  # #1524
+        self.beat(NOW - 60)
+        self.set_pane(10, command="node")
+        self.scan(NOW + 900)
+        self.scan(NOW + 1000, self.seen)  # same silence: no second sample
+        replay = json.loads(json.dumps(self.seen))
+        self.put("status/ben-7.status", "heartbeat: x\nblocked: #7 waiting\n")
+        os.utime(os.path.join(self.state, "status", "ben-7.status"), (NOW + 1100, NOW + 1100))
+        self.scan(NOW + 1100, self.seen)
+        self.scan(NOW + 1100, replay)  # a re-exec replays the scan from the uncommitted state
+        since = self.mod.utc(NOW - 60)
+        self.assertEqual([(o["source"], o["kind"], o["key"], o["since"]) for o in self.observations()],
+                         [("watch", "stall", "run:ben-7", since)] + [("watch", "resume", "run:ben-7", since)] * 2)
+        self.assertEqual(self.observations()[0]["liveness"], "ambiguous")
+        self.assertNotIn(self.state, json.dumps(self.observations()))  # sanitized: no state or worktree paths
+
     def test_persistent_helpers_only_are_stale_but_detached_work_refreshes(self):
         for harness in ("codex", "claude"):
             with self.subTest(harness=harness):

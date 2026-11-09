@@ -1186,7 +1186,7 @@ source of [Q1](#q1-wake) and the decision function of [C2](#runtime-contract).
 It needs no model and makes read-only `gh` calls only, with the logged-in
 identity:
 
-- `gh pr list --state open --json number,state,headRefOid,labels,statusCheckRollup,reviews`;
+- `gh pr list --state open --json number,state,headRefOid,labels,statusCheckRollup,reviews,mergeable`;
   a PR counts as a crew PR when it has a `crew:*` label. A tracked PR missing
   from that list is read with `gh pr view <n>` for its merged or closed state.
 - `gh issue list --state open --label crew:ready --json number,labels,assignees`.
