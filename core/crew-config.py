@@ -9,7 +9,8 @@ Usage: crew-config.py validate FILE [--install] [--pack-manifest FILE] (profile 
 `validate` checks one profile against the schema; `resolve` merges the config
 layers and prints each key with the layer that set it (per-key provenance).
 Both also load the tracker and change backend maps' [ids] patterns; `resolve`
-prints them as ids.item and ids.change (docs/handoff.md#id-declaration).
+prints them as ids.item and ids.change, plus the change map's ids.marker_key
+when declared (docs/handoff.md#id-declaration).
 Every problem prints as `file:key: reason`; exit 1 if any, else 0.
 `precheck-scope` classifies each changed path by builder.precheck.owners and
 prints JSON; exit 3 on unowned code, 4 on an owners query failure (stop).
@@ -156,6 +157,7 @@ HARNESS_INSTALLS = harnesses.INSTALLS
 HARNESS_BUILTINS = harnesses.INSTALL_BUILTINS
 # Backend map [ids] (docs/handoff.md#id-declaration, #936): item from the tracker map, change from the change map.
 ID_CONCERNS = {"item": "tracker", "change": "change"}
+ID_MARKER_KEYS = ["change", "item"]  # the change map's marker_key: selfgate keys on pr= or issue= (#876, #1031)
 ID_DEFAULT = "[1-9][0-9]*"
 ID_UNSAFE = set(" \t\r\n<>=\"'`")  # an id must never break a marker line or a command argument
 TEMPLATES_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "templates")
@@ -164,8 +166,10 @@ TEMPLATES_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__f
 def backend_ids(profile, pack_base, err, backends=BACKENDS):
     """{key: (pattern, map name or None)} from the tracker and change backend maps; None is the default.
 
+    A declared marker_key in the change map adds marker_key: (value, map name); undeclared, it is absent.
+
     A map is the pack's render/backends/<name>.toml, else templates/backends/<name>.toml. err(name, key, reason)."""
-    out, maps = {key: (ID_DEFAULT, None) for key in ID_CONCERNS}, {}
+    out, maps, markers = {key: (ID_DEFAULT, None) for key in ID_CONCERNS}, {}, {}
     table = profile.get("backends") if isinstance(profile.get("backends"), dict) else {}
     for key, concern in ID_CONCERNS.items():
         name = table[concern].get("name") if isinstance(table.get(concern), dict) else None
@@ -185,7 +189,11 @@ def backend_ids(profile, pack_base, err, backends=BACKENDS):
                 err(name, "(file)", "cannot read backend map %s (%s)" % (path, e))
                 continue
             maps[name] = check_table(lambda k, reason: err(name, k, reason), "ids", ids,
-                                     {k: (str, None) for k in ID_CONCERNS})
+                                     dict({k: (str, None) for k in ID_CONCERNS}, marker_key=(str, None)))
+            marker = maps[name].pop("marker_key", None)
+            check_choice(lambda k, reason: err(name, k, reason), "ids.marker_key", marker, ID_MARKER_KEYS)
+            if marker in ID_MARKER_KEYS:
+                markers[name] = marker
             for k, pattern in list(maps[name].items()):
                 try:
                     unsafe = [c for c in [""] + sorted(ID_UNSAFE) if re.fullmatch(pattern, c)]
@@ -199,6 +207,8 @@ def backend_ids(profile, pack_base, err, backends=BACKENDS):
                     del maps[name][k]
         if key in maps[name]:
             out[key] = (maps[name][key], name)
+        if concern == "change" and name in markers:
+            out["marker_key"] = (markers[name], name)
     return out
 
 

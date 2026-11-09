@@ -237,5 +237,27 @@ class IdKeys(unittest.TestCase):
                 self.assertIn(output, out.getvalue())
 
 
+    def test_cli_keys_on_issue_from_a_backend_map(self):
+        """#1031: a change map's [ids] marker_key = "item" reaches the selfgate check through resolve."""
+        with tempfile.TemporaryDirectory() as tmp:
+            project = Path(tmp) / "crew.toml"
+            project.write_text('[runtime]\nname = "tmux"\n\n[paths]\npack = "pack"\n')
+            overlay = Path(tmp) / "pack" / "render" / "backends" / "github.toml"
+            overlay.parent.mkdir(parents=True)
+            item_record = dict(number=7, body=item_selfgate(issue="182"), headRefOid=HEAD)
+            change_record = dict(number=7, body=selfgate(), headRefOid=HEAD)
+            cases = [('[ids]\nmarker_key = "item"\n', item_record, ["--item", "182"], 0, "selfgate: pass"),
+                     ('[ids]\nmarker_key = "item"\n', item_record, [], 1, "selfgate: missing item key"),
+                     ('[ids]\nmarker_key = "item"\n', change_record, ["--item", "182"], 1, "selfgate: malformed marker"),
+                     ("", change_record, [], 0, "selfgate: pass"),
+                     ("", item_record, ["--item", "182"], 1, "selfgate: malformed marker")]
+            for ids, record, args, code, output in cases:
+                with self.subTest(ids=ids, args=args, output=output):
+                    overlay.write_text(ids)
+                    with patch("sys.stdin", io.StringIO(json.dumps(record))), \
+                            contextlib.redirect_stdout(io.StringIO()) as out:
+                        self.assertEqual(precheck.main(["--project", str(project), "--pass", "selfgate"] + args), code)
+                    self.assertIn(output, out.getvalue())
+
 if __name__ == "__main__":
     unittest.main()
