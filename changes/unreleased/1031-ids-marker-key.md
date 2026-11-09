@@ -1,7 +1,7 @@
 ---
 type: fixed
 issue: 1031
-pr: TBD
+pr: 1515
 date: 2026-11-09
 box-skill: none
 ---
