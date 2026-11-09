@@ -157,8 +157,9 @@ def report(items, sweep=None):
 
 def clusters(items, sweep=None):
     """Cluster counts from the `pass=triage-cluster` records on the log issues and the `cluster:<slug>` labels (#1298)."""
-    recs = [f for i in items for _, f in records(i, "triage-cluster") if not sweep or f.get("sweep") == sweep]
-    newest = {f.get("cluster"): f for f in recs}
+    recs = sorted(((when, f) for i in items for when, f in records(i, "triage-cluster")
+                   if not sweep or f.get("sweep") == sweep), key=lambda r: r[0])  # log issues list newest first
+    newest = {f.get("cluster"): f for _, f in recs}
     if sweep:
         return "clusters recorded by sweep %s: %d, %d new members, %d proposed" % (
             sweep, len(newest), sum(int(f.get("new", 0)) for f in newest.values()),

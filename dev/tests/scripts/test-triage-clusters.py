@@ -148,6 +148,19 @@ class Cap(unittest.TestCase):
         again = tc.build(self.items(), got, {}, 1)  # open proposals cost nothing; the capped one fits now
         self.assertEqual((again["proposed"], again["skipped_cap"]), (["class-quiet"], []))
 
+    def test_changed_milestone_target_is_a_new_proposal(self):  # review r1 finding 1
+        items = self.items()[4:6]
+        first = tc.build(items, {}, {"clusters": {"class-pair": {"milestone": "M37"}}}, 1)
+        self.assertEqual(by_slug(first)["class-pair"]["proposals"], ["milestone:M37"])
+        moved = {"clusters": {"class-pair": {"milestone": "M38"}}}
+        capped = tc.build(items, first, moved, 0)
+        self.assertEqual((capped["proposed"], capped["skipped_cap"]), ([], ["class-pair"]))
+        self.assertEqual(by_slug(capped)["class-pair"]["proposals"], [])  # M37 no longer wanted, M38 not charged
+        fits = tc.build(items, first, moved, 1)
+        self.assertEqual((fits["proposed"], by_slug(fits)["class-pair"]["proposals"]), (["class-pair"], ["milestone:M38"]))
+        same = tc.build(items, first, {}, 0)  # unchanged target stays open at no cost
+        self.assertEqual((same["proposed"], same["skipped_cap"]), ([], []))
+
     def test_no_proposal_when_members_already_in_milestone(self):
         items = [issue(1, "Failure class: big", milestone="M37"), issue(2, "Failure class: big", milestone="M37")]
         got = tc.build(items, {}, {}, 10)

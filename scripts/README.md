@@ -485,7 +485,8 @@ two segments of each named path, in that order. The slug comes from the
 placing key, and `--prior` (the last `--out`) keeps recorded slugs first and
 lists the members new since then. `--model FILE` adds members, each with a
 one-line reason, and sets a cluster's summary, band, milestone or tracking
-proposal; both carry over in `--out`. A new cluster proposal costs one of
+proposal; both carry over in `--out`. A new cluster proposal (`tracking`,
+or `milestone:<title>`, where a changed title is new) costs one of
 `--cap-left` (default 10) whatever its size; the rest print as
 `skipped: cap`. It prints one line per cluster with its members for the log.
 Python 3 standard library only; no network. Unreadable input, or a model

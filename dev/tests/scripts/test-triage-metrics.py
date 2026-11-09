@@ -160,6 +160,15 @@ class Calibration(unittest.TestCase):
                                              "across 2 cluster labels")
         self.assertEqual(tm.clusters(items, "s2"), "clusters recorded by sweep s2: 1, 2 new members, 1 proposed")
 
+    def test_cluster_newest_record_by_time_not_issue_order(self):  # review r1 finding 2
+        def log(n, day, size):
+            return issue(n, [{"createdAt": day + "T18:00:00Z", "body": "<!-- crew:v1 role=researcher "
+                              "pass=triage-cluster cluster=class-stall size=%d new=0 band=P2 proposed=0 sweep=x -->"
+                              % size}], labels=["triage:log"])
+        logs = [log(11, "2026-11-09", 4), log(10, "2026-11-08", 2)]
+        for order in (logs, logs[::-1]):
+            self.assertTrue(tm.clusters(order).startswith("clusters: 1 recorded, newest sizes total 4;"))
+
     def test_accuracy_keeps_answered_applied_records_once(self):  # #835 review R1
         item = issue(1, [rec(1, "place", mode="apply", sweep="20261105T0000Z", at="2026-11-05T00:10:00Z"),
                          rec(1, "owner-rejected", mode="apply", sweep="20261105T0100Z", at="2026-11-05T01:10:00Z")])

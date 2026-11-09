@@ -15,8 +15,9 @@ unplaced issues left forms none. The slug comes from the placing key alone, so i
 (--model) may add members, each with a one-line reason, and set a cluster's summary, band, milestone and tracking
 proposal; earlier model members and settings carry over from --prior while the cluster stands.
 
-A cluster proposal (a tracking issue, or moving the whole cluster into its milestone) counts once toward the noise
-cap whatever its size: new proposals run by band, size and slug while --cap-left lasts; the rest are skipped by cap.
+A cluster proposal (a tracking issue, or `milestone:<title>` to move the whole cluster into that milestone) counts once
+toward the noise cap whatever its size, and a changed milestone target is a new proposal. New proposals run by band,
+size and slug while --cap-left lasts; the rest are skipped by cap.
 
 Usage: triage-clusters.py --items FILE --sweep ID [--prior FILE] [--model FILE] [--cap-left 10] [--out FILE]
 Exit codes: 0 OK, 2 usage or input error.
@@ -123,7 +124,7 @@ def build(items, prior, model, cap_left):
                  new=[r for r in refs if r not in {m["ref"] for m in old.get("members", [])}])
         if given:
             c["model"] = given
-        wanted = ["tracking"] * c["tracking"] + ["milestone"] * (
+        wanted = ["tracking"] * c["tracking"] + ["milestone:" + c["milestone"]] * (
             c["milestone"] != "backlog" and any((issues[r].get("milestone") or {}).get("title") != c["milestone"]
                                                 for r in refs))
         c["proposals"] = [p for p in wanted if p in old.get("proposals", [])]
