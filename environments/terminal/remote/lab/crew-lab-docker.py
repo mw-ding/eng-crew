@@ -91,8 +91,8 @@ def decoy_start(m):
     if not shutil.which("tmux"):
         return None
     sock = os.path.join(tempfile.mkdtemp(prefix="crew-lab-decoy-"), "s")
-    if call(["tmux", "-f", os.devnull, "-S", sock, "new-session", "-d", "-s", "decoy", "sleep 86400"],
-            child_env(m)).returncode:
+    call(["tmux", "-f", os.devnull, "-S", sock, "new-session", "-d", "-s", "decoy", "sleep 86400"], child_env(m))
+    if not decoy_alive(m, sock):  # new-session -d can exit 0 without a server
         raise RuntimeError("the tmux decoy did not start on %s" % sock)
     return sock
 

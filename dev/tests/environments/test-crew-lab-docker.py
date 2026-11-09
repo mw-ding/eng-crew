@@ -12,6 +12,7 @@ import json
 import os
 import subprocess
 import tempfile
+import types
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -34,7 +35,7 @@ class FakeDocker:
         self.calls, self.objs, self.n = [], {}, 0
         self.ports, self.mounts, self.endpoint, self.activated = ["127.0.0.1:55022"], [], ENDPOINT, {}
         self.probe = lambda cid, t: "denied: [Errno 101] Network is unreachable"
-        self.decoy = True
+        self.decoy, self.checks = 9, 0  # how many has-session checks find the decoy
 
     def add(self, kind, name, labels=None, **extra):
         self.n += 1
@@ -69,7 +70,8 @@ class FakeDocker:
             Path(key + ".pub").write_text("ssh-ed25519 AAAArun crew-lab\n")
             return ""
         if a[0] == "tmux":
-            return "" if self.decoy or "has-session" not in a else None
+            self.checks += "has-session" in a
+            return None if "has-session" in a and self.checks > self.decoy else ""
         a = a[1:]
         if a[:2] == ["context", "show"]:
             return "desktop-linux"
@@ -149,8 +151,8 @@ class Base(unittest.TestCase):
         self.sentinel = 0
         for target, attr, value in ((lab, "call", self.fake), (lab.guard, "refusals", lambda m: self.refusals),
                                     (lab.guard, "main", lambda argv: self.sentinel),
-                                    (lab.shutil, "which", lambda name: "/usr/bin/" + name),
-                                    (lab.tempfile, "mkdtemp", lambda prefix: "/tmp/decoy"),
+                                    (lab, "shutil", types.SimpleNamespace(which=lambda name: "/usr/bin/" + name)),
+                                    (lab, "tempfile", types.SimpleNamespace(mkdtemp=lambda prefix: "/tmp/decoy")),
                                     (lab.time, "sleep", lambda s: None)):
             patcher = mock.patch.object(target, attr, value)
             patcher.start()
@@ -325,7 +327,7 @@ class TeardownTest(Base):
                 self.assertFalse(any("*" in x for x in argv))
         tmux = [(argv, env) for argv, env in self.fake.calls if argv[0] == "tmux"]
         self.assertEqual([argv[argv.index("-S") + 2] for argv, _ in tmux], ["new-session", "has-session",
-                                                                            "kill-session"])
+                                                                            "has-session", "kill-session"])
         for argv, env in tmux:
             self.assertEqual(argv[argv.index("-S") + 1], "/tmp/decoy/s")
             self.assertFalse(set(INHERITED) & set(env), argv)
@@ -355,10 +357,16 @@ class TeardownTest(Base):
         self.assertEqual(lab.main(["teardown", str(self.manifest)]), 2)
         self.assertEqual(self.fake.mutations(), [])
 
+    def test_a_decoy_that_never_starts_refuses_before_any_removal(self):
+        self.fake.decoy = 0
+        self.fake.calls.clear()
+        self.assertEqual(lab.main(["teardown", str(self.manifest)]), 2)
+        self.assertEqual(self.fake.mutations(), [])
+
     def test_changed_sentinel_or_lost_tmux_decoy_fails(self):
         for attr in ("sentinel", "decoy"):
             with self.subTest(attr=attr):
-                self.sentinel, self.fake.decoy = (1, True) if attr == "sentinel" else (0, False)
+                self.sentinel, self.fake.decoy, self.fake.checks = (1, 9, 0) if attr == "sentinel" else (0, 1, 0)
                 self.assertEqual(lab.main(["teardown", str(self.manifest)]), 1)
 
 
