@@ -86,7 +86,8 @@ appended verbatim to that role's rendered brief under `## Render note: <path>`.
 Relative paths resolve from the project file. They are part of the render,
 so they count toward [`size_budget`](../profile.md#size_budget) and
 `check-skill-drift.py --project` covers them. A missing file fails the
-render. Launch-time notes are unchanged. `mdstack spawn` handles worker
+render, and so does a note for a role the selected runtime renders no brief
+for (such as `builder-lead` under `session`), naming the key and the runtime. Launch-time notes are unchanged. `mdstack spawn` handles worker
 notes; `mdstack up` handles coordinator notes. The note text is included verbatim,
 without placeholder substitution. For example:
 
