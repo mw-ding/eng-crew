@@ -96,10 +96,20 @@ class ReflectionMeasures(unittest.TestCase):
         stall = self.measure()["stall_minutes"]
         self.assertEqual((stall["value"], stall["n"], stall["open"]), (40.0, 2, 1))  # 12:00-12:40, not 30+20
         self.assertEqual(stall["refs"], ["run:ben-1", "run:vera-2"])
+        poll_only = os.path.join(self.tmp, "poll.jsonl")
+        with open(poll_only, "w") as f:
+            f.writelines(json.dumps(r) + "\n" for r in POLL)
+        self.assertEqual(self.measure(poll_only)["stall_minutes"]["value"], 0.0)  # sampled, none stalled
 
     def test_false_throttles_confirmed_only_and_unconfirmed_unclassified(self):
         ft = self.measure()["false_throttles"]
         self.assertEqual((ft["value"], ft["refs"], ft["unclassified_errors"]), (1, ["outage-1474"], 2))
+        with open(self.paths["incidents"], "w") as f:
+            f.write(json.dumps(INCIDENTS[2]) + "\n")
+        self.assertEqual(self.measure()["false_throttles"]["value"], 0)  # a read file with none confirmed: zero
+        os.remove(self.paths["incidents"])
+        ft = self.measure()["false_throttles"]
+        self.assertEqual((ft["value"], ft["coverage"]), (None, "unknown"))  # no incident file: unknown
 
     def test_no_observations_stay_unknown(self):
         empty = os.path.join(self.tmp, "none.jsonl")

@@ -100,12 +100,16 @@ def stall_minutes(obs, since, until):
                    open=sum(k not in ends for k in stalls))
 
 
-def throttles(incidents, errors, since, until):
+def throttles(path, errors, since, until):
+    """Explicitly confirmed false-throttles by incident id; zero only when an incident file was read."""
+    incidents = jsonl(path)
     confirmed = {i["id"]: i for i in incidents if i.get("kind") == "false-throttle" and i.get("confirmed")
                  and since <= i.get("ts", "") < until}
     seen = {(e.get("source"), e.get("text"), e.get("ts", "")[:16]) for e in errors if since <= e.get("ts", "") < until}
-    return measure(len(confirmed), len(confirmed), "incidents (explicitly confirmed)", sorted(confirmed),
-                   "confirmed incidents in window", unclassified_errors=len(seen))
+    known = bool(path and os.path.exists(path))
+    return dict(measure(len(confirmed), len(confirmed), "incidents (explicitly confirmed)", sorted(confirmed),
+                        "confirmed incidents in window" if known else "unknown", unclassified_errors=len(seen)),
+                value=len(confirmed) if known else None)
 
 
 def measures(args):
@@ -116,9 +120,11 @@ def measures(args):
         if stamps else "unknown"
     out = {"window": {"since": since, "until": until}, **csv_means(args.csv, since, until),
            "ready_to_land": ready_to_land(obs, since, until), "stall_minutes": stall_minutes(obs, since, until),
-           "false_throttles": throttles(jsonl(args.incidents), jsonl(args.errors), since, until)}
+           "false_throttles": throttles(args.incidents, jsonl(args.errors), since, until)}
     for name in ("ready_to_land", "stall_minutes"):
         out[name]["coverage"] = coverage
+    if stamps and out["stall_minutes"]["value"] is None:
+        out["stall_minutes"]["value"] = 0.0  # samples were taken and none stalled
     return out
 
 

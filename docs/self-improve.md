@@ -304,9 +304,10 @@ prints for the window:
 | `false_throttles` | confirmed incidents | count by incident `id`, so related issues are one incident |
 
 Each measure carries its sample size, refs and coverage. With no samples
-the value is null and coverage `unknown`: missing history is never zero. Lines
-in `schedule/errors.jsonl` (`--errors`) count only as `unclassified_errors`
-until an incident file confirms them.
+(for `false_throttles`, no incident file) the value is null and coverage
+`unknown`: missing history is never zero. Lines in `schedule/errors.jsonl`
+(`--errors`) count only as `unclassified_errors` until an incident file
+confirms them.
 
 Per proposal, `baseline --ledger <file> --proposal <id>` saves the window's
 measures and cohort bounds, and is refused once an activation is confirmed.
