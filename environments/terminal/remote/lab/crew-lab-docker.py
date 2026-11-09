@@ -28,8 +28,10 @@ import importlib.util
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -63,7 +65,7 @@ def load(name, file):
     return mod
 
 
-guard, runner = load("campaign_guard", "campaign-guard.py"), load("campaign_run", "campaign-run.py")
+guard = load("campaign_guard", "campaign-guard.py")
 
 
 def call(argv, env):
@@ -82,6 +84,21 @@ def child_env(m):
     if m.get("lab"):
         env["DOCKER_HOST"] = m["lab"]["endpoint"]
     return env
+
+
+def decoy_start(m):
+    """A tmux server on its own throwaway socket, started in the lab env; None without tmux."""
+    if not shutil.which("tmux"):
+        return None
+    sock = os.path.join(tempfile.mkdtemp(prefix="crew-lab-decoy-"), "s")
+    if call(["tmux", "-f", os.devnull, "-S", sock, "new-session", "-d", "-s", "decoy", "sleep 86400"],
+            child_env(m)).returncode:
+        raise RuntimeError("the tmux decoy did not start on %s" % sock)
+    return sock
+
+
+def decoy_alive(m, sock):
+    return sock is None or call(["tmux", "-S", sock, "has-session", "-t", "=decoy"], child_env(m)).returncode == 0
 
 
 def owner_docker(*argv):
@@ -263,7 +280,7 @@ def teardown(a):
     if problems:
         return problems + ["teardown: nothing removed"]
     os.makedirs(ev, exist_ok=True)
-    decoy = runner.decoy_start()
+    decoy = decoy_start(m)
     for kind, name, rid, found in live:
         Path(ev, name + ".inspect.json").write_text(json.dumps(found, indent=2) + "\n")
         if kind == "container":
@@ -272,7 +289,7 @@ def teardown(a):
         docker(m, *(["rm", "-f", "-v"] if kind == "container" else ["network", "rm"]), rid)
         record["removed"].append(rid)
     record["sentinel_unchanged"] = guard.main(["sentinel", a.manifest]) == 0
-    record["tmux_decoy_alive"] = runner.decoy_alive(decoy)
+    record["tmux_decoy_alive"] = decoy_alive(m, decoy)
     if decoy:
         call(["tmux", "-S", decoy, "kill-session", "-t", "=decoy"], child_env(m))
     Path(lab_dir(m), "cleanup.json").write_text(json.dumps(record, indent=2) + "\n")

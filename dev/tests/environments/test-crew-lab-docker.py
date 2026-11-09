@@ -4,7 +4,7 @@ the per-run SSH config, the N3 probe and manifest-scoped teardown.
 Usage: python3 dev/tests/environments/test-crew-lab-docker.py
 
 No Docker: every docker, ssh-keygen and tmux call goes to an in-memory fake daemon that records argv and env. The
-campaign guard check, its sentinel and the tmux decoy are stubbed; their own tests cover them.
+campaign guard check and its sentinel are stubbed; their own tests cover them.
 """
 import hashlib
 import importlib.util
@@ -34,6 +34,7 @@ class FakeDocker:
         self.calls, self.objs, self.n = [], {}, 0
         self.ports, self.mounts, self.endpoint, self.activated = ["127.0.0.1:55022"], [], ENDPOINT, {}
         self.probe = lambda cid, t: "denied: [Errno 101] Network is unreachable"
+        self.decoy = True
 
     def add(self, kind, name, labels=None, **extra):
         self.n += 1
@@ -68,7 +69,7 @@ class FakeDocker:
             Path(key + ".pub").write_text("ssh-ed25519 AAAArun crew-lab\n")
             return ""
         if a[0] == "tmux":
-            return ""
+            return "" if self.decoy or "has-session" not in a else None
         a = a[1:]
         if a[:2] == ["context", "show"]:
             return "desktop-linux"
@@ -145,11 +146,11 @@ class Base(unittest.TestCase):
         self.manifest.write_text(json.dumps({"run_id": "run1", "roots": {"state_dir": str(self.state)}}))
         self.fake = FakeDocker()
         self.refusals = []
-        self.sentinel, self.decoy = 0, True
+        self.sentinel = 0
         for target, attr, value in ((lab, "call", self.fake), (lab.guard, "refusals", lambda m: self.refusals),
                                     (lab.guard, "main", lambda argv: self.sentinel),
-                                    (lab.runner, "decoy_start", lambda: "/tmp/decoy/s"),
-                                    (lab.runner, "decoy_alive", lambda sock: self.decoy),
+                                    (lab.shutil, "which", lambda name: "/usr/bin/" + name),
+                                    (lab.tempfile, "mkdtemp", lambda prefix: "/tmp/decoy"),
                                     (lab.time, "sleep", lambda s: None)):
             patcher = mock.patch.object(target, attr, value)
             patcher.start()
@@ -322,8 +323,13 @@ class TeardownTest(Base):
             if argv[1:2] == ["rm"] or argv[1:3] == ["network", "rm"]:
                 self.assertIn(argv[-1], ids)
                 self.assertFalse(any("*" in x for x in argv))
-        self.assertIn(["tmux", "-S", "/tmp/decoy/s", "kill-session", "-t", "=decoy"],
-                      [argv for argv, _ in self.fake.calls])
+        tmux = [(argv, env) for argv, env in self.fake.calls if argv[0] == "tmux"]
+        self.assertEqual([argv[argv.index("-S") + 2] for argv, _ in tmux], ["new-session", "has-session",
+                                                                            "kill-session"])
+        for argv, env in tmux:
+            self.assertEqual(argv[argv.index("-S") + 1], "/tmp/decoy/s")
+            self.assertFalse(set(INHERITED) & set(env), argv)
+            self.assertEqual(env["HOME"], str(self.state / "lab" / "home"))
 
     def test_owner_or_run_label_mismatch_refuses_before_any_removal(self):
         lab_ = self.m()["lab"]
@@ -352,7 +358,7 @@ class TeardownTest(Base):
     def test_changed_sentinel_or_lost_tmux_decoy_fails(self):
         for attr in ("sentinel", "decoy"):
             with self.subTest(attr=attr):
-                self.sentinel, self.decoy = (1, True) if attr == "sentinel" else (0, False)
+                self.sentinel, self.fake.decoy = (1, True) if attr == "sentinel" else (0, False)
                 self.assertEqual(lab.main(["teardown", str(self.manifest)]), 1)
 
 
