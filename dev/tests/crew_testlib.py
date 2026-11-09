@@ -46,6 +46,8 @@ FAKE_TMUX = textwrap.dedent("""\
     elif cmd == "display-message":
         print(state.get("_panes", {}).get(target, ""))
     elif cmd == "list-windows":
+        if target not in state:  # as tmux: no such session, nothing on stdout
+            sys.exit(1)
         print("\\n".join("%s %s" % kv for kv in state.get(target, {}).items()))
     elif cmd == "set-option":
         state.setdefault("_opts", {}).setdefault(target.rstrip(":"), {})[args[-2]] = args[-1]

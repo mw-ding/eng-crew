@@ -18,6 +18,7 @@ import json
 import os
 import shlex
 import shutil
+import subprocess
 import time
 import unittest
 import sys
@@ -786,17 +787,155 @@ class Placement(KillLandedBase):  # #207: placement in mdstack spawn; the decisi
             self.assertFalse(os.path.exists(os.path.join(self.state, "claims", "builder-issue7")))
             self.assertEqual(self.windows(), [])
 
-    def test_remote_placement_refuses_until_remote_lifecycle(self):  # #345 drives runs on another host
-        reply = dict(result="ok", checks=[dict(status="ok", check=n, detail="passed") for n in
+
+class RemoteRun(KillLandedBase):  # #345: spawn, kill, restart, down and status for a run placed on a role host
+    ENTRY = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))),
+                         "environments", "terminal", "remote", "crew-remote.py")
+
+    def setUp(self):
+        super().setUp()
+        self.root = os.path.join(self.tmp, "host-b")
+        with open(self.project, "a") as f:
+            f.write('\n[hosts.host-a]\nprimary = true\nmax_runs = 1\n'
+                    'capabilities = { os = "macos", arch = "arm64", engines = ["claude-code"] }\n'
+                    '[hosts.host-b]\nmax_runs = 2\nroot = "%s"\n'
+                    'capabilities = { os = "linux", arch = "x86_64", engines = ["claude-code"] }\n'
+                    '[placement]\nhosts = ["host-b", "host-a"]\n' % self.root)
+        ready = dict(result="ok", checks=[dict(status="ok", check=n, detail="passed") for n in
                                           ("tools", "logins", "project mirror")], projects=["acme__widgets"], load=0)
-        with open(os.path.join(self.tmp, "bin", "ssh"), "w") as f:  # host-b answers ready
-            f.write("#!/usr/bin/env python3\nimport sys\nif '-G' in sys.argv:\n print('port 22')\n sys.exit(0)\n"
-                    "sys.stdin.read()\nprint(%r)\n" % json.dumps(reply))
+        self.down_flag = os.path.join(self.tmp, "host-b.down")
+        with open(os.path.join(self.tmp, "bin", "ssh"), "w") as f:  # check answers ready; other verbs run the host
+            f.write("#!/usr/bin/env python3\nimport json, os, subprocess, sys\n"
+                    "if '-G' in sys.argv:\n print('hostname host-b\\nport 22')\n sys.exit(0)\n"
+                    "data = sys.stdin.read()\nif os.path.exists(%r):\n sys.exit(255)\n"
+                    "if json.loads(data)['verb'] == 'check':\n print(%r)\n sys.exit(0)\n"
+                    "env = {k: v for k, v in os.environ.items() if k == 'PATH' or k.startswith('FAKE_TMUX_')}\n"
+                    "env['SSH_ORIGINAL_COMMAND'] = sys.argv[-1]\n"
+                    "sys.exit(subprocess.run([sys.executable, %r, '--root', %r], input=data, text=True, env=env)"
+                    ".returncode)\n" % (self.down_flag, json.dumps(ready), self.ENTRY, self.root))
+        os.chmod(os.path.join(self.tmp, "bin", "ssh"), 0o755)
+        os.makedirs(os.path.join(self.root, "mirrors"))
+        self.git("clone", "-q", "--mirror", self.origin, os.path.join(self.root, "mirrors", "acme__widgets.git"))
+        r = subprocess.run([sys.executable, self.ENTRY, "--root", self.root, "runner", "--once"], env=self.env,
+                           capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.pane()
+        self.wt = os.path.join(self.root, "wt", "7-%s-builder-build" % self.git("rev-parse", "HEAD")[:7])
+
+    def pane(self, dead=0):
+        out = subprocess.run(["sh", "-c", "sleep 60 >/dev/null 2>&1 & echo $!"], capture_output=True, text=True,
+                             start_new_session=True).stdout.strip()
+        self.env["FAKE_TMUX_PANE"] = "%%1 %s %d 0 /dev/ttys001 claude" % (out, dead)
+        self.addCleanup(subprocess.run, ["kill", "-9", out], capture_output=True)
+
+    def host_windows(self):
+        with open(self.state_file) as f:
+            return json.load(f)["crew-host"]
+
+    def set_host_pane(self, text):
+        with open(self.state_file) as f:
+            tmux = json.load(f)
+        tmux["_panes"]["crew-host:1"] = text
+        with open(self.state_file, "w") as f:
+            json.dump(tmux, f)
+
+    def test_spawn_on_the_host_with_its_brief(self):
         r = self.spawn("builder", "--issue", "7")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("started ben-7 (on host-b, claude-code", r.stdout)
+        rec = self.record("ben-7")
+        self.assertEqual((rec["host"], rec["remote"], rec["index"], rec["worktree"], rec["pane_id"]),
+                         ("host-b", True, None, self.wt, "%1"))
+        self.assertEqual([c for c in self.windows() if c[3].startswith("=crew-acme-widgets:")], [])  # none on the primary
+        self.assertEqual(self.host_windows(), {"0": "runner", "1": "acme__widgets/ben-7"})
+        self.assertTrue(os.path.exists(os.path.join(self.state, "claims", "builder-issue7")))
+        with open(os.path.join(self.root, "state", "acme__widgets", "runs", "ben-7.brief.md")) as f:
+            self.assertIn("- Worktree: %s" % self.wt, f.read())
+        self.assertIn("alive", self.crew("status", "--project", self.project).stdout.splitlines()[-1].split())
+
+    def test_validate_spawn_carries_the_review_file(self):
+        sha = self.pr(9, "codex")
+        self.put("verdicts/pr9-%s-r1-review.md" % sha[:7], "## Review\n")
+        r = self.spawn("reviewer", "--pr", "9", "--pass", "validate")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        with open(os.path.join(self.root, "state", "acme__widgets", "verdicts", "pr9-%s-r1-review.md" % sha[:7])) as f:
+            self.assertEqual(f.read(), "## Review\n")
+        self.assertEqual(self.record("vera-9-r1-validate")["head"], sha)
+
+    def test_kill_keeps_unlanded_work_on_the_host_until_discarded(self):
+        self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
+        with open(os.path.join(self.wt, "wip.txt"), "w") as f:
+            f.write("x\n")
+        r = self.kill()
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
-        self.assertIn("placement: ben-7 placed on host-b; remote run lifecycle is #345", r.stdout)
+        self.assertIn("refusing to remove %s on host-b: unlanded work in ben-7:\n  uncommitted: ?? wip.txt" % self.wt, r.stdout)
+        self.assertTrue(os.path.isdir(self.wt))
+        self.assertTrue(os.path.exists(os.path.join(self.state, "runs", "ben-7.json")))
+        self.assertEqual(self.host_windows(), {"0": "runner"})  # the run stops either way
+        r = self.kill("--discard", "--reason", "owner dropped it")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        (call,) = self.gh_calls()
+        self.assertEqual(call[:3], ["issue", "comment", "7"])
+        self.assertFalse(os.path.exists(self.wt))
         self.assertFalse(os.path.exists(os.path.join(self.state, "claims", "builder-issue7")))
-        self.assertEqual(self.windows(), [])
+
+    def test_kill_removes_a_clean_run_and_an_unreachable_host_keeps_it(self):
+        self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
+        open(self.down_flag, "w").close()
+        r = self.kill()
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("on host-b: the host call failed:\n  unreachable:", r.stdout)
+        self.assertTrue(os.path.exists(os.path.join(self.state, "runs", "ben-7.json")))
+        r = self.crew("down", "--project", self.project)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("unlanded work or an unreachable host in ben-7", r.stdout)
+        os.remove(self.down_flag)
+        r = self.crew("down", "--project", self.project)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse(os.path.exists(self.wt))
+        self.assertFalse(os.path.exists(os.path.join(self.state, "runs", "ben-7.json")))
+
+    def test_down_stops_remote_runs_without_the_primary_session(self):  # review r1 P2: runs outlive that session
+        self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
+        with open(self.state_file) as f:
+            tmux = json.load(f)
+        del tmux["crew-acme-widgets"]
+        with open(self.state_file, "w") as f:
+            json.dump(tmux, f)
+        r = self.crew("down", "--project", self.project, "--preserve")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.host_windows(), {"0": "runner"})  # stopped, work kept
+        self.assertTrue(os.path.isdir(self.wt))
+        r = self.crew("down", "--project", self.project)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("crew-acme-widgets not running; its remote runs stopped", r.stdout)
+        self.assertFalse(os.path.exists(self.wt))
+        self.assertFalse(os.path.exists(os.path.join(self.state, "runs", "ben-7.json")))
+
+    def test_restart_in_place_with_unlanded_work_else_fresh(self):
+        self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
+        r = self.crew("restart", "ben-7", "--project", self.project)
+        self.assertIn("refusing restart: ben-7 is alive", r.stdout)
+        with open(os.path.join(self.wt, "wip.txt"), "w") as f:
+            f.write("x\n")
+        self.set_host_pane(self.env["FAKE_TMUX_PANE"].replace(" 0 0 ", " 1 0 "))  # the harness exited: dead
+        self.pane()
+        r = self.crew("restart", "ben-7", "--project", self.project)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("restarted ben-7 on host-b in its worktree %s, keeping unlanded work:\n  uncommitted: ?? wip.txt"
+                      % self.wt, r.stdout)
+        self.assertEqual((self.record("ben-7")["restarts"], self.host_windows()), (1, {"0": "runner", "1": "acme__widgets/ben-7"}))
+        self.assertTrue(os.path.exists(os.path.join(self.wt, "wip.txt")))
+        rec = self.record("ben-7")
+        rec.pop("restarts")
+        with open(os.path.join(self.state, "runs", "ben-7.json"), "w") as f:
+            json.dump(rec, f)
+        os.remove(os.path.join(self.wt, "wip.txt"))
+        self.set_host_pane("%%9 %s 0 0 /dev/ttys001 claude" % rec["pane_pid"])  # another pane: missing
+        r = self.crew("restart", "ben-7", "--project", self.project, "--timeout", "1")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("started ben-7 (on host-b", r.stdout)
+        self.assertEqual((self.record("ben-7")["restarts"], self.record("ben-7")["host"]), (1, "host-b"))
 
 
 if __name__ == "__main__":

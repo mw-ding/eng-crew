@@ -3,9 +3,9 @@
 > - **Status:** partly built
 > - **Applies to:** a tmux primary plus forge-less runner hosts
 > - **Current rules:** [tmux binding](tmux.md), [protocol](../protocol.md)
-> - **Built:** host inventory, `mdstack host check`, `mdstack hosts`, `mdstack host prepare`, the remote call and runner, [Forge-less hosts](#forge-less-hosts-remote-test-runner) and its [runbook](#runbook-add-a-runner-host), the [role-host runbook](#runbook-add-or-remove-a-role-host), the [host OS adapter](#host-os-adapters) dispatch and the `macos` and `linux` adapters, [placement](#placement) in `mdstack spawn` (a host other than the primary refuses until #345), proved on fakes (#204–#208, #349, #726–#729, #1358, #1359, #1363)
-> - **Design only:** remote role sessions (#345–#348) and the two-host dry run (#209), all open
-> - **Last checked:** 2026-11-08 at `0e80f1d`
+> - **Built:** host inventory, `mdstack host check`, `mdstack hosts`, `mdstack host prepare`, the remote call and runner, [Forge-less hosts](#forge-less-hosts-remote-test-runner) and its [runbook](#runbook-add-a-runner-host), the [role-host runbook](#runbook-add-or-remove-a-role-host), the [host OS adapter](#host-os-adapters) dispatch and the `macos` and `linux` adapters, [placement](#placement) in `mdstack spawn`, the [remote run lifecycle](#remote-run-lifecycle) (`spawn`, `kill`, `restart`, `down`), proved on fakes (#204–#208, #345, #349, #726–#729, #1358, #1359, #1363)
+> - **Design only:** remote wakes and messages, partition handling and remote attach (#346–#348) and the two-host dry run (#209), all open
+> - **Last checked:** 2026-11-08 at `e73ade4`
 
 How one coordinator runs role sessions on several hosts (laptops, a
 desktop, cloud VMs, a machine with a simulator or phone attached) joined by
@@ -266,10 +266,11 @@ Built in `environments/terminal/remote/crew-remote.py` (#208): the entrypoint, t
 primary-side client `call()`. The crew key's `authorized_keys` line is
 `command="python3 <bundle>/environments/terminal/remote/crew-remote.py --root <root>",restrict <key>`,
 and the runner runs `crew-remote.py --root <root> runner` as the account's
-service. Only `version` is built; it reports the host's version and whether
-the runner is `up` (a fresh heartbeat and its tmux session) or `down`. Every
-other verb in the set is refused as not built until its issue lands, and the
-one-primary-per-run tag arrives with `spawn` (20.8).
+service. Built verbs: `version`, `check`, `prepare`, `seed`, `job`,
+`result`, and `spawn`, `probe` and `kill` ([remote run lifecycle](#remote-run-lifecycle)).
+`version` reports the host's version and whether the runner is `up` (a
+fresh heartbeat and its tmux session) or `down`. Every other verb in the set
+is refused as not built until its issue lands.
 
 The client keeps the primary's SSH config for auth only. It resolves the
 host with `ssh -G` and keeps the host name, user, port, identity and
@@ -296,6 +297,31 @@ Runs live under the runner's tmux session, never under the SSH session, so
 a dropped link ends only the call: the run keeps going, and the next call
 sees it. A runner that is down leaves `version` and the read-only verbs
 answering; only verbs that start runs need it.
+
+### Remote run lifecycle
+
+Built in #345 (`crew-remote.py` verbs, `environments/terminal/crew.d/_remote.py`
+on the primary), proved on fakes; the lab C and V runs are separate
+evidence.
+
+| Command | On the primary | On the host |
+|---|---|---|
+| `mdstack spawn` placed on a role host | Renders the brief as for a local run, its Worktree line naming the host's path, and keeps the run record (`remote`, `host`), claim and brief copy. A validate pass sends the PR's retained `-review.md` files at that head | `spawn` needs the runner up. It fetches the run's ref into the mirror without moving any mirror ref and refuses unless it is the given head (no stale base), adds the detached worktree `wt/<n>-<sha7>-<role>-<pass>`, writes the brief and review files under `state/<owner>__<repo>/`, then starts the engine's harness in a window of the runner's tmux session named `<owner>__<repo>/<window>`, so projects sharing a host never collide, with the argv built on the host from checked fields. The run record there keeps the pane identity and the spawning primary |
+| `mdstack kill` | Posts a `--discard` reason first, as for a local run, then removes its own record, claim and brief copy | `kill` stops the window, then runs the unlanded-work check (uncommitted paths, and commits on none of the default branch, the worktree's branch on origin or the run's PR heads). Unlanded work keeps the worktree and lists it; only `discard` removes it anyway |
+| `mdstack restart` | Asks the host's `probe` (`unreachable` refuses, as `ambiguous` does) | `kill` without discard: unlanded work relaunches in its own worktree (`spawn` with `relaunch`, the brief sent again); a clean worktree is removed, and the primary spawns again, so placement re-runs |
+| `mdstack down` | Stops every remote run through `kill`, even when the primary's session is gone; `--preserve` sends `keep` (stop only) | A run the host cannot stop or clear (unlanded work, unreachable) keeps its records, and `down` exits 1 naming it |
+
+A run on another primary is refused by `spawn`, `probe` and `kill` (one
+primary per run), and `kill` touches no window without its project's run
+record. A run on a role host counts toward its role's pool cap,
+reads `ambiguous` to the local probe (never restarted from here) and shows
+its host's probe in `mdstack status`. Not yet built, so a remote run still
+lacks them: status lines, wakes and `mdstack send` (#346), so the watcher
+skips its liveness; `unreachable` handling and reconcile (#347); attach and
+logs (#348). The window gets no `CREW_PROJECT` there, so the brief's
+`mdstack ownership` and `action heartbeat` steps wait for #346. Worktrees
+come from a `--mirror` clone, so they have no `refs/remotes/origin/*`; spawn
+turns `remote.origin.mirror` off so a run can push a refspec.
 
 ### Host OS adapters
 
@@ -611,8 +637,8 @@ Extends the [runner-host runbook](#runbook-add-a-runner-host) to a
 [role host](#terms): one with its own forge access (N5) that takes builder
 and reviewer runs (20.12 from [#1281](https://github.com/mw-ding/mdstack/issues/1281),
 [#1363](https://github.com/mw-ding/mdstack/issues/1363)). Every step is the
-owner's. Placement and remote role runs (#207, #345–#348) are not built, so
-a role host can reach `ready` today but no run is placed on it yet.
+owner's. Placement and the remote run lifecycle are built (#207, #345);
+remote wakes, partition handling and attach (#346–#348) are not.
 
 **Add a role host.** Runner-host steps 1 (overlay), 3 (crew key) and 5
 (smoke test) apply unchanged. The others change:
