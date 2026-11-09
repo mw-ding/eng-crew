@@ -13,6 +13,8 @@ import json
 import os
 import subprocess
 import tempfile
+import time
+import types
 import unittest
 from unittest import mock
 
@@ -67,6 +69,13 @@ FAKE_TMUX = "#!/bin/sh\n[ -z \"$FAKE_TMUX_FAIL\" ] || { echo \"no server\" >&2; 
 STEPS = [{"name": "baseline", "run": "echo baseline >> {state_dir}/order"},
          {"name": "paused", "run": "echo paused >> {state_dir}/order"},
          {"name": "resume-catch-up", "run": "echo resume >> {state_dir}/order"}]
+
+
+def fake_time(clock, sleep):
+    """A time module for campaign-attended.py alone: patching time.sleep globally also fires inside subprocess.run's
+    wait loop while a pre-sleep step's child is being reaped (#1479), so the fake must not reach other callers."""
+    return types.SimpleNamespace(time=lambda: clock[0], monotonic=lambda: clock[0], sleep=sleep,
+                                 strftime=time.strftime, gmtime=time.gmtime)
 
 
 class CampaignAttendedTest(unittest.TestCase):
@@ -142,9 +151,7 @@ class CampaignAttendedTest(unittest.TestCase):
             clock[0] += jump
 
         env = dict(CAMPAIGN_WEBHOOK="https://hooks.invalid/T/x", **env)
-        with mock.patch.dict(os.environ, env), mock.patch.object(ca.time, "time", lambda: clock[0]), \
-                mock.patch.object(ca.time, "monotonic", lambda: clock[0]), \
-                mock.patch.object(ca.time, "sleep", sleep), \
+        with mock.patch.dict(os.environ, env), mock.patch.object(ca, "time", fake_time(clock, sleep)), \
                 mock.patch("builtins.input", receipt or self.code):
             return self.run_cmd("--max-wait", "60")
 
@@ -221,8 +228,7 @@ class CampaignAttendedTest(unittest.TestCase):
             self.write(self.windows, "ash\n")
 
         with mock.patch.dict(os.environ, CAMPAIGN_WEBHOOK="https://hooks.invalid/T/x"), \
-                mock.patch.object(ca.time, "time", lambda: clock[0]), mock.patch.object(ca.time, "sleep", sleep), \
-                mock.patch("builtins.input", receipt):
+                mock.patch.object(ca, "time", fake_time(clock, sleep)), mock.patch("builtins.input", receipt):
             code, out = self.run_cmd()
         self.assertEqual(code, 1, out)
         self.assertIn("preserved: claims, worktrees or tmux windows changed", self.doc()["reason"])
