@@ -30,6 +30,13 @@ def step_shell(name):
     return "\n".join(line[10:] for line in step(name).split("        run: |\n", 1)[1].splitlines())
 
 
+def read(path):
+    if not os.path.exists(path):
+        return ""
+    with open(path) as f:
+        return f.read()
+
+
 class LabJobTest(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -53,7 +60,6 @@ class LabJobTest(unittest.TestCase):
                    GITHUB_STEP_SUMMARY=summary)
         r = subprocess.run(["bash", "-e", "-o", "pipefail", "-c", step_shell("Lab prerequisites")],
                            env=env, capture_output=True, text=True)
-        read = lambda p: open(p).read() if os.path.exists(p) else ""
         return r.returncode, r.stdout, read(out), read(summary)
 
     def assert_skip(self, why, **kw):
