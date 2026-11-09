@@ -1552,7 +1552,7 @@ contain the fetched default branch: update-branch it so `release.yml`
 `validate` re-runs on current `main`; the direct land never takes a stale
 cut. While a cut is open, gate `state-permission` (and `train land`) holds
 every other PR that adds a fragment under `changes/unreleased/` until the
-cut lands; an unreadable open-PR list holds too. Mirror deployment freshness, evidence
+cut lands. An unreadable open-PR list or `CHANGELOG.md` patch blocks both. Mirror deployment freshness, evidence
 agreement or reasoned N/A, grant scope, engine attribution, linkage and
 runtime/inbox gates explicitly require manual verification. Filter blockers
 before building and resolve manual gates with the synthesizer's §7 check.

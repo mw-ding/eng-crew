@@ -127,7 +127,7 @@ closes it with two rules
   the cut's own `validate`, and the builder re-runs the cut.
 - **Fragment hold.** While a cut PR is open, every other PR that adds a
   file under `changes/unreleased/` holds until the cut lands (gate
-  `state-permission`). An unreadable open-PR list holds too. This replaces
+  `state-permission`). An unreadable open-PR list or CHANGELOG patch holds too, and blocks the cut. This replaces
   the coordinator's hand-posted `hold-until-#<cut>`.
 
 Paths follow the profile `[release]` table (`changelog`, `fragments`).

@@ -780,13 +780,16 @@ def train_paths(poll, slug, n):
 
 def release_cut(poll, values, slug, n):
     """(cut version or None, fragment paths the change adds) from its changed files at head (#1433): a cut adds a new
-    version heading to the CHANGELOG. 100 or more changed files is unreadable (ValueError)."""
+    version heading to the CHANGELOG. 100 or more changed files, or a CHANGELOG change without its patch, is unreadable
+    (ValueError): no reader treats an unclassified change as a non-cut."""
     files = poll.gh_json("api", "repos/%s/pulls/%d/files?per_page=100" % (slug, n))
     if len(files) >= 100:
         raise ValueError("100 or more changed files")
     changelog, fragments = values.get("release.changelog", "CHANGELOG.md"), values.get("release.fragments", "changes/unreleased")
+    if any(f["filename"] == changelog and not f.get("patch") for f in files):
+        raise ValueError("%s patch unavailable" % changelog)
     cut = next((m.group(1) for f in files if f["filename"] == changelog
-                for m in [re.search(r"^\+## \[(\d+\.\d+\.\d+[^\]]*)\]", f.get("patch") or "", re.M)] if m), None)
+                for m in [re.search(r"^\+## \[(\d+\.\d+\.\d+[^\]]*)\]", f["patch"], re.M)] if m), None)
     return cut, [f["filename"] for f in files if f["filename"].startswith(fragments.rstrip("/") + "/")
                  and f.get("status") != "removed"]
 

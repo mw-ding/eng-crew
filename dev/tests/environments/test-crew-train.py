@@ -1738,6 +1738,21 @@ class ReleaseCut(TrainBase):
         self.assertIn("status=pass reason=\"release cut 7.2.0 contains %s\"" % base[:7],
                       self.gate(self.train("check", "1"), 1, "release-cut"))
 
+    def test_cut_without_changelog_patch_is_unreadable_and_blocks_both_gates(self):
+        self.files(1, [{"filename": "CHANGELOG.md", "status": "modified"},
+                       {"filename": "changes/unreleased/1-a.md", "status": "removed"}])
+        r = self.train("check", "1", "2")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('status=blocked reason="unreadable: CHANGELOG.md patch unavailable"', self.gate(r, 1, "release-cut"))
+        self.assertIn('status=blocked reason="release-cut hold unreadable: CHANGELOG.md patch unavailable"',
+                      self.gate(r, 2, "state-permission"))
+        self.open_prs()
+        self.commit({"changes/unreleased/2-b.md": "b\n"}, "squash #2")
+        self.git("push", "-q", "origin", "main")
+        r = self.train("check", "1")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("status=blocked", self.gate(r, 1, "release-cut"))
+
     def test_unreadable_open_list_holds_fragment_prs_only(self):
         with open(os.path.join(self.gh_dir, "open.json"), "w") as f:
             f.write("not json")
