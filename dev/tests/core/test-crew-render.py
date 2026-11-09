@@ -1010,6 +1010,30 @@ class SessionRuntime(unittest.TestCase):
         self.assertIn("researchers = 0", self.base)
         self.assertEqual(self.render(), upstream)
 
+    def test_render_note_for_unrendered_role_fails(self):  # #1054
+        for name in ("note.md", "lead.md"):
+            with open(os.path.join(self.tmp, name), "w") as f:
+                f.write("Note.\n")
+
+        def render(notes):
+            project = os.path.join(self.tmp, "crew-%d.toml" % len(os.listdir(self.tmp)))
+            with open(project, "w") as f:
+                f.write(self.base.replace("reviewers = 1 }", "reviewers = 1, notes = { render = { %s } } }" % notes))
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(io.StringIO()):
+                code = cr.main(["--project", project, "--out", os.path.join(self.tmp, "out-%d" % len(os.listdir(self.tmp)))])
+            return code, buf.getvalue(), project
+
+        code, out, project = render('builder = ["note.md"], builder-lead = ["lead.md"], researcher = ["note.md"]')
+        self.assertEqual(code, 1, out)
+        self.assertEqual(out.splitlines(), [
+            "%s:1: runtime.options.notes.render.%s: runtime session renders no %s brief (note dropped)" % (project, r, r)
+            for r in ("researcher", "builder-lead")])
+        code, out, _ = render('builder = ["note.md"], builder-lead = []')
+        self.assertEqual(code, 0, out)
+        self.assertTrue(tree(out.splitlines()[0].rsplit("/runtime/", 1)[0])["runtime/builder.md"]
+                        .endswith("\n## Render note: note.md\n\nNote.\n"))
+
     def test_control_item_selects_ownership_text(self):
         none = self.render()
         coordinator = none["runtime/coordinator.md"]
