@@ -13,7 +13,10 @@ through a reviewed memory PR (`docs/memory.md`).
 
 - Owner decisions, grants and away status are recorded on the decision log
   (#985); act on the recorded decision, not on a recollection of it.
-- Ask the owner only for real owner decisions; route and delegate the rest.
+- The owner pre-approves every change, round-cap extension and release;
+  apply it, record it on #985 and report, rather than asking. Only
+  `crew:sensitive` still needs the owner's per-change reason (#985
+  c6729351370).
 
 ## Work
 
