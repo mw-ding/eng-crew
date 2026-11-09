@@ -98,6 +98,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `docs/memory.md` | Deliverable | all | Protocol bundle (core): the text roles load and cite |
 | `docs/merge-enforcement.md` | Deliverable | all | Protocol bundle (core): the text roles load and cite |
 | `docs/metrics/README.md` | Internal | n/a | Maintainer docs: metrics and drills, not loaded by roles |
+| `docs/metrics/a31-campaign-report.md` | Internal | n/a | Maintainer docs: metrics and drills, not loaded by roles |
 | `docs/metrics/baseline-m25.md` | Internal | n/a | Maintainer docs: metrics and drills, not loaded by roles |
 | `docs/metrics/decisions.md` | Deliverable | all | Coordinator procedure: metrics gates the coordinator runs |
 | `docs/metrics/m25-1-evidence-ledger.md` | Internal | n/a | Maintainer docs: metrics and drills, not loaded by roles |
@@ -167,6 +168,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `roles/seats/**` | Deliverable | all | Owner-facing seat placeholder packages and the seat template; content authored elsewhere |
 | `scripts/README.md` | Deliverable | all | Script usage: script guide and guard rules; each script's own usage is its module docstring, printed by `--help` |
 | `scripts/campaign-guard.py` | Internal | n/a | Guards and tests: M25 campaign run-manifest and isolation guard, not installed ([#783](https://github.com/mw-ding/eng-crew/issues/783)) |
+| `scripts/campaign-report.py` | Internal | n/a | Maintainer tool: A31 campaign-history report from actual campaign records ([#1462](https://github.com/mw-ding/mdstack/issues/1462)) |
 | `scripts/campaign-run.py` | Internal | n/a | Guards and tests: M25 campaign scenario runner and durable results, not installed ([#784](https://github.com/mw-ding/eng-crew/issues/784)) |
 | `scripts/campaign-sandbox.py` | Internal | n/a | Guards and tests: M25 disposable sandbox setup, teardown and level-b plan, not installed ([#785](https://github.com/mw-ding/eng-crew/issues/785)) |
 | `scripts/changelog-cut.py` | Internal | n/a | Guards and tests: release tooling, run by the release workflow, not installed |
