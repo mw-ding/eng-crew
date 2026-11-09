@@ -60,6 +60,7 @@ manual fallback.
    ([CONTRIBUTING: CHANGELOG](../CONTRIBUTING.md#changelog),
    [#616](https://github.com/mw-ding/eng-crew/issues/616)). Any other change
    goes in its own PR.
+   See [Cut freeze](#cut-freeze) for what holds while it is open.
 3. **Trigger.** The synthesizer lands the cut PR. `release.yml` runs on
    `push` to `main` touching `CHANGELOG.md`. It proceeds only for a new top
    versioned section `[X.Y.Z]`, empty `[Unreleased]` and no existing
@@ -106,6 +107,30 @@ manual fallback.
    one run.
 9. **Notice.** The publish job posts the release link on the release issue
    linked by the cut PR and closes it. No coordinator run watch is required.
+
+### Cut freeze
+
+A cut validated on a stale merge ref is not validated: a fragment that lands
+after the cut's base leaves `changes/unreleased/` non-empty at the merge
+commit, and `validate` refuses publishing (v5.0.0,
+[#918](https://github.com/mw-ding/eng-crew/issues/918); 7.2.0, #1424 and
+main-red #1432). The [§7 merge gate](protocol.md#7-merge-gate-synthesizer)
+closes it with two rules
+([#1433](https://github.com/mw-ding/mdstack/issues/1433)); on tmux
+`mdstack train check` reports both and `train land` re-checks the hold:
+
+- **Fresh validate.** A cut PR, one whose diff adds a new version heading
+  to `CHANGELOG.md`, is ready only when its head contains the current
+  default branch (gate `release-cut`). Update-branch it, so `release.yml`
+  `validate` re-runs on current `main`; it never takes the
+  `lone_pr_land = "direct"` waiver. A fragment landed meanwhile then fails
+  the cut's own `validate`, and the builder re-runs the cut.
+- **Fragment hold.** While a cut PR is open, every other PR that adds a
+  file under `changes/unreleased/` holds until the cut lands (gate
+  `state-permission`). An unreadable open-PR list or CHANGELOG patch holds too, and blocks the cut. This replaces
+  the coordinator's hand-posted `hold-until-#<cut>`.
+
+Paths follow the profile `[release]` table (`changelog`, `fragments`).
 
 `workflow_dispatch` on `main` with `version=X.Y.Z` and `dry_run` remains
 for dry runs and manual fallback. Every dispatch runs the CI gate at the
