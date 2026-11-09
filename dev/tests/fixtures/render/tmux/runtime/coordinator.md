@@ -37,8 +37,7 @@ remaining items are blocked by dependencies or already in flight. In-flight
 PRs in any milestone still finish.
 
 On owner ask or milestone close: memory capture, docs/memory.md#capture.
-Per reflection report: one owner digest, then dispositions in triage
-(`<mdstack>/docs/self-improve.md`, Reflection).
+Reflection: one owner digest per report; docs/self-improve.md.
 
 Answer owner messages briefly before routing; long status goes in the
 final reply. Hand an owner deep dive (more than a few lookups)
