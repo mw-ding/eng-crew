@@ -7,7 +7,8 @@ an unpushed branch that is not checked out) and the sentinel, `--remove` only wi
 session-targeted tmux kill on the sandbox socket, the tmux shim's socket pin and refusals, a scenario's bare
 `tmux kill-server` under an inherited decoy TMUX (#817), the fake forge's `--label` answers, per-state `issue list`
 answers, kept `--body-file -` bodies, the `gh api` forge stub (kept posts, a lost post, the post probe, a label
-delete) and the print-only level-b forge plan. tmux tests use throwaway sockets only. Run in CI.
+delete), the print-only level-b forge plan, and A28's two-team setup and `a28/teams.py` lifecycle (#1440). tmux tests
+use throwaway sockets only. Run in CI.
 """
 import contextlib
 import importlib.util
@@ -16,6 +17,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -122,6 +124,49 @@ class CampaignSandboxTest(unittest.TestCase):
             gh = subprocess.run([os.path.join(bindir, "gh"), "issue", "list", *argv], capture_output=True, text=True,
                                 env=env)
             self.assertEqual(gh.stdout, want, argv)
+
+    def test_setup_two_teams_separate_roots_sessions_and_instances(self):
+        """--teams 2 (#1440): team b's own checkout, session, roots and runtime instance; one repo and control item."""
+        code, out = self.run_cmd("setup", "--root", self.root, "--run-id", "r785", "--production", self.prod,
+                                 "--source", self.src, "--release", "v4.0.0", "--sentinel", self.sentinel,
+                                 "--scenario", "A28", "--teams", "2", "--engine", "claude-code/claude-opus-5-5")
+        self.assertEqual(code, 0, out)
+        teams = json.loads(self.read(os.path.join(self.root, "state", "sandbox.json")))["teams"]
+        self.assertEqual([(t["name"], t["session"]) for t in teams],
+                         [("a", "crew-campaign-r785"), ("b", "crew-campaign-r785-b")])
+        b = self.read(os.path.join(self.root, "repo-b", "crew.toml"))
+        self.assertIn('state_dir = "%s/team-b/state"' % self.root, b)
+        self.assertIn('name = "sandbox-r785"', b)
+        for t in teams:
+            org = self.read(t["org_profile"])
+            self.assertIn('instance = "%s"' % t["name"], org)
+            self.assertIn("control_item = 1", org)
+            self.assertIn('order = ["claude-code/claude-opus-5-5"]', org)
+            self.assertEqual((t["source"], t["release"]), (self.src, "v4.0.0"))
+        self.assertEqual(cs.git("remote", "get-url", "origin", cwd=os.path.join(self.root, "repo-b")).strip(),
+                         os.path.join(self.root, "origin.git"))
+        bindir = os.path.join(self.root, "state", "bin")
+        self.assertFalse(os.path.exists(os.path.join(bindir, "claude")), "the real engine is not stubbed")
+        self.assertTrue(os.access(os.path.join(bindir, "codex"), os.X_OK))
+
+    @unittest.skipUnless(shutil.which("tmux"), "tmux not installed")
+    def test_a28_teams_preflight_up_ready_and_teardown(self):
+        """a28/teams.py (#1440) runs both full teams from this checkout and tears them down keeping their work."""
+        source = os.path.dirname(SCRIPTS)
+        teams = os.path.join(TESTS, "scripts", "fixtures", "campaign", "a28", "teams.py")
+        env = {k: v for k, v in os.environ.items() if not k.startswith(("CREW_", "TMUX"))}
+        p = subprocess.run([sys.executable, teams, source, self.root, "--production", self.prod, "--sentinel",
+                            self.sentinel, "--ready", "120"], capture_output=True, text=True, env=env, timeout=400)
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        phases = {r["phase"]: r for r in map(json.loads, p.stdout.splitlines()[:-1])}
+        self.assertEqual(list(phases), ["setup", "preflight", "up-a", "up-b", "ready", "teardown"])
+        self.assertEqual({t["instance"] for t in phases["preflight"]["teams"]}, {"a", "b"})
+        for live in phases["ready"]["roles"].values():
+            self.assertEqual(set(live.values()), {"alive"})
+            self.assertIn("coordinator", live)
+        self.assertEqual([s["stopped"] for s in phases["teardown"]["teams"]], [True, True])
+        self.assertEqual(phases["teardown"]["retained"], [os.path.join(self.root, d) for d in ("repo", "repo-b")])
+        self.assertEqual(self.read(self.sentinel), "untouched\n")
 
     def test_gh_api_stub_keeps_posts_fails_lost_and_probes(self):
         self.setup_sandbox()
