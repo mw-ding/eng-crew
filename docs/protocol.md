@@ -694,6 +694,7 @@ of `pr=`. See
 | `selfgate` | The builder records the self-gate for an express change at head (schema in §3; no round; `verdict=pass` or `changes`) |
 | `triage` | A triage sweep records its decision on a tracker item (schema below; no SHA, no round); a note, never a gate input |
 | `triage-log` | A triage sweep's one comment on the day's log issue (schema below) |
+| `reflection` | A reflection report's completion note on the reflection log issue (schema below); a note, never a gate input |
 
 A merge-up ack uses `round=n/a verdict=n/a`.
 
@@ -746,6 +747,22 @@ the owner), `triage:duplicate` (an exact duplicate, linked), `triage:card-extrac
 (the sweep posted the card fields), `triage:log` (a daily log issue, skipped
 by every sweep), `cluster:<slug>` (a cluster member, `apply` mode only) and the
 priority bands `P0`–`P3`.
+
+The researcher's **reflection record** (`pass=reflection`) ends each
+`[<ResearcherBot>/reflection] <window-id>` report on the tracker's reflection
+log issue ([reflection](self-improve.md#reflection)). It carries no
+`issue=`, `pr=`, `round=` or `verdict=`:
+
+```text
+<!-- crew:v1 role=researcher pass=reflection window=<window-id> sha=<input-sha> proposals=<n> new=<n> incidents=<n> -->
+```
+
+`window` is the window ID, joined with `+` when windows coalesce; `sha` is
+the full default-branch SHA the run read; `proposals` counts the report's
+proposals, `new` those that count against the noise cap (at most 3), and
+`incidents` the distinct incident IDs. A quiet window posts `proposals=0`.
+The record marks the window's run complete; it is a note, never a verdict,
+gate input or permission.
 
 The researcher's **docs-pass record** (`pass=docs-pass`) ends each
 `[<ResearcherBot>/docs-pass] <owner>/<repo> @ <sha7>` comment a
@@ -957,7 +974,9 @@ chat. The coordinator accepts or closes each card in the same triage window,
 tags it `repo:` or `crew:`, and an accepted card is a normal builder tracker
 item. The lesson (`docs/lessons/`, plus a findings-buffer one-liner) is the
 memory; triage never edits a skill, and harness changes merge only through the
-normal gate. Details in [self-improve.md](self-improve.md).
+normal gate. Details in [self-improve.md](self-improve.md). For each
+[reflection](self-improve.md#reflection) report the coordinator relays one
+owner digest and records each proposal's disposition in this window.
 
 **Owner decisions: one channel and a 2h SLA.** Only owner-facing seats
 deliver owner asks and reports

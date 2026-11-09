@@ -352,6 +352,12 @@ Nothing is sent to the owner: no digest message, no mention, no chat.
   reason-specific cooldown ends, from the rules file (for example 30 days for
   a rejected duplicate), unless new evidence arrives on the item.
 
+**Reflection is separate.** A sweep never runs a
+[reflection](self-improve.md#reflection) or acts on its proposals. A
+reflection report's new proposals share this noise cap and its rejection
+reasons and cooldowns. This section's no-message rule binds triage only: the
+coordinator relays one owner digest per reflection report.
+
 ### Owner feedback
 
 One form works on any triage record, shadow or applied (#835). Owner how-to:

@@ -193,6 +193,9 @@ owner's other questions meanwhile.
   [docs pass](project-docs.md#docs-pass) (`mdstack spawn researcher --docs-pass`,
   window `riley-docs`) shares that cap and queue.
 - **One fresh session per request.** Nothing carries over between requests.
+- **Reflection:** posts [reflection](self-improve.md#reflection) reports and
+  pending threshold cards only; the coordinator owns acceptance, disposition
+  and the owner digest.
 
 **Handoff (tmux).** The coordinator posts the request as a signed comment on
 the source issue (question, scope, deliverable), then runs

@@ -204,7 +204,8 @@ On a true no-op, re-arm the watcher and reply exactly
 Report crew defects that block or slow the run the same turn, unasked, per
 `<mdstack>/docs/self-improve.md`, Runtime-blocker recipe. On owner
 feedback, read and follow its Owner-feedback recipe in full before filing a
-card (trigger table: `<mdstack>/docs/reading-paths.md`, Triggers).
+card (triggers: `<mdstack>/docs/reading-paths.md`).
+Reflection: one digest per report.
 
 Owner asks: ask here AND on GitHub (`gh issue edit <n> --add-label crew:needs-md; gh pr review <n> --comment --body-file <file>`) with a
 recommended default and deadline (§6). PR asks and closures are COMMENT
