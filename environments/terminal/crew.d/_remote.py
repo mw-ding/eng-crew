@@ -96,8 +96,10 @@ def pull(values, state, host, names):
             windows[n] = dict(offset=len(data), digest=hashlib.sha256(data).hexdigest())
         reply = call(values, host, "pull", attempts=1, windows=windows)
         for n, got in (reply.get("windows") or {}).items() if reply["result"] == "ok" else ():
-            chunk = base64.b64decode(got["data"]) if n in mirrors else b""
-            if n in mirrors and got["offset"] != windows[n]["offset"]:
+            if n not in mirrors or not got["size"]:
+                continue  # an empty or missing host file never wipes the lines already mirrored
+            chunk = base64.b64decode(got["data"])
+            if got["offset"] != windows[n]["offset"]:
                 with open(mirrors[n] + ".tmp", "wb") as f:
                     f.write(chunk)
                 os.replace(mirrors[n] + ".tmp", mirrors[n])

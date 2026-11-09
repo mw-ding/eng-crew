@@ -974,6 +974,9 @@ class RemoteRun(KillLandedBase):  # #345: spawn, kill, restart, down and status 
         host = self.host_status("blocked: #7 third\n")
         self.assertEqual(self.watch(), ["blocked: #7 third"])
         self.assertEqual(self.mirror(), host)
+        os.remove(os.path.join(self.root, "state", "acme__widgets", "status", "ben-7.status"))
+        self.crew("acked", "ben-7", "20261108T120000Z-abc123", "--project", self.project)  # pulls an absent host file
+        self.assertEqual(self.mirror(), host)  # what was mirrored stays
 
     def test_send_delivers_through_the_host_and_its_ack_returns_through_the_mirror(self):  # #346 C3
         self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
