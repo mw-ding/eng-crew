@@ -22,7 +22,7 @@ import time
 import unittest
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # dev/tests/: crew_testlib
-from crew_testlib import CREW, LivenessBase, SECRET, SpawnBase
+from crew_testlib import CREW, KillLandedBase, LivenessBase, SECRET, SpawnBase
 
 
 class Spawn(SpawnBase):
@@ -708,6 +708,74 @@ class SpawnLiveness(LivenessBase):
         self.assertEqual(r.returncode, 1)
         self.assertIn("failed: vera-9-r1-review: foreground is '2.1.314', not claude", r.stdout)
         self.assertFalse(os.path.exists(os.path.join(self.state, "runs", "vera-9-r1-review.json")))
+
+
+class Placement(KillLandedBase):  # #207: placement in mdstack spawn; the decision itself is test-crew-placement.py
+    def setUp(self):
+        super().setUp()
+        with open(self.project, "a") as f:
+            f.write('\n[hosts.host-a]\nprimary = true\nmax_runs = 1\n'
+                    'capabilities = { os = "macos", arch = "arm64", engines = ["claude-code"] }\n'
+                    '[hosts.host-b]\nmax_runs = 2\ncapabilities = { os = "linux", arch = "x86_64", engines = ["claude-code"] }\n'
+                    '[placement]\nhosts = ["host-b", "host-a"]\n')
+        with open(os.path.join(self.tmp, "bin", "ssh"), "w") as f:  # host-b fails its check: not ready
+            f.write("#!/bin/sh\nexit 255\n")
+        os.chmod(os.path.join(self.tmp, "bin", "ssh"), 0o755)
+
+    def test_default_placement_recorded_and_shown_in_status(self):
+        r = self.spawn("builder", "--issue", "7")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        rec = self.record("ben-7")
+        self.assertEqual((rec["host"], rec["placement"], rec["rejections"]), ("host-a", "affinity", ["host-b: not ready"]))
+        rows = self.crew("status", "--project", self.project).stdout.splitlines()
+        self.assertEqual(rows[0].split()[:3], ["WINDOW", "ROLE", "HOST"])
+        self.assertEqual(rows[-1].split()[:3], ["ben-7", "builder", "host-a"])
+        self.assertEqual(self.gh_calls(), [])  # a computed placement posts nothing
+
+    def test_no_host_queues_with_one_reason_per_host(self):
+        self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
+        r = self.spawn("builder", "--issue", "8")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("no host: host-b: not ready; host-a: at cap 1/1", r.stdout)
+        with open(os.path.join(self.state, "spawn-queue.jsonl")) as f:
+            (entry,) = [json.loads(line) for line in f]
+        self.assertEqual((entry["issue"], entry["reason"]), (8, "host-b: not ready; host-a: at cap 1/1"))
+        self.assertEqual(len(self.windows()), 1)
+
+    def test_override_posts_reason_before_spawn(self):
+        r = self.spawn("builder", "--issue", "7", "--host", "host-a", "--reason", "host-b quota spent")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        (call,) = self.gh_calls()
+        self.assertEqual(call[:3], ["issue", "comment", "7"])
+        self.assertIn("ben-7 placed on host-a by override\n\nReason: host-b quota spent", call[call.index("--body") + 1])
+        rec = self.record("ben-7")
+        self.assertEqual((rec["host"], rec["placement"], rec["override_reason"]),
+                         ("host-a", "override", "host-b quota spent"))
+
+    def test_override_refusals_spawn_nothing(self):
+        self.gh_exit = 1
+        self.write_gh()
+        for args, code, text in ((("--host", "host-a"), 2, "--host and --reason go together"),
+                                 (("--host", "host-a", "--reason", "x"), 1, "override reason not posted"),
+                                 (("--host", "host-b", "--reason", "x"), 1, "placement: host-b: not ready"),
+                                 (("--host", "host-z", "--reason", "x"), 1, "host-z: not in the inventory")):
+            r = self.spawn("builder", "--issue", "7", *args)
+            self.assertEqual(r.returncode, code, r.stdout + r.stderr)
+            self.assertIn(text, r.stdout)
+            self.assertFalse(os.path.exists(os.path.join(self.state, "claims", "builder-issue7")))
+            self.assertEqual(self.windows(), [])
+
+    def test_remote_placement_refuses_until_remote_lifecycle(self):  # #345 drives runs on another host
+        reply = dict(result="ok", checks=[dict(status="ok", check=n, detail="passed") for n in
+                                          ("tools", "logins", "project mirror")], projects=["acme__widgets"], load=0)
+        with open(os.path.join(self.tmp, "bin", "ssh"), "w") as f:  # host-b answers ready
+            f.write("#!/usr/bin/env python3\nimport sys\nif '-G' in sys.argv:\n print('port 22')\n sys.exit(0)\n"
+                    "sys.stdin.read()\nprint(%r)\n" % json.dumps(reply))
+        r = self.spawn("builder", "--issue", "7")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("placement: ben-7 placed on host-b; remote run lifecycle is #345", r.stdout)
+        self.assertFalse(os.path.exists(os.path.join(self.state, "claims", "builder-issue7")))
+        self.assertEqual(self.windows(), [])
 
 
 if __name__ == "__main__":

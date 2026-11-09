@@ -7,8 +7,14 @@ with no item (docs/project-docs.md#docs-pass, #1026); its Item names each repo's
 `[docs] enabled` is true. `builder --train N` starts a train worker, ben-trainN, for the synthesizer's delegated merge
 train N (#1391); its Item names the delegation record.
 
-Usage: mdstack spawn ROLE --issue N | --pr N | --sweep | --docs-pass | --train N [--pass PASS] [--round K] [--tier T] --project FILE [--org-profile FILE]
+With a [hosts] inventory, placement (_placement.py, docs/runtimes/multi-device.md#placement, #207) picks the host and
+engine from the profile and live host facts, queues with one reason per host, or refuses; the run record keeps host,
+placement and rejections. --host H --reason TEXT overrides the host and posts the reason on the item first; a failed
+post spawns nothing. A host other than the primary refuses until remote run lifecycle (#345) lands.
+
+Usage: mdstack spawn ROLE --issue N | --pr N | --sweep | --docs-pass | --train N [--pass PASS] [--round K] [--tier T] [--host H --reason TEXT] --project FILE [--org-profile FILE]
 """
+import collections
 import json
 import os
 import re
@@ -16,7 +22,9 @@ import shlex
 import time
 from crew_shared import (
     BANDS, brief_src, checkout, commands, ENGINE_CMD, fetch, git, harness, identity, kill_run, LAUNCH, NAMES, over_cap, PASSES, POINTER,
-    profile, queue_lock, role_notes, ROLES, runs, show_icon, tmux, wait_harness, window_env, open_trains, synthesizer_work)
+    load, profile, queue_lock, role_notes, ROLES, runs, show_icon, tmux, wait_harness, window_env, open_trains, synthesizer_work)
+
+placement = load("crew_placement", "environments/terminal/crew.d/_placement.py")
 
 
 def engine_order(values, tier, avoid=None, role=None):
@@ -34,6 +42,36 @@ def engine_order(values, tier, avoid=None, role=None):
 def pick_engine(values, tier, avoid=None, role=None):
     order = engine_order(values, tier, avoid, role)
     return order[0][0], order[0][1], values["engines.%s.effort" % tier]
+
+
+def host_facts(args, values, session, state):
+    """facts(host) for placement: the primary is where spawn runs; another host answers its readiness check. Load is
+    this crew's live runs there from the run records; a record without a host ran on the primary."""
+    hosts = placement.inventory(values)
+    primary = next((h for h in hosts if placement.setting(values, h, "primary", False)), None)
+    load = collections.Counter(rec.get("host") or primary for _, rec in runs(state))
+    seen = {}
+
+    def facts(h):
+        if h not in seen:
+            f = dict(reachable=True, ready=True) if h == primary else commands()["host"].inspect_host(
+                args, values, session, state, h)
+            seen[h] = dict(reachable=f["reachable"], ready=f["ready"], load=load[h])
+        return seen[h]
+    return facts
+
+
+def post_override(values, args, name, host, reason):
+    """Post the override reason on the PR (narrative post) or issue before the spawn; False if it was not posted."""
+    body = "[%s/placement] %s placed on %s by override\n\nReason: %s" % (
+        values.get("identities.coordinator.name", "Ash"), name, host, reason)
+    cmd = ["pr", "review", str(args.pr), "--comment"] if args.pr else ["issue", "comment", str(args.issue)] \
+        if args.issue else None
+    try:
+        return cmd is not None and commands()["route"].gh(
+            *cmd, "-R", "%s/%s" % (values["repo.owner"], values["repo.name"]), "--body", body) is None
+    except RuntimeError:
+        return False
 
 
 def builder_engines(values, state, repo, base, sha, pr):
@@ -65,8 +103,8 @@ def exclude_crew(wt):
             f.write("\n.crew/\n")
 
 
-def enqueue(state, args, pass_):
-    """Append a capped spawn request to spawn-queue.jsonl for the coordinator; no window is created."""
+def enqueue(state, args, pass_, reason=None):
+    """Append a capped or unplaced spawn request to spawn-queue.jsonl for the coordinator; no window is created."""
     entry = {"role": args.role, "issue": args.issue, "pr": args.pr, "pass": pass_, "round": args.round,
              "tier": args.tier, "head": getattr(args, "head", None), "queued": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
     if getattr(args, "messages", None):
@@ -77,15 +115,17 @@ def enqueue(state, args, pass_):
         entry["docs_pass"] = True
     if getattr(args, "train", None):
         entry["train"] = args.train
+    if reason:
+        entry["reason"] = reason
     os.makedirs(state, exist_ok=True)
     with open(os.path.join(state, "spawn-queue.jsonl"), "a") as f:
         f.write(json.dumps(entry) + "\n")
     if args.role == "builder" and getattr(args, "wake", True):
         with queue_lock(state), open(os.path.join(state, "wake", "queue.jsonl"), "a") as f:
             f.write(json.dumps(dict(event="builder-queued", reason="spawn")) + "\n")
-    print("queued: %s %s %s (%s cap reached; run mdstack dequeue when a window closes)" % (
+    print("queued: %s %s %s (%s; run mdstack dequeue when a window closes)" % (
         args.role, pass_, "train %d" % entry["train"] if entry.get("train") else "sweep" if entry.get("sweep") else "docs pass" if entry.get("docs_pass") else "issue #%s" % args.issue if args.issue else "PR #%s" % args.pr,
-        args.role))
+        "no host: " + reason if reason else args.role + " cap reached"))
     return 0
 
 
@@ -102,6 +142,8 @@ def register(sub):
     p.add_argument("--round", type=int, default=1, help="verdict round k, for reviewer window names")
     p.add_argument("--tier", choices=["trivial", "default", "deep"], help="default: the role's default_tier, else default")
     p.add_argument("--timeout", type=float, default=15.0, help="seconds to see the harness in the foreground")
+    p.add_argument("--host", help="placement override: run on this inventory host; needs --reason")
+    p.add_argument("--reason", help="why the host is overridden; posted on the item before the spawn")
     p.add_argument("--project")
     p.add_argument("--org-profile")
 
@@ -130,6 +172,10 @@ def run(args):
         return 1
     if sweep or docs_pass:
         inputs = []
+    override, reason = getattr(args, "host", None), getattr(args, "reason", None)
+    if bool(override) != bool(reason):
+        print("crew: --host and --reason go together (the override reason is posted on the item)")
+        return 2
     if (pass_ not in PASSES[role] and not train) or bool(args.issue) != ("issue" in inputs) or \
             bool(args.pr) != ("change" in inputs):
         error_inputs = next((v["inputs"][pass_] for v in ROLES.values() if v.get("change_pass") == pass_),
@@ -171,10 +217,26 @@ def run(args):
         sha = fetch(repo, "pull/%d/head" % args.pr if args.pr else values["repo.default_branch"])
         if getattr(args, "head", None) and args.head != sha:
             raise RuntimeError("crew: stale spawn: expected %s, live head %s" % (args.head, sha))
-        engine, model, effort = pick_engine(values, args.tier, role=role) if "engine_independent_of" not in data else pick_engine(
-            values, args.tier, builder_engines(values, state, repo, fetch(repo, values["repo.default_branch"]), sha, args.pr), role)
+        base = fetch(repo, values["repo.default_branch"]) if args.pr else None
+        order = engine_order(values, args.tier, role=role) if "engine_independent_of" not in data else engine_order(
+            values, args.tier, builder_engines(values, state, repo, base, sha, args.pr), role)
+        paths = git(repo, "diff", "--name-only", "%s...%s" % (base, sha)).split() if args.pr and \
+            placement.inventory(values) else []
+        placed = placement.place(dict(role=role, paths=paths, order=order, host=override, **{"pass": pass_}), values,
+                                 host_facts(args, values, session, state))
     except RuntimeError as e:
         print(e)
+        return 1
+    if placed["result"] == "queue":
+        return enqueue(state, args, pass_, placed["reason"])
+    primary = next((h for h in placement.inventory(values) if placement.setting(values, h, "primary", False)), None)
+    if placed["result"] == "refuse" or placed["host"] != primary:
+        print("crew: refusing spawn: placement: " + (placed["reason"] if placed["result"] == "refuse" else
+              "%s placed on %s; remote run lifecycle is #345" % (name, placed["host"])))
+        return 1
+    engine, model, effort = placed["engine"], placed["model"], values["engines.%s.effort" % args.tier]
+    if override and not post_override(values, args, name, placed["host"], reason):
+        print("crew: refusing spawn: override reason not posted on the item")
         return 1
     run = "%s-pr%d-%s" % (role, args.pr, sha[:7]) if args.pr else ""
     run += "-r%d-%s" % (args.round, pass_) if data["lifetime"] == "pass" else ""  # review and validate coexist (#139 F3)
@@ -201,7 +263,10 @@ def run(args):
     wt = os.path.join(os.path.abspath(values["paths.worktree_root"]), "%s-%s-%s-%s%s" % (
         args.pr or args.issue or ("train%d" % train if train else "docs" if docs_pass else instance or "sweep"), sha[:7], role, "r%d-" % args.round if data["lifetime"] == "pass" else "", pass_))
     rec = {"index": free[0], "role": role, "item": item, "pass": pass_, "repo": repo, "worktree": None, "claim": claim,
-           "engine": engine, "model": model, "effort": effort, "harness": ENGINE_CMD[engine], "head": sha}
+           "engine": engine, "model": model, "effort": effort, "harness": ENGINE_CMD[engine], "head": sha,
+           "host": placed["host"], "placement": placed["placement"], "rejections": placed["rejections"]}
+    if override:
+        rec["override_reason"] = reason
     if role == "reviewer":  # the brief's verdict file, removed by mdstack kill
         rec["verdict"] = os.path.join(state, "verdicts", "pr%d-%s-r%d-%s.md" % (args.pr, sha[:7], args.round, pass_))
 

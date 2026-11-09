@@ -3,8 +3,8 @@
 > - **Status:** partly built
 > - **Applies to:** a tmux primary plus forge-less runner hosts
 > - **Current rules:** [tmux binding](tmux.md), [protocol](../protocol.md)
-> - **Built:** host inventory, `mdstack host check`, `mdstack hosts`, `mdstack host prepare`, the remote call and runner, [Forge-less hosts](#forge-less-hosts-remote-test-runner) and its [runbook](#runbook-add-a-runner-host), the [role-host runbook](#runbook-add-or-remove-a-role-host), the [host OS adapter](#host-os-adapters) dispatch and the `macos` and `linux` adapters, proved on fakes (#204–#206, #208, #349, #726–#729, #1358, #1359, #1363)
-> - **Design only:** placement and remote role sessions (#207, #345–#348) and the two-host dry run (#209), all open
+> - **Built:** host inventory, `mdstack host check`, `mdstack hosts`, `mdstack host prepare`, the remote call and runner, [Forge-less hosts](#forge-less-hosts-remote-test-runner) and its [runbook](#runbook-add-a-runner-host), the [role-host runbook](#runbook-add-or-remove-a-role-host), the [host OS adapter](#host-os-adapters) dispatch and the `macos` and `linux` adapters, [placement](#placement) in `mdstack spawn` (a host other than the primary refuses until #345), proved on fakes (#204–#208, #349, #726–#729, #1358, #1359, #1363)
+> - **Design only:** remote role sessions (#345–#348) and the two-host dry run (#209), all open
 > - **Last checked:** 2026-11-08 at `0e80f1d`
 
 How one coordinator runs role sessions on several hosts (laptops, a
