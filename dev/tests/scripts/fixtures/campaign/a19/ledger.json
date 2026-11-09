@@ -798,5 +798,121 @@
     "gap": "C9 ownership handoff: unsupported, compensated by the manual pause"
    }
   }
+ },
+ "live": {
+  "spec": "docs/campaign-harness.md#a19",
+  "claude-code/herdr": {
+   "fail": "ready: no ready line (run missing); the run exits 71 under the shared herdr server's inherited seatbelt sandbox, from an owner shell too",
+   "finding": "https://github.com/mw-ding/mdstack/issues/1469",
+   "source": "4832403f19d78a9438d5572d166adbc9f1d82cef",
+   "versions": {
+    "claude": "2.1.310 (Claude Code)",
+    "herdr": "herdr 0.7.5"
+   },
+   "link": "https://github.com/mw-ding/mdstack/pull/1461#issuecomment-6731071995"
+  },
+  "claude-code/tmux": {
+   "fail": "ready: no ready line (run ambiguous); Claude Code's folder-trust dialog is on screen for the smoke's fresh git-init worktree",
+   "finding": "https://github.com/mw-ding/mdstack/issues/1470",
+   "source": "4832403f19d78a9438d5572d166adbc9f1d82cef",
+   "versions": {
+    "claude": "2.1.310 (Claude Code)",
+    "tmux": "tmux 3.5a"
+   },
+   "link": "https://github.com/mw-ding/mdstack/pull/1461#issuecomment-6731071995"
+  },
+  "codex/herdr": {
+   "fail": "ready: no ready line (run missing); the run exits 71 under the shared herdr server's inherited seatbelt sandbox, from an owner shell too",
+   "finding": "https://github.com/mw-ding/mdstack/issues/1469",
+   "source": "4832403f19d78a9438d5572d166adbc9f1d82cef",
+   "versions": {
+    "codex": "codex-cli 0.166.0",
+    "herdr": "herdr 0.7.5"
+   },
+   "link": "https://github.com/mw-ding/mdstack/pull/1461#issuecomment-6731071995"
+  },
+  "codex/tmux": {
+   "evidence": "owner-shell run: launch, ready, doorbell, ack, probe alive and stop ok",
+   "source": "4832403f19d78a9438d5572d166adbc9f1d82cef",
+   "versions": {
+    "codex": "codex-cli 0.166.0",
+    "tmux": "tmux 3.5a"
+   },
+   "link": "https://github.com/mw-ding/mdstack/pull/1461#issuecomment-6731071995"
+  },
+  "cursor/herdr": {
+   "block": {
+    "installation": "ok: cursor-agent 2025.08.09-d8191f3 on PATH",
+    "version": "2025.08.09-d8191f3 (not launched)",
+    "account": "not checked",
+    "sandbox": "not reached",
+    "policy": "docs/roles.md hard rules: eng workers never use Cursor CLI; a live Cursor run needs the owner's session"
+   },
+   "link": "https://github.com/mw-ding/mdstack/issues/1439#issuecomment-6730811730"
+  },
+  "cursor/tmux": {
+   "block": {
+    "installation": "ok: cursor-agent 2025.08.09-d8191f3 on PATH",
+    "version": "2025.08.09-d8191f3 (not launched)",
+    "account": "not checked",
+    "sandbox": "not reached",
+    "policy": "docs/roles.md hard rules: eng workers never use Cursor CLI; a live Cursor run needs the owner's session"
+   },
+   "link": "https://github.com/mw-ding/mdstack/issues/1439#issuecomment-6730811730"
+  },
+  "grok-bot/mirror-watch": {
+   "block": {
+    "installation": "none: grok and grok-bot not on PATH (E4)",
+    "version": "none to pin",
+    "account": "no eligible Grok Bot account or runtime: the profile's runtime.name is tmux (E4)",
+    "sandbox": "no disposable sandbox repo for a level-b run; Docker cannot create this proof"
+   },
+   "link": "https://github.com/mw-ding/mdstack/issues/1439#issuecomment-6730811730"
+  },
+  "muse/herdr": {
+   "evidence": "launch, ready, doorbell, ack, probe alive and stop ok (E1)",
+   "source": "8fd928ef0378776f4875a406645ad3e87e7994db",
+   "versions": {
+    "muse": "Muse Code 1.4.15 (1.4.15-R8143.1)",
+    "herdr": "herdr 0.7.5"
+   },
+   "link": "https://github.com/mw-ding/mdstack/issues/1439#issuecomment-6730811730"
+  },
+  "muse/tmux": {
+   "evidence": "launch, ready, doorbell, ack, probe alive and stop ok (E1)",
+   "source": "8fd928ef0378776f4875a406645ad3e87e7994db",
+   "versions": {
+    "muse": "Muse Code 1.4.15 (1.4.15-R8143.1)",
+    "tmux": "tmux 3.5a"
+   },
+   "link": "https://github.com/mw-ding/mdstack/issues/1439#issuecomment-6730811730"
+  },
+  "opencode/herdr": {
+   "unsupported": "A tier-order and pack-capability engine with no interactive launch",
+   "spec": "docs/runtimes/harness-adapters.md#opencode-opencode"
+  },
+  "opencode/tmux": {
+   "unsupported": "A tier-order and pack-capability engine with no interactive launch",
+   "spec": "docs/runtimes/harness-adapters.md#opencode-opencode"
+  },
+  "pi/herdr": {
+   "fail": "ready: no ready line (run missing); the run exits 71 under the shared herdr server's inherited seatbelt sandbox, from an owner shell too",
+   "finding": "https://github.com/mw-ding/mdstack/issues/1469",
+   "source": "4832403f19d78a9438d5572d166adbc9f1d82cef",
+   "versions": {
+    "pi": "1.5.0",
+    "herdr": "herdr 0.7.5"
+   },
+   "link": "https://github.com/mw-ding/mdstack/pull/1461#issuecomment-6731071995"
+  },
+  "pi/tmux": {
+   "evidence": "owner-shell run: launch, ready, doorbell, ack, probe alive and stop ok",
+   "source": "4832403f19d78a9438d5572d166adbc9f1d82cef",
+   "versions": {
+    "pi": "1.5.0",
+    "tmux": "tmux 3.5a"
+   },
+   "link": "https://github.com/mw-ding/mdstack/pull/1461#issuecomment-6731071995"
+  }
  }
 }

@@ -345,8 +345,32 @@ rows. Each entry is one of:
 Refusal and ambiguous cases, and the Grok Bot runtime gaps (C1, C2, C3 and
 C5 accepted under #150), carry the same spec link. Every anchor, quote and
 test is checked, and each test file runs once. A gap is never counted as
-conformant. Installed CLIs and live Grok mirror or watch proof stay outside
-A19, because they need their own environment.
+conformant.
+
+Installed CLIs and live Grok mirror or watch proof need their own
+environment, so A19's scripted steps do not run them (#1439).
+`a19/smoke.py` runs once per installed harness and session backend
+binding, from an operator shell, never from CI. It drives one disposable
+run through the runtime's own code: launch, a `ready` line, the `mdstack
+send` doorbell, the inbox `ack:`, the C5 probe and the pane stop. tmux uses
+a dedicated server named for the run. herdr uses its local server and
+closes only the run's own workspace. Each JSON line pins the source SHA,
+both adapter files' sha256 and the harness and backend versions.
+A binding that is not installed, has no interactive launch or is skipped by
+policy (`--skip`) is reported as blocked.
+
+The ledger's `live` section names every harness and backend binding, plus
+each runtime's mirror and watch. Each entry is one of:
+
+- `evidence`: the source SHA, the versions and a link to the smoke capture;
+- `fail`: the same for a run that did not finish, plus the finding filed for
+  it, so a failure is never recorded as a gap or a block;
+- `block`: the installation, version, account and sandbox facts, with a
+  link to the capture that shows them;
+- `unsupported`: a quote from the adapter's spec section.
+
+A documented gap stays a gap even when its binding passes the smoke. Docker
+cannot supply live Grok mirror or watch proof.
 
 ### A20
 
