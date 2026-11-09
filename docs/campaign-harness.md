@@ -584,6 +584,53 @@ python3 environments/terminal/remote/lab/crew-lab-docker.py teardown "$SANDBOX/s
   sentinel check and a tmux decoy's survival in `state/lab/cleanup.json`;
   exit 1 means a changed sentinel or a lost decoy.
 
+### Lab runner scenarios
+
+`environments/terminal/remote/lab/crew-lab-scenarios.py` (M20.1 lab F, #1360)
+drives `mdstack runner` over the real hardened SSH call to a loopback lab
+host, between `setup` and `teardown`:
+
+```sh
+python3 environments/terminal/remote/lab/crew-lab-scenarios.py "$SANDBOX/state/manifest.json" \
+  --stage "$BUNDLE_STAGE" [--host lab-a] [--only NAME]
+```
+
+- **Client.** The primary runs the staged bundle itself, verified by
+  `scripts/crew-install.py` into `state/lab/toolkit/` and refused unless
+  its digest is the one the hosts activated, so both ends run one version.
+  macOS `ssh` reads `~/.ssh/config` from the account's home, never `HOME`,
+  so `state/lab/bin/ssh` adds `-F state/lab/home/.ssh/config` to `ssh -G`
+  only. Each call still runs the client's own `-F none` argv. The client
+  carries a decoy `GH_TOKEN`, `GITHUB_TOKEN`, `SSH_AUTH_SOCK` and `CREW_*`.
+- **Sample.** Branch `lab` of the sandbox repo has a `check-repo` that prints
+  its OS and any forge, crew or agent variable it sees, and
+  `dev/tests/lab/test-lab.py`, which each scenario commits red, green or
+  slow.
+- **Scenarios.** They start from A23's oracles. `exact-head`: the stored
+  result at HEAD matches the same commands run locally, and the host job
+  sees a clean env. `red`: a red run, not a fallback. `idempotent`: a
+  repeated request ID returns its first reply, and a new one for the job ID
+  returns the first job. `stale`: a stale head is refused before any call,
+  and an unseeded head by the host.
+- **Injections.** Each one is confirmed by a `version` call that fails
+  while it holds and answers once it is lifted. `disconnect` is
+  `docker network disconnect` mid-job, with the container and runner pids
+  kept: the client falls back locally, and after reconnect the same job's
+  result is pulled, with no second job at that head. `pause` is the
+  unresponsive host: the client falls back, and the job finishes after
+  `unpause`. `runner` kills the runner only: the supervisor starts a new
+  one, `sshd` keeps its pid, and a job passes. `recreate` replaces the
+  container mid-job (label-checked, with a new ID, host key and port, the
+  manifest and SSH config updated): the client falls back, the host never
+  reports the lost job done, and a fresh job passes. `partition` disconnects
+  a role host: over real SSH it is `unreachable`, placement queues a role
+  run that needs it rather than placing it elsewhere, and the item's claim
+  file is unchanged. Remote role runs and their reconcile wait for #345 and
+  #347.
+- **Report.** Each scenario prints `PASS` or `FAIL`, and
+  `state/lab/scenarios.json` keeps what it saw. Exit 1 on any `FAIL`, 2 on
+  a refusal.
+
 ### Level c: owner-run devices and second environment
 
 Level c reuses

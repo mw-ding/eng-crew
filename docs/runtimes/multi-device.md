@@ -712,7 +712,9 @@ digests and, for a dev tag, the exact source SHA. `authorize` writes the
 run's key as the only `authorized_keys` line, forced and `restrict`. No
 login, token, SSH agent or home is copied in. Container setup and teardown
 (#1357) is `crew-lab-docker.py` on the primary, described in the
-[campaign harness](../campaign-harness.md#lab-hosts-in-docker).
+[campaign harness](../campaign-harness.md#lab-hosts-in-docker). Its runner
+scenarios and failure injection (#1360) are
+[`crew-lab-scenarios.py`](../campaign-harness.md#lab-runner-scenarios).
 
 **Lab base.** `LAB_BASE` comes from `base.Dockerfile` beside it (#1430):
 official `debian:bookworm-slim` pinned by its `linux/arm64` manifest
