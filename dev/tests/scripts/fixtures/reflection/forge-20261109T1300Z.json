@@ -1,0 +1,181 @@
+[
+ {
+  "number": 1341,
+  "url": "https://github.com/mw-ding/mdstack/pull/1341",
+  "state": "MERGED",
+  "title": "feat(#1157): show each role's emoji on its tmux and herdr tab, display-only",
+  "labels": [],
+  "createdAt": "2026-11-08T07:10:57Z",
+  "closedAt": "2026-11-08T08:02:03Z",
+  "body": "## Context\n\nThe owner asked that each role's tab show its emoji with its name, so the tab bar tells roles apart at a glance. The `[identities]` emoji were used only in post signatures; no session adapter read them. Window names (tmux) and workspace labels (herdr) are the targeting identity, so the emoji must live in a display-only layer.",
+  "comments": []
+ },
+ {
+  "number": 1373,
+  "url": "https://github.com/mw-ding/mdstack/pull/1373",
+  "state": "MERGED",
+  "title": "fix(#1290): route review dedup counts only this runtime's reviewer markers",
+  "labels": [],
+  "createdAt": "2026-11-08T20:31:32Z",
+  "closedAt": "2026-11-08T22:04:06Z",
+  "body": "## Context\n\n`mdstack route` dedups reviewer spawns against posted pass markers. It joined every review body on the PR and matched role/PR/head/round/pass with no check on who posted it. So review, validate or verdict markers from another runtime (another login, or the same login signed as another reviewer, as with `md-mt` signed Grok Bot on termproof) suppressed this runtime's own review and validation. The PR then sat with no local verdict until someone steered a rereview.",
+  "comments": []
+ },
+ {
+  "number": 1392,
+  "url": "https://github.com/mw-ding/mdstack/pull/1392",
+  "state": "MERGED",
+  "title": "fix(#846): close-out closes a linked issue GitHub's auto-close left open",
+  "labels": [],
+  "createdAt": "2026-11-08T21:14:20Z",
+  "closedAt": "2026-11-08T22:08:37Z",
+  "body": "## Context\n\nWhen GitHub's auto-close misses, the merged-PR close-out leaves the linked issue open. #834→#765, #845→#839, #889→#860, #1022→#986 and #1029→#754 all merged with `closingIssuesReferences` set and the issues still OPEN, and the coordinator had to catch each one by hand (most were train lands). A landed issue left open reads as unfinished to dependents and was nearly rebuilt once (#860).",
+  "comments": []
+ },
+ {
+  "number": 1398,
+  "url": "https://github.com/mw-ding/mdstack/issues/1398",
+  "state": "OPEN",
+  "title": "intake: conflicting-pr-gets-no-ci on mw-ding/mdstack",
+  "labels": [
+   {
+    "name": "bug"
+   },
+   {
+    "name": "P1"
+   }
+  ],
+  "createdAt": "2026-11-08T21:33:53Z",
+  "closedAt": null,
+  "body": "**Source:** mw-ding/mdstack (run blocker, no item)\n**Trigger:** runtime-blocker\n**Failure class:** conflicting-pr-gets-no-ci\n**Proposed fix:** for triage\n**Scope:** crew: - a crew or runtime defect seen during a run (triage: confirm or promote)\n**Lesson:** none yet\n**Findings entry:** none yet\n**Decision:** pending\n\n## Run\n\n- Window: none\n- Summary: three approved PRs today (#1341, #1373, #1392) conflicted with main after other lands; GitHub runs no pull_request CI on a CONFLICTING PR, so each reached review-approved with no checks at all and stalled until the coordinator noticed and handed a merge-up by hand. poll/route could detect mergeable=CONFLICTING on an open crew PR (at new-head, review-approved or after each land) and queue a builder merge-up automatically\n",
+  "comments": [
+   {
+    "createdAt": "2026-11-09T00:50:51Z",
+    "url": "https://github.com/mw-ding/mdstack/issues/1398#issuecomment-6729624369",
+    "body": "[Riley/triage] #1398: classify P1\n\nTL;DR: P1 / bug: three approved conflicting PRs stalled without CI (#1341, #1373, #1392), meeting the recurring-failure criterion. Manual merge-ups repaired those occurrences; automatic conflict-to-builder routing remains the reported gap."
+   }
+  ]
+ },
+ {
+  "number": 1474,
+  "url": "https://github.com/mw-ding/mdstack/issues/1474",
+  "state": "CLOSED",
+  "title": "intake: session-loss on mw-ding/mdstack",
+  "labels": [],
+  "createdAt": "2026-11-09T03:47:38Z",
+  "closedAt": "2026-11-09T05:08:57Z",
+  "body": "**Source:** mw-ding/mdstack (run blocker, no item)\n**Trigger:** runtime-blocker\n**Failure class:** session-loss\n**Proposed fix:** for triage\n**Scope:** crew: - a crew or runtime defect seen during a run (triage: confirm or promote)\n**Lesson:** none yet\n**Findings entry:** none yet\n**Decision:** pending\n\n## Run\n\n- Window: none\n- Summary: Whole crew tmux server died at 2026-11-09T03:16:42Z (all windows incl. ash, both leads, 5 builders, 2 reviewers, sam); no reboot or sleep; owner restarted at 03:44Z. Suspect: a worker test run in a crew pane (1471 r1 validate was mid test-crew-bootstrap.py) reached the owner's tmux server; unconfirmed.\n",
+  "comments": [
+   {
+    "createdAt": "2026-11-09T03:51:45Z",
+    "url": "https://github.com/mw-ding/mdstack/issues/1474#issuecomment-6731802512",
+    "body": "[Riley/research] #1474\n\nTL;DR: The shutdown aligns with **ben-1440’s ad-hoc A28 cleanup**, which issued bare `tmux kill-server` at **03:16:41.125Z**; its tool returned exit 137 at **03:16:42.736Z**. The command left `TMUX` inherited and bypassed the sandbox shim, repeating #817’s documented mechanism. Respawning does not remove this hazard; package repeated-run cleanup through the existing manifest-based teardown before resuming that workflow."
+   },
+   {
+    "createdAt": "2026-11-09T03:56:23Z",
+    "url": "https://github.com/mw-ding/mdstack/issues/1474#issuecomment-6731855997",
+    "body": "[Ash/triage] #1474: accepted → #1475\n\nRoot cause confirmed by Riley above: a builder's ad-hoc cleanup ran a bare `tmux kill-server` from a crew pane with `TMUX` inherited. Guard posted on #1440 and delivered to its builder (ack `20261109T035448Z-818fc4`). The structural fix is #1475 (`crew:ready`, M25.1, dispatched now). This card stays open until #1475 merges."
+   },
+   {
+    "createdAt": "2026-11-09T05:08:56Z",
+    "url": "https://github.com/mw-ding/mdstack/issues/1474#issuecomment-6732739764",
+    "body": "[Ash/triage] closed: root-cause fix merged\n\n#1475 merged in https://github.com/mw-ding/mdstack/pull/1482: a worker or lead pane's bare `tmux kill-server` / `kill-session` / `kill-window` can no longer reach the crew server, with the crew on the owner's default server (no private socket, per the owner's direction in [#985 c6731966111](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6731966111)). It ships with a decoy-server test and a worker-brief rule. Running sessions pick up the guard on their next spawn or restart."
+   },
+   {
+    "createdAt": "2026-11-09T05:09:09Z",
+    "url": "https://github.com/mw-ding/mdstack/issues/1474#issuecomment-6732742384",
+    "body": "[Ash/note] correction: the guard is live only after the next release install\n\nThis crew runs from an installed release (7.0.0 bundle), not from `main`. So the #1475 guard reaches running crews when the next release that contains it is installed, not on the next spawn. Until then, the #1440 guard rule and the decoy-tested A28 cleanup are the protection in this run."
+   }
+  ]
+ },
+ {
+  "number": 1475,
+  "url": "https://github.com/mw-ding/mdstack/issues/1475",
+  "state": "CLOSED",
+  "title": "crew safety: a worker pane's bare tmux kill must not reach the crew server (#1474)",
+  "labels": [
+   {
+    "name": "enhancement"
+   },
+   {
+    "name": "P1"
+   }
+  ],
+  "createdAt": "2026-11-09T03:55:45Z",
+  "closedAt": "2026-11-09T05:07:41Z",
+  "body": "## Problem\n\nA builder's ad-hoc test cleanup ran a bare `tmux kill-server` from its crew pane with `TMUX` inherited, and killed the live crew server at 2026-11-09T03:16:42Z: every window died, and the owner had to restart the crew. Root cause and evidence: [Riley's finding on #1474](https://github.com/mw-ding/mdstack/issues/1474#issuecomment-6731802512). It's the #817 mechanism again. #817's sandbox shim and #1156's `scripts/run-tests.py` isolation each protect only calls that go through them, and neither covers an arbitrary shell command in a worker pane.",
+  "comments": []
+ },
+ {
+  "number": 1482,
+  "url": "https://github.com/mw-ding/mdstack/pull/1482",
+  "state": "MERGED",
+  "title": "fix(#1475): a worker pane's bare tmux kill misses the crew server",
+  "labels": [
+   {
+    "name": "P1"
+   }
+  ],
+  "createdAt": "2026-11-09T04:40:25Z",
+  "closedAt": "2026-11-09T05:07:40Z",
+  "body": "## Context\n\nTL;DR: a bare `tmux kill-server` / `kill-session` / `kill-window` from a worker or lead window can no longer reach the crew's server. The tmux adapter now opens every role window with `TMUX=/dev/null/mdstack-worker,0,0`, a socket no server can listen on. Bare tmux calls follow `$TMUX` ahead of `TMUX_TMPDIR`, so they fail with `Not a directory`. The crew stays on the owner's default server: no dedicated or private crew socket, per the owner's direction ([#985 c6731966111](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6731966111)). This is the mechanism behind #1474's outage, #1155 (folded in) and #817.",
+  "comments": []
+ },
+ {
+  "number": 1483,
+  "url": "https://github.com/mw-ding/mdstack/issues/1483",
+  "state": "OPEN",
+  "title": "intake: stale-changes-label on mw-ding/mdstack",
+  "labels": [],
+  "createdAt": "2026-11-09T04:56:10Z",
+  "closedAt": null,
+  "body": "**Source:** mw-ding/mdstack (run blocker, no item)\n**Trigger:** runtime-blocker\n**Failure class:** stale-changes-label\n**Proposed fix:** for triage\n**Scope:** crew: - a crew or runtime defect seen during a run (triage: confirm or promote)\n**Lesson:** none yet\n**Findings entry:** none yet\n**Decision:** pending\n\n## Run\n\n- Window: vera-lead (no run record)\n- Summary: A passing reviewer verdict after a changes round leaves crew:changes beside crew:approved (#1472 at r4, #1467 at r2), and the synthesizer then refuses the land on that label alone; the coordinator cleared both by hand. The reviewer's pass verdict (or route on review-approved) should drop crew:changes.\n",
+  "comments": []
+ },
+ {
+  "number": 1467,
+  "url": "https://github.com/mw-ding/mdstack/pull/1467",
+  "state": "MERGED",
+  "title": "feat(#345): remote run lifecycle: spawn, kill, restart and down on the placed host [20.8]",
+  "labels": [],
+  "createdAt": "2026-11-09T02:46:45Z",
+  "closedAt": "2026-11-09T05:05:53Z",
+  "body": "## Context\n\nM20.1 item 20.8. A placement on a role host refused until now (\"remote run lifecycle is #345\"). This PR makes `mdstack spawn` start the run on the placed host through the runner, and makes `kill`, `restart` and `down` drive it there while keeping the C6 worktree guards on that host (docs/runtimes/multi-device.md, remote acceptance criteria row #345).",
+  "comments": []
+ },
+ {
+  "number": 1502,
+  "url": "https://github.com/mw-ding/mdstack/issues/1502",
+  "state": "OPEN",
+  "title": "intake: deferred-handoff-renudge on mw-ding/mdstack",
+  "labels": [
+   {
+    "name": "bug"
+   },
+   {
+    "name": "P1"
+   }
+  ],
+  "createdAt": "2026-11-09T09:03:08Z",
+  "closedAt": null,
+  "body": "**Source:** mw-ding/mdstack (run blocker, no item)\n**Trigger:** runtime-blocker\n**Failure class:** deferred-handoff-renudge\n**Proposed fix:** for triage\n**Scope:** crew: - a crew or runtime defect seen during a run (triage: confirm or promote)\n**Lesson:** none yet\n**Findings entry:** none yet\n**Decision:** pending\n\n## Run\n\n- Window: ben-lead (no run record)\n- Summary: A build handoff the builder lead acked and admission-deferred (cap 10/10) stays 'pending' (no done: until a worker record exists), so lead.py retry_pending re-types 'inbox: <id>' into ben-lead on every poll: about 10 nudges in 15 minutes for #1053 (id 20261109T084445Z-f47061), costing the lead turns while builders are saturated. Retry should skip acked handoffs whose lead status carries a matching deferred: line.\n",
+  "comments": [
+   {
+    "createdAt": "2026-11-09T12:24:14Z",
+    "url": "https://github.com/mw-ding/mdstack/issues/1502#issuecomment-6739983749",
+    "body": "[Riley/triage] #1502: classify P1\n\nTL;DR: Acknowledged, capacity-deferred handoffs keep nudging the saturated builder lead. The report measures about ten nudges in fifteen minutes; this is P1 by the measured throughput/cost criterion, with no current P0 incident established."
+   }
+  ]
+ },
+ {
+  "number": 1514,
+  "url": "https://github.com/mw-ding/mdstack/pull/1514",
+  "state": "MERGED",
+  "title": "feat(#1053): owner-present caps under the session runtime",
+  "labels": [],
+  "createdAt": "2026-11-09T11:51:26Z",
+  "closedAt": "2026-11-09T12:18:41Z",
+  "body": "## Context\n\nThe owner-present admission limits `present_builders` and `present_reviewers` were tmux-only, so a pack moving to `runtime.name = \"session\"` had to keep them in unchecked prose. This accepts both under `session` with the tmux meaning (default: the full cap), refuses a value above the full cap, and renders them in the session coordinator brief. tmux validation and admission are unchanged.",
+  "comments": []
+ }
+]
