@@ -128,7 +128,8 @@ run record. It redacts credentials (tokens, bearer values, URL credentials,
 `<home>`, any other absolute path as `<path>`) and files the card in `<owner>/mdstack` (or
 `--repo`) with Scope `crew:` and Decision `pending`. When an open card
 already has that Failure class, it adds the new evidence as a comment
-instead. If it cannot list the open cards, it files nothing. Use
+instead. If it cannot list the open cards, it files nothing and prints
+why: `gh`'s error, or `unreadable answer:` and the answer's first line. Use
 `--dry-run` to print the card without posting. The coordinator never edits
 mdstack itself; it carries on with a product-side workaround, if any. The
 next triage sweep picks the card up.

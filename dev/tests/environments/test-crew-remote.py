@@ -10,6 +10,8 @@ import importlib.util
 import io
 import json
 import os
+import platform
+import plistlib
 import shutil
 import subprocess
 import sys
@@ -92,7 +94,8 @@ class Base(unittest.TestCase):
 class Entrypoint(Base):
     def test_version_and_runner_state(self):
         reply = remote.handle(dict(verb="version"), self.root)
-        self.assertEqual(reply, dict(result="ok", version=remote.version(), runner="down"))
+        self.assertEqual(reply, dict(result="ok", version=remote.version(), runner="down",
+                                     os=remote.UNAMES.get(platform.system(), platform.system().lower())))
         self.assertEqual(remote.runner(self.root, once=True), 0)
         self.assertEqual(remote.handle(dict(verb="version"), self.root)["runner"], "up")
         beat = self.load(os.path.join(self.root, "runner.json"))
@@ -189,7 +192,8 @@ class Client(Base):
 
     def test_simulated_host_end_to_end(self):
         os.environ["FAKE_SSH_MODE"] = "host"
-        self.assertEqual(remote.call("host-b", "version"), dict(result="ok", version=remote.version(), runner="down"))
+        self.assertEqual(remote.call("host-b", "version"), dict(result="ok", version=remote.version(), runner="down",
+                                                                os=remote.UNAMES.get(platform.system(), platform.system().lower())))
         subprocess.run([sys.executable, SCRIPT, "--root", self.root, "runner", "--once"], check=True)
         self.assertEqual(remote.call("host-b", "version")["runner"], "up")
         self.assertIn("not built", remote.call("host-b", "spawn")["reason"])
@@ -331,6 +335,241 @@ class Check(Mirror):
         self.assertEqual(rows["logins"], ("fail", "gh logged in"))
         self.assertEqual(rows["capacity"][0], "fail")
         self.assertEqual(rows["project mirror"][0], "fail")
+
+
+class HostOs(Mirror):
+    """#1358: the entrypoint picks its host OS adapter from the declared os against its uname (check 5)."""
+    def handle(self, uname, verb, **fields):
+        with mock.patch.object(remote.platform, "system", return_value=uname):
+            return remote.handle(self.request(verb, **fields), self.root)
+
+    def rows(self, reply):
+        return {c["check"]: (c["status"], c["detail"]) for c in reply["checks"]}
+
+    def test_mismatch_fails_check_and_prepare_before_any_change(self):
+        check = dict(project="acme__widgets", default_branch="main", forge=False, capabilities={"os": "macos"})
+        self.assertEqual(self.rows(self.handle("Linux", "check", **check))["capabilities"],
+                         ("fail", "declared os macos, host is linux"))
+        for verb in ("prepare", "seed"):
+            reply = self.handle("Linux", verb, project="acme__widgets", os="macos", request_id="r-" + verb)
+            self.assertEqual(reply, dict(result="failed", step="capabilities", error="declared os macos, host is linux"))
+        self.assertFalse(os.path.exists(os.path.join(self.root, "mirrors")))
+        self.assertFalse(os.path.exists(os.path.join(self.root, "wt")))
+        self.assertEqual(self.handle("Linux", "prepare", project="acme__widgets", os="linux",
+                                     request_id="r-ok")["result"], "ok")
+        self.assertEqual(self.handle("Darwin", "version")["os"], "macos")
+
+    def test_undeclared_os_adds_no_row(self):
+        check = dict(project="acme__widgets", default_branch="main", forge=False)
+        rows = self.rows(self.handle("Linux", "check", capabilities={}, ssh_port=22, **check))
+        self.assertNotIn("capabilities", rows)
+        self.assertNotIn("ssh listener", rows)
+        self.assertEqual(rows["tools"], ("ok", "git, tmux"))
+
+    def test_linux_adapter_backs_check(self):
+        """#1359: systemd mode on a host without the lab image's supervised file."""
+        for name, text in (("systemctl", "#!/bin/sh\necho inactive\nexit 3\n"),
+                           ("loginctl", "#!/bin/sh\necho no\n"),
+                           ("ss", "#!/bin/sh\necho 'LISTEN 0 128 0.0.0.0:22 0.0.0.0:*'\n")):
+            with open(os.path.join(self.bin, name), "w") as f:
+                f.write(text)
+            os.chmod(os.path.join(self.bin, name), 0o755)
+        remote.runner(self.root, once=True)
+        rows = self.rows(self.handle("Linux", "check", project="acme__widgets", default_branch="main", forge=False,
+                                     capabilities={"os": "linux"}, ssh_port=22))
+        self.assertEqual(rows["capabilities"], ("ok", "os linux"))
+        self.assertEqual(rows["tools"], ("ok", "git, tmux, systemctl, loginctl"))
+        self.assertEqual(rows["runner"], ("ok", "up; linux inactive"))
+        self.assertEqual(rows["linger"], ("warn", "Linger is off: the runner stops at logout"))
+        self.assertEqual(rows["ssh listener"], ("warn", "port 22 listens on *"))
+
+    def test_macos_adapter_backs_check(self):
+        for name, text in (("launchctl", '#!/bin/sh\n[ "$1" = print ] && echo "	state = running"\nexit 0\n'),
+                           ("netstat", "#!/bin/sh\necho 'tcp4  0  0  *.22   *.*   LISTEN'\n")):
+            with open(os.path.join(self.bin, name), "w") as f:
+                f.write(text)
+            os.chmod(os.path.join(self.bin, name), 0o755)
+        remote.runner(self.root, once=True)
+        rows = self.rows(self.handle("Darwin", "check", project="acme__widgets", default_branch="main", forge=False,
+                                     capabilities={"os": "macos"}, ssh_port=22))
+        self.assertEqual(rows["capabilities"], ("ok", "os macos"))
+        self.assertEqual(rows["tools"], ("ok", "git, tmux, launchctl"))
+        self.assertEqual(rows["runner"], ("ok", "up; macos running"))
+        self.assertEqual(rows["ssh listener"], ("warn", "port 22 listens on *"))
+
+
+class MacosAdapter(unittest.TestCase):
+    """#1358: the macOS adapter against a fake `run`; real launchd proof waits for a macOS VM or host (#1353 J)."""
+    def setUp(self):
+        spec = importlib.util.spec_from_file_location("macos", os.path.join(os.path.dirname(SCRIPT), "hostos", "macos.py"))
+        self.macos = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.macos)
+        self.home = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.home)
+        self.argvs, self.replies = [], {}
+
+    def run_fake(self, argv):
+        self.argvs.append(argv)
+        return self.replies.get(argv[1] if argv[0] == "launchctl" else argv[0], (0, ""))
+
+    def test_install_is_an_idempotent_keepalive_agent(self):
+        self.replies["print"] = (113, "Could not find service")
+        path = self.macos.install(self.run_fake, self.home, 501, "/usr/bin/python3", "/b/crew-remote.py", "/r")
+        self.assertEqual(path, os.path.join(self.home, "Library/LaunchAgents/dev.mdstack.runner.plist"))
+        with open(path, "rb") as f:
+            agent = plistlib.load(f)
+        self.assertEqual((agent["KeepAlive"], agent["RunAtLoad"], agent["ProgramArguments"]),
+                         (True, True, ["/usr/bin/python3", "/b/crew-remote.py", "--root", "/r", "runner"]))
+        self.assertEqual(self.argvs[-1], ["launchctl", "bootstrap", "gui/501", path])
+        self.argvs, self.replies = [], {}
+        self.macos.install(self.run_fake, self.home, 501, "/usr/bin/python3", "/b/crew-remote.py", "/r")
+        self.assertEqual([a[1] for a in self.argvs], ["print", "bootout", "bootstrap"])
+        self.replies["bootstrap"] = (5, "Bootstrap failed: 5: Input/output error")
+        with self.assertRaisesRegex(RuntimeError, "Input/output error"):
+            self.macos.install(self.run_fake, self.home, 501, "/usr/bin/python3", "/b/crew-remote.py", "/r")
+
+    def test_start_stop_status_uninstall_act_on_the_agent_only(self):
+        self.assertTrue(self.macos.start(self.run_fake, 501))
+        self.assertTrue(self.macos.stop(self.run_fake, 501))
+        self.assertEqual(self.argvs, [["launchctl", "kickstart", "-k", "gui/501/dev.mdstack.runner"],
+                                      ["launchctl", "bootout", "gui/501/dev.mdstack.runner"]])
+        for reply, state in (((0, "gui/501/dev.mdstack.runner = {\n\tstate = running\n"), "running"),
+                             ((0, "\tstate = not running\n"), "loaded"), ((113, ""), "absent")):
+            self.replies["print"] = reply
+            self.assertEqual(self.macos.status(self.run_fake, 501), state)
+        self.replies["print"] = (113, "")
+        self.macos.install(self.run_fake, self.home, 501, "python3", "crew-remote.py", "/r")
+        self.macos.uninstall(self.run_fake, self.home, 501)
+        self.assertFalse(os.path.exists(self.macos.plist_path(self.home)))
+
+    def test_start_time_reads_darwin_lstart(self):
+        self.replies["env"] = (0, "Sun Nov  8 14:44:16 2026\n")
+        expected = int(time.mktime((2026, 11, 8, 14, 44, 16, 0, 0, -1)))
+        self.assertEqual(self.macos.start_time(self.run_fake, 42), expected)
+        self.assertEqual(self.argvs[-1], ["env", "LC_ALL=C", "ps", "-o", "lstart=", "-p", "42"])
+        for reply in ((1, ""), (0, "garbage\n")):
+            self.replies["env"] = reply
+            self.assertEqual(self.macos.start_time(self.run_fake, 42), "missing")
+
+    def test_listener_row_warns_on_wildcard_or_public_only(self):
+        netstat = ("Active Internet connections (including servers)\n"
+                   "tcp4       0      0  100.64.1.2.22          *.*                    LISTEN     \n"
+                   "tcp4       0      0  10.1.10.5.22           10.1.10.9.50000        ESTABLISHED\n"
+                   "tcp46      0      0  *.2222                 *.*                    LISTEN     \n"
+                   "tcp4       0      0  17.1.2.3.2222       *.*                    LISTEN     \n")
+        self.replies["netstat"] = (0, netstat)
+        self.assertEqual(self.macos.listener_row(self.run_fake, 22),
+                         dict(status="ok", check="ssh listener", detail="port 22 on 100.64.1.2"))
+        row = self.macos.listener_row(self.run_fake, 2222)
+        self.assertEqual((row["status"], row["detail"]), ("warn", "port 2222 listens on *, 17.1.2.3"))
+        self.assertEqual(self.argvs[-1], ["netstat", "-an", "-p", "tcp"])
+
+
+class LinuxAdapter(unittest.TestCase):
+    """#1359: the Linux adapter against a fake `run`; a real systemd user unit with lingering needs a systemd-capable
+    Linux guest, which a no-systemd lab container does not prove."""
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp)
+        self.marker = os.path.join(self.tmp, "supervised")
+        self.linux = self.load()
+        self.home = os.path.join(self.tmp, "home")
+        self.argvs, self.replies = [], {}
+
+    def load(self):
+        spec = importlib.util.spec_from_file_location("linux", os.path.join(os.path.dirname(SCRIPT), "hostos", "linux.py"))
+        module = importlib.util.module_from_spec(spec)
+        real = open
+        with mock.patch("builtins.open", lambda p, *a, **k: real(self.marker if p == "/etc/mdstack/supervised" else p,
+                                                                 *a, **k)):
+            spec.loader.exec_module(module)
+        module.SUPERVISED = self.marker
+        return module
+
+    def run_fake(self, argv):
+        self.argvs.append(argv)
+        return self.replies.get(argv[2] if argv[0] == "systemctl" else argv[1] if argv[0] == "loginctl" else argv[0],
+                                (0, ""))
+
+    def test_install_is_an_idempotent_restart_always_unit_with_linger(self):
+        path = self.linux.install(self.run_fake, self.home, 1000, "/usr/bin/python3", "/b/crew-remote.py", "/r x")
+        self.assertEqual(path, os.path.join(self.home, ".config/systemd/user/mdstack-runner.service"))
+        with open(path) as f:
+            unit = f.read()
+        self.assertIn('ExecStart="/usr/bin/python3" "/b/crew-remote.py" "--root" "/r x" "runner"\n', unit)
+        self.assertIn("Restart=always\n", unit)
+        self.assertIn("WantedBy=default.target\n", unit)
+        self.assertEqual(self.argvs, [["systemctl", "--user", "daemon-reload"],
+                                      ["systemctl", "--user", "enable", "--now", "mdstack-runner.service"],
+                                      ["loginctl", "enable-linger", "1000"]])
+        self.assertEqual(self.linux.install(self.run_fake, self.home, 1000, "python3", "crew-remote.py", "/r"), path)
+        self.replies["enable"] = (1, "Failed to connect to bus: No medium found")
+        with self.assertRaisesRegex(RuntimeError, "No medium found"):
+            self.linux.install(self.run_fake, self.home, 1000, "python3", "crew-remote.py", "/r")
+
+    def test_start_stop_status_linger_uninstall_act_on_the_user_unit_only(self):
+        self.assertTrue(self.linux.start(self.run_fake, 1000))
+        self.assertTrue(self.linux.stop(self.run_fake, 1000))
+        self.assertEqual(self.argvs, [["systemctl", "--user", "start", "mdstack-runner.service"],
+                                      ["systemctl", "--user", "stop", "mdstack-runner.service"]])
+        for reply, state in (((0, "active\n"), "active"), ((3, "inactive\n"), "inactive"),
+                             ((1, "Failed to connect to bus: No medium found\n"), "no user manager")):
+            self.replies["is-active"] = reply
+            self.assertEqual(self.linux.status(self.run_fake, 1000), state)
+        self.replies["show-user"] = (0, "yes\n")
+        self.assertEqual(self.linux.service_rows(self.run_fake, 1000), [dict(status="ok", check="linger",
+                                                                             detail="Linger=yes")])
+        self.assertEqual(self.argvs[-1], ["loginctl", "show-user", "1000", "--property=Linger", "--value"])
+        self.replies["show-user"] = (1, "User 1000 is not logged in or lingering")
+        self.assertEqual(self.linux.service_rows(self.run_fake, 1000)[0]["status"], "warn")
+        path = self.linux.install(self.run_fake, self.home, 1000, "python3", "crew-remote.py", "/r")
+        self.linux.uninstall(self.run_fake, self.home, 1000)
+        self.assertEqual(self.argvs[-1], ["systemctl", "--user", "disable", "--now", "mdstack-runner.service"])
+        self.assertFalse(os.path.exists(path))
+
+    def test_supervised_is_selected_by_the_image_file_never_by_a_missing_systemd(self):
+        self.assertEqual(self.linux.TOOLS, ["systemctl", "loginctl"])
+        with open(self.marker, "w") as f:
+            f.write("crew-lab-host.py\n")
+        supervised = self.load()
+        self.assertEqual(supervised.TOOLS, [])
+        self.assertEqual(supervised.install(self.run_fake, self.home, 1000, "python3", "crew-remote.py", "/r"),
+                         "n/a: supervised")
+        self.assertEqual((supervised.start(self.run_fake, 1000), supervised.stop(self.run_fake, 1000)), (False, False))
+        self.assertEqual(supervised.status(self.run_fake, 1000), "supervised")
+        self.assertEqual(supervised.service_rows(self.run_fake, 1000), [])
+        supervised.uninstall(self.run_fake, self.home, 1000)
+        self.assertEqual(self.argvs, [])
+        self.assertFalse(os.path.exists(self.home))
+
+    def test_start_time_reads_procfs_then_ps(self):
+        proc = os.path.join(self.tmp, "proc")
+        os.makedirs(os.path.join(proc, "42"))
+        with open(os.path.join(proc, "42", "stat"), "w") as f:
+            f.write("42 (crew (remote)) S 1 42 42 0 -1 4194560 1 0 0 0 0 0 0 0 20 0 1 0 %d 1000 100\n"
+                    % (250 * os.sysconf("SC_CLK_TCK")))
+        with open(os.path.join(proc, "stat"), "w") as f:
+            f.write("cpu  1 2 3\nbtime 1793000000\nprocesses 9\n")
+        self.assertEqual(self.linux.start_time(self.run_fake, 42, proc), 1793000250)
+        self.assertEqual(self.argvs, [])
+        self.replies["env"] = (0, "Sun Nov  8 14:44:16 2026\n")
+        self.assertEqual(self.linux.start_time(self.run_fake, 7, proc),
+                         int(time.mktime((2026, 11, 8, 14, 44, 16, 0, 0, -1))))
+        self.assertEqual(self.argvs[-1], ["env", "LC_ALL=C", "ps", "-o", "lstart=", "-p", "7"])
+        self.replies["env"] = (1, "")
+        self.assertEqual(self.linux.start_time(self.run_fake, 7, proc), "missing")
+
+    def test_listener_row_warns_on_wildcard_or_public_only(self):
+        self.replies["ss"] = (0, "LISTEN 0 128 100.64.1.2:22 0.0.0.0:*\n"
+                                 "LISTEN 0 128 [fd7a:115c::1]:22 [::]:*\n"
+                                 "LISTEN 0 128 [::]:2222 [::]:*\n"
+                                 "LISTEN 0 128 127.0.0.1%lo:2222 0.0.0.0:*\n"
+                                 "LISTEN 0 128 17.1.2.3:2222 0.0.0.0:*\n")
+        self.assertEqual(self.linux.listener_row(self.run_fake, 22),
+                         dict(status="ok", check="ssh listener", detail="port 22 on 100.64.1.2, fd7a:115c::1"))
+        row = self.linux.listener_row(self.run_fake, 2222)
+        self.assertEqual((row["status"], row["detail"]), ("warn", "port 2222 listens on *, 17.1.2.3"))
+        self.assertEqual(self.argvs[-1], ["ss", "-Hltn"])
 
 
 class Toolkit(Mirror):

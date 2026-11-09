@@ -404,8 +404,13 @@ class Route(SpawnBase):
 
     def test_queued_researcher_done_spares_a_respawn_under_the_same_name(self):  # #1092
         self.assertEqual(self.spawn("researcher", "--issue", "7").returncode, 0)
-        with open(os.path.join(self.state, "runs", "riley-7.json")) as f:
+        run = os.path.join(self.state, "runs", "riley-7.json")
+        with open(run) as f:
             first = json.load(f)
+        # the fake tmux gives no pane identity, so a respawn in the same second would match on start alone (#1453)
+        first["start"] = "2000-01-01T00:00:00Z"
+        with open(run, "w") as f:
+            json.dump(first, f)
         done = dict(reason="status", window="riley-7", line="done: #7 research https://example.invalid/c/1",
                     run=[first.get(k) for k in ("start", "pane_id", "pane_pid", "pane_start", "worktree")])
         self.queue(done)

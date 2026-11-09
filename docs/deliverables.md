@@ -100,6 +100,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `docs/metrics/README.md` | Internal | n/a | Maintainer docs: metrics and drills, not loaded by roles |
 | `docs/metrics/baseline-m25.md` | Internal | n/a | Maintainer docs: metrics and drills, not loaded by roles |
 | `docs/metrics/decisions.md` | Deliverable | all | Coordinator procedure: metrics gates the coordinator runs |
+| `docs/metrics/m25-1-evidence-ledger.md` | Internal | n/a | Maintainer docs: metrics and drills, not loaded by roles |
 | `docs/metrics/m25-report.md` | Internal | n/a | Maintainer docs: metrics and drills, not loaded by roles |
 | `docs/metrics/owner-sla-drill.md` | Internal | n/a | Maintainer docs: metrics and drills, not loaded by roles |
 | `docs/metrics/prs.csv` | Internal | n/a | Maintainer docs: metrics and drills, not loaded by roles |
@@ -148,6 +149,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `environments/terminal/crew-session.py` | Deliverable | tmux | Runtime CLI: session backend adapter discovery from `sessions/<backend>/adapter.py` ([#1183](https://github.com/mw-ding/eng-crew/issues/1183)) |
 | `environments/terminal/crew.d/**` | Deliverable | all | Runtime CLI: per-command modules ([#224](https://github.com/mw-ding/eng-crew/issues/224)) |
 | `environments/terminal/remote/crew-remote.py` | Deliverable | tmux | Runtime CLI: hardened remote call: host entrypoint, runner and client ([#208](https://github.com/mw-ding/eng-crew/issues/208)) |
+| `environments/terminal/remote/hostos/*.py` | Deliverable | tmux | Runtime CLI: one host OS adapter per OS the remote entrypoint runs on ([#1358](https://github.com/mw-ding/mdstack/issues/1358)) |
 | `environments/terminal/remote/lab/**` | Internal | n/a | Local lab: test-host image spec and PID-1 supervisor for testing remote hosts in containers ([#1356](https://github.com/mw-ding/eng-crew/issues/1356)) |
 | `environments/terminal/sessions/**` | Deliverable | tmux | Runtime CLI: one adapter module per session backend ([#1183](https://github.com/mw-ding/eng-crew/issues/1183)) |
 | `examples/**` | Internal | n/a | Worked example: referenced, not installed |
@@ -190,6 +192,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `scripts/required-docs.txt` | Internal | n/a | Guards and tests: required docs and sections, run by CI |
 | `scripts/run-tests.py` | Internal | n/a | Guards and tests: parallel test runner, run by CI, not installed |
 | `scripts/step-summary.py` | Deliverable | all | Role helpers: builder and coordinator helpers |
+| `scripts/triage-clusters.py` | Deliverable | all | Role helper: triage clusters of related open issues with stable slugs and cap-counted proposals ([#1298](https://github.com/mw-ding/mdstack/issues/1298)) |
 | `scripts/triage-metrics.py` | Deliverable | all | Role helper: triage shadow-mode spot check, precision bar, metrics and eval set ([#750](https://github.com/mw-ding/eng-crew/issues/750)) |
 | `scripts/worktree-purge.py` | Internal | n/a | Guards and tests: one-off crew-host worktree purge, dry-run first, not installed ([#1161](https://github.com/mw-ding/eng-crew/issues/1161)) |
 | `templates/README.md` | Deliverable | all | Templates: evidence adapters, product README seed, cards and step lines |

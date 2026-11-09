@@ -62,6 +62,7 @@ docs/merge-enforcement.md	deliverable	all	Protocol bundle (core): the text roles
 docs/metrics/README.md	internal	n/a	Maintainer docs: metrics and drills, not loaded by roles
 docs/metrics/baseline-m25.md	internal	n/a	Maintainer docs: metrics and drills, not loaded by roles
 docs/metrics/decisions.md	deliverable	all	Coordinator procedure: metrics gates the coordinator runs
+docs/metrics/m25-1-evidence-ledger.md	internal	n/a	Maintainer docs: metrics and drills, not loaded by roles
 docs/metrics/m25-report.md	internal	n/a	Maintainer docs: metrics and drills, not loaded by roles
 docs/metrics/owner-sla-drill.md	internal	n/a	Maintainer docs: metrics and drills, not loaded by roles
 docs/metrics/prs.csv	internal	n/a	Maintainer docs: metrics and drills, not loaded by roles
@@ -110,6 +111,7 @@ environments/terminal/crew-proc.py	deliverable	tmux	Runtime CLI: OS process help
 environments/terminal/crew-session.py	deliverable	tmux	Runtime CLI: session backend adapter discovery from `sessions/<backend>/adapter.py` ([#1183](https://github.com/mw-ding/eng-crew/issues/1183))
 environments/terminal/crew.d/**	deliverable	all	Runtime CLI: per-command modules ([#224](https://github.com/mw-ding/eng-crew/issues/224))
 environments/terminal/remote/crew-remote.py	deliverable	tmux	Runtime CLI: hardened remote call: host entrypoint, runner and client ([#208](https://github.com/mw-ding/eng-crew/issues/208))
+environments/terminal/remote/hostos/*.py	deliverable	tmux	Runtime CLI: one host OS adapter per OS the remote entrypoint runs on ([#1358](https://github.com/mw-ding/mdstack/issues/1358))
 environments/terminal/remote/lab/**	internal	n/a	Local lab: test-host image spec and PID-1 supervisor for testing remote hosts in containers ([#1356](https://github.com/mw-ding/eng-crew/issues/1356))
 environments/terminal/sessions/**	deliverable	tmux	Runtime CLI: one adapter module per session backend ([#1183](https://github.com/mw-ding/eng-crew/issues/1183))
 examples/**	internal	n/a	Worked example: referenced, not installed
@@ -152,6 +154,7 @@ scripts/release-trigger.py	internal	n/a	Guards and tests: release tooling, run b
 scripts/required-docs.txt	internal	n/a	Guards and tests: required docs and sections, run by CI
 scripts/run-tests.py	internal	n/a	Guards and tests: parallel test runner, run by CI, not installed
 scripts/step-summary.py	deliverable	all	Role helpers: builder and coordinator helpers
+scripts/triage-clusters.py	deliverable	all	Role helper: triage clusters of related open issues with stable slugs and cap-counted proposals ([#1298](https://github.com/mw-ding/mdstack/issues/1298))
 scripts/triage-metrics.py	deliverable	all	Role helper: triage shadow-mode spot check, precision bar, metrics and eval set ([#750](https://github.com/mw-ding/eng-crew/issues/750))
 scripts/worktree-purge.py	internal	n/a	Guards and tests: one-off crew-host worktree purge, dry-run first, not installed ([#1161](https://github.com/mw-ding/eng-crew/issues/1161))
 templates/README.md	deliverable	all	Templates: evidence adapters, product README seed, cards and step lines

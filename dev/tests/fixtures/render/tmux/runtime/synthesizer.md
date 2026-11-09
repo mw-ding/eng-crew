@@ -154,6 +154,11 @@ Recorded urgency takes precedence over batching below; an open stop still blocks
   no open rereview or hold, sensitive merge-ok, mirror and `MERGEABLE`.
   Record `Tested-with-default-branch waiver: lone_pr_land=direct, exactly one ready PR`
   and `Land rule: alone, direct` in the merge post, then perform step 4.
+  A train whose drops left one member (`path=direct`, `collapsed-to-direct`)
+  lands this way; its merge post also copies the record's `path_reason`.
+  Its drops are not ready at their dropped heads (`train-merge` blocked)
+  while it is open; after its land, or when you give it up, run
+  `$CREW_BIN train route <n> --project "$CREW_PROJECT"`.
 - With `lone_pr_land = "direct"`, two or more ready PRs use a merge train,
   regardless of `train_min`. With `lone_pr_land = "train"`, use the rules below.
 - An urgent ready PR (a release blocker, a security fix or an owner
@@ -178,6 +183,8 @@ Merge train (tmux doc, mdstack train):
   reports gates per PR without a build or writes. Filter `blocked` members;
   resolve every `manual` gate with the step 2 check. Share blockers with
   the coordinator early. This snapshot never replaces the land-time check.
+  A blocked `train-merge` gate (conflict or changed patch on main) goes to
+  its builder for a merge-up first, as an alone-land conflict does.
 - Delegate: a builder builds every train. Run
   `$CREW_BIN train delegate <pr>... --project "$CREW_PROJECT"` in
   `Depends on` then approval order, only ready candidates. It reserves
@@ -193,7 +200,9 @@ Merge train (tmux doc, mdstack train):
   `$CREW_BIN train close <n> --project "$CREW_PROJECT"` and re-survey.
   Read the record: `members`, `dropped` (`conflict`; `head-moved`;
   `no-verified-base`: the coordinator requests a fresh `base=` verdict),
-  `ci`, `bisect`. Copy its `report` to `$CREW_STATUS`, then `done: train-<n>`.
+  `ci`, `bisect`, `path`. Copy its `report` to `$CREW_STATUS`, then `done: train-<n>`.
+  `path=direct` (drops left one member, `collapsed-to-direct`): the train
+  closed unpushed; land that member by the direct rule above.
   The draft train PR is CI only: never merge it.
 - Land only on `ci=pass`, holding the step 3 land lock across members.
   For each `member` line in order, immediately before landing, re-run the

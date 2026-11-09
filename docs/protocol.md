@@ -734,12 +734,18 @@ owner comment.
 Each sweep's one comment on the day's `Triage log YYYY-MM-DD` issue ends with
 `<!-- crew:v1 role=researcher pass=triage-log sweep=<sweep-id> applied=<n> proposed=<n> skipped=<n> tokens=<n> -->`
 (`tokens` is the session's count or `unknown`);
-the `proposed=` sum over a day's log is the noise-cap count (10 per day). Both
-are notes, never a verdict, gate input or permission. **Triage labels**, set
+the `proposed=` sum over a day's log is the noise-cap count (10 per day), where
+a [cluster](triage.md#clusters) proposal counts once. Each cluster record, one
+comment on the day's log issue, ends with
+`<!-- crew:v1 role=researcher pass=triage-cluster cluster=<slug> size=<n> new=<n> band=<P0|P1|P2|P3> proposed=<0|1> sweep=<sweep-id> -->`
+(`new` counts members since the last sweep; `proposed` is 1 when the record
+makes a new tracking-issue or milestone proposal). All three are notes, never
+a verdict, gate input or permission. **Triage labels**, set
 only by the sweep and never state tags: `triage:proposed` (a proposal awaits
 the owner), `triage:duplicate` (an exact duplicate, linked), `triage:card-extracted`
 (the sweep posted the card fields), `triage:log` (a daily log issue, skipped
-by every sweep) and the priority bands `P0`–`P3`.
+by every sweep), `cluster:<slug>` (a cluster member, `apply` mode only) and the
+priority bands `P0`–`P3`.
 
 The researcher's **docs-pass record** (`pass=docs-pass`) ends each
 `[<ResearcherBot>/docs-pass] <owner>/<repo> @ <sha7>` comment a
@@ -1718,6 +1724,23 @@ waiting, update-branch or a one-member train, using only the §7
 tested-with-default-branch waiver above. Two or more ready PRs train,
 regardless of `train_min`; all other gates remain required at head. The
 merge record names the waiver and `Land rule: alone, direct`.
+
+Train membership is decided before any train CI (#1425). At survey time,
+`mdstack train check` runs step 1's drop checks for each candidate alone on
+the current `<default-branch>` (gate `train-merge`): a conflict or a changed
+patch routes that change to its builder for a merge-up first, so a train
+forms only from members that will survive. After step 1, the surviving
+members choose the path, recorded as `path=` in the train record and
+report: two or more train (`train`); none means no train (`none`), and
+dropped changes route to merge-up as before; exactly one, left by drops on
+`<default-branch>` with `lone_pr_land = "direct"`, closes the train
+unpushed (`direct`, reason `collapsed-to-direct`) and lands that change
+directly under the rule above, at its own head with CI green there and the
+lone-ready re-survey under the merge lock. A change the collapse dropped
+is not ready at that head while the survivor is open, and routes to
+merge-up after the direct land. Ready changes that arrive meanwhile train
+with it instead. Its merge record also names the collapse
+reason. With `"train"`, a one-member train still runs as before.
 
 After a direct land, the synthesizer reads the PR's merge commit SHA and
 waits for the default-branch push CI run at that exact SHA, checking every

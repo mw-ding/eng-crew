@@ -98,6 +98,7 @@ scenario in ID order:
 - A16 from #794
 - A17 from #795
 - A18 from #795
+- A19 from #797
 - A21 from #798
 - A22 from #799
 - A23 from #802
@@ -322,6 +323,30 @@ a reviewer slot until `reservation_ttl`
 ([#1070](https://github.com/mw-ding/eng-crew/issues/1070)). The attended
 owner session for A18 at level b needs a forge sandbox and stays with
 level b.
+
+### A19
+
+A19 (from #797) replays every declared operation without a live session.
+`a19/replay.py` discovers the shipped harness and session backend adapters
+and reads the declared rows from the
+[adapter modules](runtimes/harness-adapters.md#adapter-modules) table and the
+session backend [Operations](runtimes/session-backends.md#operations) and
+capability tables. `a19/ledger.json` must name exactly those adapters and
+rows. Each entry is one of:
+
+- `oracle`: the adapter declares the row, and the named tests replay it on
+  fake binaries;
+- `default`: the row is absent, and the spec's default is what the tests
+  prove;
+- `gap`: a quote from the adapter's spec section, or an undocumented
+  `finding`;
+- `unsupported`: the row is absent, with a quote saying why.
+
+Refusal and ambiguous cases, and the Grok Bot runtime gaps (C1, C2, C3 and
+C5 accepted under #150), carry the same spec link. Every anchor, quote and
+test is checked, and each test file runs once. A gap is never counted as
+conformant. Installed CLIs and live Grok mirror or watch proof stay outside
+A19, because they need their own environment.
 
 ### A20
 

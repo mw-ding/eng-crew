@@ -555,8 +555,8 @@ With no `[hosts]` table the crew runs on one machine, as today. A host is
 named by its overlay network name only, never by an address, user, port or
 credential (spec R1). Keep these tables in the host-local project
 `config.toml` or the org layer, never in mdstack. They replace no template
-placeholder; `validate` checks them, and placement that reads them is
-[#207](https://github.com/mw-ding/eng-crew/issues/207).
+placeholder; `validate` checks them, and `mdstack spawn` places role runs
+from them ([placement](runtimes/multi-device.md#placement), #207).
 
 ```toml
 [hosts.host-a]

@@ -13,10 +13,12 @@ A request is one JSON object {verb, version, request_id?, ...}, never a shell st
 is {"result": "ok", ...}, {"result": "refused", "reason"} or {"result": "failed", "error"}, exit 0; only the client
 yields {"result": "unreachable"}, on a transport failure. Refused: a verb outside the closed set or not built yet, a
 different mdstack version, an SSH command other than crew-host, a `root` or path outside root, and a mutating verb
-without a request id. Built verbs: `version`; `check` (host readiness rows tools, project mirror, logins, runner and
-capacity, with projects and load, the reply mdstack host check reads); `prepare` (create or fetch
+without a request id. Built verbs: `version` (with the host's os from uname); `check` (host readiness rows tools,
+project mirror, logins, runner and capacity, plus capabilities when the call declares an os, the ssh listener
+with a host OS adapter and an ssh_port, and linger on a systemd linux host, with projects and load, the reply mdstack host check reads); `prepare` (create or fetch
 mirrors/<owner>__<repo>.git with the host's gh login) and `seed` (a forge-less host: fetch the primary's base64
-one-ref git bundle into the mirror as refs/crew/heads/<sha>, and refs/heads/<branch> when given); both then make wt/
+one-ref git bundle into the mirror as refs/crew/heads/<sha>, and refs/heads/<branch> when given); both fail step
+`capabilities` before any change when a declared `os` is not this host's, then make wt/
 and state/<owner>__<repo>/, and a failed reply names its `step`. With a `toolkit` pin (tag, bundle_sha256,
 transport) both also install that release into toolkit/mdstack-<v>/ with the shared verifier (docs/bootstrap.md Host toolkit, #945): staged under
 toolkit/.staging-*, its record toolkit/<name>.json (pin, bundle digest, SHA-256 of every file) written last,
@@ -35,6 +37,7 @@ import base64
 import importlib.util
 import json
 import os
+import platform
 import re
 import shutil
 import subprocess
@@ -61,6 +64,8 @@ PREPARE_TIMEOUT = 600
 DISK_FLOOR = 1 << 30  # free bytes under root below which the capacity row fails
 LOGGED_IN = r"Logged in to \S+ (account|as) %s(\s|$)"  # a `gh auth status` line, as mdstack doctor reads it
 SESSION, INTERVAL = "crew-host", 30
+UNAMES = {"Darwin": "macos", "Linux": "linux"}
+ADAPTERS = {"macos", "linux"}  # hostos/<os>.py
 SSH = ["ssh", "-F", "none", "-T", "-a", "-x", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes",
        "-o", "ClearAllForwardings=yes", "-o", "ConnectTimeout=10", "-o", "ServerAliveInterval=5",
        "-o", "ServerAliveCountMax=2"]
@@ -88,6 +93,26 @@ def load_harnesses():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def host_os(declared):
+    """(adapter or None, capabilities row or None) for the profile's declared os. The host's uname decides: a
+    mismatch fails check 5; a match without an adapter yet still passes."""
+    actual = UNAMES.get(platform.system(), platform.system().lower())
+    if not isinstance(declared, str) or not declared:
+        return None, None
+    if declared != actual:
+        return None, row("fail", "capabilities", "declared os %s, host is %s" % (declared, actual), "correct the profile")
+    adapter = None
+    if actual in ADAPTERS:
+        spec = importlib.util.spec_from_file_location("crew_hostos_" + actual, os.path.join(HERE, "hostos", actual + ".py"))
+        adapter = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(adapter)
+    return adapter, row("ok", "capabilities", "os %s" % actual + ("" if adapter else " (no adapter yet)"))
+
+
+def run_probe(argv):
+    return probe(*argv)
 
 
 def runner_state(root):
@@ -119,6 +144,9 @@ def project_step(handler):
         project = request.get("project")
         if not isinstance(project, str) or not PROJECT.fullmatch(project):
             return dict(result="refused", reason="project must be owner__repo")
+        _, capabilities = host_os(request.get("os"))
+        if capabilities and capabilities["status"] == "fail":
+            return dict(result="failed", step="capabilities", error=capabilities["detail"])
         mirror = os.path.join(root, "mirrors", project + ".git")
         try:
             reply = handler(request, root, project, mirror)
@@ -426,7 +454,8 @@ def result(request, root):
 
 
 def version_verb(request, root):
-    reply = dict(result="ok", version=version(), runner=runner_state(root))
+    reply = dict(result="ok", version=version(), runner=runner_state(root),
+                 os=UNAMES.get(platform.system(), platform.system().lower()))
     if "toolkit" in request:
         reply["toolkit"] = toolkit_status(request, root)
     return reply
@@ -453,8 +482,10 @@ def check_verb(request, root):
         return dict(result="refused", reason="check needs project=owner__repo and default_branch")
     forge = request.get("forge", True) is not False
     engines = (request.get("capabilities") or {}).get("engines") or []
+    adapter, capabilities = host_os((request.get("capabilities") or {}).get("os"))
     harnesses = load_harnesses()  # engine name -> CLI and login check, from the harness adapters
-    tools = ["git", "tmux"] + (["gh"] if forge else []) + [harnesses.CLI.get(e, e) for e in engines]
+    tools = ["git", "tmux"] + (["gh"] if forge else []) + [harnesses.CLI.get(e, e) for e in engines] \
+        + (adapter.TOOLS if adapter else [])
     missing = [t for t in tools if not shutil.which(t)]
     checks = [row("fail", "tools", "missing " + ", ".join(missing), "install them on the host") if missing
               else row("ok", "tools", ", ".join(tools))]
@@ -474,8 +505,13 @@ def check_verb(request, root):
         absent += [e for e in engines if probe(*harnesses.login_status(e))[0]]
         checks.append(row("human", "logins", "not logged in: " + ", ".join(absent), "log in on the host") if absent
                       else row("ok", "logins", "logged in: " + ", ".join(users + list(engines))))
-    checks.append(row("ok", "runner", "up") if runner_state(root) == "up" else
-                  row("fail", "runner", "down", "start crew-remote.py --root <root> runner as a user service"))
+    service = "; %s %s" % (adapter.NAME, adapter.status(run_probe, os.getuid())) if adapter else ""
+    checks.append(row("ok", "runner", "up" + service) if runner_state(root) == "up" else
+                  row("fail", "runner", "down" + service, "start crew-remote.py --root <root> runner as a user service"))
+    checks += getattr(adapter, "service_rows", lambda *_: [])(run_probe, os.getuid())
+    checks += [capabilities] if capabilities else []
+    if adapter and isinstance(request.get("ssh_port"), int):
+        checks.append(adapter.listener_row(run_probe, request["ssh_port"]))
     jobs = os.path.join(root, "jobs")
     load = sum(not os.path.exists(os.path.join(jobs, j, "result.json")) for j in
                (os.listdir(jobs) if os.path.isdir(jobs) else []))

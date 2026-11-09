@@ -12,7 +12,8 @@ head (or carried by an express merge-up atop a selfgate-passed head) and a new s
 With `triage.enabled`, each poll also runs the zero-model triage scan (triage.md, #747): unplaced issues, owner
 replies to triage records and owner feedback on them (placed or not, relayed decisions included, #835) in each
 `triage.repos` tracker go to `triage/queue.json` with exact-key duplicate hints,
-intake-card fields and P0 signals; a newly seen P0 candidate queues one `triage-p0` wake for the coordinator. The
+intake-card fields and P0 signals; a newly seen P0 candidate without a triage record queues one `triage-p0` wake for
+the coordinator; owner feedback on a recorded P0 item queues the item but no wake (#1093). The
 scan also lists the project repo's milestones closed since its baseline under `milestones` until a sweep takes them
 (milestone-close sweep, triage.md T6, #374).
 
@@ -445,7 +446,8 @@ def triage_scan(repo, open_items, closed_items, rules, owners, fields, coordinat
 
 def triage_poll(values, state, project, read=gh_json):
     """Scan every triage.repos tracker into triage/queue.json; queue one triage-p0 wake per newly seen P0 candidate.
-    An unreadable repo or item is recorded in the queue, never dropped."""
+    Only a `new` entry (no pass=triage record yet) wakes: a recorded P0 item re-queued by owner feedback was already
+    triaged (#1093). An unreadable repo or item is recorded in the queue, never dropped."""
     rules_path = values.get("triage.rules")
     rules, note = triage_rules(rules_path and os.path.join(os.path.dirname(os.path.abspath(project)), rules_path))
     owners, fields = set(values.get("identities.owners") or []), triage_card_fields()
@@ -475,7 +477,7 @@ def triage_poll(values, state, project, read=gh_json):
         json.dump(queue, f, indent=2)
     os.replace(path + ".tmp", path)
     for e in queue["items"]:
-        if e.get("p0") and e["ref"] not in seen:
+        if e.get("p0") and e.get("reason") == "new" and e["ref"] not in seen:
             ts = queue["scanned"]
             with queue_lock(state), open(os.path.join(state, "wake", "queue.jsonl"), "a", encoding="utf-8") as f:
                 f.write(json.dumps({"id": "triage-p0-%s-%s" % (ts, os.urandom(3).hex()), "source": "poll",

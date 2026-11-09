@@ -721,6 +721,24 @@ class TriageScan(unittest.TestCase):
         _, wakes, _ = self.poll()
         self.assertEqual(len(wakes), 2)
 
+    def test_owner_feedback_on_a_recorded_p0_queues_without_a_second_wake(self):  # #1093
+        def c(login, body, at):
+            return {"author": {"login": login}, "body": body, "createdAt": at}
+        item = {"number": 9, "title": "Crew stalls on every run", "body": "", "labels": [{"name": "P0"}],
+                "milestone": None, "url": "https://github.com/acme/widgets/issues/9", "comments": []}
+        read = lambda *args: [item] if args[5] == "open" else []
+        queue, wakes, _ = self.poll(read)
+        self.assertEqual(([e["reason"] for e in queue["items"]], [w["refs"] for w in wakes]),
+                         (["new"], [["acme/widgets#9"]]))
+        item["comments"].append(c("md-mt", "<!-- crew:v1 role=researcher pass=triage issue=9 decision=classify "
+                                  "priority=P0 mode=shadow sweep=20261105T0400Z -->", "2026-11-05T04:00:00Z"))
+        queue, wakes, _ = self.poll(read)  # recorded: it leaves the queue
+        self.assertEqual((queue["items"], len(wakes)), ([], 1))
+        item["comments"].append(c("owner", "triage: accept", "2026-11-05T05:00:00Z"))
+        queue, wakes, _ = self.poll(read)
+        self.assertEqual(([e["reason"] for e in queue["items"]], queue["items"][0]["p0"], len(wakes)),
+                         (["owner-feedback"], ["label:P0"], 1))
+
     def test_triage_repos_and_unreadable_repo_recorded(self):
         def read(*args):
             if args[3] == "acme/down":

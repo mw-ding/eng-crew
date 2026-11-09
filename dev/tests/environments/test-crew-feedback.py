@@ -16,6 +16,8 @@ db, args = os.environ["FAKE_GH_DB"], sys.argv[1:]
 issues = json.load(open(db)) if os.path.exists(db) else []
 if os.environ.get("FAKE_GH_FAIL"):
     sys.exit("gh: HTTP 502")
+if os.environ.get("FAKE_GH_LIST") is not None and args[:2] == ["issue", "list"]:
+    sys.exit(print(os.environ["FAKE_GH_LIST"]))
 if args[:2] == ["issue", "list"]:
     print(json.dumps([{"number": i["number"], "body": i["body"]} for i in issues]))
 elif args[:2] == ["issue", "create"]:
@@ -90,7 +92,22 @@ class Feedback(Base):
     def test_unreadable_card_list_or_bad_slug_files_nothing(self):
         failed = self.feedback(FAKE_GH_FAIL="1")
         self.assertEqual(failed.returncode, 1)
-        self.assertIn("cannot list open cards in acme/mdstack", failed.stdout)
+        self.assertIn("cannot list open cards in acme/mdstack: gh: HTTP 502", failed.stdout)
+        self.assertFalse(os.path.exists(self.db))
+        page = self.feedback(FAKE_GH_LIST="HTTP 502: Bad Gateway\n<html>proxy</html>")
+        self.assertEqual(page.returncode, 1)
+        self.assertEqual(page.stdout.strip(),
+                         "crew: feedback: cannot list open cards in acme/mdstack: unreadable answer: HTTP 502: Bad Gateway")
+        long = self.feedback(FAKE_GH_LIST="x" * 300)
+        self.assertEqual(long.returncode, 1)
+        self.assertIn("unreadable answer: %s...\n" % ("x" * 120), long.stdout)
+        token = "ghp_" + "A" * 36  # synthetic; spans the 120-character cut, so it must be redacted before the cut
+        cut = self.feedback(FAKE_GH_LIST="x" * 109 + " " + token, GH_TOKEN=token)
+        self.assertEqual(cut.returncode, 1)
+        self.assertIn("unreadable answer: %s <redacted>\n" % ("x" * 109), cut.stdout)
+        self.assertNotIn("ghp_", cut.stdout)
+        empty = self.feedback(FAKE_GH_LIST="")
+        self.assertIn("cannot list open cards in acme/mdstack: unreadable answer: empty", empty.stdout)
         self.assertFalse(os.path.exists(self.db))
         bad = self.crew("feedback", "--project", self.project, "--class", "Spawn Failure", "--summary", "x")
         self.assertEqual(bad.returncode, 1)

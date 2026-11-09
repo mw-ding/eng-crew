@@ -4,7 +4,8 @@ A copy of this bundle gets one extra file, harnesses/fake/adapter.py, and nothin
 harness is then an engine and coordinator choice, `mdstack up` launches and resumes it as the coordinator, `mdstack spawn`
 launches a worker with it, `mdstack upgrade` reloads it, the probe, watcher wake, dialog, transient-error and composer
 rules use its declarations, bootstrap installs its pointer, and `mdstack doctor` and remote readiness check its CLI.
-The shipped tables keep their order and the contributor-tier check stays in the core. Run in CI.
+The shipped tables keep their order, each shipped adapter's title, CLI, login check and screen rules match its spec
+section (#1443), and the contributor-tier check stays in the core. Run in CI.
 """
 from argparse import ArgumentParser, Namespace
 import importlib.util
@@ -96,6 +97,28 @@ class ShippedTables(unittest.TestCase):
         self.assertEqual((h.RESUMABLE, h.INSTALLS, h.LAUNCH_NOTES), (["claude-code", "codex"],) * 2 + (["codex"],))
         self.assertEqual(h.login_status("codex"), ["codex", "login", "status"])
         self.assertEqual(h.login_status("cursor"), ["cursor-agent", "auth", "status"])
+
+    def test_declared_rows_per_shipped_adapter(self):
+        """Each shipped adapter's own value, not the union every consumer reads (#1443, A19): its spec heading's title,
+        its CLI, its login check (default `auth status`), and Claude Code's and Codex's mid-turn, composer and fatal
+        error rules on their documented screens."""
+        h = load("crew_harness_rows", os.path.join(os.path.dirname(SCRIPTS), "harnesses", "crew-harness.py"))
+        names = {"claude-code": ("Claude Code", "claude"), "codex": ("Codex", "codex"), "pi": ("Pi", "pi"),
+                 "cursor": ("Cursor", "cursor-agent"), "muse": ("Muse", "muse"), "opencode": ("OpenCode", "opencode")}
+        for engine, (title, cli) in names.items():
+            with self.subTest(engine):
+                self.assertEqual((h.ADAPTERS[engine].TITLE, h.CLI[engine]), (title, cli))
+                self.assertEqual(h.login_status(engine), [cli] + (["login"] if engine == "codex" else ["auth"]) + ["status"])
+        claude, codex = h.ADAPTERS["claude-code"], h.ADAPTERS["codex"]
+        idle = "❯ \n  ? for shortcuts"
+        self.assertTrue(claude.BUSY.search("✽ recombobulating… (5s · ↓ 159 tokens)"))
+        self.assertTrue(codex.BUSY.search("• working (12s • esc to interrupt)"))
+        self.assertFalse(claude.BUSY.search(idle) or codex.BUSY.search(idle))
+        self.assertEqual((claude.COMPOSER, codex.COMPOSER), ("❯", "›"))
+        self.assertRegex('⎿  API Error: 400 {"type":"error","error":{}}', claude.FATAL)
+        self.assertRegex('■ {"type":"error","status":503,"message":"x"}', codex.FATAL)
+        self.assertNotRegex('■ {"type":"error","status":503}', claude.FATAL)
+        self.assertNotRegex('⎿  API Error: 400 {"type":"error"}', codex.FATAL)
 
     def test_contributor_tier_is_core_policy(self):
         """Muse declares only CONTRIBUTOR_TIER; the core reads visibility and refuses before the adapter runs."""

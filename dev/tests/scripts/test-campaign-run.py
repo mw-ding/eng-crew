@@ -2,7 +2,7 @@
 """Fixture test for scripts/campaign-run.py (offline, temp dirs only).
 
 Covers scenario selection, the five distinct statuses, the per-step guard recheck, the command exit captured apart from the capture, explicit
-completion waits (matched and deadline), the {source} placeholder and stub env, no operator forge or SSH agent credentials in a step (#1106), the guard refusal, the committed A03/A05 fixture steps failing closed on an earlier assertion, the A12 reproduction helper agreeing only with a capture at head, the A22 duplicate-key oracle passing on a run id with capitals (#1177), the A23 fake SSH transport's loopback and fault modes, a seeded rerun reproducing events and failure, and the
+completion waits (matched and deadline), the {source} placeholder and stub env, no operator forge or SSH agent credentials in a step (#1106), the guard refusal, the committed A03/A05 fixture steps failing closed on an earlier assertion, the A12 reproduction helper agreeing only with a capture at head, the A22 duplicate-key oracle passing on a run id with capitals (#1177), the A23 fake SSH transport's loopback and fault modes, the A19 ledger matching every shipped adapter and declared row and failing a gap claimed as conformant (#1443), a seeded rerun reproducing events and failure, and the
 decoy sentinel failing a run whose step reaches an inherited TMUX (#817; throwaway sockets only, with the runner's TMUX_TMPDIR restored after, #818). Run in CI.
 """
 import contextlib
@@ -303,6 +303,30 @@ class FixtureStepTest(unittest.TestCase):
                                    FAKE_SPAWN_RC="0")[0], "an accepted duplicate spawn fails the step")
 
 
+class IssueFixtureFieldsTest(unittest.TestCase):
+    """Every committed scenario's issue-list.json literal carries the fields route.dependents() requests (#1174).
+    The campaign gh stub serves that file to every unlabelled `gh issue list`, whatever `--json` asks for."""
+
+    def test_issue_list_literals_carry_dependents_fields(self):
+        with open(os.path.join(os.path.dirname(SCRIPTS), "environments", "terminal", "crew.d", "route.py")) as fh:
+            body = fh.read().split("def dependents(", 1)[1].split("\ndef ", 1)[0]
+        fields = set(re.search(r'"--json", "([^"]+)"', body).group(1).split(","))
+        self.assertIn("body", fields)
+        root, seen = os.path.join(TESTS, "scripts", "fixtures", "campaign"), 0
+        for name in sorted(os.listdir(root)):
+            if not name.endswith(".json"):
+                continue
+            with open(os.path.join(root, name)) as fh:
+                steps = json.load(fh)["steps"]
+            for st in steps:
+                for lit in re.findall(r"'(\[[^']*\])' > \$G/issue-list\.json", st.get("run", "")):
+                    for issue in json.loads(lit):
+                        seen += 1
+                        self.assertFalse(fields - set(issue), "%s step %s: issue %s lacks %s"
+                                         % (name, st["name"], issue.get("number"), sorted(fields - set(issue))))
+        self.assertGreater(seen, 1, "the literal scan found the A04 and A08 issue fixtures")
+
+
 class A12ReproTest(unittest.TestCase):
     """The A12 validator reproduction: agrees at head, refuses a stale capture, and diffs changed output."""
 
@@ -379,6 +403,31 @@ class A23TransportTest(unittest.TestCase):
         self.assertEqual(self.call("gone", "r4").returncode, 127)
         with open(os.path.join(self.d, "a23", "ssh.log")) as fh:
             self.assertEqual([json.loads(line)["fault"] for line in fh], ["down", "lost", None, None])
+
+
+class A19LedgerTest(unittest.TestCase):
+    """A19's ledger names every shipped adapter and declared row; a gap claimed as an oracle fails (#1443)."""
+    A19 = os.path.join(TESTS, "scripts", "fixtures", "campaign", "a19")
+
+    def replay(self, ledger):
+        return subprocess.run(["python3", os.path.join(self.A19, "replay.py"), os.path.dirname(SCRIPTS), ledger,
+                               "--no-tests"], capture_output=True, text=True)
+
+    def test_shipped_ledger_and_claimed_gap(self):
+        ledger = os.path.join(self.A19, "ledger.json")
+        p = self.replay(ledger)
+        self.assertEqual(p.returncode, 0, p.stdout)
+        self.assertIn("A19: 6 harness x 13 rows, 2 backends x 10 rows;", p.stdout)
+        with open(ledger) as fh:
+            d = json.load(fh)
+        d["harness"]["adapters"]["cursor"]["TRANSIENT"] = {"oracle": True, "tests": [
+            "environments/test-crew-watch.py:test_scan_records_adapter_transient_text_once"]}
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(os.path.join(tmp, "ledger.json"), "w") as fh:
+                json.dump(d, fh)
+            p = self.replay(os.path.join(tmp, "ledger.json"))
+        self.assertEqual(p.returncode, 1)
+        self.assertIn("FAIL cursor TRANSIENT: oracle but the adapter lacks it", p.stdout)
 
 
 class A22OracleTest(unittest.TestCase):

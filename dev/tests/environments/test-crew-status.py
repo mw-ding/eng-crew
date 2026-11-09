@@ -137,10 +137,10 @@ class Status(LivenessBase):
         r = self.crew("status", "--project", self.project)
         self.assertEqual(r.returncode, 0, r.stderr)
         head, ash, row = r.stdout.splitlines()
-        self.assertEqual(head.split(), ["WINDOW", "ROLE", "ITEM", "HEAD", "BEAT", "LIVENESS", "LAST"])
-        self.assertEqual(ash.split(), ["ash", "coordinator", "-", "-", "-", "ambiguous", "-"])  # no harness seen
+        self.assertEqual(head.split(), ["WINDOW", "ROLE", "HOST", "ITEM", "HEAD", "BEAT", "LIVENESS", "LAST"])
+        self.assertEqual(ash.split(), ["ash", "coordinator", "-", "-", "-", "-", "ambiguous", "-"])  # no harness seen
         base = self.git("rev-parse", "--short=7", "origin/main")
-        self.assertEqual(row.split()[:8], ["ben-7", "builder", "issue", "#7", base, "0m", "alive", "blocked:"])
+        self.assertEqual(row.split()[:9], ["ben-7", "builder", "-", "issue", "#7", base, "0m", "alive", "blocked:"])
 
     def test_status_finds_team_window_0(self):  # #1329
         with open(self.project) as f:
@@ -161,12 +161,12 @@ class Status(LivenessBase):
         with open(self.panes, "w") as f:
             json.dump({"crew-acme-widgets:0": {"command": "claude"}, "crew-acme-widgets:10": {}}, f)
         rows = self.crew("status", "--project", self.project).stdout.splitlines()
-        self.assertEqual((rows[1].split()[5], rows[2].split()[6]), ("alive", "alive"))
+        self.assertEqual((rows[1].split()[6], rows[2].split()[7]), ("alive", "alive"))
         with open(self.panes, "w") as f:
             json.dump({"crew-acme-widgets:0": {"command": "claude", "screen": dialog},
                        "crew-acme-widgets:10": {"screen": dialog}}, f)
         rows = self.crew("status", "--project", self.project).stdout.splitlines()
-        self.assertEqual((rows[1].split()[5], rows[2].split()[6]), ("ambiguous", "ambiguous"))
+        self.assertEqual((rows[1].split()[6], rows[2].split()[7]), ("ambiguous", "ambiguous"))
 
     def test_codex_hooks_review_dialog_is_ambiguous(self):  # #139 F7
         self.set_pane(10, screen="Hooks need review\n> 1. Review hooks\n  2. Continue without hooks\n"
@@ -196,7 +196,7 @@ class Status(LivenessBase):
             json.dump({"crew-acme-widgets:0": {"command": "claude", "screen": screen("claude-proceed")},
                        "crew-acme-widgets:10": {"screen": screen("codex-approval")}}, f)
         rows = self.crew("status", "--project", self.project).stdout.splitlines()
-        self.assertEqual((rows[1].split()[5], rows[2].split()[6]), ("ambiguous", "ambiguous"))
+        self.assertEqual((rows[1].split()[6], rows[2].split()[7]), ("ambiguous", "ambiguous"))
 
 
 if __name__ == "__main__":
