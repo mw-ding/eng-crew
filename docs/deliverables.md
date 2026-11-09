@@ -190,6 +190,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `scripts/metrics-decide.py` | Deliverable | all | Role helpers: builder and coordinator helpers |
 | `scripts/metrics-refresh.py` | Deliverable | all | Role helpers: builder and coordinator helpers |
 | `scripts/reflection-measures.py` | Deliverable | all | Role helpers: offline reflection effect measures from poll and watch observations ([#1524](https://github.com/mw-ding/mdstack/issues/1524)) |
+| `scripts/reflection-scan.py` | Deliverable | all | Role helper: offline reflection evidence index over forge snapshots, lessons and findings at a SHA ([#1518](https://github.com/mw-ding/mdstack/issues/1518)) |
 | `scripts/release-bundle.py` | Internal | n/a | Guards and tests: release tooling, run by the release workflow, not installed |
 | `scripts/release-check.py` | Internal | n/a | Guards and tests: release tooling, run by the release workflow, not installed |
 | `scripts/release-trigger.py` | Internal | n/a | Guards and tests: release tooling, run by the release workflow, not installed |
