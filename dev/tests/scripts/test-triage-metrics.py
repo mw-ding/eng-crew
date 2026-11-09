@@ -3,7 +3,8 @@
 
 Builds a calibration sweep over twelve fixture issues and checks the deterministic 10-sample spot check, the
 8-of-10 bar (met, not met, pending; an answer to a revised proposal never counts for the original), each report metric,
-owner feedback on applied records and the rolling apply-mode bar (#835), and the eval set freeze and re-score. Run in CI.
+owner feedback on applied records and the rolling apply-mode bar (#835), cluster counts (#1298), and the eval set
+freeze and re-score. Run in CI.
 """
 import contextlib
 import importlib.util
@@ -121,7 +122,8 @@ class Calibration(unittest.TestCase):
             "time to triage: median 2.0 h over 5 items",
             "proposals per day: mean 4.5 over 2 days",
             "tokens per sweep: median 16000.0 over 2 sweeps (1 unknown)",
-            "applied feedback: 0 accepted, 0 rejected, 0 adjusted"])
+            "applied feedback: 0 accepted, 0 rejected, 0 adjusted",
+            "clusters: 0 recorded, newest sizes total 0; 0 open issues labelled across 0 cluster labels"])
 
     def test_feedback_on_applied_records(self):  # #835
         def applied(n, answer, at, sweep="20261106T0600Z"):
@@ -139,8 +141,24 @@ class Calibration(unittest.TestCase):
                                    "answered applied records by the owner)")
         self.assertEqual(lines[1], "override rate: 3/4 (75%) owner answers rejected or adjusted")
         self.assertEqual(lines[6:], ["applied feedback: 1 accepted, 1 rejected, 1 adjusted",
+                                     "clusters: 0 recorded, newest sizes total 0; 0 open issues labelled across 0 "
+                                     "cluster labels",
                                      "applied feedback recorded by sweep 20261106T1200Z: 0 accepted, 0 rejected, "
-                                     "1 adjusted"])
+                                     "1 adjusted",
+                                     "clusters recorded by sweep 20261106T1200Z: 0, 0 new members, 0 proposed"])
+
+    def test_cluster_counts(self):  # #1298
+        def cluster(slug, size, new, proposed, sweep):
+            return {"createdAt": "2026-11-08T18:10:00Z", "body": "[Riley/cluster] cluster:%s\n<!-- crew:v1 "
+                    "role=researcher pass=triage-cluster cluster=%s size=%d new=%d band=P2 proposed=%d sweep=%s -->"
+                    % (slug, slug, size, new, proposed, sweep)}
+        log = issue(9, [cluster("class-stall", 2, 2, 0, "s1"), cluster("depends-6", 3, 3, 1, "s1"),
+                        cluster("class-stall", 4, 2, 1, "s2")], labels=["triage:log"])
+        items = [log, issue(1, labels=["cluster:class-stall"]), issue(2, labels=["cluster:class-stall"]),
+                 issue(3, labels=["cluster:depends-6"]), issue(4, state="CLOSED", labels=["cluster:depends-6"])]
+        self.assertEqual(tm.clusters(items), "clusters: 2 recorded, newest sizes total 7; 3 open issues labelled "
+                                             "across 2 cluster labels")
+        self.assertEqual(tm.clusters(items, "s2"), "clusters recorded by sweep s2: 1, 2 new members, 1 proposed")
 
     def test_accuracy_keeps_answered_applied_records_once(self):  # #835 review R1
         item = issue(1, [rec(1, "place", mode="apply", sweep="20261105T0000Z", at="2026-11-05T00:10:00Z"),

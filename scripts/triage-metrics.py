@@ -3,14 +3,14 @@
 
 Reads the JSON that `gh issue list --state all --json
 number,url,state,stateReason,labels,createdAt,comments` prints (one or more repos concatenated into one list)
-and the `pass=triage` / `pass=triage-log` hidden lines on it (protocol §4). Pure computation: no network, no gh,
-no writes except `eval-freeze --out`. Python 3 standard library only.
+and the `pass=triage` / `pass=triage-log` / `pass=triage-cluster` hidden lines on it (protocol §4). Pure computation:
+no network, no gh, no writes except `eval-freeze --out`. Python 3 standard library only.
 
   sample       the 10 spot-check issues of a calibration sweep, one ref per line (deterministic per sweep id)
   bar          owner answers on that sample: met at 8 of 10 accepted as is
   rolling      apply mode: the newest 10 owner answers on applied records; below 8 accepted, propose shadow (#835)
   report       accuracy, owner override rate, reopen rate, time to triage, proposals per day, tokens per sweep,
-               owner feedback on applied records (--sweep: also what that sweep recorded)
+               owner feedback on applied records, cluster counts (--sweep: also what that sweep recorded)
   eval-freeze  write the eval set: owner-accepted proposals of a sweep (owner-confirmed records)
   eval-score   compare re-classified answers ({"<ref>": {"decision", "priority"}}) with the eval set
 
@@ -148,10 +148,25 @@ def report(items, sweep=None):
                "%.1f" % statistics.mean(per_day.values()) if per_day else "n/a", len(per_day)),
            "tokens per sweep: median %s over %d sweeps (%d unknown)" % (
                statistics.median(tokens) if tokens else "n/a", len(tokens), unknown),
-           "applied feedback: %s" % counts(applied)]
+           "applied feedback: %s" % counts(applied), clusters(items)]
     if sweep:
         out.append("applied feedback recorded by sweep %s: %s" % (sweep, counts(recorded)))
+        out.append(clusters(items, sweep))
     return out
+
+
+def clusters(items, sweep=None):
+    """Cluster counts from the `pass=triage-cluster` records on the log issues and the `cluster:<slug>` labels (#1298)."""
+    recs = [f for i in items for _, f in records(i, "triage-cluster") if not sweep or f.get("sweep") == sweep]
+    newest = {f.get("cluster"): f for f in recs}
+    if sweep:
+        return "clusters recorded by sweep %s: %d, %d new members, %d proposed" % (
+            sweep, len(newest), sum(int(f.get("new", 0)) for f in newest.values()),
+            sum(int(f.get("proposed", 0)) for f in newest.values()))
+    labelled = [lab["name"] for i in items if i.get("state", "OPEN") == "OPEN" for lab in i.get("labels") or []
+                if lab["name"].startswith("cluster:")]
+    return "clusters: %d recorded, newest sizes total %d; %d open issues labelled across %d cluster labels" % (
+        len(newest), sum(int(f.get("size", 0)) for f in newest.values()), len(labelled), len(set(labelled)))
 
 
 def counts(decisions):
