@@ -171,7 +171,7 @@ class RunnerTest(unittest.TestCase):
         lab = mock.Mock(host="lab-a")
         lab.pids.side_effect = [dict(runner=10, sshd=5)] + [dict(runner=11, sshd=5)] * 200
         lab.beat.return_value = dict(pid=beat_pid)
-        lab.call.side_effect = [dict(result="ok", runner="up")] + [dict(result="ok", runner=health)] * 200
+        lab.call.side_effect = [dict(result="ok", runner="up")] * 2 + [dict(result="ok", runner=health)] * 200
         lab.client.return_value = ["runner:lab-a/j head=h", "check-repo exit 0", "tests exit 0", "exit 0"]
         return lab
 
@@ -187,6 +187,14 @@ class RunnerTest(unittest.TestCase):
         with mock.patch.object(sc.time, "sleep"):
             sc.runner(self.lab("up", 10), s)
         self.assertEqual(s.failures, ["the restarted runner never reported up: ['up', 'up', 'up']"])
+
+    def test_a_runner_never_up_before_the_kill_fails_without_killing(self):
+        lab, s = self.lab("up", 11), sc.Seen()
+        lab.call.side_effect = [dict(result="ok", runner="down")] * 120
+        with mock.patch.object(sc.time, "sleep"):
+            sc.runner(lab, s)
+        self.assertEqual(s.failures, ["the runner was never up before the kill"])
+        lab.docker.assert_not_called()
 
     def test_a_restarted_runner_that_beats_and_reports_up_passes(self):
         s = sc.Seen()

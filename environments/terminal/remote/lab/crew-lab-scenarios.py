@@ -17,8 +17,8 @@ Every scenario prints PASS or FAIL; lab/scenarios.json keeps what it saw. Exit 1
   disconnect  network disconnect mid-job, container and runner pids kept: the client falls back locally; after
               reconnect the same job's result is pulled, and it ran once
   pause       pause mid-job (unresponsive host): the client falls back locally; after unpause the job finishes
-  runner      runner-only kill: SSH still answers with sshd's pid kept; a new runner pid writes the heartbeat and
-              `version` reports it up (never seen by the timeout is a FAIL); then a job passes
+  runner      runner-only kill once it is up: SSH still answers with sshd's pid kept; a new runner pid writes the
+              heartbeat and `version` reports it up (never seen by the timeout is a FAIL); then a job passes
   recreate    container recreated mid-job (new ID, host key and port): the client falls back locally (unreachable
               while it is down, or the lost job refused), the host never reports that job done, and a fresh job passes
   partition   a role host behind a network disconnect is unreachable over SSH; placement queues a role run that
@@ -315,7 +315,13 @@ def pause(lab, s):
 
 
 def runner(lab, s):
-    """Kill the runner alone: SSH still answers once its pid is gone; then a new runner must beat and report up."""
+    """Once the runner is up, kill it alone: SSH still answers; then a new runner must beat and report up."""
+    for _ in range(120):
+        if lab.call("version").get("runner") == "up":
+            break
+        time.sleep(1)
+    else:
+        return s.check(False, "the runner was never up before the kill")
     before = lab.pids()
     lab.docker("exec", lab.cid(), "kill", str(before["runner"]))
     outage = s.obs["runner_version"] = lab.call("version")
