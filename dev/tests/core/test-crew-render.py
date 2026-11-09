@@ -1004,6 +1004,12 @@ class SessionRuntime(unittest.TestCase):
                      "Exit 2 (a missing Item, Pass or Base) means do not dispatch."):
             self.assertIn(rule, coordinator)
 
+    def test_researchers_zero_renders_the_same_briefs(self):  # #1057: a no-op, the binding has no researcher
+        upstream = self.render()
+        self.base = self.base.replace("reviewers = 1 }", "reviewers = 1, researchers = 0 }")
+        self.assertIn("researchers = 0", self.base)
+        self.assertEqual(self.render(), upstream)
+
     def test_control_item_selects_ownership_text(self):
         none = self.render()
         coordinator = none["runtime/coordinator.md"]

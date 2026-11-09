@@ -31,7 +31,9 @@ land-policy options. `crew-render` writes four briefs from
 synthesizer worker briefs. Each worker brief carries the tmux role's
 contract for one pass per run and ends where the coordinator appends the
 `mdstack brief` run block (below); workers set their own `CREW_*` paths, since
-no runtime sets them. The binding has no researcher brief.
+no runtime sets them. The binding has no researcher brief:
+`researchers = 0` validates as a no-op, so a profile migrated from tmux keeps
+it, and any other value is refused.
 
 Session lands are sync and alone (#1041). `land.mode = "async"` is
 tmux-only: the validator refuses it on a session profile, and
