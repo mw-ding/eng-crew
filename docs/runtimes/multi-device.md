@@ -3,7 +3,7 @@
 > - **Status:** partly built
 > - **Applies to:** a tmux primary plus forge-less runner hosts
 > - **Current rules:** [tmux binding](tmux.md), [protocol](../protocol.md)
-> - **Built:** host inventory, `mdstack host check`, `mdstack hosts`, `mdstack host prepare`, the remote call and runner, [Forge-less hosts](#forge-less-hosts-remote-test-runner) and its [runbook](#runbook-add-a-runner-host), the [host OS adapter](#host-os-adapters) dispatch and the `macos` and `linux` adapters, proved on fakes (#204–#206, #208, #349, #726–#729, #1358, #1359)
+> - **Built:** host inventory, `mdstack host check`, `mdstack hosts`, `mdstack host prepare`, the remote call and runner, [Forge-less hosts](#forge-less-hosts-remote-test-runner) and its [runbook](#runbook-add-a-runner-host), the [role-host runbook](#runbook-add-or-remove-a-role-host), the [host OS adapter](#host-os-adapters) dispatch and the `macos` and `linux` adapters, proved on fakes (#204–#206, #208, #349, #726–#729, #1358, #1359, #1363)
 > - **Design only:** placement and remote role sessions (#207, #345–#348) and the two-host dry run (#209), all open
 > - **Last checked:** 2026-11-08 at `0e80f1d`
 
@@ -605,6 +605,89 @@ the host. Real-device proof of each step is logged in
 `<root>`. Job results already stored on the primary under
 `$CREW_STATE/runner/` stay.
 
+## Runbook: add or remove a role host
+
+Extends the [runner-host runbook](#runbook-add-a-runner-host) to a
+[role host](#terms): one with its own forge access (N5) that takes builder
+and reviewer runs (20.12 from [#1281](https://github.com/mw-ding/mdstack/issues/1281),
+[#1363](https://github.com/mw-ding/mdstack/issues/1363)). Every step is the
+owner's. Placement and remote role runs (#207, #345–#348) are not built, so
+a role host can reach `ready` today but no run is placed on it yet.
+
+**Add a role host.** Runner-host steps 1 (overlay), 3 (crew key) and 5
+(smoke test) apply unchanged. The others change:
+
+| Step | Runner host | Role host |
+|---|---|---|
+| 2. Toolchain | `python3`, `git`, `tmux`; the bundle copied from the primary | Also `gh`, each listed engine's CLI and the OS service tool (below); `python3` 3.11 or later. Copy the primary's bundle too, so the versions match |
+| Logins | None; a forge login warns | On the host itself, never copied (#1281 decision 5): `gh` for the identities of its `roles` only, and each engine in `capabilities.engines`. Where each lives: [Login locations](#login-locations) |
+| 4. Runner | A user-level service | Per OS, below |
+| 6. Profile | `forge = false` | `capabilities.engines`, `roles`, `max_runs` and a `placement.hosts` entry; `toolchain_bin` if builders need one |
+| 7. Prepare | Seeds from the primary | Creates the mirror with the host's own `gh` login |
+
+No verb calls the [host OS adapter](#host-os-adapters)'s install yet, so the
+owner writes the service by hand as the runner account, with the adapter's
+names, so a later install finds the same file:
+
+- **macOS (launchd).** Write `~/Library/LaunchAgents/dev.mdstack.runner.plist`
+  with `Label` `dev.mdstack.runner`, `ProgramArguments` `python3
+  <bundle>/environments/terminal/remote/crew-remote.py --root <root> runner`,
+  `KeepAlive` and `RunAtLoad` true and `WorkingDirectory` `<root>`. Load it
+  with `launchctl bootstrap gui/$(id -u) <plist>` from the account's own
+  login session: outside `gui/<uid>` the runner cannot read keychain logins.
+  `launchctl print gui/$(id -u)/dev.mdstack.runner` shows `state = running`.
+- **Linux (systemd).** Write `~/.config/systemd/user/mdstack-runner.service`
+  with that `ExecStart`, `WorkingDirectory=<root>`, `Restart=always` and
+  `WantedBy=default.target`. Run `systemctl --user daemon-reload`, then
+  `systemctl --user enable --now mdstack-runner.service`, then
+  `loginctl enable-linger "$USER"`; without lingering the runner stops at
+  logout and check's `linger` row warns. On a headless host with no Secret
+  Service, use the file-backed login stores ([Login locations](#login-locations)).
+- **Linux supervised.** Lab containers only, chosen by the image's
+  `/etc/mdstack/supervised`; its PID-1 supervisor runs the runner, so there
+  is no service step. Never a way onto a real host.
+
+**Ready.** `mdstack host prepare <host>` makes the mirror, then runs
+`mdstack host check <host>`. The `runner` row reads `up` with the service
+state beside it (`macos running`, `linux active` or `linux supervised`); a
+systemd host adds `linger`. `logins` stays a human step until every login
+is present. With every row `ok` the host is `ready`.
+
+**Remove a role host.**
+
+1. Take it out of `placement.hosts` and any `placement.rules`, so no new run
+   lands there. Once remote runs exist, wait until `mdstack hosts` shows no
+   live run on it; their worktree guards ([#345](https://github.com/mw-ding/mdstack/issues/345))
+   still apply, so unlanded work is never deleted.
+2. Delete its `[hosts.<host>]` table and run `core/crew-config.py validate`.
+3. On the primary, remove its SSH config `Host` entry and its known-hosts
+   line (`ssh-keygen -R <host>`); on the host, the `authorized_keys` line.
+4. Stop and remove the service: on macOS `launchctl bootout
+   gui/$(id -u)/dev.mdstack.runner` and delete the plist; on Linux
+   `systemctl --user disable --now mdstack-runner.service`, delete the unit
+   and run `systemctl --user daemon-reload`.
+5. Delete `<root>`. Logging out of `gh` and the engines, turning lingering
+   off and leaving the overlay are the owner's call; mdstack never changes
+   auth.
+
+**What the lab proves, and what it does not.** The local lab is the
+[C and V hosts above](#remote-acceptance-criteria-and-the-local-lab): C is
+the #1356 image, brought up by the guarded setup (lab C, #1357) and
+driven by the real-SSH scenarios (lab F, #1360), with the manifest and
+evidence of lab G (#1361); V is a macOS VM, a later M25.1 item. Lab C needs
+the owner's Docker seat and a running daemon. A lab run does steps 1 to 3
+for its own containers (run-scoped networks, `activate`, `authorize`).
+
+| Step | Lab C (Linux, supervised) | Lab V (macOS VM) | Still needs the real device or overlay |
+|---|---|---|---|
+| Overlay (N1–N4) | An analogue only: run-scoped networks and loopback-published SSH | Same, through a localhost forward | All of N1–N4 on a real overlay; listener `warn` rows on a real host |
+| Crew key, smoke test | Real `sshd`, forced command and host key | Same | none |
+| Runner service | Supervised only | launchd agent, `KeepAlive`, logout and reboot | A systemd user unit with lingering: a systemd-capable Linux host or VM |
+| Logins | Synthetic | Synthetic | Real vendor and `gh` logins, keychain and Secret Service visibility |
+| Prepare, check | Against a fake forge | Same | A mirror fetched with a real `gh` login |
+| Role runs | After #345–#348, stub engines | Same | Real partition and attach ([#716](https://github.com/mw-ding/mdstack/issues/716) cases 3 and 4); attached devices |
+| Remove | Keys, `<root>`, profile | Plus `bootout` | `systemctl --user disable` on a real unit |
+
 ## Remote acceptance criteria and the local lab
 
 Acceptance criteria for the remote issues, and what the M20.1 local lab can
@@ -637,7 +720,7 @@ is lab item C.
 | [#346](https://github.com/mw-ding/mdstack/issues/346) | Offset pulls survive an interrupted or repeated pull and a primary restart with no lost or doubled line; `mdstack send` delivers and its `ack` returns through the mirror | C | none |
 | [#347](https://github.com/mw-ding/mdstack/issues/347) | A both-alive partition keeps the claim and starts no duplicate; reconcile on return; abandon writes a tombstone | C, by network disconnect (a pause is the unresponsive case, not a partition) | #716 case 3 |
 | [#348](https://github.com/mw-ding/mdstack/issues/348) | Attach to a real remote pane, read-only unless `--rw`; `attach builders` captures; `logs` returns the step summary tail. Runner-job logs alone do not meet it | C, V | #716 case 4 |
-| 20.12 | The [runner-host runbook](#runbook-add-a-runner-host) extended to role hosts, with per-OS steps | C: Linux supervised; V: launchd | Overlay and attached devices |
+| 20.12 | The [runner-host runbook](#runbook-add-a-runner-host) extended to role hosts, with per-OS steps ([written](#runbook-add-or-remove-a-role-host), #1363) | C: Linux supervised; V: launchd | Overlay and attached devices |
 | [#209](https://github.com/mw-ding/mdstack/issues/209) | Runner first, as row 20.7 says ([#715](https://github.com/mw-ding/mdstack/issues/715)): the primary plus a forge-less runner host | Rehearsal on C | #716 case 2 completes it |
 | #716 cases 1 and 5 | Seed, job, result parity with a local run, unreachable fallback | Rehearsal on C | Completion |
 
