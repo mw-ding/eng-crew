@@ -1725,6 +1725,23 @@ tested-with-default-branch waiver above. Two or more ready PRs train,
 regardless of `train_min`; all other gates remain required at head. The
 merge record names the waiver and `Land rule: alone, direct`.
 
+Train membership is decided before any train CI (#1425). At survey time,
+`mdstack train check` runs step 1's drop checks for each candidate alone on
+the current `<default-branch>` (gate `train-merge`): a conflict or a changed
+patch routes that change to its builder for a merge-up first, so a train
+forms only from members that will survive. After step 1, the surviving
+members choose the path, recorded as `path=` in the train record and
+report: two or more train (`train`); none means no train (`none`), and
+dropped changes route to merge-up as before; exactly one, left by drops on
+`<default-branch>` with `lone_pr_land = "direct"`, closes the train
+unpushed (`direct`, reason `collapsed-to-direct`) and lands that change
+directly under the rule above, at its own head with CI green there and the
+lone-ready re-survey under the merge lock. A change the collapse dropped
+is not ready at that head while the survivor is open, and routes to
+merge-up after the direct land. Ready changes that arrive meanwhile train
+with it instead. Its merge record also names the collapse
+reason. With `"train"`, a one-member train still runs as before.
+
 After a direct land, the synthesizer reads the PR's merge commit SHA and
 waits for the default-branch push CI run at that exact SHA, checking every
 required job. On tmux, keep the synthesizer alive through this check even

@@ -14,6 +14,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest import mock
@@ -428,6 +429,37 @@ class A19LedgerTest(unittest.TestCase):
             p = self.replay(os.path.join(tmp, "ledger.json"))
         self.assertEqual(p.returncode, 1)
         self.assertIn("FAIL cursor TRANSIENT: oracle but the adapter lacks it", p.stdout)
+
+    def test_live_ledger_names_every_binding_with_its_link(self):
+        """A missing live binding, a block without its environment fields or a fail without its finding fails (#1439)."""
+        with open(os.path.join(self.A19, "ledger.json")) as fh:
+            d = json.load(fh)
+        del d["live"]["codex/tmux"]
+        d["live"]["grok-bot/mirror-watch"]["block"].pop("account")
+        d["live"]["claude-code/tmux"].pop("finding")
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(os.path.join(tmp, "ledger.json"), "w") as fh:
+                json.dump(d, fh)
+            p = self.replay(os.path.join(tmp, "ledger.json"))
+        self.assertEqual(p.returncode, 1)
+        self.assertIn("FAIL live bindings:", p.stdout)
+        self.assertIn("FAIL live claude-code/tmux: a fail needs its filed finding", p.stdout)
+        self.assertIn("FAIL live grok-bot/mirror-watch: a block names installation, version, account and sandbox",
+                      p.stdout)
+
+    def test_smoke_blocks_every_binding_without_installed_clis(self):
+        """smoke.py with no harness or backend CLI on PATH runs nothing and blocks each binding (#1439)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            os.mkdir(os.path.join(tmp, "bin"))
+            os.symlink(shutil.which("git"), os.path.join(tmp, "bin", "git"))
+            p = subprocess.run([sys.executable, os.path.join(self.A19, "smoke.py"), os.path.dirname(SCRIPTS),
+                                os.path.join(tmp, "runs")], capture_output=True, text=True,
+                               env=dict(os.environ, PATH=os.path.join(tmp, "bin")))
+            self.assertFalse(os.path.exists(os.path.join(tmp, "runs")))
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        recs = [json.loads(line) for line in p.stdout.splitlines() if line.startswith("{")]
+        self.assertEqual(len(recs), 12)
+        self.assertTrue(all(r["result"] == "blocked" and r["block"].startswith("installation: ") for r in recs))
 
 
 class A22OracleTest(unittest.TestCase):

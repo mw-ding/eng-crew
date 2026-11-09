@@ -159,6 +159,21 @@ class TrainBase(Base):
                        "statusCheckRollup": [], "reviews": list(reviews), "comments": [{"body": b} for b in comments],
                        "mergeable": mergeable, "closingIssuesReferences": []}, f)
 
+    def complete_view(self, n):
+        path = os.path.join(self.gh_dir, "pr-%d.json" % n)
+        with open(path) as f:
+            view = json.load(f)
+        head = view["headRefOid"]
+        body = "\n".join("<!-- crew:v1 role=reviewer-validator pass=%s sha=%s verdict=pass -->" % (p, head)
+                         for p in ("review", "validate", "verdict"))
+        view.update(body="## Acceptance Evidence\nN/A: no observable behaviour changes\n", files=[],
+                    isDraft=False, baseRefName="main", closingIssuesReferences=[{"number": 1}],
+                    statusCheckRollup=[{"__typename": "StatusContext", "state": "SUCCESS"}],
+                    reviews=[{"body": body, "state": "APPROVED", "author": {"login": "acme-reviewer"}}])
+        with open(path, "w") as f:
+            json.dump(view, f)
+        return path, view
+
     def view(self, n):
         with open(os.path.join(self.gh_dir, "pr-%d.json" % n)) as f:
             pr = json.load(f)
@@ -484,6 +499,100 @@ class Build(TrainBase):
         self.assertEqual(self.record()["dropped"][0]["merge_up"], "updated")
 
 
+class LonePrLand(TrainBase):
+    """#1425: membership is decided before the push; drops leaving one member land it directly under direct."""
+
+    def direct(self):
+        with open(self.project) as f:
+            text = f.read().replace('merge_grant = "test grant"', 'merge_grant = "test grant", lone_pr_land = "direct"')
+        with open(self.project, "w") as f:
+            f.write(text)
+
+    def test_one_drop_collapses_to_direct_without_a_train_branch_pr_or_ci(self):
+        self.direct()
+        h1 = self.pr(1, {"a.txt": "one\n"})
+        self.pr(2, {"a.txt": "two\n"})  # conflicts with #1 on the train branch
+        r = self.train("build", "1", "2")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("dropped pr=2 reason=conflict", r.stdout)
+        self.assertIn("direct pr=1 head=%s reason=collapsed-to-direct: train 1 dropped #2 (conflict)" % h1, r.stdout)
+        self.assertNotIn("merge-up", r.stdout)  # its drop routes after the direct land (train route 1)
+        self.assertIn("train-report n=1 members=1 landed=none dropped=2:conflict stop=none "
+                      "path=direct:collapsed-to-direct", r.stdout)
+        rec = self.record()
+        self.assertEqual((rec["path"], rec["closed"], rec["pr"], rec["ci"], rec["local"]), ("direct", True, None, "none", "none"))
+        self.assertEqual(rec["path_reason"], "collapsed-to-direct: train 1 dropped #2 (conflict)")
+        self.assertEqual(self.gh_calls("pr", "create"), [])
+        self.assertEqual(self.gh_calls("pr", "checks"), [])
+        self.assertEqual(self.remote("refs/heads/crew/train-1"), "")  # no train branch pushed
+        land = self.train("land", "1", "1")  # nothing lands through the collapsed train: the synthesizer lands directly
+        self.assertEqual(land.returncode, 1)
+        self.assertIn("train 1 is CI none; nothing landed", land.stdout)
+        self.assertEqual(self.gh_calls("pr", "merge"), [])
+
+    def test_resurvey_after_collapse_sees_the_survivor_alone_until_it_lands(self):
+        self.direct()
+        h1 = self.pr(1, {"a.txt": "one\n"})
+        h2 = self.pr(2, {"a.txt": "two\n"})  # merges into main alone, conflicts only with #1
+        for n in (1, 2):
+            self.complete_view(n)
+        self.assertIn("direct pr=1 ", self.train("build", "1", "2").stdout)
+        r = self.train("check", "1", "2")  # the lone-ready re-survey: #2 is not ready at its dropped head
+        self.assertIn("gate pr=1 sha=%s name=train-merge status=pass" % h1, r.stdout)
+        self.assertIn('gate pr=2 sha=%s name=train-merge status=blocked reason="dropped at this head by collapsed '
+                      'train 1 while #1 is open: not ready until it lands or closes"' % h2, r.stdout)
+        h3 = self.pr(3, {"c.txt": "three\n"})
+        self.complete_view(3)
+        r = self.train("check", "1", "2", "3")  # a new ready PR: #1 and #3 are ready, so they train
+        self.assertIn("gate pr=3 sha=%s name=train-merge status=pass" % h3, r.stdout)
+        self.assertIn("pr=2 sha=%s name=train-merge status=blocked" % h2, r.stdout)
+        self.git("fetch", "-q", "origin", "pull/1/head")  # the survivor lands directly
+        self.git("merge", "-q", "--squash", "FETCH_HEAD")
+        self.git("commit", "-q", "-m", "squash #1")
+        self.git("push", "-q", "origin", "main")
+        path = os.path.join(self.gh_dir, "pr-1.json")
+        with open(path) as f:
+            view = json.load(f)
+        view["state"] = "MERGED"
+        with open(path, "w") as f:
+            json.dump(view, f)
+        r = self.train("check", "2")  # now the conflict is real on main
+        self.assertIn('name=train-merge status=blocked reason="conflict on %s' % self.remote("refs/heads/main")[:7], r.stdout)
+        route = self.train("route", "1")
+        self.assertIn("merge-up pr=2 status=queued", route.stdout)  # a conflict waits for its builder
+
+    def test_train_policy_or_no_drop_keeps_the_one_member_train(self):
+        self.pr(1, {"a.txt": "one\n"})
+        self.pr(2, {"a.txt": "two\n"})
+        r = self.train("build", "1", "2")  # lone_pr_land = "train" (default): today's one-member train
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertNotIn("direct pr=", r.stdout)
+        self.assertIn("dropped=2:conflict stop=none path=train", r.stdout)
+        self.assertEqual((self.record()["path"], self.record()["ci"], self.record()["pr"]), ("train", "pass", 900))
+        self.assertNotEqual(self.remote("refs/heads/crew/train-1"), "")
+        self.direct()
+        r = self.train("build", "1")  # one member without a drop (a bisect half) still trains
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertNotIn("direct pr=", r.stdout)
+        self.assertEqual(self.record(2)["path"], "train")
+
+    def test_new_ready_pr_during_the_collapse_forms_a_train(self):
+        self.direct()
+        h1 = self.pr(1, {"a.txt": "one\n"})
+        self.pr(2, {"a.txt": "two\n"})
+        self.assertIn("direct pr=1 ", self.train("build", "1", "2").stdout)
+        h3 = self.pr(3, {"c.txt": "three\n"})  # ready before the direct land's re-survey: the two ready PRs train
+        r = self.train("build", "1", "3")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertNotIn("direct pr=", r.stdout)
+        rec = self.record(2)
+        self.assertEqual([(m["pr"], m["head"]) for m in rec["members"]], [(1, h1), (3, h3)])
+        self.assertEqual((rec["path"], rec["ci"]), ("train", "pass"))
+        self.pr(4, {"a.txt": "four\n"})
+        r = self.train("build", "1", "3", "4")  # a drop leaving two members trains as today
+        self.assertIn("members=1,3 landed=none dropped=4:conflict stop=none path=train", r.stdout)
+
+
 class RebaseStrategy(TrainBase):
     def test_build_and_bisect_refuse_before_side_effects(self):  # #952 (#874 B3)
         org = write_pack(os.path.join(self.tmp, "pack"))
@@ -589,21 +698,6 @@ class Pipeline(TrainBase):
 
 
 class Precheck(TrainBase):
-    def complete_view(self, n):
-        path = os.path.join(self.gh_dir, "pr-%d.json" % n)
-        with open(path) as f:
-            view = json.load(f)
-        head = view["headRefOid"]
-        body = "\n".join("<!-- crew:v1 role=reviewer-validator pass=%s sha=%s verdict=pass -->" % (p, head)
-                         for p in ("review", "validate", "verdict"))
-        view.update(body="## Acceptance Evidence\nN/A: no observable behaviour changes\n", files=[],
-                    isDraft=False, baseRefName="main", closingIssuesReferences=[{"number": 1}],
-                    statusCheckRollup=[{"__typename": "StatusContext", "state": "SUCCESS"}],
-                    reviews=[{"body": body, "state": "APPROVED", "author": {"login": "acme-reviewer"}}])
-        with open(path, "w") as f:
-            json.dump(view, f)
-        return path, view
-
     def test_reports_all_prs_without_git_build_or_github_writes(self):
         self.pr(1, {"one.txt": "one"})
         self.pr(2, {"two.txt": "two"})
@@ -622,8 +716,23 @@ class Precheck(TrainBase):
         self.assertEqual(self.gh_calls("pr", "create"), [])
         self.assertEqual(self.gh_calls("pr", "merge"), [])
         with open(self.git_log) as f:
-            self.assertNotIn("merge", f.read())
+            self.assertNotIn(" merge -q", f.read())  # the train-merge pre-filter uses merge-tree, never a merge
         self.assertFalse(os.path.exists(os.path.join(self.state, "trains")))
+
+    def test_check_prefilters_a_conflict_with_the_current_base(self):
+        self.pr(1, {"a.txt": "one\n"})
+        self.pr(2, {"c.txt": "two\n"})
+        self.commit({"a.txt": "main moved\n"}, "main")
+        self.git("push", "-q", "origin", "main")
+        self.complete_view(1)
+        self.complete_view(2)
+        base = self.remote("refs/heads/main")
+        r = self.train("check", "1", "2")
+        self.assertIn('gate pr=1 sha=%s name=train-merge status=blocked reason="conflict on %s: route to merge-up '
+                      'before training"' % (self.view(1)[0], base[:7]), r.stdout)
+        self.assertIn('gate pr=2 sha=%s name=train-merge status=pass' % self.view(2)[0], r.stdout)
+        self.assertFalse(os.path.exists(os.path.join(self.state, "trains")))
+        self.assertEqual(self.gh_calls("pr", "create"), [])
 
     def test_failed_validate_marker_cannot_pass_precheck(self):
         self.pr(1, {"one.txt": "one"})

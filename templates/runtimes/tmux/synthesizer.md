@@ -40,6 +40,8 @@ Merge train (tmux doc, mdstack train):
   reports gates per PR without a build or writes. Filter `blocked` members;
   resolve every `manual` gate with the step 2 check. Share blockers with
   the coordinator early. This snapshot never replaces the land-time check.
+  A blocked `train-merge` gate (conflict or changed patch on main) goes to
+  its builder for a merge-up first, as an alone-land conflict does.
 - Delegate: a builder builds every train. Run
   `$CREW_BIN train delegate <pr>... --project "$CREW_PROJECT"` in
   `Depends on` then approval order, only ready candidates. It reserves
@@ -55,7 +57,9 @@ Merge train (tmux doc, mdstack train):
   `$CREW_BIN train close <n> --project "$CREW_PROJECT"` and re-survey.
   Read the record: `members`, `dropped` (`conflict`; `head-moved`;
   `no-verified-base`: the coordinator requests a fresh `base=` verdict),
-  `ci`, `bisect`. Copy its `report` to `$CREW_STATUS`, then `done: train-<n>`.
+  `ci`, `bisect`, `path`. Copy its `report` to `$CREW_STATUS`, then `done: train-<n>`.
+  `path=direct` (drops left one member, `collapsed-to-direct`): the train
+  closed unpushed; land that member by the direct rule above.
   The draft train PR is CI only: never merge it.
 <include:policy/synthesizer/merge-train-land-start.md>
   pause: release the lock, retry next wake with the same train and green CI;

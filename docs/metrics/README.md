@@ -18,6 +18,9 @@ Files:
 - [baseline-m25.md](baseline-m25.md): median pipeline latencies and per-PR
   counts over M25, the baseline before the reorganization (#1220). See
   [Baseline report](#baseline-report).
+- [a31-campaign-report.md](a31-campaign-report.md): the A31 campaign-history
+  report over M25's actual PR and decision records (#1462). See
+  [Campaign-history report](#campaign-history-report).
 - [decisions.md](decisions.md): how these numbers trip a harness issue and
   pause new `M*` feature work.
   [`scripts/metrics-decide.py`](../../scripts/metrics-decide.py) reads
@@ -162,6 +165,36 @@ It covers 44 of M25's 46 issues; the other two (#782, #805) are trackers
 closed without a PR. Issue to PR counts from issue creation, so it includes
 time an issue waited in the backlog or on hold, not only build time. Offline
 self-test: `python3 dev/tests/scripts/test-metrics-baseline.py`.
+
+## Campaign-history report
+
+[`scripts/campaign-report.py`](../../scripts/campaign-report.py) is campaign
+scenario A31's report from actual records, not the scenario's fake history.
+`capture` keeps the crew PRs whose closing issue is in one milestone and that
+closed in the window, stores each as a `metrics-refresh.py` row with its
+closing issue, and adds the decision log's `[Ash/decision]` comments created
+in the window. `report` renders the stored file with no network call: per lane
+(standard `crew`, express, solo) the PR, merged and verdict counts with their
+denominators, the timing medians, and the owner decision records. An empty
+lane prints `n/a`. Blank fields, an empty decision log and token counts are
+listed under Missing data, never estimated.
+
+The committed [a31-campaign-report.md](a31-campaign-report.md) was rendered
+from the recorded capture in `dev/tests/scripts/fixtures/campaign/a31/`:
+
+```sh
+python3 scripts/campaign-report.py capture --repo mw-ding/mdstack --milestone 38 \
+  --since 2026-11-03 --until 2026-11-07 --decision-log 985 \
+  --out dev/tests/scripts/fixtures/campaign/a31/records-m25.json
+python3 scripts/campaign-report.py report \
+  --records dev/tests/scripts/fixtures/campaign/a31/records-m25.json \
+  --out docs/metrics/a31-campaign-report.md
+```
+
+Its PR, verdict and changes-verdict counts match [baseline-m25.md](baseline-m25.md),
+captured separately over the same window. Decision records cover every
+milestone in the window, not only M25, and the report does not classify them.
+Offline self-test: `python3 dev/tests/scripts/test-campaign-report.py`.
 
 ## Known limits
 
