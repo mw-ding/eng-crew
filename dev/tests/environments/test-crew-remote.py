@@ -1088,7 +1088,10 @@ class Observe(RunBase):
 
 class Runner(Base):
     def test_runner_owns_one_session_and_beats(self):
+        os.environ["TMUX_TMPDIR"] = os.path.join(self.tmp, "tmux-tmp")
         remote.runner(self.root, once=True)
+        socket_dir = os.path.join(self.tmp, "tmux-tmp", "tmux-%d" % os.getuid())  # -S never makes it (#348 lab)
+        self.assertEqual(os.stat(socket_dir).st_mode & 0o777, 0o700)
         remote.runner(self.root, once=True)
         with open(os.environ["FAKE_TMUX_LOG"]) as f:
             log = [json.loads(line) for line in f]

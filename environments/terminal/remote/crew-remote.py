@@ -825,6 +825,9 @@ def handle(request, root, command=None, tty=False):
 
 def runner(root, once=False, interval=INTERVAL):
     adapter = tmux()
+    # The adapter names the default server by path (-S); tmux never makes that socket's directory and still exits 0,
+    # so on a host where tmux never ran the runner's first server would fail silently.
+    os.makedirs(os.path.dirname(adapter.default_socket()), mode=0o700, exist_ok=True)
     while True:
         if not adapter.has_session(SESSION):
             adapter.new_session(SESSION, "runner", root, {}, "tail -f /dev/null")
