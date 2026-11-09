@@ -168,9 +168,10 @@ def hold(name, index):
 
 
 def respawn(name, index, cwd, env, command):
-    """Restart a held window in place with a new command and environment, then drop the hold."""
+    """Restart a held window in place with a new command and environment, then drop the hold. A role window keeps its
+    WORKER_TMUX guard (#1475); window 0, the coordinator, keeps the crew's $TMUX."""
     target = "=%s:%d" % (name, index)
-    flags = [x for k, v in env.items() for x in ("-e", "%s=%s" % (k, v))]
+    flags = [x for k, v in (dict(env, TMUX=WORKER_TMUX) if index else env).items() for x in ("-e", "%s=%s" % (k, v))]
     result = tmux("respawn-window", "-k", "-t", target, "-c", cwd, *flags, command)
     if result.returncode:
         raise RuntimeError("reload failed: " + result.stderr.strip())

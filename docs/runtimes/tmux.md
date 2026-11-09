@@ -420,8 +420,9 @@ sweeper*: kept as a backstop shape, too slow as the detector.
    block every runtime uses ([hosted dispatch](session.md#run-parameters-for-hosted-dispatch)).
 
 Worker guard (#1475): every role window the tmux adapter opens
-(`mdstack spawn`, `restart`, `upgrade` and `lead ensure`) gets
-`TMUX=/dev/null/mdstack-worker,0,0`, a socket no server can listen on. A bare
+(`mdstack spawn`, `restart` and `lead ensure`) or reloads in place
+(`mdstack upgrade`) gets `TMUX=/dev/null/mdstack-worker,0,0`, a socket no
+server can listen on; the coordinator's window 0 keeps the crew's. A bare
 `tmux kill-server`, `kill-session` or `kill-window` from the agent's shell
 follows `$TMUX` ahead of `TMUX_TMPDIR`, so it fails with `Not a directory`
 instead of ending the crew's server, even with the host tmux first on `PATH`.

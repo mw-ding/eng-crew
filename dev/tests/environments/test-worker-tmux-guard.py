@@ -31,7 +31,8 @@ class FakeTmux(SpawnBase):
 
 @unittest.skipUnless(shutil.which("tmux"), "tmux not installed")
 class Decoy(unittest.TestCase):
-    """AC 2: a throwaway crew server survives the bare kill calls run from a window launched the way spawn does."""
+    """AC 2: a throwaway crew server survives the bare kill calls run from a window launched the way spawn does, or
+    reloaded the way upgrade does."""
 
     def setUp(self):
         self.tmp = tempfile.mkdtemp(prefix="wg", dir="/tmp")  # short: the socket path has a length limit
@@ -52,9 +53,18 @@ class Decoy(unittest.TestCase):
         self.assertTrue(os.path.realpath(sock).startswith(os.path.realpath(self.tmp)), sock)
         self.addCleanup(subprocess.run, ["tmux", "-S", sock, "kill-server"], capture_output=True)
 
-    def worker(self, name):
-        """Window 10 as spawn opens it (adapter.new_window with role env); its shell runs the bare calls with the host
-        tmux directory first on PATH, then a crew command's own check through the adapter."""
+    def wait(self, out):
+        deadline = time.monotonic() + 15
+        while time.monotonic() < deadline:
+            if os.path.exists(out) and open(out).read().endswith("done\n"):
+                return open(out).read()
+            time.sleep(0.1)
+        self.fail("window never finished: %r" % (open(out).read() if os.path.exists(out) else None))
+
+    def worker(self, name, reload=False):
+        """Window 10 as spawn opens it (adapter.new_window with role env), or as upgrade reloads it (hold, respawn);
+        its shell runs the bare calls with the host tmux directory first on PATH, then a crew command's own check
+        through the adapter."""
         out = os.path.join(self.tmp, "out")
         check = ("import importlib.util as u; s = u.spec_from_file_location('a', %r); a = u.module_from_spec(s); "
                  "s.loader.exec_module(a); a.bind(%r, %r); print('crew', a.has_session(%r))") % (
@@ -67,17 +77,16 @@ class Decoy(unittest.TestCase):
             "env -u TMUX_TMPDIR TMUX_TMPDIR=%s/sbx tmux kill-server; echo tmpdir=$?" % self.tmp,
             "%s -c %s" % (shlex.quote(sys.executable), shlex.quote(check)),
         ])
-        self.tmux.new_window(name, 10, "ben-7", self.tmp, {"CREW_ROLE": "builder", "CREW_ID": "ben-7"},
-                             "{ %s; } > %s 2>&1; echo done >> %s; sleep 60" % (script, out, out))
-        deadline = time.monotonic() + 15
-        while time.monotonic() < deadline:
-            if os.path.exists(out) and open(out).read().endswith("done\n"):
-                return open(out).read()
-            time.sleep(0.1)
-        self.fail("worker never finished: %r" % (open(out).read() if os.path.exists(out) else None))
+        env, command = {"CREW_ROLE": "builder", "CREW_ID": "ben-7"}, "{ %s; } > %s 2>&1; echo done >> %s; sleep 60" % (
+            script, out, out)
+        self.tmux.new_window(name, 10, "ben-7", self.tmp, env, "sleep 60" if reload else command)
+        if reload:
+            self.tmux.hold(name, 10)
+            self.tmux.respawn(name, 10, self.tmp, env, command)
+        return self.wait(out)
 
-    def check(self, name):
-        log = self.worker(name)
+    def check(self, name, reload=False):
+        log = self.worker(name, reload)
         self.assertIn(GUARD, log)
         for call in ("kill-window", "kill-session", "kill-server", "tmpdir"):
             self.assertIn("%s=1" % call, log)
@@ -92,6 +101,17 @@ class Decoy(unittest.TestCase):
     def test_dedicated_server_survives(self):
         self.start("crew-guard", "dedicated")
         self.check("crew-guard")
+
+    def test_upgrade_reload_keeps_the_guard(self):
+        self.start("crew-guard", "default")
+        self.check("crew-guard", reload=True)
+
+    def test_coordinator_reload_keeps_the_crew_tmux(self):
+        self.start("crew-guard", "default")
+        out = os.path.join(self.tmp, "coordinator")
+        self.tmux.hold("crew-guard", 0)
+        self.tmux.respawn("crew-guard", 0, self.tmp, {}, "echo \"$TMUX\" > %s; echo done >> %s; sleep 60" % (out, out))
+        self.assertTrue(self.wait(out).startswith(self.tmux.default_socket() + ","))
 
 
 if __name__ == "__main__":
