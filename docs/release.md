@@ -36,7 +36,7 @@ manual fallback.
 |---|---|---|
 | Trigger | Landing the CHANGELOG cut PR: `release.yml` runs on a `push` to `main` touching `CHANGELOG.md`; `workflow_dispatch` remains for dry runs and manual fallback | Milestone close: an outward action as a side effect of tracker hygiene, and not every milestone is a release. A release label: overloads `crew:*` state tags, which the protocol keeps for change state |
 | Who starts the release | The synthesizer lands the approved cut PR; the workflow completes the release without a coordinator dispatch or run watch | A separate dispatch after landing the cut: an extra owner action |
-| Who approves | The owner's per-PR merge-ok on the cut PR at its head (`pass=steer cmd=merge-ok sha=<head>`); the publish job verifies it and the `RELEASE_OWNER` actor check | A standing grant: never covers a cut PR |
+| Who approves | The owner's per-PR merge-ok on the cut PR at its head (`pass=steer cmd=merge-ok sha=<head>`), or the coordinator's merge-ok there citing a recorded [release delegation](#release-delegation) ([#1435](https://github.com/mw-ding/mdstack/issues/1435)); the publish job verifies it and the `RELEASE_OWNER` actor check | A standing merge grant: never covers a cut PR. A per-cut chat reply every time: the owner gave the same go repeatedly |
 | CHANGELOG cut | A normal crew PR runs `scripts/changelog-cut.py <version>` ([#217](https://github.com/mw-ding/eng-crew/issues/217)) and lands through §7 with the owner's per-PR merge-ok to trigger the release | The workflow committing the cut to `main`: a direct push bypasses review and breaks invariant 4 (only the synthesizer lands). A workflow-opened PR: PRs opened with the workflow token start no CI, so §7 could never pass |
 | What the workflow writes | A tag, a GitHub Release and the release-issue notice and closure; never a commit | none |
 | Release workflow PR | `crew:sensitive` ([#184](https://github.com/mw-ding/eng-crew/issues/184)); until that class lands, the owner's per-change merge-ok is stated on the PR | Standing doc-only merge-ok: never covers `.github/` |
@@ -50,8 +50,9 @@ manual fallback.
    cuts `CHANGELOG.md` and consumes the fragments under `changes/unreleased/`.
    Its body says `Closes #<release issue>`. It goes through review and the
    [§7 merge gate](protocol.md#7-merge-gate-synthesizer); the owner gives
-   per-PR merge-ok at the cut PR's head (`pass=steer cmd=merge-ok sha=<head>`).
-   The standing grant never covers a cut PR. CI validates and builds the
+   per-PR merge-ok at the cut PR's head (`pass=steer cmd=merge-ok sha=<head>`),
+   or a recorded [release delegation](#release-delegation) stands in for it.
+   The standing merge grant never covers a cut PR. CI validates and builds the
    bundle on the real cut before it can land.
    A cut PR may carry a small release-pipeline fix (only
    `.github/workflows/release.yml`, `.github/workflows/ci.yml`,
@@ -175,7 +176,36 @@ the GitHub binding of each term is in the table above.
 
 | Gate | Satisfied by | Who / how fast | Fail-open | Binding |
 |---|---|---|---|---|
-| Release approval | The owner's per-change `pass=steer cmd=merge-ok sha=<head>` marker at the landed cut change's head, verified by `release.approve-check` before `release.record-release` writes the release id, with release validation green, required CI green at the landed cut revision and the publishing actor matching the configured release owner | Owner on the cut change before landing, on the coordinator's ask under the §6 owner SLA; approve-check verifies before the release id is written | None for publishing: no standing grant or auto-applied default publishes a release. The §6 owner-decision path may only defer or cancel it | backend (`release` concern) |
+| Release approval | The owner's per-change `pass=steer cmd=merge-ok sha=<head>` marker at the landed cut change's head (or the coordinator's, citing a recorded [release delegation](#release-delegation)), verified by `release.approve-check` before `release.record-release` writes the release id, with release validation green, required CI green at the landed cut revision and the publishing actor matching the configured release owner | Owner on the cut change before landing, on the coordinator's ask under the §6 owner SLA; approve-check verifies before the release id is written | None for publishing: no standing merge grant or auto-applied default publishes a release; a recorded release delegation is the owner's go, not a fail-open. The §6 owner-decision path may only defer or cancel it | backend (`release` concern) |
+
+### Release delegation
+
+The owner may record a standing go for cuts once instead of a chat reply per
+cut ([#1435](https://github.com/mw-ding/mdstack/issues/1435)). The profile
+key `runtime.options.release_delegation`
+([runtime options](configuration/runtime-options.md#tmux-options)) holds the
+owner's recorded words and a `https://` link to the record; the default
+`none` keeps a per-cut owner merge-ok. It takes effect only when an owner
+account sets it in the owner's profile or team file; a pack is refused, and
+no role sets or edits it.
+
+- **With the key set,** the coordinator records the owner's merge-ok on a cut
+  PR at its full head SHA, citing the delegation's link:
+  `role=coordinator pass=steer cmd=merge-ok sha=<head> cmd-id=release-delegation`.
+  That marker satisfies the synthesizer's §7 merge permission for the cut
+  ([Steps](#steps) 2) and `release.approve-check` (step 7), which still
+  checks the marker's author, PR number and full head SHA against
+  `RELEASE_OWNER` as before.
+- **Unchanged either way:** the `RELEASE_OWNER` actor check, required CI,
+  release validation, holds and `crew:sensitive`. A `crew:sensitive` cut
+  still needs the owner's own per-change merge-ok at head.
+- **Without the key,** a `cmd-id=release-delegation` merge-ok counts for
+  nothing; the synthesizer blocks the cut until the owner's words for that
+  cut are recorded, as today. The publish job cannot read the profile, so
+  the key is enforced at the synthesizer's §7 check, before the cut lands.
+
+The key covers release cut PRs only; it is not a merge grant for any other
+change.
 
 **Enforcement gap.** This repo is private on the GitHub Free plan, which
 cannot add required reviewers to an environment, and the bots share the
@@ -186,8 +216,9 @@ The publish job checks the cut PR's head-bound owner merge-ok marker and
 not the release go. With `RELEASE_OWNER` unset, publishing refuses. Shared
 owner-level accounts mean the actor check alone cannot distinguish a bot
 from the owner, so owner authorization remains a convention enforced through
-the marker: no role invents an owner merge-ok. The standing grant and an
-auto-applied default never authorize publishing. Roles may dispatch dry runs;
+the marker: no role invents an owner merge-ok. The standing merge grant and
+an auto-applied default never authorize publishing; only the owner's
+per-cut merge-ok or a recorded [release delegation](#release-delegation) does. Roles may dispatch dry runs;
 only the owner dispatches a real manual fallback with the same approval.
 
 ## Rollback

@@ -5,7 +5,8 @@ and retries pending lead admission every 60 s, then exits with one reason line; 
 wakes while their record mtime is less than 60 s
 old. Verified panes with a live tool session or recent output get a supervisor heartbeat instead of a stale wake; a
 working run whose tmux pane printed nothing for `--idle-stall` (default 1800 s) is idle at its prompt and wakes stale with
-liveness `idle` even while its claim or status file keeps being refreshed (#1283).
+liveness `idle` even while its claim or status file keeps being refreshed (#1283). Each new stale wake opens a stall
+in `metrics/observations.jsonl` keyed by run, and that run's next status line closes it (self-improve.md, #1524).
 Each live run's screen is matched against its harness adapter's transient-error text; each new match is a line in
 `schedule/errors.jsonl` (docs/scheduling.md#inputs). Finishing work deferred by the scheduler past `stuck_after` is one
 `schedule-stuck` wake per (pool, ref, first deferral), and the exit line is followed by `mdstack schedule summary`'s line
@@ -152,6 +153,19 @@ def utc(t):
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(t))
 
 
+def stall(state, seen, name, now, since=None, liveness=None):
+    """A stale wake opens one sanitized stall sample (since = last progress); without since, the run's next status
+    line closes the open one. A replayed scan repeats (key, kind, since), which reflection-measures dedupes (#1524)."""
+    stalled = seen.setdefault("stalled", {})
+    if since is None and name not in stalled:
+        return
+    record = {"kind": "stall", "since": since, "liveness": liveness} if since else {"kind": "resume",
+                                                                                      "since": stalled.pop(name)}
+    if since:
+        stalled[name] = since
+    commands()["poll"].observe(state, dict(record, ts=utc(now), source="watch", key="run:" + name))
+
+
 def scan(state, session, now, stale, seen, idle_ttl=1800, stuck_after=1800, idle_stall=1800):
     """Wake records: new status lines, runs dead, missing or silent past stale, owner asks past their deadline and
     finishing work deferred past stuck_after; each fires once per key. A working run whose pane printed nothing for
@@ -183,6 +197,7 @@ def scan(state, session, now, stale, seen, idle_ttl=1800, stuck_after=1800, idle
                 remember_pr(rec, line)
                 if line.strip():
                     wakes.append({"reason": "status", "window": name, "line": line, "run": identity})
+                    stall(state, seen, name, now)
             size = len(data)
             digests[name] = hashlib.sha256(data).hexdigest()
         elif not size:
@@ -227,6 +242,7 @@ def scan(state, session, now, stale, seen, idle_ttl=1800, stuck_after=1800, idle
                 seen["keys"][name] = key
                 wakes.append({"reason": "stale", "window": name, "liveness": "idle", "silent": int(quiet),
                               "action": "escalate"})
+                stall(state, seen, name, now, utc(float(p["activity"])), "idle")
             continue
         if finished(rec, last) or (cls in ("alive", "ambiguous") and (last.startswith("done:") or now - beat <= stale)):
             continue  # a live builder after done: waits for its inbox; a dead one is restartable (#139 F4)
@@ -245,6 +261,7 @@ def scan(state, session, now, stale, seen, idle_ttl=1800, stuck_after=1800, idle
             seen["keys"][name] = key
             wakes.append({"reason": "stale", "window": name, "liveness": cls, "silent": int(now - beat),
                           "action": "restart" if cls in ("dead", "missing") and not rec.get("restarts") else "escalate"})
+            stall(state, seen, name, now, utc(beat), cls)
     for n, text, due in asks(state):  # whatever the backstop: the ask's §6 auto-apply time (tmux.md C8)
         if now >= due and seen["keys"].get("ask " + n) != text:  # once per (ask, deadline)
             seen["keys"]["ask " + n] = text

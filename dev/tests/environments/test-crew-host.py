@@ -23,11 +23,7 @@ OS = {"Darwin": "macos"}.get(platform.system(), "linux")  # the simulated host i
 class Host(Base):
     def setUp(self):
         super().setUp()
-        with open(self.project, "a") as f:
-            f.write('\n[hosts.host-a]\nprimary = true\nmax_runs = 2\n'
-                    'capabilities = { os = "linux", arch = "x86_64", engines = ["codex", "claude-code"] }\n'
-                    '[hosts.host-b]\nroot = "~/.crew"\nmax_runs = 3\nroles = ["reviewer"]\n'
-                    'capabilities = { os = "macos", arch = "arm64", devices = ["ios-simulator"], engines = ["codex"] }\n')
+        self.add_hosts()
         self.ssh_log = os.path.join(self.tmp, "ssh.log")
         self.env["FAKE_SSH_LOG"] = self.ssh_log
         self.env["FAKE_SSH_REPLY"] = json.dumps(self.reply())
@@ -61,6 +57,13 @@ class Host(Base):
                     '    reply["checks"][0]["detail"] = "state layout repaired"\n'
                     'print(json.dumps(reply))\nsys.exit(int(os.environ["FAKE_SSH_EXIT"]))\n')
         os.chmod(os.path.join(self.tmp, "bin", "ssh"), 0o755)
+
+    def add_hosts(self):
+        with open(self.project, "a") as f:
+            f.write('\n[hosts.host-a]\nprimary = true\nmax_runs = 2\n'
+                    'capabilities = { os = "linux", arch = "x86_64", engines = ["codex", "claude-code"] }\n'
+                    '[hosts.host-b]\nroot = "~/.crew"\nmax_runs = 3\nroles = ["reviewer"]\n'
+                    'capabilities = { os = "macos", arch = "arm64", devices = ["ios-simulator"], engines = ["codex"] }\n')
 
     def reply(self):
         return dict(result="ok", checks=[dict(status="ok", check=n, detail="passed") for n in
@@ -342,6 +345,30 @@ class Host(Base):
             with mock.patch.object(doctor, "run", return_value=0), mock.patch.object(doctor, "sh",
                                    side_effect=lambda *cmd: (0 if cmd[0] == "git" else 1, "")):
                 self.assertEqual(mod.commands()["host"].run(args), 1)
+        self.assertFalse(os.path.exists(self.ssh_log))
+
+    def test_session_runtime_gets_a_host_report(self):
+        self.write_profile(runtime="session")
+        self.add_hosts()
+        r = self.check()
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertEqual(r.stdout, "ok tools: passed\nok logins: passed\nok project mirror: passed\nhost-b: ready\n")
+        self.assertEqual(self.calls()[0]["request"]["project"], "acme__widgets")
+        r = self.crew("host", "prepare", "host-b")
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn("ok prepare clone: project mirror", r.stdout)
+        r = self.crew("host", "check", "host-a")
+        self.assertNotIn("not tmux", r.stdout)
+        self.assertIn("project mirror: default branch main", r.stdout)
+        self.assertTrue(r.stdout.endswith("host-a: ready\n") or r.stdout.endswith("host-a: not ready\n"), r.stdout)
+        self.assertFalse(os.path.exists(self.log))  # no tmux call for a session crew
+
+    def test_other_runtimes_still_refused(self):
+        self.write_profile(runtime="grok-bot")
+        self.add_hosts()
+        r = self.check()
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("a host inventory needs runtime tmux or session, got 'grok-bot'", r.stdout)
         self.assertFalse(os.path.exists(self.ssh_log))
 
     def test_timeout_and_malformed_response(self):

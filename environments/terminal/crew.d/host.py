@@ -25,6 +25,8 @@ No credentials, profile contents or shell snippets cross SSH. A missing runner n
 A forge-less host (forge = false) sends no roles or identities; its logins row prints n/a, or warn when the
 runner's logins check is not ok, meaning a forge login is present there.
 Exit 1 for fail, human or unverified (doctor's human rows also block placement), otherwise 0.
+A session-runtime profile (runtime.name = "session") gets the same rows: doctor runs its runtime-independent rows on
+the primary, whose load is 0 since session workers hold no tmux windows; remote hosts are checked as for tmux (#1122).
 """
 from argparse import Namespace
 import base64
@@ -91,7 +93,7 @@ def inspect_host(args, values, session, state, host):
         mirror = commands()["doctor"].sh("git", "-C", checkout(values, args.project),
                                          "rev-parse", "--verify", "refs/remotes/origin/" + values["repo.default_branch"])[0] == 0
         text += ("ok" if mirror else "fail") + " project mirror: default branch " + values["repo.default_branch"] + "\n"
-        runs = sum(i >= 10 for i, _ in tmux.list_windows(session)) if tmux.has_session(session) else 0
+        runs = sum(i >= 10 for i, _ in tmux.list_windows(session)) if session and tmux.has_session(session) else 0
         ready = mirror and login_ok and not code and not any(line.startswith("human") for line in text.splitlines())
         return dict(reachable=True, ready=ready, report=text, projects=[project] if ready else [], load=runs)
     forge = setting(values, host, "forge", True)
@@ -199,7 +201,7 @@ def register(sub):
 
 
 def run(args):
-    values, session, state = profile(args)
+    values, session, state = profile(args, runtimes=("tmux", "session"))
     if args.host not in inventory(values):
         print("crew host: unknown inventory host " + args.host)
         return 1

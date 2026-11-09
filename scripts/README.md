@@ -615,7 +615,8 @@ Render-time notes: each file in `runtime.options.notes.render.<role>` (path
 relative to the project file) is appended verbatim to that role's
 `briefs/<role>.md` or `runtime/<role>.md`, under `## Render note: <path>`,
 after the precheck block. The size budget and the render-vs-live drift check
-see them like any other brief text.
+see them like any other brief text. A nonempty list for a role with no such
+brief in the selected runtime fails the render, naming the key and runtime.
 
 Every `<name>` token is a placeholder. Install-time placeholders are
 replaced from resolved profile keys (the "Replaces" columns of
@@ -630,6 +631,7 @@ replaced from resolved profile keys (the "Replaces" columns of
 | `<state-dir>`, `<worktree-root>`, `<toolchain-bin>` | `paths.state_dir`, `paths.worktree_root`, `paths.toolchain_bin` |
 | `<timezone>` | `runtime.timezone` |
 | `<mdstack>`, `<merge-grant>`, `<hold-label-blocks>` | `paths.mdstack`, `runtime.options.merge_grant`, `runtime.options.hold_label_blocks` (a boolean renders as `true` / `false`) |
+| `<release-delegation>` | `runtime.options.release_delegation` (`none` when absent) |
 | `<merge-grant-scope>`, `<spec-paths>` | `runtime.options.merge_grant_scope`, `spec.paths`, rendered as JSON arrays; absent keys render the defaults `["approved"]` and `["docs/specs/**"]` |
 | `<fallback-engine>` | `engines.fallback_engine` |
 | `<tested-update>` | `strategy.update_from_base` from the change backend's pack manifest (`merge` when undeclared), as the synthesizer's update wording |
@@ -679,7 +681,9 @@ each written path and exits 0.
 - **Other release PRs:** PRs touching the workflow or release scripts
   validate and build on a simulated cut; they never tag or publish.
 - **Approval:** the owner gives per-PR `pass=steer cmd=merge-ok sha=<head>`
-  on the cut PR at its head; the standing grant never covers a cut PR. Before
+  on the cut PR at its head, or the coordinator's there citing a recorded
+  [release delegation](../docs/release.md#release-delegation); the standing
+  merge grant never covers a cut PR. Before
   tagging, the publish job verifies the marker on the merged cut PR and that
   the push actor matches the repository variable `RELEASE_OWNER`.
 - **Dispatch fallback** on `main` with `version` (`X.Y.Z`, no `v`) and

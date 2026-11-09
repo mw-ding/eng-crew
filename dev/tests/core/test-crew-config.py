@@ -336,15 +336,36 @@ class ValidateTest(unittest.TestCase):
     def test_session_runtime_selector_and_options(self):  # #914
         session = VALID.replace('name = "tmux"\noptions = { builders = 3 }', 'name = "session"\noptions = { %s }')
         for options in ("", 'session_backend = "cli", builders = 2, reviewers = 1, max_active_milestones = 2',
-                        'merge_grant = "none", lone_pr_land = "direct", train_min = 3, mirror = "none", notes = {}'):
+                        'merge_grant = "none", lone_pr_land = "direct", train_min = 3, mirror = "none", notes = {}',
+                        'researchers = 0'):  # #1057: the documented no-researcher statement survives a tmux migration
             code, lines = validate(session % options)
             self.assertEqual(code, 0, lines)
         for options, expected in [
                 ('session_backend = "tmux"', "session_backend: unknown value 'tmux' (expected one of: native, cli)"),
-                ('researchers = 1', "researchers: unknown key"),
+                ('researchers = 1', "researchers: the session runtime has no researcher; only 0 (no researcher) "
+                                    "is accepted, got 1"),
+                ('researchers = -1', "researchers: must be >= 0, got -1"),
+                ('researchers = "0"', "researchers: expected integer, got string"),
                 ('permission_mode = "bypass"', "permission_mode: unknown key"),
                 ('max_active_milestones = 0', "max_active_milestones: must be >= 1, got 0")]:
             self.assertFails(session % options, "crew.toml:runtime.options." + expected)
+
+    def test_session_present_caps_bounded_by_full_caps(self):  # #1053
+        session = VALID.replace('name = "tmux"\noptions = { builders = 3 }', 'name = "session"\noptions = { %s }')
+        for options in ("present_builders = 5, present_reviewers = 2", "builders = 3, present_builders = 1",
+                        "builders = 3, reviewers = 3, present_builders = 3, present_reviewers = 3"):
+            code, lines = validate(session % options)
+            self.assertEqual(code, 0, (options, lines))
+        for options, expected in [
+                ("builders = 2, present_builders = 3", "present_builders: must be <= builders (2), got 3"),
+                ("present_builders = 6", "present_builders: must be <= builders (5), got 6"),
+                ("present_reviewers = 3", "present_reviewers: must be <= reviewers (2), got 3"),
+                ("present_reviewers = 0", "present_reviewers: must be >= 1, got 0"),
+                ('present_builders = "2"', "present_builders: expected integer, got string")]:
+            self.assertFails(session % options, "crew.toml:runtime.options." + expected)
+        # tmux keeps its admission-time clamp: an over-cap present limit still validates.
+        code, lines = validate(VALID.replace("builders = 3", "builders = 3, present_builders = 9, present_reviewers = 9"))
+        self.assertEqual(code, 0, lines)
         self.assertFails(VALID.replace("builders = 3", 'session_backend = "native"'),
                          "crew.toml:runtime.options.session_backend: unknown value 'native' (expected one of: tmux, herdr)")
         for server in ("default", "dedicated"):  # #1327
@@ -958,7 +979,17 @@ class ResolveTest(unittest.TestCase):
                                      'runtime.options.max_active_milestones = 1  # core',
                                      'runtime.options.merge_grant = "none"  # core'],
                                     VALID.replace('name = "tmux"\noptions = { builders = 3 }', 'name = "session"'))
-        self.assertFalse([ln for ln in lines if "present_" in ln or "researchers" in ln], lines)
+        self.assertFalse([ln for ln in lines if "researchers" in ln], lines)
+        for line in ('runtime.options.present_builders = 5  # core', 'runtime.options.present_reviewers = 2  # core'):
+            self.assertIn(line, lines)  # #1053: owner-present limits default to the full caps
+
+    def test_session_present_cap_bound_spans_layers(self):  # #1053
+        project = VALID.replace('name = "tmux"\noptions = { builders = 3 }', 'name = "session"\noptions = { builders = 3 }')
+        org = '[runtime.options]\npresent_builders = %d\n'
+        lines = self.assertResolves(['runtime.options.present_builders = 2  # org'], project, default=VALID, org=org % 2)
+        self.assertIn('runtime.options.present_reviewers = 2  # core', lines)
+        self.assertFails("org.toml:runtime.options.present_builders: must be <= builders (3), got 4",
+                         project, default=VALID, org=org % 4)
 
     def test_core_defaults_under_project(self):
         self.assertResolves(['repo.default_branch = "main"  # core',
@@ -1960,9 +1991,13 @@ class HostInventoryTest(unittest.TestCase):
                          + runner.replace('os = "linux"', 'os = "linux", devices = ["ios-simulator"]'),
                          "crew.toml:placement.rules[0].needs: no host taking role reviewer meets these needs")
 
-    def test_hosts_need_tmux(self):
+    def test_hosts_need_tmux_or_session(self):
         grok = VALID.replace('name = "tmux"\noptions = { builders = 3 }', 'name = "grok-bot"')
-        self.assertFails(grok + HOSTS, "crew.toml:hosts: a host inventory needs runtime tmux, got 'grok-bot'")
+        self.assertFails(grok + HOSTS, "crew.toml:hosts: a host inventory needs runtime tmux or session, got 'grok-bot'")
+        session = VALID.replace('name = "tmux"\noptions = { builders = 3 }', 'name = "session"')
+        self.assertFails(session + HOSTS, "crew.toml:placement: placement needs runtime tmux, got 'session'")
+        code, lines = validate(session + HOSTS.split("[placement]")[0])
+        self.assertEqual(code, 0, lines)
 
     def test_resolve_merges_hosts_across_layers(self):
         org = HOSTS.split("[placement]")[0]
@@ -2313,6 +2348,20 @@ class SpecTest(unittest.TestCase):
                       lines)
         self.assertEqual(validate(VALID.replace("builders = 3", 'builders = 3, merge_grant_scope = ["approved"]'))[0], 0)
 
+    def test_release_delegation_defaults_none_and_needs_a_link(self):
+        """#1435: absent keeps a per-cut owner merge-ok; a set delegation carries the owner's words and link."""
+        code, lines = resolve(VALID)
+        self.assertEqual(code, 0, lines)
+        self.assertIn('runtime.options.release_delegation = "none"  # core', lines)
+        words = 'builders = 3, release_delegation = "all approvals incl. releases https://github.com/o/r/issues/985#c1"'
+        code, lines = resolve(VALID.replace("builders = 3", words))
+        self.assertIn('runtime.options.release_delegation = "all approvals incl. releases '
+                      'https://github.com/o/r/issues/985#c1"  # project', lines)
+        code, lines = validate(VALID.replace("builders = 3", 'builders = 3, release_delegation = "releases ok"'))
+        self.assertEqual(code, 1, lines)
+        self.assertIn("crew.toml:runtime.options.release_delegation: expected the owner's recorded words with a "
+                      "https:// link to the record", lines)
+
     def test_team_repo_sections_set_spec_paths_and_scope(self):
         text = TEAM.replace('merge_grant = "docs PRs"', 'merge_grant = "docs PRs"\nmerge_grant_scope = ["approved", "spec"]\n'
                             'spec = ["rfcs/**"]')
@@ -2549,6 +2598,42 @@ class ControlItemIdsTest(unittest.TestCase):
             self.assertEqual(code, 1)
             self.assertIn("crew.toml:ids: unknown key", out)
 
+
+    def test_marker_key_from_the_change_map(self):
+        """#1031: the change map's [ids] marker_key validates and resolves; other values are refused."""
+        with tempfile.TemporaryDirectory() as d:
+            text = VALID + '\npack = "pack"\n'
+            os.makedirs(os.path.join(d, "pack", "render", "backends"))
+            overlay = os.path.join(d, "pack", "render", "backends", "github.toml")
+            for value in ("item", "change"):
+                with open(overlay, "w") as f:
+                    f.write('[ids]\nmarker_key = "%s"\n' % value)
+                self.assertEqual(self.run_cli(d, "7", "validate", "<project>", text=text),
+                                 (0, "crew-config: OK (crew.toml)\n"))
+                code, out = self.run_cli(d, "7", "resolve", "--project", "<project>", text=text)
+                self.assertEqual(code, 0, out)
+                self.assertIn('ids.change = "[1-9][0-9]*"  # core\nids.marker_key = "%s"  # backend-map:github\n'
+                              % value, out)
+            for bad, reason in (('"issue"', "unknown value 'issue' (expected one of: change, item)"),
+                                ("1", "expected string, got integer")):
+                with open(overlay, "w") as f:
+                    f.write("[ids]\nmarker_key = %s\n" % bad)
+                for command in (["validate", "<project>"], ["resolve", "--project", "<project>"]):
+                    code, out = self.run_cli(d, "7", *command, text=text)
+                    self.assertEqual(code, 1, bad)
+                    self.assertIn("backend-map:github:ids.marker_key: " + reason, out)
+            os.unlink(overlay)
+            code, out = self.run_cli(d, "7", "resolve", "--project", "<project>", text=text)
+            self.assertEqual(code, 0, out)
+            self.assertNotIn("marker_key", out)
+
+    def test_marker_key_on_a_tracker_only_map_is_not_carried(self):
+        with tempfile.TemporaryDirectory() as d:
+            manifest = self.pack(d, '[ids]\nitem = "%s"\nmarker_key = "item"\n' % self.PATTERN)
+            code, out = self.run_cli(d, "7", "resolve", "--project", "<project>", "--pack-manifest", manifest)
+            self.assertEqual(code, 0, out)
+            self.assertIn('ids.item = "%s"  # backend-map:example\n' % self.PATTERN, out)
+            self.assertNotIn("marker_key", out)
 
 class InstallValidationTest(unittest.TestCase):
     def test_install_placeholders_rejected_with_key_paths(self):

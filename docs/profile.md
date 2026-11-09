@@ -506,6 +506,11 @@ at the limit passes; an oversized file fails the self-test, naming its
 render-relative path, path-normalized UTF-8 byte count, role and budget. Missing keys use
 the default; org and project overrides follow normal layer precedence.
 
+Every successful `crew-render` also prints this measure to stderr, one line per role
+file, as `crew-render: budget <file> <bytes>/<budget> bytes (<percent>%), delivered <bytes> bytes`.
+The delivered size is the deployed file, core memory and render notes included. A file within 5% of
+its budget, or over it, adds a `crew-render: WARNING` line. The exit code does not change (#1056).
+
 ### `[tools.<name>]`
 
 Optional doctor checks for tools the profile names (#193). `running` and
@@ -556,7 +561,10 @@ named by its overlay network name only, never by an address, user, port or
 credential (spec R1). Keep these tables in the host-local project
 `config.toml` or the org layer, never in mdstack. They replace no template
 placeholder; `validate` checks them, and `mdstack spawn` places role runs
-from them ([placement](runtimes/multi-device.md#placement), #207).
+from them ([placement](runtimes/multi-device.md#placement), #207). A
+`runtime.name = "session"` profile may also carry `[hosts]` so
+`mdstack host check` and `host prepare` report on its hosts (#1122); it takes
+no `[placement]`, since only tmux spawn places runs.
 
 ```toml
 [hosts.host-a]

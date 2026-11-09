@@ -69,6 +69,7 @@ sessions; running workers drain naturally when the cap drops:
 | `train_min` | integer, at least 2 | `2` | `<train-min>`: train ready PRs at once at this threshold; below it, wait only if another PR is close to approval, otherwise land alone ([land rules](../protocol.md#land-rules-and-merge-trains)) |
 | `train_window` | integer, at least 1 | `600` | `<train-window>`: maximum wait in seconds after the first PR becomes ready when another is close to approval; at expiry train two or more ready PRs, or land the single ready PR alone |
 | `merge_grant` | string | `"none"` | `<merge-grant>`: the owner's standing merge grant scope for the synthesizer brief, with its source (e.g. `#110 roadmap PRs per #111`); `none` means a recorded owner merge-ok per PR. It gives permission only ([§7](../protocol.md#7-merge-gate-synthesizer)). [`merge_grant_scope`](#merge_grant_scope) can extend it to spec changes |
+| `release_delegation` | string | `"none"` | `<release-delegation>`: the owner's recorded standing go for release cuts, with a `https://` link to the record (e.g. `"make releases https://github.com/<owner>/<repo>/issues/985#issuecomment-1"`); `none` keeps a per-cut owner merge-ok. Set only by an owner account (a pack is refused). With it set, the coordinator's `cmd-id=release-delegation` merge-ok at a cut PR's head stands in for the owner's; never for a `crew:sensitive` cut, and never a CI, validation, actor or hold waiver ([release delegation](../release.md#release-delegation)) |
 | `train_local_checks` | boolean | `false` | Opt in to the local full suite before opening the train PR; `--local` also enables it. Default builds record `local=skipped`. A local pre-check is a future CI-velocity option, not a merge gate; green train CI is still required |
 | `mirror_deferral` | string | `"none"` | `<mirror-deferral>`: source and scope of a recorded owner standing mirror deferral (e.g. `#110 roadmap PRs per #140`). The synthesizer checks coverage, excludes live Grok Bot behaviour changes and records use in the merge post; this gives no merge permission ([§7](../protocol.md#7-merge-gate-synthesizer)) |
 | `mirror` | string: `live-copy` or `none` | `"live-copy"` | `none` declares this install has no live copy outside the render `mdstack up` deploys, so the mirror gate resolves to `n/a` and the merge record says `Mirror: n/a (profile)`. Refused with a `mirror_deferral` other than `"none"`; Grok Bot refuses the key. Supplies no approval or merge permission ([No live copy to mirror](../runtimes/tmux.md#no-live-copy-to-mirror-877), [§7](../protocol.md#7-merge-gate-synthesizer)) |
@@ -86,7 +87,8 @@ appended verbatim to that role's rendered brief under `## Render note: <path>`.
 Relative paths resolve from the project file. They are part of the render,
 so they count toward [`size_budget`](../profile.md#size_budget) and
 `check-skill-drift.py --project` covers them. A missing file fails the
-render. Launch-time notes are unchanged. `mdstack spawn` handles worker
+render, and so does a note for a role the selected runtime renders no brief
+for (such as `builder-lead` under `session`), naming the key and the runtime. Launch-time notes are unchanged. `mdstack spawn` handles worker
 notes; `mdstack up` handles coordinator notes. The note text is included verbatim,
 without placeholder substitution. For example:
 
@@ -115,7 +117,10 @@ brief renders the land options as for `tmux`:
 | `session_backend` | string: `native` or `cli` | `"native"` | `<session-backend>`: `native` dispatches workers as harness subagents with task handles; `cli` as external harness CLI runs with a recorded PID and start time |
 | `builders` | integer | `5` | `<builder-cap>`: concurrent builder runs |
 | `reviewers` | integer | `2` | `<reviewer-cap>`: concurrent reviewer passes |
-| `merge_grant`, `merge_grant_scope`, `lone_pr_land`, `train_min`, `train_window`, `train_local_checks`, `mirror_deferral`, `mirror`, `hold_label_blocks` | as in [`tmux` options](#tmux-options) | as in `tmux` | the same placeholders in the session builder, reviewer and synthesizer briefs |
+| `present_builders` | integer, at least 1, at most `builders` | resolved `builders` | `<present-builder-cap>`: owner-present builder limit, as in `tmux`; a value above `builders` is refused (#1053) |
+| `present_reviewers` | integer, at least 1, at most `reviewers` | resolved `reviewers` | `<present-reviewer-cap>`: owner-present reviewer limit, as in `tmux`; a value above `reviewers` is refused |
+| `researchers` | `0` only | none | nothing: the binding has no researcher, so `0` keeps a migrated `tmux` profile's no-researcher statement as a no-op; any other value is refused, and `triage.enabled = true` is refused as for `tmux` |
+| `merge_grant`, `merge_grant_scope`, `lone_pr_land`, `train_min`, `train_window`, `train_local_checks`, `mirror_deferral`, `mirror`, `hold_label_blocks` | as in [`tmux` options](#tmux-options) | as in `tmux` | the same placeholders in the session builder, reviewer and synthesizer briefs; session lands have no merge train, so the `train_*` options have no effect ([binding](../runtimes/session.md#selector-options-and-briefs)) |
 | `notes` | table | `{}` | only its `render` subtable applies: render-time notes, as for `tmux`; no launcher reads standing notes |
 
 ## `merge_grant_scope`

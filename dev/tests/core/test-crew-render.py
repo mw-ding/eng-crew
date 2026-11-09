@@ -6,7 +6,7 @@ Covers the renderer on a fixture profile and inputs in `fixtures/render/`
 capability), the real tmux briefs rendered from `profiles/tmux.toml` against
 `fixtures/render/tmux/`, a pack's render/ overlay, declared placeholders and render-time notes (#580),
 and core memory in every role brief, inside a fenced routine prompt, left out of the size-budget render and
-failing closed on a lint problem (#1230).
+failing closed on a lint problem (#1230), and the per-brief size_budget headroom lines and warning band (#1056).
 Run in CI.
 """
 import argparse
@@ -81,6 +81,31 @@ class Render(unittest.TestCase):
         self.assertEqual(sorted(got), sorted(expected))
         for rel, text in expected.items():
             self.assertEqual(got[rel], text, rel)
+
+    def test_budget_headroom_lines_and_warning_band(self):  # #1056
+        def run(budget):
+            project = os.path.join(self.tmp, "budget.toml")
+            with open(PROJECT, encoding="utf-8") as f, open(project, "w", encoding="utf-8") as g:
+                g.write(f.read() + ("\n[size_budget]\nbuilder = %d\n" % budget if budget else ""))
+            shutil.rmtree(self.out, ignore_errors=True)
+            out, err = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                code = cr.main(["--project", project, "--inputs", self.inputs, "--out", self.out])
+            return code, out.getvalue(), err.getvalue().splitlines()
+
+        code, out, err = run(None)
+        self.assertEqual(code, 0)
+        self.assertNotIn("budget", out, "stdout still lists only written paths")
+        self.assertIn("crew-render: budget briefs/builder.md 379/16384 bytes (2%), delivered 387 bytes", err)
+        self.assertIn("crew-render: budget runtime/builder-intake.md 216/16384 bytes (1%), delivered 216 bytes", err)
+        self.assertEqual(len([ln for ln in err if ln.startswith("crew-render: budget ")]), 6, err)
+        self.assertFalse([ln for ln in err if "WARNING" in ln], err)
+        warn = "crew-render: WARNING briefs/builder.md is within 5%% of the builder size_budget (%d bytes left)"
+        for budget, expected in ((399, None), (398, warn % 19), (379, warn % 0),
+                                 (378, "crew-render: WARNING briefs/builder.md is 1 bytes over the builder size_budget")):
+            code, _, err = run(budget)
+            self.assertEqual(code, 0, "warnings never change the exit code")
+            self.assertEqual([ln for ln in err if "WARNING" in ln], [expected] if expected else [], budget)
 
     def test_placeholders_follow_registry_identity_keys(self):
         roles = {key: dict(value, identity_key="identities.custom_" + key) for key, value in cr.ROLES.items()}
@@ -550,6 +575,23 @@ class TmuxBriefs(unittest.TestCase):
         self.assertIn('`merge_grant = "all approved per #9"` (scope `["approved", "spec"]`, spec `["docs/specs/**", "rfcs/**"]`),', synth)
         self.assertIn("§7 spec changes need merge-ok unless scope has `spec`", synth)
 
+    def test_release_delegation_fills_coordinator_brief(self):
+        """#1435: a set release_delegation renders in the coordinator brief; the golden covers none."""
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        project = os.path.join(tmp, "crew.toml")
+        with open(example_profile(tmp), encoding="utf-8") as f:
+            text = f.read().replace('options = { permission_mode = "bypass", researchers = 2 }\n',
+                                    'options = { release_delegation = "make releases https://x/985#c1" }\n')
+        with open(project, "w", encoding="utf-8") as f:
+            f.write(text)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+            code = cr.main(["--project", project, "--out", os.path.join(tmp, "out")])
+        self.assertEqual(code, 0, out.getvalue())
+        coordinator = tree(os.path.join(tmp, "out"))["runtime/coordinator.md"]
+        self.assertIn('Cut go: `release_delegation = "make releases https://x/985#c1"` (docs/release.md).', coordinator)
+
     def test_profile_values_fill_tmux_briefs(self):
         """14.1d (#233): mdstack path, merge grant and hold semantics render from the profile; booleans as TOML."""
         tmp = tempfile.mkdtemp()
@@ -1000,9 +1042,47 @@ class SessionRuntime(unittest.TestCase):
                                   "Item, Pass or Base, do not start.", " ".join(text.split()))
         coordinator = " ".join(got["runtime/coordinator.md"].split())
         for rule in ("builder runs `2`, reviewer passes `1`, synthesizer runs 1;", "Session backend `native`",
+                     "While the owner is present, admit at most `2` builder runs and `1` reviewer passes;",  # #1053
                      'Append its "## This run" block verbatim to the worker prompt',
                      "Exit 2 (a missing Item, Pass or Base) means do not dispatch."):
             self.assertIn(rule, coordinator)
+
+    def test_present_caps_render(self):  # #1053
+        self.base = self.base.replace("builders = 2, reviewers = 1", "builders = 4, reviewers = 3, present_builders = 1")
+        coordinator = " ".join(self.render()["runtime/coordinator.md"].split())
+        self.assertIn("builder runs `4`, reviewer passes `3`", coordinator)
+        self.assertIn("admit at most `1` builder runs and `3` reviewer passes; an active recorded non-quiet away "
+                      "entry uses the full caps.", coordinator)
+
+    def test_researchers_zero_renders_the_same_briefs(self):  # #1057: a no-op, the binding has no researcher
+        upstream = self.render()
+        self.base = self.base.replace("reviewers = 1 }", "reviewers = 1, researchers = 0 }")
+        self.assertIn("researchers = 0", self.base)
+        self.assertEqual(self.render(), upstream)
+
+    def test_render_note_for_unrendered_role_fails(self):  # #1054
+        for name in ("note.md", "lead.md"):
+            with open(os.path.join(self.tmp, name), "w") as f:
+                f.write("Note.\n")
+
+        def render(notes):
+            project = os.path.join(self.tmp, "crew-%d.toml" % len(os.listdir(self.tmp)))
+            with open(project, "w") as f:
+                f.write(self.base.replace("reviewers = 1 }", "reviewers = 1, notes = { render = { %s } } }" % notes))
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(io.StringIO()):
+                code = cr.main(["--project", project, "--out", os.path.join(self.tmp, "out-%d" % len(os.listdir(self.tmp)))])
+            return code, buf.getvalue(), project
+
+        code, out, project = render('builder = ["note.md"], builder-lead = ["lead.md"], researcher = ["note.md"]')
+        self.assertEqual(code, 1, out)
+        self.assertEqual(out.splitlines(), [
+            "%s:1: runtime.options.notes.render.%s: runtime session renders no %s brief (note dropped)" % (project, r, r)
+            for r in ("researcher", "builder-lead")])
+        code, out, _ = render('builder = ["note.md"], builder-lead = []')
+        self.assertEqual(code, 0, out)
+        self.assertTrue(tree(out.splitlines()[0].rsplit("/runtime/", 1)[0])["runtime/builder.md"]
+                        .endswith("\n## Render note: note.md\n\nNote.\n"))
 
     def test_control_item_selects_ownership_text(self):
         none = self.render()
@@ -1046,6 +1126,23 @@ class SessionRuntime(unittest.TestCase):
         self.assertNotEqual(sh(acquire), 0)  # a second synthesizer is refused while the lock is held
         self.assertEqual(sh(release), 0)
         self.assertEqual(sh(acquire), 0)
+
+    def test_synthesizer_lands_alone_without_tmux_only_commands(self):
+        """#1041: `mdstack train`, `land` and `land-lock` refuse a session profile, so the brief runs none of them."""
+        base = self.base
+        for opts in ("", 'lone_pr_land = "direct", '):
+            with self.subTest(opts=opts):
+                self.base = base.replace("builders = 2", opts + "builders = 2")
+                synth = self.render()["runtime/synthesizer.md"]
+                flat = " ".join(synth.split())
+                self.assertEqual(re.findall(r"\$CREW_BIN (?:train|land|land-lock)\b", synth), [])
+                self.assertEqual([m for m in re.findall(r"mdstack (?:train|land|land-lock)\b[^.]*", flat)
+                                  if "refuses" not in m and "never run it" not in m], [])
+                self.assertNotIn("Merge train (mdstack train)", synth)
+                for rule in ("session lands have no merge train", "Land each ready PR alone through step 3, one per run",
+                             "`Land rule: alone, direct`",
+                             "If express resolves (`core/crew-config.py class-flavor --express`)"):
+                    self.assertIn(rule, flat)
 
 
 if __name__ == "__main__":

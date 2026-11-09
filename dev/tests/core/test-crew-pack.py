@@ -3,6 +3,7 @@ actions/ conformance kit, against the fixture pack dev/tests/core/fixtures/packs
 import contextlib
 import importlib.util
 import io
+import json
 import os
 import re
 import shutil
@@ -15,6 +16,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(HERE)))
 CREW = os.path.join(ROOT, "cli", "mdstack")
 FIXTURE = os.path.join(HERE, "fixtures", "packs", "example")
+FAKE_VCS = os.path.join(HERE, "fixtures", "vcs", "fake-vcs.py")
 
 
 def load(name, path):
@@ -180,9 +182,26 @@ class Floors(PackCase):
         self.refused("environments/tmux/defaults.toml", '[runtime]\nname = "tmux"\noptions = { hold_label_blocks = false }\n',
                      "floor F5: the owner can always hold; a pack may tighten rules, never loosen a core floor")
 
+    def test_backend_selector_named_like_a_floor_control_is_accepted(self):
+        """#1325: [backends.ci] selects the CI backend; only the flavor table and runtime.options hold floor controls."""
+        self.write("profile.toml", '[flavor]\nname = "thorough"\n[backends.ci]\nname = "example-tracker"\n')
+        self.write("environments/tmux/defaults.toml", '[runtime]\nname = "tmux"\n[backends.ci]\nname = "example-tracker"\n')
+        self.assertEqual(self.loaded()[1], [])
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            self.assertEqual(pk.main(["check", self.pack]), 0)
+        self.assertIn("crew-pack: OK (example", out.getvalue())
+
+    def test_custom_flavor_ci_waiver_is_refused(self):
+        self.refused("profile.toml", '[flavor]\nname = "strict"\n[flavor.custom.strict]\nbase = "thorough"\n'
+                     'ci_waiver = true\n', "flavor.custom.strict.ci_waiver: floor F1: CI never waived")
+
     def test_merge_grant_is_refused(self):
         self.refused("profile.toml", '[runtime]\nname = "tmux"\noptions = { merge_grant = "approved" }\n',
                      "a merge grant is the owner's, never a pack's")
+
+    def test_release_delegation_is_refused(self):
+        self.refused("profile.toml", '[runtime]\nname = "tmux"\noptions = { release_delegation = "cuts https://x/1" }\n',
+                     "a release delegation is the owner's, never a pack's")
 
     def test_lower_flavor_is_refused(self):
         self.refused("profile.toml", '[flavor]\nname = "fast"\n',
@@ -233,6 +252,31 @@ class CommitPin(PackCase):
         self.assertEqual(pk.commit(self.pack), head.strip())
         self.write("profile.toml", "")
         with self.assertRaisesRegex(ValueError, "uncommitted changes"):
+            pk.commit(self.pack)
+
+    def test_declared_vcs_pins_a_non_git_checkout(self):
+        """#1326: a pack in another version control tool's working copy declares its clean check and commit read."""
+        with open(os.path.join(self.pack, "pack.toml"), "a") as f:
+            f.write("\n[vcs]\nclean = %s\ncommit = %s\n" % (json.dumps([sys.executable, FAKE_VCS, "status"]),
+                                                             json.dumps([sys.executable, FAKE_VCS, "rev"])))
+        self.assertEqual(self.loaded()[1], [])
+        with self.assertRaisesRegex(ValueError, "is not a .* checkout"):
+            pk.commit(self.pack)
+        subprocess.run([sys.executable, FAKE_VCS, "commit"], cwd=self.pack, check=True)
+        with open(os.path.join(self.pack, ".fakevcs", "state.json")) as f:
+            rev = json.load(f)["rev"]
+        self.assertEqual(pk.commit(self.pack), rev)
+        self.write("profile.toml", "")
+        with self.assertRaisesRegex(ValueError, "uncommitted changes"):
+            pk.commit(self.pack)
+
+    def test_malformed_vcs_table_is_refused(self):
+        with open(os.path.join(self.pack, "pack.toml"), "a") as f:
+            f.write('\n[vcs]\nclean = "hg status"\n')
+        problems = self.loaded()[1]
+        self.assertTrue(any("vcs.clean: expected list of strings" in p for p in problems), problems)
+        self.assertTrue(any("vcs.commit: missing required key" in p for p in problems), problems)
+        with self.assertRaisesRegex(ValueError, r"\[vcs\] needs clean and commit commands"):
             pk.commit(self.pack)
 
 

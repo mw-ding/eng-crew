@@ -68,6 +68,15 @@ class ReleaseTriggerTest(unittest.TestCase):
             with self.subTest(post=post):
                 self.assertFalse(rt.approved(PR, [post], "owner"))
 
+    def test_delegated_coordinator_merge_ok_passes_only_at_head(self):
+        """#1435: approve-check is unchanged; a delegated merge-ok from the RELEASE_OWNER account counts at head."""
+        delegated = ("<!-- crew:v1 role=coordinator pass=steer pr=7 sha=%s round=n/a verdict=n/a cmd=merge-ok "
+                     "cmd-id=release-delegation -->" % HEAD)
+        self.assertTrue(rt.approved(PR, [dict(POST, body=delegated)], "owner"))
+        for post in (dict(POST, body=delegated.replace(HEAD, MERGE)), {"user": {"login": "bot"}, "body": delegated}):
+            with self.subTest(post=post):
+                self.assertFalse(rt.approved(PR, [post], "owner"))
+
     def test_merged_pr_is_exact_commit_and_main(self):
         self.assertEqual(rt.merged_pr([PR], MERGE, "owner/repo"), PR)
         cases = [[], [PR, PR], [dict(PR, merged_at=None)], [dict(PR, merge_commit_sha=HEAD)]]

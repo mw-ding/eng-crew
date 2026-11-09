@@ -23,7 +23,7 @@ Procedures:
 
 - [land](skills/land/SKILL.md): merge gate, direct land and land rules.
 - [merge-train](skills/merge-train/SKILL.md): train build, land and red
-  handling.
+  handling (tmux only).
 
 Bindings: [tmux](../../runtimes/tmux/synthesizer.md),
 [session](../../runtimes/session/synthesizer.md) and
