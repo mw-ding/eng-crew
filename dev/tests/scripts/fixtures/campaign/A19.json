@@ -9,7 +9,8 @@
     {
       "name": "replay-every-declared-operation",
       "run": "mkdir -p {state_dir}/a19 && python3 {source}/dev/tests/scripts/fixtures/campaign/a19/replay.py {source} {source}/dev/tests/scripts/fixtures/campaign/a19/ledger.json > {state_dir}/a19/replay.txt 2>&1; rc=$?; grep -E '^(replay|A19|FAIL)' {state_dir}/a19/replay.txt; test $rc -eq 0",
-      "exit": 0
+      "exit": 0,
+      "deadline": 3600
     },
     {
       "name": "gap-claimed-conformant",
