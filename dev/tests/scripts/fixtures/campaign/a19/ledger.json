@@ -1,0 +1,790 @@
+{
+ "_doc": "A19 ledger (docs/campaign-harness.md#a19): read by replay.py.",
+ "harness": {
+  "adapters": {
+   "claude-code": {
+    "spec": "docs/runtimes/harness-adapters.md#claude-code-claude-code",
+    "EXECUTABLE": {
+     "oracle": true,
+     "tests": [
+      "harnesses/test-harness-adapters.py:test_order_and_aliases"
+     ]
+    },
+    "ENGINE_RANK": {
+     "oracle": true,
+     "tests": [
+      "harnesses/test-harness-adapters.py:test_order_and_aliases"
+     ]
+    },
+    "LOGIN_STATUS": {
+     "oracle": true,
+     "tests": [
+      "harnesses/test-harness-adapters.py:test_order_and_aliases"
+     ]
+    },
+    "PERMISSION": {
+     "oracle": true,
+     "tests": [
+      "environments/test-crew-spawn.py:test_bypass",
+      "environments/test-crew-spawn.py:test_auto",
+      "environments/test-crew-spawn.py:test_safe"
+     ]
+    },
+    "role_argv": {
+     "oracle": true,
+     "tests": [
+      "environments/test-crew-spawn.py:test_default_is_bypass",
+      "environments/test-crew-spawn.py:test_reviewer_engine_differs_from_builder_engine"
+     ]
+    },
+    "coordinator_argv": {
+     "oracle": true,
+     "tests": [
+      "environments/test-crew-up.py:test_resume_session_id_and_ask"
+     ]
+    },
+    "coordinator_setup": {
+     "oracle": true,
+     "tests": [
+      "environments/test-crew-up.py:test_up_installs_stop_hook_once_and_keeps_settings"
+     ]
+    },
+    "host_checks": {
+     "oracle": true,
+     "tests": [
+      "environments/test-crew-doctor.py:test_claude_role_trust_keys_on_the_checkout"
+     ]
+    },
+    "PROCESS": {
+     "default": true,
+     "tests": [
+      "environments/test-crew-spawn.py:test_claude_version_pane_starts_on_foreground_names",
+      "environments/test-crew-spawn.py:test_claude_version_pane_starts_on_resolved_symlink_name"
+     ]
+    },
+    "PROMPTS": {
+     "oracle": true,
+     "tests": [
+      "environments/test-crew-status.py:test_status_trust_dialog_is_ambiguous",
+      "environments/test-crew-status.py:test_stuck_screens_are_ambiguous_working_screens_alive"
+     ]
+    },
+    "BUSY": {
+     "oracle": true,
+     "tests": [
+      "environments/test-crew-upgrade.py:test_active_pane_waits_after_terminal_status"
+     ]
+    },
+    "TRANSIENT": {
+     "oracle": true,
+     "tests": [
+      "environments/test-crew-watch.py:test_scan_records_adapter_transient_text_once"
+     ]
+    },
+    "install_targets": {
+     "oracle": true,
+     "tests": [
+      "environments/test-crew-bootstrap.py:test_harness_plan_and_repeat_install"
+     ]
+    }
+   },
+   "codex": {
+    "spec": "docs/runtimes/harness-adapters.md#codex-codex",
+    "EXECUTABLE": {
+     "oracle": true,
+     "tests": [
+      "harnesses/test-harness-adapters.py:test_order_and_aliases"
+     ]
+    },
+    "ENGINE_RANK": {
+     "oracle": true,
+     "tests": [
+      "harnesses/test-harness-adapters.py:test_order_and_aliases"
+     ]
+    },
+    "LOGIN_STATUS": {
+     "oracle": true,
+     "tests": [
+      "harnesses/test-harness-adapters.py:test_order_and_aliases"
+     ]
+    },
+    "PERMISSION": {
+     "oracle": true,
+     "tests": [
+      "environments/test-crew-spawn.py:test_bypass",
+      "environments/test-crew-spawn.py:test_auto",
+      "environments/test-crew-spawn.py:test_safe"
+     ]
+    },
+    "role_argv": {
+     "oracle": true,
+     "tests": [
+      "environments/test-crew-spawn.py:test_builder_spawn_unique_worktree_identity_engine"
+     ]
+    },
+    "coordinator_argv": {
+     "oracle": true,
+     "tests": [
+      "environments/test-crew-up.py:test_resume_session_id_and_ask",
+      "environments/test-crew-up.py:test_up_codex_coordinator_pretrusts_project_dir_and_repo_root"
+     ]
+    },
+    "coordinator_setup": {
+     "gap": "not installed by `mdstack up`",
+     "tests": [
+      "environments/test-crew-guard.py:test_guard_codex_notify_blocks_once_per_wake"
+     ]
+    },
+    "host_checks": {
+     "oracle": true,
+     "tests": [
+      "environments/test-crew-up.py:test_missing_trust_refuses_before_any_writes",
+      "environments/test-crew-up.py:test_stored_trust_passes_without_recomputing_or_writing"
+     ]
+    },
+    "PROCESS": {
+     "default": true,
+     "tests": [
+      "environments/test-crew-spawn.py:test_builder_spawn_unique_worktree_identity_engine"
+     ]
+    },
+    "PROMPTS": {
+     "oracle": true,
+     "tests": [
+      "environments/test-crew-status.py:test_codex_hooks_review_dialog_is_ambiguous"
+     ]
+    },
+    "BUSY": {
+     "oracle": true,
+     "tests": [
+      "environments/test-crew-upgrade.py:test_active_pane_waits_after_terminal_status",
+      "environments/test-crew-send.py:test_real_screens"
+     ]
+    },
+    "TRANSIENT": {
+     "oracle": true,
+     "tests": [
+      "environments/test-crew-watch.py:test_scan_records_adapter_transient_text_once"
+     ]
+    },
+    "install_targets": {
+     "oracle": true,
+     "tests": [
+      "environments/test-crew-bootstrap.py:test_codex_installs_no_project_files"
+     ]
+    }
+   },
+   "pi": {
+    "spec": "docs/runtimes/harness-adapters.md#pi-pi",
+    "EXECUTABLE": {
+     "oracle": true,
+     "tests": [
+      "harnesses/test-harness-adapters.py:test_order_and_aliases"
+     ]
+    },
+    "ENGINE_RANK": {
+     "oracle": true,
+     "tests": [
+      "harnesses/test-harness-adapters.py:test_order_and_aliases"
+     ]
+    },
+    "LOGIN_STATUS": {
+     "oracle": true,
+     "tests": [
+      "harnesses/test-harness-adapters.py:test_order_and_aliases"
+     ]
+    },
+    "PERMISSION": {
+     "oracle": true,
+     "tests": [
+      "environments/test-crew-spawn.py:test_pi_refuses_unsupported_permission_modes_and_cleans_up"
+     ]
+    },
+    "role_argv": {
+     "oracle": true,
+     "tests": [
+      "environments/test-crew-spawn.py:test_pi_launches_each_worker_with_provider_model_and_effort"
+     ]
+    },
+    "coordinator_argv": {
+     "oracle": true,
+     "tests": [
+      "environments/test-crew-up.py:test_pi_coordinator_uses_pointer_and_no_model_override",
+      "environments/test-crew-upgrade.py:test_reload_pi_coordinator_preserves_harness"
+     ]
+    },
+    "coordinator_setup": {
+     "gap": "Gap: automatic turn-end guard integration is unimplemented",
+     "tests": []
+    },
+    "host_checks": {
+     "unsupported": "`--approve` trusts project-local resources for this process and avoids the built-in project trust prompt"
+    },
+    "PROCESS": {
+     "default": true,
+     "tests": [
+      "environments/test-crew-status.py:test_pi_probe_requires_pi_foreground_and_preserves_identity_checks",
+      "environments/test-crew-status.py:test_pi_create_probe_delete"
+     ]
+    },
+    "PROMPTS": {
+     "gap": "Custom extension dialogs are not recognized by the probe",
+     "tests": []
+    },
+    "BUSY": {
+     "gap": null,
+     "finding": "undocumented: no BUSY or COMPOSER, so `mdstack upgrade` cannot see this harness mid-turn and the herdr doorbell finds no composer glyph"
+    },
+    "TRANSIENT": {
+     "gap": "Gap: none declared, so the watcher records no gateway errors from this harness's pane.",
+     "tests": []
+    },
+    "install_targets": {
+     "gap": "Gap: `mdstack bootstrap --harness pi` is not implemented.",
+     "tests": []
+    }
+   },
+   "cursor": {
+    "spec": "docs/runtimes/harness-adapters.md#cursor-cursor",
+    "EXECUTABLE": {
+     "oracle": true,
+     "tests": [
+      "harnesses/test-harness-adapters.py:test_order_and_aliases"
+     ]
+    },
+    "ENGINE_RANK": {
+     "oracle": true,
+     "tests": [
+      "harnesses/test-harness-adapters.py:test_order_and_aliases"
+     ]
+    },
+    "LOGIN_STATUS": {
+     "oracle": true,
+     "tests": [
+      "harnesses/test-harness-adapters.py:test_order_and_aliases"
+     ]
+    },
+    "PERMISSION": {
+     "oracle": true,
+     "tests": [
+      "environments/test-crew-spawn.py:test_cursor_refuses_unsupported_permission_modes_and_cleans_up"
+     ]
+    },
+    "role_argv": {
+     "oracle": true,
+     "tests": [
+      "environments/test-crew-spawn.py:test_cursor_launches_each_worker_with_model_and_no_effort_flag"
+     ]
+    },
+    "coordinator_argv": {
+     "oracle": true,
+     "tests": [
+      "environments/test-crew-up.py:test_cursor_coordinator_uses_pointer_and_no_model_override",
+      "environments/test-crew-upgrade.py:test_reload_cursor_coordinator_preserves_harness"
+     ]
+    },
+    "coordinator_setup": {
+     "gap": "Gap: no Cursor turn-end hook or guard is installed.",
+     "tests": []
+    },
+    "host_checks": {
+     "gap": "Gap: Cursor-specific trust/login screen detection has not been verified",
+     "tests": []
+    },
+    "PROCESS": {
+     "oracle": true,
+     "tests": [
+      "environments/test-crew-status.py:test_cursor_bundled_node_start_probe_and_unrelated_node",
+      "environments/test-crew-status.py:test_cursor_create_probe_delete"
+     ]
+    },
+    "PROMPTS": {
+     "gap": "Gap: Cursor-specific trust/login screen detection has not been verified",
+     "tests": []
+    },
+    "BUSY": {
+     "gap": null,
+     "finding": "undocumented: no BUSY or COMPOSER, so `mdstack upgrade` cannot see this harness mid-turn and the herdr doorbell finds no composer glyph"
+    },
+    "TRANSIENT": {
+     "gap": "Gap: none declared, so the watcher records no gateway errors from this harness's pane.",
+     "tests": []
+    },
+    "install_targets": {
+     "gap": "Gap: `mdstack bootstrap --harness cursor` is not implemented.",
+     "tests": []
+    }
+   },
+   "muse": {
+    "spec": "docs/runtimes/harness-adapters.md#muse-muse",
+    "EXECUTABLE": {
+     "oracle": true,
+     "tests": [
+      "harnesses/test-harness-adapters.py:test_order_and_aliases"
+     ]
+    },
+    "ENGINE_RANK": {
+     "oracle": true,
+     "tests": [
+      "harnesses/test-harness-adapters.py:test_order_and_aliases"
+     ]
+    },
+    "LOGIN_STATUS": {
+     "oracle": true,
+     "tests": [
+      "harnesses/test-harness-adapters.py:test_order_and_aliases"
+     ]
+    },
+    "PERMISSION": {
+     "oracle": true,
+     "tests": [
+      "harnesses/test-crew-muse.py:test_unsupported_modes_refuse_and_clean_up"
+     ]
+    },
+    "role_argv": {
+     "oracle": true,
+     "tests": [
+      "harnesses/test-crew-muse.py:test_all_roles_launch_with_model_effort_and_pointer",
+      "harnesses/test-harness-adapters.py:test_contributor_tier_is_core_policy"
+     ]
+    },
+    "coordinator_argv": {
+     "oracle": true,
+     "tests": [
+      "harnesses/test-crew-muse.py:test_launch_keeps_configured_model_and_effort"
+     ]
+    },
+    "coordinator_setup": {
+     "gap": "Gap: automatic turn-end guard integration is unimplemented",
+     "tests": []
+    },
+    "host_checks": {
+     "unsupported": "`--yolo` trusts the workspace and disables the CLI's approvals and sandbox for this process."
+    },
+    "PROCESS": {
+     "oracle": true,
+     "tests": [
+      "harnesses/test-crew-muse.py:test_versioned_foreground_preserves_identity_and_dead_checks",
+      "harnesses/test-crew-muse.py:test_create_probe_complete_delete"
+     ]
+    },
+    "PROMPTS": {
+     "oracle": true,
+     "tests": [
+      "environments/test-crew-watch.py:test_muse_versioned_coordinator_wakes_but_dialog_does_not"
+     ]
+    },
+    "BUSY": {
+     "gap": null,
+     "finding": "undocumented: no BUSY or COMPOSER, so `mdstack upgrade` cannot see this harness mid-turn and the herdr doorbell finds no composer glyph"
+    },
+    "TRANSIENT": {
+     "gap": "Gap: none declared, so the watcher records no gateway errors from this harness's pane.",
+     "tests": []
+    },
+    "install_targets": {
+     "gap": "Gap: `mdstack bootstrap --harness muse` is unimplemented.",
+     "tests": []
+    }
+   },
+   "opencode": {
+    "spec": "docs/runtimes/harness-adapters.md#opencode-opencode",
+    "EXECUTABLE": {
+     "oracle": true,
+     "tests": [
+      "harnesses/test-harness-adapters.py:test_order_and_aliases"
+     ]
+    },
+    "ENGINE_RANK": {
+     "oracle": true,
+     "tests": [
+      "harnesses/test-harness-adapters.py:test_order_and_aliases"
+     ]
+    },
+    "LOGIN_STATUS": {
+     "oracle": true,
+     "tests": [
+      "harnesses/test-harness-adapters.py:test_order_and_aliases"
+     ]
+    },
+    "PERMISSION": {
+     "unsupported": "with no interactive launch"
+    },
+    "role_argv": {
+     "unsupported": "with no interactive launch"
+    },
+    "coordinator_argv": {
+     "unsupported": "with no interactive launch"
+    },
+    "coordinator_setup": {
+     "unsupported": "with no interactive launch"
+    },
+    "host_checks": {
+     "unsupported": "with no interactive launch"
+    },
+    "PROCESS": {
+     "unsupported": "with no interactive launch"
+    },
+    "PROMPTS": {
+     "unsupported": "with no interactive launch"
+    },
+    "BUSY": {
+     "unsupported": "with no interactive launch"
+    },
+    "TRANSIENT": {
+     "unsupported": "with no interactive launch"
+    },
+    "install_targets": {
+     "unsupported": "with no interactive launch"
+    }
+   }
+  }
+ },
+ "backend": {
+  "adapters": {
+   "tmux": {
+    "spec": "docs/runtimes/session-backends.md#tmux-tmux",
+    "Create": {
+     "oracle": true,
+     "tests": [
+      "environments/test-crew-spawn.py:test_builder_spawn_unique_worktree_identity_engine",
+      "environments/test-crew-spawn.py:test_next_free_index_and_duplicate_refused"
+     ]
+    },
+    "Attach": {
+     "oracle": true,
+     "tests": [
+      "environments/test-crew-attach.py:test_attach_window_read_only_by_default",
+      "environments/test-crew-attach.py:test_attach_builders_temporary_tiled_view_keeps_layout"
+     ]
+    },
+    "Doorbell": {
+     "oracle": true,
+     "tests": [
+      "environments/test-crew-send.py:test_never_submitted_exits_4",
+      "environments/test-crew-send.py:test_swallowed_enter_retried_never_retyped",
+      "environments/test-crew-send.py:test_prompt_on_screen_types_nothing_and_reports_dialog"
+     ]
+    },
+    "Identity probe": {
+     "oracle": true,
+     "tests": [
+      "environments/test-crew-status.py:test_probe_classes",
+      "environments/test-crew-spawn.py:test_spawn_records_run_identity"
+     ]
+    },
+    "State read": {
+     "oracle": true,
+     "tests": [
+      "environments/test-crew-status.py:test_stuck_screens_are_ambiguous_working_screens_alive",
+      "environments/test-crew-status.py:test_status_table"
+     ]
+    },
+    "Kill": {
+     "oracle": true,
+     "tests": [
+      "environments/test-crew-kill.py:test_kill_terminates_pane_group_that_ignores_sighup",
+      "environments/test-crew-kill.py:test_kill_removes_only_its_own_run"
+     ]
+    },
+    "cap:doorbell": {
+     "default": true,
+     "spec": "docs/runtimes/session-backends.md#adapter-modules",
+     "tests": [
+      "environments/test-crew-send.py:test_append_format_and_nudge"
+     ]
+    },
+    "cap:reload": {
+     "oracle": true,
+     "tests": [
+      "environments/test-crew-upgrade.py:test_reload_keeps_metadata_and_coordinator_last"
+     ]
+    },
+    "cap:dead-keeps-pid": {
+     "oracle": true,
+     "tests": [
+      "environments/test-crew-status.py:test_probe_classes"
+     ]
+    },
+    "cap:icon": {
+     "oracle": true,
+     "tests": [
+      "environments/test-crew-tab-icon.py:test_icon_is_display_only_and_window_scoped"
+     ]
+    }
+   },
+   "herdr": {
+    "spec": "docs/runtimes/session-backends.md#herdr-herdr",
+    "Create": {
+     "gap": "Private coordinator environment delivery is unsupported and refused before create.",
+     "tests": [
+      "environments/test-crew-herdr.py:test_profile_dispatch_create_and_kill",
+      "environments/test-crew-herdr.py:test_launch_failure_cleans_workspace"
+     ]
+    },
+    "Attach": {
+     "gap": "the tiled builders view is unsupported",
+     "tests": [
+      "environments/test-crew-herdr.py:test_attach_readonly_never_types_and_rw_is_explicit"
+     ],
+     "spec": "docs/runtimes/session-backends.md#herdr-capability-gaps"
+    },
+    "Doorbell": {
+     "gap": "There are no cursor coordinates, so nonempty or unrecognizable composers refuse input.",
+     "tests": [
+      "environments/test-crew-herdr.py:test_doorbell_submitted_once_or_reported_ambiguous",
+      "environments/test-crew-herdr.py:test_send_cli_returns_four_on_unsubmitted_line",
+      "environments/test-crew-herdr.py:test_dialog_and_payload_send_no_keys"
+     ]
+    },
+    "Identity probe": {
+     "oracle": true,
+     "tests": [
+      "environments/test-crew-herdr.py:test_identity_changes_dead_and_unavailable",
+      "environments/test-crew-herdr.py:test_os_start_time_is_required"
+     ]
+    },
+    "State read": {
+     "gap": "The CLI has no last-output timestamp; activity is unknown (`0`), never a fabricated fresh time.",
+     "tests": [
+      "environments/test-crew-herdr.py:test_identity_changes_dead_and_unavailable"
+     ]
+    },
+    "Kill": {
+     "oracle": true,
+     "tests": [
+      "environments/test-crew-herdr.py:test_kill_retains_workspace_on_failed_probe_or_survivor",
+      "environments/test-crew-herdr.py:test_profile_dispatch_create_and_kill"
+     ]
+    },
+    "cap:doorbell": {
+     "oracle": true,
+     "tests": [
+      "environments/test-crew-herdr.py:test_doorbell_submitted_once_or_reported_ambiguous"
+     ]
+    },
+    "cap:reload": {
+     "gap": "In-place `mdstack upgrade` uses a tmux-specific respawn and is unsupported",
+     "tests": [
+      "environments/test-crew-herdr.py:test_upgrade_refused_before_stopping_runs"
+     ],
+     "spec": "docs/runtimes/session-backends.md#herdr-capability-gaps"
+    },
+    "cap:dead-keeps-pid": {
+     "default": true,
+     "tests": [
+      "environments/test-crew-herdr.py:test_identity_changes_dead_and_unavailable"
+     ]
+    },
+    "cap:icon": {
+     "oracle": true,
+     "tests": [
+      "environments/test-crew-herdr.py:test_tab_shows_emoji_and_probe_strips_it",
+      "environments/test-crew-herdr.py:test_role_without_emoji_keeps_bare_label"
+     ]
+    }
+   }
+  }
+ },
+ "cases": [
+  {
+   "adapter": "pi",
+   "kind": "refusal",
+   "case": "auto and safe permission modes",
+   "spec": "docs/runtimes/harness-adapters.md#pi-pi",
+   "tests": [
+    "environments/test-crew-spawn.py:test_pi_refuses_unsupported_permission_modes_and_cleans_up",
+    "environments/test-crew-up.py:test_pi_coordinator_refuses_safe_and_auto_without_session"
+   ]
+  },
+  {
+   "adapter": "cursor",
+   "kind": "refusal",
+   "case": "auto and safe permission modes",
+   "spec": "docs/runtimes/harness-adapters.md#cursor-cursor",
+   "tests": [
+    "environments/test-crew-spawn.py:test_cursor_refuses_unsupported_permission_modes_and_cleans_up",
+    "environments/test-crew-up.py:test_cursor_coordinator_refuses_safe_and_auto_without_session"
+   ]
+  },
+  {
+   "adapter": "muse",
+   "kind": "refusal",
+   "case": "auto and safe permission modes",
+   "spec": "docs/runtimes/harness-adapters.md#muse-muse",
+   "tests": [
+    "harnesses/test-crew-muse.py:test_unsupported_modes_refuse_and_clean_up",
+    "harnesses/test-crew-muse.py:test_private_and_unsupported_modes_refuse_before_session"
+   ]
+  },
+  {
+   "adapter": "muse",
+   "kind": "refusal",
+   "case": "private or unreadable repository visibility",
+   "spec": "docs/runtimes/harness-adapters.md#muse-muse",
+   "tests": [
+    "harnesses/test-crew-muse.py:test_private_or_unreadable_visibility_refuses_and_cleans_up",
+    "harnesses/test-harness-adapters.py:test_contributor_tier_is_core_policy"
+   ]
+  },
+  {
+   "adapter": "pi",
+   "kind": "refusal",
+   "case": "launch.resume without RESUME",
+   "spec": "docs/runtimes/harness-adapters.md#adapter-modules",
+   "tests": [
+    "environments/test-crew-up.py:test_resume_refused_for_other_engines_before_any_writes"
+   ]
+  },
+  {
+   "adapter": "claude-code",
+   "kind": "refusal",
+   "case": "unknown permission_mode",
+   "spec": "docs/runtimes/harness-adapters.md#adapter-modules",
+   "tests": [
+    "environments/test-crew-spawn.py:test_unknown_mode_refused_before_any_window"
+   ]
+  },
+  {
+   "adapter": "codex",
+   "kind": "refusal",
+   "case": "host hooks without stored trust",
+   "spec": "docs/runtimes/harness-adapters.md#codex-codex",
+   "tests": [
+    "environments/test-crew-up.py:test_missing_trust_refuses_before_any_writes"
+   ]
+  },
+  {
+   "adapter": "tmux",
+   "kind": "refusal",
+   "case": "spawn into a missing session",
+   "spec": "docs/runtimes/session-backends.md#tmux-tmux",
+   "tests": [
+    "environments/test-crew-spawn.py:test_refuses_primary_checkout_and_missing_session"
+   ]
+  },
+  {
+   "adapter": "herdr",
+   "kind": "refusal",
+   "case": "private environment or occupied index",
+   "spec": "docs/runtimes/session-backends.md#herdr-herdr",
+   "tests": [
+    "environments/test-crew-herdr.py:test_private_environment_and_occupied_index_refused"
+   ]
+  },
+  {
+   "adapter": "herdr",
+   "kind": "refusal",
+   "case": "in-place upgrade",
+   "spec": "docs/runtimes/session-backends.md#herdr-capability-gaps",
+   "tests": [
+    "environments/test-crew-herdr.py:test_upgrade_refused_before_stopping_runs"
+   ]
+  },
+  {
+   "adapter": "claude-code",
+   "kind": "ambiguous",
+   "case": "folder trust dialog",
+   "spec": "docs/runtimes/harness-adapters.md#claude-code-claude-code",
+   "tests": [
+    "environments/test-crew-status.py:test_status_trust_dialog_is_ambiguous"
+   ]
+  },
+  {
+   "adapter": "claude-code",
+   "kind": "ambiguous",
+   "case": "stuck permission or fatal screens",
+   "spec": "docs/runtimes/harness-adapters.md#claude-code-claude-code",
+   "tests": [
+    "environments/test-crew-status.py:test_stuck_screens_are_ambiguous_working_screens_alive",
+    "environments/test-crew-status.py:test_quoted_trust_and_hooks_prompts_stay_alive"
+   ]
+  },
+  {
+   "adapter": "codex",
+   "kind": "ambiguous",
+   "case": "hooks review dialog",
+   "spec": "docs/runtimes/harness-adapters.md#codex-codex",
+   "tests": [
+    "environments/test-crew-status.py:test_codex_hooks_review_dialog_is_ambiguous"
+   ]
+  },
+  {
+   "adapter": "cursor",
+   "kind": "ambiguous",
+   "case": "generic node foreground",
+   "spec": "docs/runtimes/harness-adapters.md#cursor-cursor",
+   "tests": [
+    "environments/test-crew-status.py:test_cursor_bundled_node_start_probe_and_unrelated_node"
+   ]
+  },
+  {
+   "adapter": "pi",
+   "kind": "ambiguous",
+   "case": "generic node foreground",
+   "spec": "docs/runtimes/harness-adapters.md#pi-pi",
+   "tests": [
+    "environments/test-crew-status.py:test_pi_probe_requires_pi_foreground_and_preserves_identity_checks"
+   ]
+  },
+  {
+   "adapter": "muse",
+   "kind": "ambiguous",
+   "case": "trust or sign-in dialog",
+   "spec": "docs/runtimes/harness-adapters.md#muse-muse",
+   "tests": [
+    "environments/test-crew-watch.py:test_muse_versioned_coordinator_wakes_but_dialog_does_not"
+   ]
+  },
+  {
+   "adapter": "tmux",
+   "kind": "ambiguous",
+   "case": "unanswered identity probe",
+   "spec": "docs/runtimes/session-backends.md#identity-probe",
+   "tests": [
+    "environments/test-crew-status.py:test_probe_classes"
+   ]
+  },
+  {
+   "adapter": "herdr",
+   "kind": "ambiguous",
+   "case": "unavailable process data or unsubmitted doorbell",
+   "spec": "docs/runtimes/session-backends.md#herdr-herdr",
+   "tests": [
+    "environments/test-crew-herdr.py:test_identity_changes_dead_and_unavailable",
+    "environments/test-crew-herdr.py:test_doorbell_submitted_once_or_reported_ambiguous"
+   ]
+  }
+ ],
+ "runtimes": {
+  "grok-bot": {
+   "spec": "docs/runtimes/grok-bot.md#runtime-contract",
+   "C1": {
+    "gap": "C1 wake on event: partial, compensated by messages from the reviewer, coordinator and sweeper",
+    "accepted": "The owner accepted gaps C1, C2, C3 and C5 as declared in the table, with their residual risk"
+   },
+   "C1-review-start": {
+    "gap": "C1 wake on event (`new-head` review start): partial.",
+    "spec": "docs/runtimes/grok-bot.md#review-start-gap"
+   },
+   "C2": {
+    "gap": "C2 one consumer per event: partial, compensated by cleanup-only handling",
+    "accepted": "The owner accepted gaps C1, C2, C3 and C5 as declared in the table, with their residual risk"
+   },
+   "C3": {
+    "gap": "C3 messages by reference: partial, compensated by the stuck-PR sweeper rows",
+    "accepted": "The owner accepted gaps C1, C2, C3 and C5 as declared in the table, with their residual risk"
+   },
+   "C5": {
+    "gap": "C5 liveness (identity): partial, compensated by the role bot's liveness check before any restart",
+    "accepted": "The owner accepted gaps C1, C2, C3 and C5 as declared in the table, with their residual risk"
+   },
+   "C6": {
+    "gap": "C6 isolation: partial, compensated by cleanup timing"
+   },
+   "C9": {
+    "gap": "C9 ownership handoff: unsupported, compensated by the manual pause"
+   }
+  }
+ }
+}

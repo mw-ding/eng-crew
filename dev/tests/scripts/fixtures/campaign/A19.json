@@ -1,0 +1,40 @@
+{
+  "id": "A19",
+  "title": "Declared-operation replay (docs/runtimes/harness-adapters.md Adapter modules; docs/runtimes/session-backends.md Operations, Adapter modules): every shipped harness and session backend adapter x declared row has a spec-linked oracle replayed on fake binaries, a default, or a quoted gap or unsupported entry; refusal and ambiguous cases and the Grok Bot runtime gaps (#150) are recorded; a gap reported as conformant, a missing row, a stale quote or an unknown test fails",
+  "requires": [
+    "python3",
+    "git"
+  ],
+  "steps": [
+    {
+      "name": "replay-every-declared-operation",
+      "run": "mkdir -p {state_dir}/a19 && python3 {source}/dev/tests/scripts/fixtures/campaign/a19/replay.py {source} {source}/dev/tests/scripts/fixtures/campaign/a19/ledger.json > {state_dir}/a19/replay.txt 2>&1; rc=$?; grep -E '^(replay|A19|FAIL)' {state_dir}/a19/replay.txt; test $rc -eq 0",
+      "exit": 0
+    },
+    {
+      "name": "gap-claimed-conformant",
+      "run": "mkdir -p {state_dir}/a19 && python3 -c \"import json,sys; d=json.load(open(sys.argv[1])); d['harness']['adapters']['pi']['TRANSIENT'] = {'oracle': True, 'tests': d['harness']['adapters']['codex']['TRANSIENT']['tests']}; json.dump(d, open(sys.argv[2], 'w'))\" {source}/dev/tests/scripts/fixtures/campaign/a19/ledger.json {state_dir}/a19/gap-claimed-conformant.json && python3 {source}/dev/tests/scripts/fixtures/campaign/a19/replay.py {source} {state_dir}/a19/gap-claimed-conformant.json --no-tests > {state_dir}/a19/gap-claimed-conformant.txt; rc=$?; grep '^FAIL' {state_dir}/a19/gap-claimed-conformant.txt; test $rc -eq 1 && grep -qF 'pi TRANSIENT: oracle but the adapter lacks it' {state_dir}/a19/gap-claimed-conformant.txt",
+      "exit": 0
+    },
+    {
+      "name": "row-missing",
+      "run": "mkdir -p {state_dir}/a19 && python3 -c \"import json,sys; d=json.load(open(sys.argv[1])); del d['backend']['adapters']['herdr']['Kill']; json.dump(d, open(sys.argv[2], 'w'))\" {source}/dev/tests/scripts/fixtures/campaign/a19/ledger.json {state_dir}/a19/row-missing.json && python3 {source}/dev/tests/scripts/fixtures/campaign/a19/replay.py {source} {state_dir}/a19/row-missing.json --no-tests > {state_dir}/a19/row-missing.txt; rc=$?; grep '^FAIL' {state_dir}/a19/row-missing.txt; test $rc -eq 1 && grep -qF 'backend herdr rows:' {state_dir}/a19/row-missing.txt",
+      "exit": 0
+    },
+    {
+      "name": "adapter-missing",
+      "run": "mkdir -p {state_dir}/a19 && python3 -c \"import json,sys; d=json.load(open(sys.argv[1])); del d['harness']['adapters']['opencode']; json.dump(d, open(sys.argv[2], 'w'))\" {source}/dev/tests/scripts/fixtures/campaign/a19/ledger.json {state_dir}/a19/adapter-missing.json && python3 {source}/dev/tests/scripts/fixtures/campaign/a19/replay.py {source} {state_dir}/a19/adapter-missing.json --no-tests > {state_dir}/a19/adapter-missing.txt; rc=$?; grep '^FAIL' {state_dir}/a19/adapter-missing.txt; test $rc -eq 1 && grep -qF 'harness adapters:' {state_dir}/a19/adapter-missing.txt",
+      "exit": 0
+    },
+    {
+      "name": "stale-quote",
+      "run": "mkdir -p {state_dir}/a19 && python3 -c \"import json,sys; d=json.load(open(sys.argv[1])); d['backend']['adapters']['herdr']['cap:reload']['gap'] = 'herdr reloads in place'; json.dump(d, open(sys.argv[2], 'w'))\" {source}/dev/tests/scripts/fixtures/campaign/a19/ledger.json {state_dir}/a19/stale-quote.json && python3 {source}/dev/tests/scripts/fixtures/campaign/a19/replay.py {source} {state_dir}/a19/stale-quote.json --no-tests > {state_dir}/a19/stale-quote.txt; rc=$?; grep '^FAIL' {state_dir}/a19/stale-quote.txt; test $rc -eq 1 && grep -qF \"herdr cap:reload: quote 'herdr reloads in place' not in\" {state_dir}/a19/stale-quote.txt",
+      "exit": 0
+    },
+    {
+      "name": "unknown-test",
+      "run": "mkdir -p {state_dir}/a19 && python3 -c \"import json,sys; d=json.load(open(sys.argv[1])); d['cases'][0]['tests'].append('environments/test-crew-spawn.py:test_no_such_oracle'); json.dump(d, open(sys.argv[2], 'w'))\" {source}/dev/tests/scripts/fixtures/campaign/a19/ledger.json {state_dir}/a19/unknown-test.json && python3 {source}/dev/tests/scripts/fixtures/campaign/a19/replay.py {source} {state_dir}/a19/unknown-test.json --no-tests > {state_dir}/a19/unknown-test.txt; rc=$?; grep '^FAIL' {state_dir}/a19/unknown-test.txt; test $rc -eq 1 && grep -qF 'test environments/test-crew-spawn.py:test_no_such_oracle (for pi refusal: auto and safe permission modes): not found' {state_dir}/a19/unknown-test.txt",
+      "exit": 0
+    }
+  ]
+}
