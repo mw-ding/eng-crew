@@ -77,12 +77,15 @@ def run(args):
               rec.get("worktree") or "": "<worktree>", rec.get("repo") or "": "<repo>"}
     sign = ["", args.sign] if args.sign else []
     listed = gh("issue", "list", "-R", intake, "--state", "open", "--limit", "1000", "--json", "number,body")
-    try:
-        cards = json.loads(listed.stdout) if not listed.returncode else None
-    except ValueError:
-        cards = None
+    cards, reason = None, listed.stderr.strip()
+    if not listed.returncode:
+        try:
+            cards = json.loads(listed.stdout)
+        except ValueError:  # exit 0 but not JSON, e.g. a proxy error page; stderr is empty then
+            first = (listed.stdout.strip().splitlines() or ["empty"])[0]
+            reason = "unreadable answer: " + (first[:120] + "..." if len(first) > 120 else first)
     if cards is None:  # fail closed: a blind file would duplicate a card
-        print("crew: feedback: cannot list open cards in %s: %s" % (intake, listed.stderr.strip()))
+        print("crew: feedback: cannot list open cards in %s: %s" % (intake, redact(reason, {})))
         return 1
     hit = min((c["number"] for c in cards if re.search(
         r"^\*\*Failure class:\*\*[ \t]*%s[ \t]*$" % re.escape(args.cls), c.get("body") or "", re.M)), default=None)
