@@ -266,7 +266,8 @@ Built in `environments/terminal/remote/crew-remote.py` (#208): the entrypoint, t
 primary-side client `call()`. The crew key's `authorized_keys` line is
 `command="python3 <bundle>/environments/terminal/remote/crew-remote.py --root <root>",restrict,pty <key>`,
 and the runner runs `crew-remote.py --root <root> runner` as the account's
-service. Built verbs: `version`, `check`, `prepare`, `seed`, `job`,
+service. The runner makes the default tmux socket's directory itself: tmux
+does not make it for a socket named by path, and still exits 0. Built verbs: `version`, `check`, `prepare`, `seed`, `job`,
 `result`, `spawn`, `probe` and `kill` ([remote run lifecycle](#remote-run-lifecycle)), and
 `attach`, `capture` and `logs` ([observability](#observability)).
 `version` reports the host's version and whether the runner is `up` (a
@@ -787,7 +788,9 @@ run, not #209: it follows #345–#348 as a new #716 row on the real host
 passes `-t` for `attach` only and `-T` for every other verb. With `-t`,
 stdin is the TTY, so the attach request travels in the SSH command as
 `crew-host <payload>`, its JSON base64url-encoded, and the entrypoint
-decodes and checks it as any other request. The entrypoint refuses
+decodes and checks it as any other request. The host's tmux client runs
+with the `TERM` that `ssh` sends, so the host needs that terminal's
+terminfo entry. The entrypoint refuses
 `attach` without a TTY and every other verb with one, so the key still
 runs the closed verb set, never a shell. A read-only attach (tmux `-r`)
 can only detach or switch clients. `--rw` is the owner typing into the
