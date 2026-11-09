@@ -180,6 +180,19 @@ class Floors(PackCase):
         self.refused("environments/tmux/defaults.toml", '[runtime]\nname = "tmux"\noptions = { hold_label_blocks = false }\n',
                      "floor F5: the owner can always hold; a pack may tighten rules, never loosen a core floor")
 
+    def test_backend_selector_named_like_a_floor_control_is_accepted(self):
+        """#1325: [backends.ci] selects the CI backend; only the flavor table and runtime.options hold floor controls."""
+        self.write("profile.toml", '[flavor]\nname = "thorough"\n[backends.ci]\nname = "example-tracker"\n')
+        self.write("environments/tmux/defaults.toml", '[runtime]\nname = "tmux"\n[backends.ci]\nname = "example-tracker"\n')
+        self.assertEqual(self.loaded()[1], [])
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            self.assertEqual(pk.main(["check", self.pack]), 0)
+        self.assertIn("crew-pack: OK (example", out.getvalue())
+
+    def test_custom_flavor_ci_waiver_is_refused(self):
+        self.refused("profile.toml", '[flavor]\nname = "strict"\n[flavor.custom.strict]\nbase = "thorough"\n'
+                     'ci_waiver = true\n', "flavor.custom.strict.ci_waiver: floor F1: CI never waived")
+
     def test_merge_grant_is_refused(self):
         self.refused("profile.toml", '[runtime]\nname = "tmux"\noptions = { merge_grant = "approved" }\n',
                      "a merge grant is the owner's, never a pack's")

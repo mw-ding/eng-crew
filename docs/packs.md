@@ -272,7 +272,10 @@ A pack may tighten rules, such as a stricter flavor, extra sensitive paths,
 loader refuses a pack whose `profile.toml` or environment defaults:
 
 - set a floor control (F1–F7, such as `ci_waiver` or
-  `hold_label_blocks = false`);
+  `hold_label_blocks = false`) in the `[flavor]` table, its custom
+  flavors and classes, or `runtime.options`. A key elsewhere that only
+  shares a name, such as the `[backends.ci]` selector, is not a floor
+  control;
 - set a `merge_grant` other than `none`, because a merge grant is the
   owner's;
 - define a custom flavor that is less strict than the core default,
