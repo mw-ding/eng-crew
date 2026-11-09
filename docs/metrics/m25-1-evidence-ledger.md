@@ -1,6 +1,6 @@
 # M25.1 evidence ledger: #157/#158 AC audit and the #716 case index
 
-**Last updated:** 2026-11-08
+**Last updated:** 2026-11-09
 
 Item [#1445](https://github.com/mw-ding/mdstack/issues/1445), from
 [Riley's plan](https://github.com/mw-ding/mdstack/issues/1438#issuecomment-6729592128).
@@ -15,8 +15,10 @@ issue states were read on 2026-11-08.
   build issues are filed. Citations in [#157](#157-runtime-handoff) and
   [#158](#158-multi-device).
 - **Still open, as #1445 AC3 requires:** #157 AC3 (dry run, for
-  [#1441](https://github.com/mw-ding/mdstack/issues/1441)) and #158 AC3
-  (two-host run, for [#1442](https://github.com/mw-ding/mdstack/issues/1442)).
+  [#1441](https://github.com/mw-ding/mdstack/issues/1441)).
+- **#158 AC3: met on a simulated host** (#209, 2026-11-09): the two-host run
+  recorded by [#1442](https://github.com/mw-ding/mdstack/issues/1442) in
+  [PR #1492](https://github.com/mw-ding/mdstack/pull/1492) R1.
 - **#716:** none of cases 1–5 is closed yet; each row below names the run that
   will close it. All five may close on a run labelled "simulated host"
   ([#985 c6728250591](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6728250591)).
@@ -38,7 +40,7 @@ issue states were read on 2026-11-08.
 |---|---|---|
 | 1. Design doc: overlay assumptions, host inventory schema, placement, C1–C8 across hosts, failure/partition, security, alternatives | Met | Overlay N1–N6 `docs/runtimes/multi-device.md:56`; host inventory `:67`; placement `:135`; contract across hosts `:355` (C1–C8, plus C9 at `:371`); failure and partition `:373`; security `:390`; alternatives in the Decisions table `:24` |
 | 2. Profile schema extension proposal (on #122) | Met | Host inventory proposal `docs/runtimes/multi-device.md:67`, built by #204 (closed) |
-| 3. Two-host dry run, recorded (builder remote, coordinator local) | Open | #209 open; the run is #1442. See [Contradictions](#contradictions) 4 |
+| 3. Two-host dry run, recorded (builder remote, coordinator local) | Met, simulated host | [PR #1492](https://github.com/mw-ding/mdstack/pull/1492) R1: `mdstack spawn` placed a builder on lab host `lab-a`, its status was mirrored and a send acked, with a disconnect, reconcile, hashes, local comparison and teardown; linked from [#158](https://github.com/mw-ding/mdstack/issues/158#issuecomment-6735001992), follow-up #1493 (#209). This answers [Contradictions](#contradictions) 4 |
 | 4. Follow-up build issues filed | Met | `docs/runtimes/multi-device.md:760`: #204, #205, #206, #208, #349, #726–#729 (closed); #207, #209, #345–#348 (open). The forge relay row `:784` is conditional and correctly unfiled |
 
 ## #716 case index
@@ -53,7 +55,7 @@ lab scope `docs/runtimes/multi-device.md:691`).
 | # | Case | Closing run | Waits on | Stated physical limit |
 |---|---|---|---|---|
 | 1 | Forge-less runner: seed, job, result at a head, parity with a local run, no forge contact | Lab F [#1360](https://github.com/mw-ding/mdstack/issues/1360) scenarios, recorded by lab G [#1361](https://github.com/mw-ding/mdstack/issues/1361) | #1357 (lab C, open), then #1360, #1361 | Container on the primary, loopback-published SSH; no real overlay or second machine |
-| 2 | Two-host dry run, linked from #158, follow-ups filed | [#1442](https://github.com/mw-ding/mdstack/issues/1442) (#209's A30 journey) | #207, #345, #346, #347, #1361 (all open) | Simulated second host; no physical power or overlay loss |
+| 2 | Two-host dry run, linked from #158, follow-ups filed | [#1442](https://github.com/mw-ding/mdstack/issues/1442) (#209's A30 journey), recorded in [PR #1492](https://github.com/mw-ding/mdstack/pull/1492) R1 | none: recorded 2026-11-09, follow-up #1493 | Simulated second host; no physical power or overlay loss |
 | 3 | Partition: both alive, `unreachable`, no respawn, reconcile on return | [#347](https://github.com/mw-ding/mdstack/issues/347) with [#346](https://github.com/mw-ding/mdstack/issues/346), recorded in #1442 AC2 | #345, #346, #347, #1360 | Container network disconnect stands in for a real drop (`docs/runtimes/multi-device.md:743`); laptop sleep is not proven |
 | 4 | Remote attach and log tail over the hardened call | [#348](https://github.com/mw-ding/mdstack/issues/348) on lab hosts | #345, #348, lab F/G | Container pane, not a real host; runner-job logs alone do not count (`:744`) |
 | 5 | Unreachable runner falls back locally, fallback recorded | Lab F #1360 (fallback scenario, its AC3), recorded by #1361 | #1357, #1360, #1361 | Injected unavailability (disconnect or pause), not a real host going away |
