@@ -1473,7 +1473,9 @@ branch, without update-branch or a one-member train. Two or more ready PRs
 still train, regardless of `train_min`. Under the land lock, re-survey the
 ready set before squashing; only the tested-with-default-branch gate is
 waived, and the merge record names `lone_pr_land=direct` and the lone-ready
-condition. Every other §7 gate still applies at head.
+condition. Every other §7 gate still applies at head. When a train's drops
+leave exactly one member, `train build` collapses it to that direct land
+(below, #1425).
 
 After a direct land, the synthesizer waits for the default-branch push CI run
 at the PR's exact merge commit SHA, checking all required jobs. On
@@ -1514,7 +1516,14 @@ stale stops there and its members train again.
 status=pass|blocked|manual reason=...` for every requested PR, and exits 1
 if any gate is blocked. It checks head verdict markers (including formal
 approval and passing review/validate), state/permission, sensitive merge-ok,
-CI and evidence artifact presence. Mirror deployment freshness, evidence
+CI and evidence artifact presence. Gate `train-merge` is the survey-time
+pre-filter (#1425): it runs `build`'s drop checks for each PR alone on the
+freshly fetched default branch, with `git merge-tree` in a temporary bare
+clone without `info/attributes`, never a worktree merge. A conflict, a
+changed verified patch (`content-different`) or `no-verified-base` blocks
+it; route that PR to merge-up before it joins a train. It also blocks a
+PR still at the head an open collapsed train dropped (step 6) while that
+train's survivor is open. Mirror deployment freshness, evidence
 agreement or reasoned N/A, grant scope, engine attribution, linkage and
 runtime/inbox gates explicitly require manual verification. Filter blockers
 before building and resolve manual gates with the synthesizer's §7 check.
@@ -1568,14 +1577,35 @@ The build then:
    `--interval` seconds (default 20), counting no checks yet as pending,
    until all are done or `--timeout` (default 1800) passes. A red or
    timed-out train's PR is closed and its branch deleted.
-6. Removes the clone, saves the record and prints these lines; exit 0
-   on green CI or pending CI with `--no-wait`:
+6. Decides the path from the surviving members before step 3 and records
+   it as `path` (#1425): `train` for two or more, or one with no drop;
+   `none` when every PR dropped; `direct` when drops leave exactly one
+   member on the default branch (no `--after`, not a bisect half) and
+   `runtime.options.lone_pr_land = "direct"`. A `direct` build skips steps
+   3–5: no local suite, push, train PR or CI wait. It saves the record
+   closed with `ci=none` and `path_reason` `collapsed-to-direct: train <n>
+   dropped #<pr> (<reason>), ...`, keeps its drops queued and prints
+   `direct pr=<pr> head=<sha> reason=<path_reason>`. `sam` then lands that
+   PR by the direct land rule: every §7 gate at its own head, CI green
+   there, the lone-ready re-survey under the land lock (two or more ready
+   PRs build a new train instead), and the merge record names
+   `lone_pr_land=direct` and the `path_reason`. In that re-survey a PR the
+   collapse dropped is not ready while it is still at its dropped head and
+   the survivor is open (`train check` gate `train-merge`), so the same
+   conflicting pair never re-trains. After the direct land, or when `sam`
+   gives it up, `train route <n>` routes the drops: only then does main hold
+   the conflict a merge-up resolves. `train land` refuses the
+   collapsed train. With `lone_pr_land = "train"`, the one-member train runs
+   as before.
+7. Removes the clone, saves the record and prints these lines; exit 0
+   on green CI, pending CI with `--no-wait`, or `path=direct`:
 
 ```text
 member pr=<pr> head=<head-sha> step=<train commit after this member>
 dropped pr=<pr> reason=conflict
 deferred pr=<pr> reason=predecessor-member
 ci-link <CI run URL>
+direct pr=<pr> head=<head-sha> reason=collapsed-to-direct: train <n> dropped #<pr> (conflict)
 train n=<n> branch=crew/train-<n> base=<sha> sha=<train-sha> pr=<train-pr> local=skipped ci=pass
 ```
 
@@ -1647,7 +1677,7 @@ landed pr=<pr> head=<head-sha> merge=<merge-sha>
 stopped pr=<pr> reason=<why>
 paused pr=<pr> reason=<transient cause>
 merge-up pr=<pr> status=updated|builder|queued
-train-report n=<n> members=<prs> landed=<prs> dropped=<pr:reason,...> stop=<cause>
+train-report n=<n> members=<prs> landed=<prs> dropped=<pr:reason,...> stop=<cause> path=train|direct:collapsed-to-direct|none:no-member
 train n=<n> landed=<k>/<m> next=<pr>
 train n=<n> landed=<k>/<m> pr-closed=yes branch-deleted=yes
 ```

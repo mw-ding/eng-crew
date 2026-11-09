@@ -56,6 +56,8 @@ Merge train (mdstack train):
   reports gates per PR without a build or writes. Filter `blocked` members;
   resolve every `manual` gate with the step 2 check. Share blockers with
   the coordinator early. This snapshot never replaces the land-time check.
+  A blocked `train-merge` gate (conflict or changed patch on main) goes to
+  its builder for a merge-up first, as an alone-land conflict does.
 - Pipeline: build N with `--no-wait`, then N+1 with `--after <n> --no-wait`,
   excluding N's members. Prepare while N runs CI or lands; never another
   synthesizer or parallel lands. Collect CI with
@@ -67,7 +69,9 @@ Merge train (mdstack train):
   Land N+1 only after N finishes, under the same serial land lock.
 - Build: `$CREW_BIN train build <pr>... --project "$CREW_PROJECT"`, in
   `Depends on` then approval order. Read `member`, `dropped`, `deferred`,
-  `ci-link`, and `train n=<n>` (`local=` / `ci=`). Copy `train-report` to
+  `ci-link`, `direct`, and `train n=<n>` (`local=` / `ci=`). A `direct` line
+  (drops left one member, `collapsed-to-direct`): the train closed unpushed;
+  land that PR by the direct rule above. Copy `train-report` to
   `$CREW_STATUS` with members, landed, dropped reasons and stop cause.
   PRs sharing paths stay together in input order; only a real merge conflict
   drops one (`reason=conflict`). Supply only ready candidates whose
