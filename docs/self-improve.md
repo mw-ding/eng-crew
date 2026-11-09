@@ -269,6 +269,51 @@ and edits no skill. The coordinator then reviews the drafts, drops duplicates,
 fills Proposed fix, confirms or promotes Scope, and files the keepers as
 mdstack issues. Nothing about this step is automatic beyond the printout.
 
+## Effect measures
+
+A reflection proposal is judged by measures captured from now on, not
+reconstructed from history. `mdstack poll` and `mdstack watch` append sanitized,
+timestamped samples to `$CREW_STATE/metrics/observations.jsonl`: structured
+fields only, never pane text, transcripts or box paths.
+
+- **Poll sample:** one line per crew PR when its head, CI, verdict, mergeable
+  state or hold changes, keyed `pr#<n>@<head>`, with the poll time `ts` and the
+  previous poll time `prev_ts`. An unchanged PR writes nothing.
+- **Watch sample:** a new stale wake opens a stall keyed `run:<window>` from
+  the run's last progress (`since`); that run's next status line closes it.
+  A replayed scan or status line repeats the same key and `since` and is not
+  a new stall.
+
+**Operational ready** is the first poll sample with the reviewer's pass
+verdict at head, green CI, mergeable state `MERGEABLE` and no known hold
+(`crew:hold` or `crew:escalated`). It is a sampled measure: the true moment
+lies between `prev_ts` and `ts`. It is never merge authorization; the stage 7
+gate decides merges.
+
+`scripts/reflection-measures.py measure --since <T> --until <T>` joins the
+samples with `docs/metrics/prs.csv` and an explicitly confirmed incident file
+(JSON lines with `id`, `kind: false-throttle`, `confirmed` link and `ts`), and
+prints for the window:
+
+| Measure | Source | Definition |
+| --- | --- | --- |
+| `verdict_rounds_per_pr` | metrics CSV | mean `verdicts` of PRs merged in the window |
+| `ci_fix_rounds_per_pr` | metrics CSV | mean `ci_fix_rounds` of the same PRs |
+| `ready_to_land` | poll samples | mean minutes from first ready to the merged sample, with polling bounds |
+| `stall_minutes` | watch samples | union of overlapping stalls, an unclosed one up to its observed time |
+| `false_throttles` | confirmed incidents | count by incident `id`, so related issues are one incident |
+
+Each measure carries its sample size, refs and coverage. With no samples
+the value is null and coverage `unknown`: missing history is never zero. Lines
+in `schedule/errors.jsonl` (`--errors`) count only as `unclassified_errors`
+until an incident file confirms them.
+
+Per proposal, `baseline --ledger <file> --proposal <id>` saves the window's
+measures and cohort bounds, and is refused once an activation is confirmed.
+`record --merge-ref <ref> --activation <release or install ref>` keeps the
+merge ref and the confirmed activation (`not-required` when merging activates
+it); without `--activation` it stays `pending`.
+
 ## Risks
 
 Called out, not all solved in v1.
