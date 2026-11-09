@@ -308,6 +308,11 @@ class TeardownTest(Base):
         self.assertEqual(self.setup_lab("--n3"), 0)
 
     def test_captures_evidence_then_removes_only_manifest_owned_ids(self):
+        runs = self.state / "lab" / "runs"
+        runs.mkdir(parents=True)
+        (runs / "r.json").write_text(json.dumps(dict(lab="C", run="r1", started="S", finished="F", image="i", tag="t",
+            source_sha="s", stage={}, client_bundle_sha256="b", hosts={}, stubs=[], scenarios={}, timeline=[],
+            transport=dict(kind="ssh", path="p", client="c", note="n"))))
         self.assertEqual(lab.main(["teardown", str(self.manifest)]), 0)
         self.assertEqual(set(self.fake.objs), {self.other, self.other_net})
         ev = self.state / "lab" / "evidence"
@@ -317,6 +322,8 @@ class TeardownTest(Base):
         record = json.loads((self.state / "lab" / "cleanup.json").read_text())
         self.assertEqual((len(record["removed"]), record["sentinel_unchanged"], record["tmux_decoy_alive"]),
                          (5, True, True))
+        self.assertEqual(json.loads((runs / "r.json").read_text())["teardown"], record)  # #1442
+        self.assertIn("Teardown: removed 5, gone 0", (runs / "r.md").read_text())
         lab_ = self.m()["lab"]
         ids = set(lab_["networks"]) | {lab_["driver"]} | {h["container"] for h in lab_["hosts"].values()}
         for argv, _ in self.fake.calls:

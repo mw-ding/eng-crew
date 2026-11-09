@@ -16,6 +16,7 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import time
 import unittest
 from contextlib import redirect_stdout
 from pathlib import Path
@@ -214,6 +215,29 @@ class PtyTest(unittest.TestCase):  # #348: the attach scenario's client runs on 
         self.assertEqual(code, 0, out)
         self.assertIn("tty True 120 xterm-256color", out)
         self.assertIn("got 'abc'", out)
+
+
+class HostEngineTest(unittest.TestCase):
+    def test_the_placed_runs_stub_engine_writes_status_lines_and_acks_a_typed_nudge(self):
+        d = tempfile.mkdtemp()
+        self.addCleanup(subprocess.run, ["rm", "-rf", d])
+        Path(d, "claude").write_text(sc.HOST_CLAUDE)
+        env = dict(os.environ, CREW_STATUS=os.path.join(d, "s.status"))
+        claude = [sys.executable, os.path.join(d, "claude")]
+        auth = subprocess.run(claude + ["auth", "status"], cwd=d, env=env, stdin=subprocess.DEVNULL)
+        self.assertEqual(auth.returncode, 0)
+        p = subprocess.Popen(claude + ["Read your brief at $CREW_BRIEF and follow it."], cwd=d, env=env,
+                             stdin=subprocess.PIPE, text=True)
+        with p.stdin:
+            p.stdin.write("noise\ninbox: 20261109T000000Z-abcdef\n")
+            p.stdin.flush()
+            time.sleep(1.5)
+        p.kill()
+        p.wait()
+        lines = Path(d, "s.status").read_text().splitlines()
+        self.assertEqual((lines[0], [x for x in lines if not x.startswith("step: ")]),
+                         ("step: 1", ["ack: 20261109T000000Z-abcdef"]))
+        self.assertEqual(Path(d, "wip.txt").read_text(), "wip\n")
 
 
 class RecreateTest(Base):

@@ -22,11 +22,13 @@ evidence record under lab/runs/ (#1361). Exit 1 on any FAIL, 2 on a refusal.
               heartbeat and `version` reports it up (never seen by the timeout is a FAIL); then a job passes
   recreate    container recreated mid-job (new ID, host key and port): the client falls back locally (unreachable
               while it is down, or the lost job refused), the host never reports that job done, and a fresh job passes
-  partition   a builder placed on the host by the real `mdstack spawn` (#347): behind a network disconnect the
-              watcher's pulls make it unreachable (one escalate wake), its claim is unchanged, restart is refused
-              and spawning the item again queues it, never placed elsewhere; after reconnect,
-              reconcile finds the same pane alive with every missed line; an owner's abandon behind a second
-              disconnect writes a tombstone, and on return the run is stopped there with its unlanded file kept
+  partition   a builder placed on the host by the real `mdstack spawn` (#347): the watcher's pulls mirror its status
+              lines, and an `mdstack send --wait-ack` to it is typed into its pane there and acked through the mirror
+              (A30, #1442); behind a network disconnect the watcher's pulls make it unreachable (one escalate wake),
+              its claim is unchanged, restart is refused and spawning the item again queues it, never placed
+              elsewhere; after reconnect, reconcile finds the same pane alive with every missed line; an owner's
+              abandon behind a second disconnect writes a tombstone, and on return the run is stopped there with its
+              unlanded file kept
   attach      a run planted as crew in the runner's session (spawn needs a forge, #345): over real SSH `capture`
               shows its pane and `logs` its step summary tail; a client on a pty attaches read-only (typed keys
               never reach the pane) and detaches with exit 0; attach without a TTY and another verb with one are
@@ -274,7 +276,7 @@ def exact_head(lab, s):
     s.check(done.get("head") == head and done.get("host") == lab.host, "no stored result at head for job %s" % job)
     tails = s.obs["host_check_repo"] = (done.get("commands") or [{}])[0].get("tail", "").splitlines()
     s.check(tails == ["check-repo ok on linux", "env: clean"], "the host job did not run clean on linux")
-    s.obs["local"] = lab.local()
+    s.obs["local"], s.obs["remote"] = lab.local(), exits(out)
     s.check(s.obs["local"] == exits(out), "local exits %s differ from remote %s" % (s.obs["local"], exits(out)))
 
 
@@ -397,17 +399,29 @@ def recreate(lab, s):
 HOST_GH = """#!/bin/sh
 case "$1 $2" in "auth status") echo "  Logged in to github.com account lab-bot (lab stub)";; "auth token") echo lab-stub;; *) exit 1;; esac
 """
-HOST_CLAUDE = """#!/bin/sh
-[ "$1" = auth ] && exit 0
-echo wip > wip.txt
-n=0
-while :; do n=$((n + 1)); echo "step: $n" >> "$CREW_STATUS"; sleep 0.5; done
+HOST_CLAUDE = """#!/usr/bin/env python3
+import os, select, sys
+if sys.argv[1:2] == ["auth"]:
+    sys.exit(0)
+open("wip.txt", "w").write("wip\\n")
+n, typed = 0, b""
+while True:
+    n += 1
+    with open(os.environ["CREW_STATUS"], "a") as f:
+        f.write("step: %d\\n" % n)
+    if select.select([0], [], [], 0.5)[0]:
+        *lines, typed = (typed + os.read(0, 4096)).split(b"\\n")
+        for line in lines:
+            if line.strip().startswith(b"inbox: "):
+                with open(os.environ["CREW_STATUS"], "a") as f:
+                    f.write("ack: %s\\n" % line.strip()[7:].decode())
 """
 
 
 def partition(lab, s):
     """A builder run placed on the role host by the real `mdstack spawn` (placement, then the host's spawn verb), the
-    primary's sandbox session and fake forge from campaign-sandbox.py, a stub engine and `gh` on the host. Behind a
+    primary's sandbox session and fake forge from campaign-sandbox.py, a stub engine and `gh` on the host. The
+    watcher mirrors its status lines, and `mdstack send --wait-ack` reaches its pane and gets the ack back. Behind a
     network disconnect the watcher's pulls (crew.d/watch.py pull_hosts, called as each host scan does) make it
     unreachable: one escalate wake, the claim unchanged, restart refused, a second spawn of the item queued, the
     host's pane never replaced. After reconnect, reconcile finds it alive with every missed line. Then the owner
@@ -471,6 +485,11 @@ def partition(lab, s):
         scan()
         s.check(len(steps()) >= 2 and pane == [str(rec["pane_pid"])], "the placed run wrote no status lines or has "
                 "no pane: %s %s" % (steps(), pane))
+        sent = s.obs["send"] = crew("send", "ben-1", "review", "#1", "--wait-ack", "30")  # A30: the nudge goes
+        acked = re.search(r"acked (\S+) by ben-1", sent[1])  # through the host, its ack back through the mirror
+        mirrored = Path(state, "status", "ben-1.status").read_text().splitlines()
+        s.check(sent[0] == 0 and acked and "ack: " + acked.group(1) in mirrored,
+                "mdstack send to the placed run got no ack through the mirror: %s" % (sent,))
 
         def held():
             wakes = [w for _ in range(3) for w in scan()]
