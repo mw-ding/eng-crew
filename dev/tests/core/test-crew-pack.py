@@ -199,6 +199,10 @@ class Floors(PackCase):
         self.refused("profile.toml", '[runtime]\nname = "tmux"\noptions = { merge_grant = "approved" }\n',
                      "a merge grant is the owner's, never a pack's")
 
+    def test_release_delegation_is_refused(self):
+        self.refused("profile.toml", '[runtime]\nname = "tmux"\noptions = { release_delegation = "cuts https://x/1" }\n',
+                     "a release delegation is the owner's, never a pack's")
+
     def test_lower_flavor_is_refused(self):
         self.refused("profile.toml", '[flavor]\nname = "fast"\n',
                      "flavor.name: fast loosens the core default flavor standard (validation")

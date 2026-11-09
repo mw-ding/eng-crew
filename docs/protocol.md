@@ -694,6 +694,7 @@ of `pr=`. See
 | `selfgate` | The builder records the self-gate for an express change at head (schema in §3; no round; `verdict=pass` or `changes`) |
 | `triage` | A triage sweep records its decision on a tracker item (schema below; no SHA, no round); a note, never a gate input |
 | `triage-log` | A triage sweep's one comment on the day's log issue (schema below) |
+| `reflection` | A reflection report's completion note on the reflection log issue (schema below); a note, never a gate input |
 
 A merge-up ack uses `round=n/a verdict=n/a`.
 
@@ -746,6 +747,22 @@ the owner), `triage:duplicate` (an exact duplicate, linked), `triage:card-extrac
 (the sweep posted the card fields), `triage:log` (a daily log issue, skipped
 by every sweep), `cluster:<slug>` (a cluster member, `apply` mode only) and the
 priority bands `P0`–`P3`.
+
+The researcher's **reflection record** (`pass=reflection`) ends each
+`[<ResearcherBot>/reflection] <window-id>` report on the tracker's reflection
+log issue ([reflection](self-improve.md#reflection)). It carries no
+`issue=`, `pr=`, `round=` or `verdict=`:
+
+```text
+<!-- crew:v1 role=researcher pass=reflection window=<window-id> sha=<input-sha> proposals=<n> new=<n> incidents=<n> -->
+```
+
+`window` is the window ID, joined with `+` when windows coalesce; `sha` is
+the full default-branch SHA the run read; `proposals` counts the report's
+proposals, `new` those that count against the noise cap (at most 3), and
+`incidents` the distinct incident IDs. A quiet window posts `proposals=0`.
+The record marks the window's run complete; it is a note, never a verdict,
+gate input or permission.
 
 The researcher's **docs-pass record** (`pass=docs-pass`) ends each
 `[<ResearcherBot>/docs-pass] <owner>/<repo> @ <sha7>` comment a
@@ -957,7 +974,9 @@ chat. The coordinator accepts or closes each card in the same triage window,
 tags it `repo:` or `crew:`, and an accepted card is a normal builder tracker
 item. The lesson (`docs/lessons/`, plus a findings-buffer one-liner) is the
 memory; triage never edits a skill, and harness changes merge only through the
-normal gate. Details in [self-improve.md](self-improve.md).
+normal gate. Details in [self-improve.md](self-improve.md). For each
+[reflection](self-improve.md#reflection) report the coordinator relays one
+owner digest and records each proposal's disposition in this window.
 
 **Owner decisions: one channel and a 2h SLA.** Only owner-facing seats
 deliver owner asks and reports
@@ -1292,7 +1311,7 @@ gate applies whatever its binding.
 | Tested with `<default-branch>` | The head contains the current `<default-branch>` tip, or the change is the next member of a green merge train whose tested state is the current `<default-branch>` (the train base, then the commit the previous member's land made), at the head the train tested; that member's merge record cites the train branch, SHA and CI run; or tmux `lone_pr_land="direct"` with exactly one ready PR and the waiver named in its merge record ([land rules](#land-rules-and-merge-trains)); or, backend alternative, an asynchronous land whose backend declares `land.tests_against_tip = true`: its land check tests the exact patch it lands on the current tip, and the merge record names that check and the landed revision ([asynchronous land](interfaces.md#asynchronous-land-design)) | Synthesizer at land time: update-branch, then CI (minutes) and every gate again at the new head; or one train CI run for all members | Only `lone_pr_land="direct"` with exactly one ready PR waives this gate (record it), and only `land.tests_against_tip` on an asynchronous land meets it by the backend (no update-branch or train, and `mdstack train` refuses); otherwise update-branch applies; a real conflict goes to the builder; owner-decision path if neither resolves it; no merge-ok or standing-grant waiver, since it guards CI on the landed result; differing patches route through builder and delta re-review | core |
 | CI and change state | All required checks green at head; not draft, mergeable, base = `<default-branch>` | CI normally minutes; builder fixes CI (effective `caps[1]`, at most 3 attempts) and conflicts; author corrects draft/base | CI-fix cap then escalation → user decision (fix, defer/close); merge-ok never waives CI. Unresolved change state also uses owner-decision path | core |
 | Linked issue | `Closes #n`; spec, external and cutover exemptions; never auto-close umbrella or TRD | Builder when the change opens; correct linkage before merge | Owner-decision path if linkage cannot be resolved; no new exemption | backend ([GitHub linkage](backends/github.md#linkage)) |
-| Release approval (guards publishing, not merging; §7 does not check it; [design](release.md#release-gate)) | The owner's per-change `pass=steer cmd=merge-ok sha=<head>` marker at the landed cut change's head, verified by the backend's `release.approve-check` ([interfaces](interfaces.md#release)) on the landed cut change before `release.record-release` writes the release id, with release validation green, required CI green at the landed cut revision (missing, red, cancelled or pending past the bound refuses) and the publishing actor matching the configured release owner (checked first, so a wrong actor fails before validation). Landing the cut change starts validation and the CI wait, then recording the release id and notifying in one run; the standing grant never covers a cut change. Shared owner-level accounts ([merge enforcement](merge-enforcement.md)) mean the actor check alone cannot distinguish a bot from the owner: no role invents owner authorization. A manual run remains for dry runs and an owner-only fallback with the same approval and actor check | Owner on the cut change before landing, on the coordinator's ask under the §6 owner SLA; approve-check verifies before the release id is written | None for publishing: no standing grant or auto-applied default publishes a release. The §6 owner-decision path may only defer or cancel it | backend (`release` concern; bindings in [release operations](release.md#release-operations)) |
+| Release approval (guards publishing, not merging; §7 does not check it; [design](release.md#release-gate)) | The owner's per-change `pass=steer cmd=merge-ok sha=<head>` marker at the landed cut change's head, or the coordinator's `cmd-id=release-delegation` merge-ok there while the owner-set profile key `runtime.options.release_delegation` is not `none` ([release delegation](release.md#release-delegation)), verified by the backend's `release.approve-check` ([interfaces](interfaces.md#release)) on the landed cut change before `release.record-release` writes the release id, with release validation green, required CI green at the landed cut revision (missing, red, cancelled or pending past the bound refuses) and the publishing actor matching the configured release owner (checked first, so a wrong actor fails before validation). Landing the cut change starts validation and the CI wait, then recording the release id and notifying in one run; the standing merge grant never covers a cut change, and a recorded release delegation never covers a `crew:sensitive` cut or waives the actor check, CI, validation or a hold. Shared owner-level accounts ([merge enforcement](merge-enforcement.md)) mean the actor check alone cannot distinguish a bot from the owner: no role invents owner authorization. A manual run remains for dry runs and an owner-only fallback with the same approval and actor check | Owner on the cut change before landing, on the coordinator's ask under the §6 owner SLA; approve-check verifies before the release id is written | None for publishing: no standing merge grant or auto-applied default publishes a release; a recorded release delegation is the owner's go, not a fail-open. The §6 owner-decision path may only defer or cancel it | backend (`release` concern; bindings in [release operations](release.md#release-operations)) |
 
 ## Sensitive class
 
@@ -1504,6 +1523,11 @@ merging:
   validate markers, CI green, no open rereview or hold, sensitive merge-ok,
   mirror and `MERGEABLE`. The merge record names
   `Tested-with-default-branch waiver: lone_pr_land=direct, exactly one ready PR`.
+  A release cut (a change adding a new version section to the CHANGELOG)
+  never takes this waiver, and while one is open every other change adding a
+  release fragment holds until it lands
+  ([release](release.md#cut-freeze); tmux `mdstack train check` gate
+  `release-cut`, #1433).
   Otherwise update-branch it at land; prove verdict portability at the new
   head, then require CI and every other gate here again. Being behind alone
   never sends it back. Backend alternative: on an
