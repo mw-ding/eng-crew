@@ -148,7 +148,8 @@ finally:
         with open(os.path.join(state, "cleanup.json")) as f:
             c = json.load(f)
     except OSError:  # a refused teardown records nothing
-        c = {"teams": [], "retained": [], "sentinel_unchanged": False}
+        emit("teardown", (r.stdout + r.stderr).strip().splitlines() or ["teardown exit %d" % r.returncode])
+        sys.exit(1)
     kept = {k["path"] for k in c["retained"] if any(" wip: team " in u for u in k["unpushed"])}
     problems = ["team %s still running" % s["team"] for s in c["teams"] if not s["stopped"]]
     problems += ["teams: %d stopped" % len(c["teams"])] if len(c["teams"]) != 2 else []

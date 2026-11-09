@@ -149,6 +149,29 @@ class CampaignSandboxTest(unittest.TestCase):
         self.assertFalse(os.path.exists(os.path.join(bindir, "claude")), "the real engine is not stubbed")
         self.assertTrue(os.access(os.path.join(bindir, "codex"), os.X_OK))
 
+    def test_teardown_refuses_a_team_profile_drifted_to_production(self):
+        """Team b's state_dir moved onto the production state root refuses teardown before any mutation (#1440 R1)."""
+        code, out = self.run_cmd("setup", "--root", self.root, "--run-id", "r785", "--production", self.prod,
+                                 "--source", os.path.dirname(SCRIPTS), "--release", "dev", "--sentinel",
+                                 self.sentinel, "--teams", "2")
+        self.assertEqual(code, 0, out)
+        project_b = os.path.join(self.root, "repo-b", "crew.toml")
+        prod_state = os.path.join(self.d, "prod", "state")
+        self.write(project_b, self.read(project_b).replace(os.path.join(self.root, "team-b", "state"), prod_state))
+        wake = os.path.join(prod_state, "campaign__sandbox-r785", "wake")
+        os.makedirs(wake)
+        watcher = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(300)", "watch"])
+        self.addCleanup(watcher.wait)
+        self.addCleanup(watcher.terminate)
+        self.write(os.path.join(wake, "watcher.pid"), str(watcher.pid))
+        code, out = self.run_cmd("teardown", self.manifest)
+        self.assertEqual(code, 2)
+        self.assertEqual(out.splitlines(), [
+            "refused: team b: %s changed since setup" % project_b,
+            "refused: team b: paths.state_dir %s is outside the sandbox or on a production root" % prod_state])
+        self.assertIsNone(watcher.poll(), "the outside watcher is untouched")
+        self.assertFalse(os.path.exists(os.path.join(self.root, "state", "cleanup.json")))
+
     def teams(self, parent, env=None):
         teams = os.path.join(TESTS, "scripts", "fixtures", "campaign", "a28", "teams.py")
         env = env or {k: v for k, v in os.environ.items() if not k.startswith(("CREW_", "TMUX"))}

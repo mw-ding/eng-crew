@@ -233,6 +233,7 @@ def setup(a):
             ENGINES.format(engine=engine, pick=a.engine) if engine else ""))
     for t in teams:
         t.update(project=os.path.join(t["repo"], "crew.toml"), source=os.path.realpath(a.source), release=a.release)
+        t["sha256"] = {p: guard.sha256(p) for p in (t["project"], t.get("org_profile")) if p}
     labels = [n for n, _, _ in crew_repo.LABELS] + EXTRA_LABELS
     Path(root, "state", "sandbox.json").write_text(json.dumps({
         "level": "a", "run_id": a.run_id, "labels": labels, "identities": IDENTITIES, "ci": "ci.sh",
@@ -255,6 +256,24 @@ def teams_of(m):
                                  "worktree_root": m["roots"]["worktree_root"], "project": m["profile"]["path"]}]
 
 
+def team_refusals(m):
+    """Every reason teardown must not act on a team: a profile changed since setup, or a resolved root outside the
+    sandbox or on a production root (#1440 R1). The manifest pins only the first team's profile."""
+    root, out = os.path.realpath(sandbox_root(m)), []
+    prod = [v for v in guard.target(m["production"]["path"])["roots"].values() if "<" not in v]
+    for t in teams_of(m):
+        out += ["team %s: %s changed since setup" % (t["name"], p) for p, h in t.get("sha256", {}).items()
+                if not os.path.isfile(p) or guard.sha256(p) != h]
+        merged, _, problems, _ = guard.config.resolve_profile(t["project"], t.get("org_profile"))
+        out += ["team %s: %s" % (t["name"], e) for e in problems]
+        for key, path in ({} if problems else merged["paths"]).items():
+            path = os.path.realpath(path)
+            if key in guard.ROOTS and (not path.startswith(root + os.sep) or any(guard.nested(path, q) for q in prod)):
+                out.append("team %s: paths.%s %s is outside the sandbox or on a production root" % (
+                    t["name"], key, path))
+    return out
+
+
 def retained(m):
     """Every team's repo or worktree with uncommitted changes or commits not on a remote, on any local branch."""
     out, paths = [], []
@@ -274,7 +293,7 @@ def retained(m):
 
 def teardown(a):
     m = json.loads(Path(a.manifest).read_text())
-    problems = guard.refusals(m)
+    problems = guard.refusals(m) or team_refusals(m)
     if problems:
         return problems
     session, state = m["session"], m["roots"]["state_dir"]

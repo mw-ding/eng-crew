@@ -553,7 +553,9 @@ or overlaps a production root. It then creates:
 - when tmux is installed, `state/bin/tmux`, the socket-pinning shim, with
   its socket under `state/tmux/` (recorded as `tmux` in `sandbox.json`).
 
-`teardown` runs the guard check first and refuses on drift. For each team
+`teardown` runs the guard check first and refuses on drift. It also
+refuses when a team's profile or `--org-profile` changed since setup, or
+resolves a root outside `$SANDBOX` or on a production root. For each team
 in `state/sandbox.json` it runs `mdstack down --preserve`, then kills only
 that team's exact session on the sandbox socket
 (`tmux -S <socket> kill-session -t =<session>`). It lists every
