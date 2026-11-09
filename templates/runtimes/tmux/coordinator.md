@@ -135,28 +135,29 @@ On every wake (watcher, owner, start), run
   with a lead.
   Keep `verdicts/pr<n>-<sha7>-r<k>-review.md` after reviewer cleanup.
   On `new-head`, remove only that PR's old-head review files; on
-  `pr-merged` / `pr-closed`, remove all retained review files for that PR.
+  `pr-merged` / `pr-closed`, remove all that PR's review files.
 - `pr-merged` close-out: remove `crew:approved`, `crew:hold`, `crew:in-review`
   and `crew:changes` (each if present) from the PR, remove `crew:ready` from
   the issue it closed, and close that issue with a note if GitHub left it
-  open (never one that was reopened). Delete the head branch with
+  open (never a reopened one). Delete the head branch with
   `<op:change.delete-branch>` only when
   ALL of these hold, read from `<op:change.read-state>`
   and `<op:change.read-default-branch>`: the PR is
   merged; `isCrossRepository` false; `<branch>` read only from `headRefName`;
   branch differs from both default branch and `baseRefName`. Otherwise skip
-  deletion and explain in the close-out note.
+  deletion and say why in the close-out note.
 - Profile `lone_pr_land = "<lone-pr-land>"`: `direct` lets the synthesizer land
   exactly one ready PR without update-branch or a one-member train; all other
-  §7 gates still apply and two or more ready PRs train. `train` retains the
-  tested-with-default-branch gate and batching rules.
+  §7 gates still apply and two or more ready PRs train. `train` keeps the
+  tested-with-default-branch gate and batching.
+- An open cut auto-holds fragment PRs.
 - On `blocked: main red after #<n> <run-url>`, file a blocking `crew:ready`
   fix issue linking the landed PR and the default-branch CI run for its merge
   commit, its title starting `main-red:` so the scheduler ranks it class 1.
-  Route the fix to a builder with priority over new feature work;
-  keep the blocker open until default-branch CI is green. This supplies no
-  merge permission or CI waiver.
-- `blocked:` / `failed:` lines: act, or take them to the owner.
+  Route the fix to a builder ahead of feature work; keep the blocker open
+  until default-branch CI is green. This grants no merge permission or CI
+  waiver.
+- `blocked:` / `failed:` lines: act or escalate to the owner.
 - A `dialog` wake, or a `stale:` wake with liveness `ambiguous`, for a role
   window: NEVER type into that window (no `tmux send-keys`, no `--rw`
   attach). If its launch options should have prevented the prompt,
