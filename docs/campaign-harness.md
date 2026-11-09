@@ -647,18 +647,23 @@ python3 environments/terminal/remote/lab/crew-lab-scenarios.py "$SANDBOX/state/m
   one, `sshd` keeps its pid, and a job passes. `recreate` replaces the
   container mid-job (label-checked, with a new ID, host key and port, the
   manifest and SSH config updated): the client falls back, the host never
-  reports the lost job done, and a fresh job passes. `partition` disconnects
-  a role host: over real SSH it is `unreachable`, placement queues a role
-  run that needs it rather than placing it elsewhere, and the item's claim
-  file is unchanged. `status-pull` (#346) starts a stub role run in the
+  reports the lost job done, and a fresh job passes. `partition` (#347)
+  places a builder on the host with the real `mdstack up` and `mdstack
+  spawn` in the sandbox session (a stub engine and `gh` on the host, the
+  host's mirror seeded from a bundle as its own origin). Behind a
+  `disconnect`, three watcher host scans (`pull_hosts`) give one
+  `unreachable` escalate wake, `mdstack status` reads `unreachable since`,
+  `mdstack restart` is refused, spawning the item again queues it (never
+  placed elsewhere) and the claim is unchanged. After reconnect, reconcile
+  finds the same pane alive and the mirror holds every line once. Behind a
+  second `disconnect`, `mdstack kill --discard` writes a tombstone and drops
+  the record and claim; on return the run is stopped on the host with its
+  unlanded file kept. `status-pull` (#346) starts a stub role run in the
   runner's session that writes a status line every half second and acks
   each typed nudge. The toolkit's own offset pull is `unreachable` behind a
   `disconnect` while the run keeps writing; after reconnect, a repeated
   pull and a fresh primary module, the mirror holds every line once and in
   order, and a `send` through the host returns its ack through the mirror.
-  Reconcile waits for #347.
-  file is unchanged. Remote role runs and their reconcile wait for #345 and
-  #347.
 - **Attach (#348).** A run is planted as the runner account in the
   runner's tmux session, since `spawn` needs a forge (#345 proves it on
   fakes). Over real SSH, `capture` shows its pane and `logs` its step
@@ -675,8 +680,8 @@ python3 environments/terminal/remote/lab/crew-lab-scenarios.py "$SANDBOX/state/m
   hashes, the client bundle, the transport, every injected event with its
   Docker control, and a timeline. The record is `simulated` and never
   `real_device`: the loopback SSH path and each injection are labelled
-  simulated, and the sample checks and the partition's claim and identity
-  are labelled stubs. A scenario `--only` left out is `skipped` with
+  simulated, and the sample checks and the engine, forge and mirror
+  origin behind the partition's placed run are labelled stubs. A scenario `--only` left out is `skipped` with
   `evidence: false`, so it supplies no evidence for #207 or #345–#348.
 
 ### Level c: owner-run devices and second environment
