@@ -42,7 +42,7 @@ was refreshed for #716 at `a679007` on 2026-11-09.
 |---|---|---|
 | 1. Design doc: overlay assumptions, host inventory schema, placement, C1–C8 across hosts, failure/partition, security, alternatives | Met | Overlay N1–N6 `docs/runtimes/multi-device.md:56`; host inventory `:67`; placement `:135`; contract across hosts `:355` (C1–C8, plus C9 at `:371`); failure and partition `:373`; security `:390`; alternatives in the Decisions table `:24` |
 | 2. Profile schema extension proposal (on #122) | Met | Host inventory proposal `docs/runtimes/multi-device.md:67`, built by #204 (closed) |
-| 3. Two-host dry run, recorded (builder remote, coordinator local) | Met, simulated host | #1442's A30 run R1 in [PR #1492](https://github.com/mw-ding/mdstack/pull/1492) (merged `a679007`), linked on [#158](https://github.com/mw-ding/mdstack/issues/158#issuecomment-6735001992). See [#158 AC3 record](#158-ac3-record) |
+| 3. Two-host dry run, recorded (builder remote, coordinator local) | Met, simulated host | #1442's A30 run R1 in [PR #1492](https://github.com/mw-ding/mdstack/pull/1492) (merged `a679007`), linked on [#158](https://github.com/mw-ding/mdstack/issues/158#issuecomment-6735001992). See [#158 AC3 record](#158-ac3-record); follow-up #1493 (#209) |
 | 4. Follow-up build issues filed | Met | `docs/runtimes/multi-device.md:760`: #204, #205, #206, #208, #349, #726–#729 (closed); #207, #209, #345–#348 (open). The forge relay row `:784` is conditional and correctly unfiled |
 
 ### #158 AC3 record
