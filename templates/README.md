@@ -178,6 +178,7 @@ including file's, so a role's shared policy is authored once (#1184).
 | `<mdstack>` | Absolute path of the mdstack checkout; tmux briefs cite `<mdstack>/docs/` | `paths.mdstack` |
 | `<max-active-milestones>` | Maximum open milestones for new coordinator build dispatch, in milestone order | `runtime.options.max_active_milestones` |
 | `<builder-cap>`, `<reviewer-cap>` | session coordinator's concurrent builder runs and reviewer passes | `runtime.options.builders`, `runtime.options.reviewers` |
+| `<present-builder-cap>`, `<present-reviewer-cap>` | session coordinator's owner-present builder and reviewer limits | `runtime.options.present_builders`, `runtime.options.present_reviewers` |
 | `<session-backend>` | session coordinator's worker launcher: `native` subagents or `cli` runs | `runtime.options.session_backend` |
 | `<lone-pr-land>` | tmux lone-ready-PR landing policy | `runtime.options.lone_pr_land` |
 | `<train-min>`, `<train-window>` | tmux synthesizer batching threshold and maximum wait in seconds | `runtime.options.train_min`, `runtime.options.train_window` |

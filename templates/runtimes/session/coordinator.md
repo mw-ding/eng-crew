@@ -49,7 +49,10 @@ handoff or takeover: run only this one coordinator for the repo. Before a
 
 Concurrency caps: builder runs `<builder-cap>`, reviewer passes
 `<reviewer-cap>`, synthesizer runs 1; dispatch only as many as this harness
-can track.
+can track. While the owner is present, admit at most `<present-builder-cap>`
+builder runs and `<present-reviewer-cap>` reviewer passes; an active recorded
+non-quiet away entry uses the full caps. Never stop a running worker to meet
+a lower limit.
 
 <include:policy/coordinator/milestone-admission.md>
 

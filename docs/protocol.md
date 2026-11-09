@@ -1038,8 +1038,9 @@ answer a specific pending question through the existing owner-decision path;
 never parse them into standing grants, merge-ok, flavor acceptance or a gate
 waiver. Every §7 gate still applies.
 
-On tmux, owner-present admission uses `runtime.options.present_builders` and
-`present_reviewers` (integers of at least 1, defaulting to the full caps).
+On tmux and session, owner-present admission uses `runtime.options.present_builders` and
+`present_reviewers` (integers of at least 1, defaulting to the full caps;
+session refuses a value above its full cap).
 An active recorded non-quiet away entry uses full `builders` and `reviewers`
 caps: present means owner-friendly parallelism, away means full speed within
 the caps. A quiet owner remains present. Leads re-read the authoritative away

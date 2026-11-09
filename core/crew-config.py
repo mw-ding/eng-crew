@@ -127,7 +127,8 @@ RUNTIME_OPTIONS = {"grok-bot": {"max_active_milestones": (int, 1)},
                                         "slack_webhook_env": (str, None), "slack_digest_interval": (int, 3600)},
                    # Hosted or hand-started coordinator with native-subagent or CLI workers (docs/runtimes/session.md, #914).
                    "session": {"max_active_milestones": (int, 1), "session_backend": (str, "native"), "builders": (int, 5),
-                               "reviewers": (int, 2), "merge_grant": (str, "none"), "merge_grant_scope": ("list[str]", None),
+                               "reviewers": (int, 2), "present_builders": (int, None), "present_reviewers": (int, None),
+                               "merge_grant": (str, "none"), "merge_grant_scope": ("list[str]", None),
                                "lone_pr_land": (str, "train"), "train_min": (int, 2), "train_window": (int, 600),
                                "train_local_checks": (bool, False), "mirror_deferral": (str, "none"),
                                "mirror": (str, "live-copy"), "hold_label_blocks": (bool, True), "notes": (dict, {})}}
@@ -835,6 +836,11 @@ def validate(profile, err, backends=BACKENDS, pack_dir=None, item=None):
                                  ("stuck_after", 1), ("land_poll_interval", 1), ("land_timeout", 1), ("host_scan_interval", 1)):
                 if key in opts and opts[key] < minimum:
                     err("runtime.options." + key, "must be >= %d, got %d" % (minimum, opts[key]))
+            if rt["name"] == "session":  # tmux clamps an over-cap present limit at admission instead (#1053)
+                for key in ("builders", "reviewers"):
+                    full = opts.get(key, RUNTIME_OPTIONS["session"][key][1])
+                    if opts.get("present_" + key, full) > full:
+                        err("runtime.options.present_" + key, "must be <= %s (%d), got %d" % (key, full, opts["present_" + key]))
             if opts.get("land_timeout", 3600) < opts.get("land_poll_interval", 60):
                 err("runtime.options.land_timeout", "must be >= land_poll_interval (%d), got %d"
                     % (opts.get("land_poll_interval", 60), opts.get("land_timeout", 3600)))
@@ -1366,7 +1372,7 @@ def resolve_profile(project, org_profile=None, pack_manifest=None, meta=None):
             for key, (_, default) in RUNTIME_OPTIONS[rt["name"]].items():
                 if default is not None and key not in rt["options"]:
                     rt["options"][key], prov["runtime.options." + key] = default, "core"
-            if rt["name"] == "tmux":
+            if rt["name"] in ("tmux", "session"):
                 for key in ("builders", "reviewers"):
                     present = "present_" + key
                     if present not in rt["options"] and type(rt["options"][key]) is int and rt["options"][key] >= 1:

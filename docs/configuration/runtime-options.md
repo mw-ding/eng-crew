@@ -115,6 +115,8 @@ brief renders the land options as for `tmux`:
 | `session_backend` | string: `native` or `cli` | `"native"` | `<session-backend>`: `native` dispatches workers as harness subagents with task handles; `cli` as external harness CLI runs with a recorded PID and start time |
 | `builders` | integer | `5` | `<builder-cap>`: concurrent builder runs |
 | `reviewers` | integer | `2` | `<reviewer-cap>`: concurrent reviewer passes |
+| `present_builders` | integer, at least 1, at most `builders` | resolved `builders` | `<present-builder-cap>`: owner-present builder limit, as in `tmux`; a value above `builders` is refused (#1053) |
+| `present_reviewers` | integer, at least 1, at most `reviewers` | resolved `reviewers` | `<present-reviewer-cap>`: owner-present reviewer limit, as in `tmux`; a value above `reviewers` is refused |
 | `merge_grant`, `merge_grant_scope`, `lone_pr_land`, `train_min`, `train_window`, `train_local_checks`, `mirror_deferral`, `mirror`, `hold_label_blocks` | as in [`tmux` options](#tmux-options) | as in `tmux` | the same placeholders in the session builder, reviewer and synthesizer briefs |
 | `notes` | table | `{}` | only its `render` subtable applies: render-time notes, as for `tmux`; no launcher reads standing notes |
 

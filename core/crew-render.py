@@ -63,6 +63,8 @@ MAPPED = {
     "mirror-deferral": ["runtime.options.mirror_deferral"], "mirror-gate": ["runtime.options.mirror"],
     "max-active-milestones": ["runtime.options.max_active_milestones"],
     "builder-cap": ["runtime.options.builders"], "reviewer-cap": ["runtime.options.reviewers"],
+    "present-builder-cap": ["runtime.options.present_builders"],
+    "present-reviewer-cap": ["runtime.options.present_reviewers"],
     "session-backend": ["runtime.options.session_backend"],
     "lone-pr-land": ["runtime.options.lone_pr_land"],
     "train-min": ["runtime.options.train_min"], "train-window": ["runtime.options.train_window"],
