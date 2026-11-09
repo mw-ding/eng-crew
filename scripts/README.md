@@ -461,8 +461,9 @@ prints the 10 spot-check refs of a calibration sweep, the same for every run;
 pending); `rolling` scores the newest 10 owner answers on applied records the
 same way and, below the bar, prints a proposal to return to shadow mode
 (#835); `report` prints accuracy, owner override rate, reopen rate, time to
-triage, proposals per day, tokens per sweep and owner feedback on applied
-records (`--sweep ID` adds what that sweep recorded); `eval-freeze --sweep ID --out FILE` writes the
+triage, proposals per day, tokens per sweep, owner feedback on applied
+records and cluster counts from `pass=triage-cluster` records and
+`cluster:<slug>` labels (`--sweep ID` adds what that sweep recorded); `eval-freeze --sweep ID --out FILE` writes the
 owner-confirmed records as the eval set and `eval-score --set FILE --answers
 FILE` scores a re-classification against it. Python 3 standard library only;
 no network. Unreadable input exits 2.
@@ -470,6 +471,30 @@ no network. Unreadable input exits 2.
 ```sh
 python3 scripts/triage-metrics.py bar --items .crew/triage-items.json --sweep 20261104T0600Z
 python3 dev/tests/scripts/test-triage-metrics.py   # offline, no gh
+```
+
+## Triage clusters
+
+`triage-clusters.py` groups related but distinct open issues into
+[triage clusters](../docs/triage.md#clusters) (#1298). It reads the JSON of
+`gh issue list --json number,url,state,title,body,labels,milestone,comments`
+(repos concatenated; closed issues, pull requests and `triage:log` issues are
+skipped). Deterministic keys place each issue in at most one cluster: the
+Failure class slug, the Source issue, `Depends on #n` targets and the first
+two segments of each named path, in that order. The slug comes from the
+placing key, and `--prior` (the last `--out`) keeps recorded slugs first and
+lists the members new since then. `--model FILE` adds members, each with a
+one-line reason, and sets a cluster's summary, band, milestone or tracking
+proposal; both carry over in `--out`. A new cluster proposal costs one of
+`--cap-left` (default 10) whatever its size; the rest print as
+`skipped: cap`. It prints one line per cluster with its members for the log.
+Python 3 standard library only; no network. Unreadable input, or a model
+member without a reason, exits 2.
+
+```sh
+python3 scripts/triage-clusters.py --items .crew/triage-open.json --sweep 20261108T1800Z \
+  --prior "$CREW_STATE/triage/clusters.json" --cap-left 7 --out .crew/clusters.json
+python3 dev/tests/scripts/test-triage-clusters.py   # offline, no gh
 ```
 
 ## Profile validator

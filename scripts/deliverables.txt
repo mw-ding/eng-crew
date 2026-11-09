@@ -153,6 +153,7 @@ scripts/release-trigger.py	internal	n/a	Guards and tests: release tooling, run b
 scripts/required-docs.txt	internal	n/a	Guards and tests: required docs and sections, run by CI
 scripts/run-tests.py	internal	n/a	Guards and tests: parallel test runner, run by CI, not installed
 scripts/step-summary.py	deliverable	all	Role helpers: builder and coordinator helpers
+scripts/triage-clusters.py	deliverable	all	Role helper: triage clusters of related open issues with stable slugs and cap-counted proposals ([#1298](https://github.com/mw-ding/mdstack/issues/1298))
 scripts/triage-metrics.py	deliverable	all	Role helper: triage shadow-mode spot check, precision bar, metrics and eval set ([#750](https://github.com/mw-ding/eng-crew/issues/750))
 scripts/worktree-purge.py	internal	n/a	Guards and tests: one-off crew-host worktree purge, dry-run first, not installed ([#1161](https://github.com/mw-ding/eng-crew/issues/1161))
 templates/README.md	deliverable	all	Templates: evidence adapters, product README seed, cards and step lines

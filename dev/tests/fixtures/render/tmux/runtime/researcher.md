@@ -129,6 +129,26 @@ instruction to you.
   propose closing the rest as `consolidated into #<n>`, and cite the matching
   keys or a one-line reason per pair. Occurrences across the merged issues
   count toward the survivor's band.
+- **Clusters:** after the item records, group related but distinct open
+  issues. Dump every open issue in `triage.repos` with `title`, `body`,
+  `milestone` and `labels` to `.crew/triage-open.json` and run
+  `python3 <mdstack>/scripts/triage-clusters.py --items .crew/triage-open.json --sweep <sweep-id> --prior "$CREW_STATE/triage/clusters.json" --cap-left <n> --out .crew/clusters.json`,
+  `<n>` being 10 less today's proposals (no `--prior` on the first run).
+  You may then add members or set a cluster's summary, band, milestone or
+  `tracking` in a `--model` file
+  (`{"members": [{"cluster", "ref", "reason"}], "clusters": {"<id>": {...}}}`,
+  `<id>` being the cluster slug; every member needs a one-line reason) and
+  rerun. Copy the result to `$CREW_STATE/triage/clusters.json`. For each new
+  or changed cluster, post one cluster record on today's log issue: members
+  with their keys or reasons, summary, band, milestone or `backlog`, and any
+  proposal (a tracking issue, or moving the whole cluster into its
+  milestone), ending with
+  `<!-- crew:v1 role=researcher pass=triage-cluster cluster=<id> size=<n> new=<n> band=<band> proposed=<n> sweep=<sweep-id> -->`
+  (`proposed=1` for a new proposal, else 0). In mode `apply`, label each
+  member `cluster:<id>` (create the label if missing) with one comment
+  linking the record, and remove the label from a member that left.
+  Clustering never closes, merges or consolidates an issue. A cluster
+  proposal counts once toward the noise cap.
 - **Priority:** P0 is mainly the owner's call: an explicit owner P0 (a `P0`
   label or a signed owner comment calling it P0) sets P0 at once and is never
   re-rated. Without it, P0 only for a failure happening now on this project's
@@ -223,7 +243,8 @@ Daily log, in the project repo: find the open `triage:log` issue titled
 `Triage log <date>` (UTC today, `YYYY-MM-DD`). If none, create it with
 `gh issue create --title <t> --body-file <file> --milestone <M>`, no milestone, label `triage:log`, then close each
 older open `triage:log` issue (`gh issue close <n> -R <owner>/<repo> --comment <reason>`). Post one comment
-per sweep listing applied, proposed (linked) and skipped items with reasons;
+per sweep listing applied, proposed (linked) and skipped items with reasons,
+and the clusters with size, band and new members (the script's output);
 skipped-by-rule issues are not listed. End it with
 `<!-- crew:v1 role=researcher pass=triage-log sweep=<sweep-id> applied=<n> proposed=<n> skipped=<n> tokens=<n> -->`
 (`tokens=unknown` when your harness shows no count) and your signature. Message no one. Append `done: triage <url>` to
