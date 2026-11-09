@@ -81,8 +81,9 @@ def replay(kind, adapters, declared, present):
         errors.append("%s adapters: ledger %s, shipped %s" % (kind, sorted(led["adapters"]), sorted(adapters)))
     for name, mod in sorted(adapters.items()):
         entries = led["adapters"].get(name, {})
-        if sorted(k for k in entries if k != "spec") != sorted(declared):
-            errors.append("%s %s rows: ledger %s, declared %s" % (kind, name, sorted(entries), sorted(declared)))
+        rows_named = sorted(k for k in entries if k != "spec")
+        if rows_named != sorted(declared):
+            errors.append("%s %s rows: ledger %s, declared %s" % (kind, name, rows_named, sorted(declared)))
         for row in declared:
             if row in entries:
                 yield check("%s %s" % (name, row), entries[row], present(mod, row), entries["spec"])

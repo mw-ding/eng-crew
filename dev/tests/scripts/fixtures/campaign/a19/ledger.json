@@ -7,7 +7,8 @@
     "EXECUTABLE": {
      "oracle": true,
      "tests": [
-      "harnesses/test-harness-adapters.py:test_order_and_aliases"
+      "harnesses/test-harness-adapters.py:test_order_and_aliases",
+      "harnesses/test-harness-adapters.py:test_declared_rows_per_shipped_adapter"
      ]
     },
     "ENGINE_RANK": {
@@ -19,7 +20,7 @@
     "LOGIN_STATUS": {
      "oracle": true,
      "tests": [
-      "harnesses/test-harness-adapters.py:test_order_and_aliases"
+      "harnesses/test-harness-adapters.py:test_declared_rows_per_shipped_adapter"
      ]
     },
     "PERMISSION": {
@@ -52,6 +53,7 @@
     "host_checks": {
      "oracle": true,
      "tests": [
+      "environments/test-crew-doctor.py:test_claude_trust_on_a_parent_counts",
       "environments/test-crew-doctor.py:test_claude_role_trust_keys_on_the_checkout"
      ]
     },
@@ -66,13 +68,15 @@
      "oracle": true,
      "tests": [
       "environments/test-crew-status.py:test_status_trust_dialog_is_ambiguous",
-      "environments/test-crew-status.py:test_stuck_screens_are_ambiguous_working_screens_alive"
+      "environments/test-crew-status.py:test_stuck_screens_are_ambiguous_working_screens_alive",
+      "harnesses/test-harness-adapters.py:test_declared_rows_per_shipped_adapter"
      ]
     },
     "BUSY": {
      "oracle": true,
      "tests": [
-      "environments/test-crew-upgrade.py:test_active_pane_waits_after_terminal_status"
+      "environments/test-crew-upgrade.py:test_active_pane_waits_after_terminal_status",
+      "harnesses/test-harness-adapters.py:test_declared_rows_per_shipped_adapter"
      ]
     },
     "TRANSIENT": {
@@ -93,7 +97,8 @@
     "EXECUTABLE": {
      "oracle": true,
      "tests": [
-      "harnesses/test-harness-adapters.py:test_order_and_aliases"
+      "harnesses/test-harness-adapters.py:test_order_and_aliases",
+      "harnesses/test-harness-adapters.py:test_declared_rows_per_shipped_adapter"
      ]
     },
     "ENGINE_RANK": {
@@ -105,7 +110,7 @@
     "LOGIN_STATUS": {
      "oracle": true,
      "tests": [
-      "harnesses/test-harness-adapters.py:test_order_and_aliases"
+      "harnesses/test-harness-adapters.py:test_declared_rows_per_shipped_adapter"
      ]
     },
     "PERMISSION": {
@@ -145,20 +150,23 @@
     "PROCESS": {
      "default": true,
      "tests": [
-      "environments/test-crew-spawn.py:test_builder_spawn_unique_worktree_identity_engine"
+      "environments/test-crew-status.py:test_probe_classes"
      ]
     },
     "PROMPTS": {
      "oracle": true,
      "tests": [
-      "environments/test-crew-status.py:test_codex_hooks_review_dialog_is_ambiguous"
+      "environments/test-crew-status.py:test_codex_hooks_review_dialog_is_ambiguous",
+      "environments/test-crew-status.py:test_stuck_screens_are_ambiguous_working_screens_alive",
+      "harnesses/test-harness-adapters.py:test_declared_rows_per_shipped_adapter"
      ]
     },
     "BUSY": {
      "oracle": true,
      "tests": [
       "environments/test-crew-upgrade.py:test_active_pane_waits_after_terminal_status",
-      "environments/test-crew-send.py:test_real_screens"
+      "environments/test-crew-send.py:test_real_screens",
+      "harnesses/test-harness-adapters.py:test_declared_rows_per_shipped_adapter"
      ]
     },
     "TRANSIENT": {
@@ -179,7 +187,8 @@
     "EXECUTABLE": {
      "oracle": true,
      "tests": [
-      "harnesses/test-harness-adapters.py:test_order_and_aliases"
+      "harnesses/test-harness-adapters.py:test_order_and_aliases",
+      "harnesses/test-harness-adapters.py:test_declared_rows_per_shipped_adapter"
      ]
     },
     "ENGINE_RANK": {
@@ -191,7 +200,7 @@
     "LOGIN_STATUS": {
      "oracle": true,
      "tests": [
-      "harnesses/test-harness-adapters.py:test_order_and_aliases"
+      "harnesses/test-harness-adapters.py:test_declared_rows_per_shipped_adapter"
      ]
     },
     "PERMISSION": {
@@ -249,7 +258,8 @@
     "EXECUTABLE": {
      "oracle": true,
      "tests": [
-      "harnesses/test-harness-adapters.py:test_order_and_aliases"
+      "harnesses/test-harness-adapters.py:test_order_and_aliases",
+      "harnesses/test-harness-adapters.py:test_declared_rows_per_shipped_adapter"
      ]
     },
     "ENGINE_RANK": {
@@ -261,7 +271,7 @@
     "LOGIN_STATUS": {
      "oracle": true,
      "tests": [
-      "harnesses/test-harness-adapters.py:test_order_and_aliases"
+      "harnesses/test-harness-adapters.py:test_declared_rows_per_shipped_adapter"
      ]
     },
     "PERMISSION": {
@@ -320,7 +330,8 @@
     "EXECUTABLE": {
      "oracle": true,
      "tests": [
-      "harnesses/test-harness-adapters.py:test_order_and_aliases"
+      "harnesses/test-harness-adapters.py:test_order_and_aliases",
+      "harnesses/test-harness-adapters.py:test_declared_rows_per_shipped_adapter"
      ]
     },
     "ENGINE_RANK": {
@@ -332,7 +343,7 @@
     "LOGIN_STATUS": {
      "oracle": true,
      "tests": [
-      "harnesses/test-harness-adapters.py:test_order_and_aliases"
+      "harnesses/test-harness-adapters.py:test_declared_rows_per_shipped_adapter"
      ]
     },
     "PERMISSION": {
@@ -392,7 +403,8 @@
     "EXECUTABLE": {
      "oracle": true,
      "tests": [
-      "harnesses/test-harness-adapters.py:test_order_and_aliases"
+      "harnesses/test-harness-adapters.py:test_order_and_aliases",
+      "harnesses/test-harness-adapters.py:test_declared_rows_per_shipped_adapter"
      ]
     },
     "ENGINE_RANK": {
@@ -404,7 +416,7 @@
     "LOGIN_STATUS": {
      "oracle": true,
      "tests": [
-      "harnesses/test-harness-adapters.py:test_order_and_aliases"
+      "harnesses/test-harness-adapters.py:test_declared_rows_per_shipped_adapter"
      ]
     },
     "PERMISSION": {
