@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 """A28 two-full-team preflight and lifecycle (docs/campaign-harness.md#a28, #1440): `teams.py SOURCE ROOT --production
-FILE --sentinel FILE [--engine ENGINE/MODEL] [--release ID] [--ready SECS]` first tears down every earlier run under
+FILE --sentinel FILE [--engine ENGINE/MODEL] [--release ID] [--ready SECS] [--handoff]` first tears down every earlier run under
 ROOT through its manifest (`campaign-sandbox.py teardown`, never a bare tmux call; a run without a valid manifest is
 refused, #1474), then sets up a fresh level-a sandbox with two teams in ROOT/<run> (`campaign-sandbox.py setup --teams
 2`), checks the preflight (separate roots, sessions and runtime instances; one repo
 and control item; the same source, release and skills), starts both full teams with `mdstack up`, waits until every
-required role (the coordinator and each enabled lead) probes alive, leaves one unlanded commit in each team's checkout
+required role (the coordinator and each enabled lead) probes alive, with --handoff runs A29's round trip a -> b -> a
+on seeded forge records (a29/handoff.py, #1441), leaves one unlanded commit in each team's checkout
 and tears down: both teams stopped, the commits retained, the sentinel unchanged. Without --engine every role is an
 engine stub; with it both teams run that real engine, from an operator shell only. One JSON line per phase; exit 0
 only when every phase passed."""
@@ -83,6 +84,7 @@ for flag in ("production", "sentinel"):
 ap.add_argument("--engine")
 ap.add_argument("--release", default="dev")
 ap.add_argument("--ready", type=float, default=300)
+ap.add_argument("--handoff", action="store_true", help="A29: hand off a -> b -> a once both teams are ready (#1441)")
 a = ap.parse_args()
 SRC, PARENT, RUN = os.path.realpath(a.source), os.path.realpath(a.root), "teams-%d" % os.getpid()
 ROOT = os.path.join(PARENT, RUN)
@@ -115,6 +117,9 @@ for name, body in (("pr-list", "[]"), ("issue-list", "[]"), ("repo-view", '{"def
     with open(os.path.join(state, "gh", name + ".json"), "w") as f:
         f.write(body)
 shared = load("crew_shared", "environments/terminal/crew.d/_shared.py")
+a29 = load("a29_handoff", "dev/tests/scripts/fixtures/campaign/a29/handoff.py") if a.handoff else None
+if a29:
+    a29.seed(os.path.join(state, "gh"), git(teams[0]["repo"], "rev-parse", "HEAD"))
 engine = a.engine.split("/")[0] if a.engine else None
 versions = {e: (subprocess.run([e, "-V" if e == "tmux" else "--version"], capture_output=True, text=True).stdout
                 .strip().splitlines() or ["?"])[-1] for e in ["tmux"] + ([shared.ENGINE_CMD[engine]] if engine else [])}
@@ -125,11 +130,14 @@ try:
         r = subprocess.run([sys.executable, os.path.join(SRC, "cli", "mdstack"), "up", "--project", t["project"],
                             "--org-profile", t["org_profile"]], capture_output=True, text=True,
                            env=dict(os.environ, CREW_PROJECT=t["project"]))
-        ok = emit("up-" + t["name"], [] if r.returncode == 0 else ["exit %d" % r.returncode],
+        refused = a29 and t["name"] == "b" and "crew: ownership: read-only; refusing start" in r.stdout  # A29: a owns
+        ok = emit("up-" + t["name"], [] if r.returncode == 0 or refused else ["exit %d" % r.returncode],
                   out=(r.stdout + r.stderr).strip().splitlines()[-4:]) and ok
     deadline, got = time.monotonic() + a.ready, {}
     while ok and time.monotonic() < deadline:
         got = {t["name"]: roles(t) for t in teams}
+        if a29:  # the non-owning team runs read-only: only its coordinator, until it acks a handoff
+            got["b"] = ({"coordinator": got["b"][0]["coordinator"]}, got["b"][1])
         if all(v == "alive" for live, _ in got.values() for v in live.values()):
             break
         time.sleep(2)
@@ -138,6 +146,16 @@ try:
                     if v != "alive"]
         problems += ["briefs: the teams render different roles"] if len({tuple(b) for _, b in got.values()}) > 1 else []
         ok = emit("ready", problems, roles={n: live for n, (live, _) in got.items()}, briefs=got["a"][1]) and ok
+    if ok and a29:
+        def ready(name):  # the coordinator and each lead; a run kept from before the stop stays down
+            t, end = next(t for t in teams if t["name"] == name), time.monotonic() + a.ready
+            alive = lambda: all(v == "alive" for k, v in roles(t)[0].items() if k == "coordinator" or k.endswith("-lead"))
+            while not alive() and time.monotonic() < end:
+                time.sleep(2)
+            return alive()
+        states = {t["name"]: shared.profile(argparse.Namespace(project=t["project"], org_profile=t["org_profile"]))[1:]
+                  for t in teams}
+        ok = a29.roundtrip(SRC, teams, states, os.path.join(state, "gh"), ready, emit)
     for t in teams:  # unlanded work the teardown must keep (docs/campaign-harness.md#cleanup-checks)
         subprocess.run(["git", "-C", t["repo"], "checkout", "-q", "-b", "wip-" + t["name"]], check=True)
         subprocess.run(["git", "-C", t["repo"], "-c", "user.name=c", "-c", "user.email=c@x", "commit", "-q",
@@ -156,5 +174,5 @@ finally:
     problems += ["retained: %s lost its unlanded commit" % t["repo"] for t in teams if t["repo"] not in kept]
     problems += [] if c["sentinel_unchanged"] else ["sentinel changed (P0 isolation finding)"]
     ok = emit("teardown", problems, teams=c["teams"], retained=sorted(kept)) and ok
-print("A28 teams: " + ("pass" if ok else "fail"))
+print("%s teams: %s" % ("A29" if a29 else "A28", "pass" if ok else "fail"))
 sys.exit(0 if ok else 1)
