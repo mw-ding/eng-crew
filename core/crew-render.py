@@ -408,22 +408,8 @@ def memory_root(project, values):
     return os.path.abspath(os.path.join(base, os.path.expanduser(path))) if path else base
 
 
-def main(argv=None, normalize_paths=False):
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--project", required=True)
-    ap.add_argument("--org-profile")
-    ap.add_argument("--inputs", default=os.path.join(os.path.dirname(HERE), "templates"))
-    ap.add_argument("--out", required=True)
-    ap.add_argument("--diff-paths", help="file of repo-relative diff paths, including both rename paths")
-    args = ap.parse_args(argv)
-    paths = None
-    if args.diff_paths:
-        try:
-            with open(args.diff_paths, encoding="utf-8") as f:
-                paths = f.read().splitlines()
-        except (OSError, UnicodeDecodeError) as e:
-            print("%s:1: cannot read diff paths (%s)" % (args.diff_paths, e))
-            return 1
+def render(args, paths, normalize_paths):
+    """Render every job in memory: (values, dst -> text, problems); main writes files only when problems is empty."""
     values, problems = resolve(args.project, args.org_profile, paths)
     jobs, overlay = [], None
     if values is not None:
@@ -498,6 +484,26 @@ def main(argv=None, normalize_paths=False):
                 except (OSError, UnicodeDecodeError) as e:
                     problems.append("%s:1: cannot read runtime.options.notes.render.%s file (%s)" % (note, note_role, e))
         rendered[dst] = "".join(out)
+    return values, rendered, problems
+
+
+def main(argv=None, normalize_paths=False):
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--project", required=True)
+    ap.add_argument("--org-profile")
+    ap.add_argument("--inputs", default=os.path.join(os.path.dirname(HERE), "templates"))
+    ap.add_argument("--out", required=True)
+    ap.add_argument("--diff-paths", help="file of repo-relative diff paths, including both rename paths")
+    args = ap.parse_args(argv)
+    paths = None
+    if args.diff_paths:
+        try:
+            with open(args.diff_paths, encoding="utf-8") as f:
+                paths = f.read().splitlines()
+        except (OSError, UnicodeDecodeError) as e:
+            print("%s:1: cannot read diff paths (%s)" % (args.diff_paths, e))
+            return 1
+    values, rendered, problems = render(args, paths, normalize_paths)
     for p in problems:
         print(p)
     if problems:
