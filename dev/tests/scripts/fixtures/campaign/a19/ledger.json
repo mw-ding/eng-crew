@@ -241,8 +241,8 @@
      "tests": []
     },
     "BUSY": {
-     "gap": null,
-     "finding": "undocumented: no BUSY or COMPOSER, so `mdstack upgrade` cannot see this harness mid-turn and the herdr doorbell finds no composer glyph"
+     "gap": "Gap: none declared, so `mdstack upgrade` reads no mid-turn screen text from this pane",
+     "tests": []
     },
     "TRANSIENT": {
      "gap": "Gap: none declared, so the watcher records no gateway errors from this harness's pane.",
@@ -313,8 +313,8 @@
      "tests": []
     },
     "BUSY": {
-     "gap": null,
-     "finding": "undocumented: no BUSY or COMPOSER, so `mdstack upgrade` cannot see this harness mid-turn and the herdr doorbell finds no composer glyph"
+     "gap": "Gap: none declared, so `mdstack upgrade` reads no mid-turn screen text from this pane",
+     "tests": []
     },
     "TRANSIENT": {
      "gap": "Gap: none declared, so the watcher records no gateway errors from this harness's pane.",
@@ -386,8 +386,8 @@
      ]
     },
     "BUSY": {
-     "gap": null,
-     "finding": "undocumented: no BUSY or COMPOSER, so `mdstack upgrade` cannot see this harness mid-turn and the herdr doorbell finds no composer glyph"
+     "gap": "Gap: none declared, so `mdstack upgrade` reads no mid-turn screen text from this pane",
+     "tests": []
     },
     "TRANSIENT": {
      "gap": "Gap: none declared, so the watcher records no gateway errors from this harness's pane.",
