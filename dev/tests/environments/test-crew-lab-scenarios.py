@@ -1,5 +1,5 @@
 """Lab runner scenario tests: the verified client toolkit, the ssh shim, the org profiles and sample branch, the lab
-env, refusals, injection confirmation, label-checked recreate and the scenario report.
+env, refusals, injection confirmation, runner recovery health, label-checked recreate and the scenario report.
 
 Usage: python3 dev/tests/environments/test-crew-lab-scenarios.py
 
@@ -164,6 +164,37 @@ class InjectionTest(unittest.TestCase):
         self.assertIsNone(sc.run_line(out, "lab-b", "a" * 40))
         self.assertIsNone(sc.run_line(out, "lab-a", "b" * 40))
         self.assertEqual(sc.exits(out), [0, 1])
+
+
+class RunnerTest(unittest.TestCase):
+    def lab(self, health, beat_pid):
+        lab = mock.Mock(host="lab-a")
+        lab.pids.side_effect = [dict(runner=10, sshd=5)] + [dict(runner=11, sshd=5)] * 200
+        lab.beat.return_value = dict(pid=beat_pid)
+        lab.call.side_effect = [dict(result="ok", runner="up")] + [dict(result="ok", runner=health)] * 200
+        lab.client.return_value = ["runner:lab-a/j head=h", "check-repo exit 0", "tests exit 0", "exit 0"]
+        return lab
+
+    def test_a_new_runner_pid_that_never_reports_up_fails_at_the_timeout(self):
+        s = sc.Seen()
+        with mock.patch.object(sc.time, "sleep"):
+            sc.runner(self.lab("down", 11), s)
+        self.assertEqual(s.failures, ["the restarted runner never reported up: ['down', 'down', 'down']"])
+        self.assertEqual(len(s.obs["health"]), 120)
+
+    def test_a_stale_heartbeat_from_the_killed_runner_fails(self):
+        s = sc.Seen()
+        with mock.patch.object(sc.time, "sleep"):
+            sc.runner(self.lab("up", 10), s)
+        self.assertEqual(s.failures, ["the restarted runner never reported up: ['up', 'up', 'up']"])
+
+    def test_a_restarted_runner_that_beats_and_reports_up_passes(self):
+        s = sc.Seen()
+        with mock.patch.object(sc.time, "sleep"):
+            sc.runner(self.lab("up", 11), s)
+        self.assertEqual(s.failures, [])
+        self.assertEqual(s.obs["health"], ["up"])
+        self.assertEqual(s.obs["runner_version"], dict(result="ok", runner="up"))
 
 
 class RecreateTest(Base):

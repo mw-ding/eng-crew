@@ -17,12 +17,14 @@ Every scenario prints PASS or FAIL; lab/scenarios.json keeps what it saw. Exit 1
   disconnect  network disconnect mid-job, container and runner pids kept: the client falls back locally; after
               reconnect the same job's result is pulled, and it ran once
   pause       pause mid-job (unresponsive host): the client falls back locally; after unpause the job finishes
-  runner      runner-only restart: a new runner pid, sshd's kept, the runner up again and a job passes
+  runner      runner-only kill: SSH still answers with sshd's pid kept; a new runner pid writes the heartbeat and
+              `version` reports it up (never seen by the timeout is a FAIL); then a job passes
   recreate    container recreated mid-job (new ID, host key and port): the client falls back locally (unreachable
               while it is down, or the lost job refused), the host never reports that job done, and a fresh job passes
   partition   a role host behind a network disconnect is unreachable over SSH; placement queues a role run that
               needs that host and never places it elsewhere, and the item's claim file is unchanged
-Each injection is confirmed by a `version` call that fails while it holds and answers once it is lifted.
+Each disconnect and pause is confirmed by a `version` call that fails while it holds and answers once it is lifted;
+runner and recreate prove their own outage as above.
 """
 import argparse
 import hashlib
@@ -152,6 +154,12 @@ class Lab:
     def jobs(self):
         return set(self.docker("exec", "-u", "crew", self.cid(), "sh", "-c", "ls ~/.mdstack/jobs 2>/dev/null || true")
                    .split())
+
+    def beat(self):
+        """The host runner's runner.json heartbeat, or {} while it has none."""
+        text = self.docker("exec", "-u", "crew", self.cid(), "sh", "-c",
+                           "cat ~/.mdstack/runner.json 2>/dev/null || true")
+        return json.loads(text) if text.strip() else {}
 
     def started(self, before, timeout=60):
         for _ in range(timeout):
@@ -307,16 +315,25 @@ def pause(lab, s):
 
 
 def runner(lab, s):
+    """Kill the runner alone: SSH still answers once its pid is gone; then a new runner must beat and report up."""
     before = lab.pids()
     lab.docker("exec", lab.cid(), "kill", str(before["runner"]))
-    for _ in range(30):
-        after = lab.pids()
-        if after["runner"] not in (None, before["runner"]) and lab.call("version").get("runner") == "up":
+    outage = s.obs["runner_version"] = lab.call("version")
+    s.check(outage.get("result") == "ok" and lab.pids()["sshd"] == before["sshd"],
+            "SSH did not answer while only the runner was down: %s" % outage)
+    health = s.obs["health"] = []
+    for _ in range(120):
+        after, beat = lab.pids(), lab.beat()
+        health.append(lab.call("version").get("runner"))
+        if after["runner"] not in (None, before["runner"]) and beat.get("pid") == after["runner"] \
+                and health[-1] == "up":
             break
         time.sleep(1)
-    s.obs["pids"] = [before, after]
+    s.obs["pids"], s.obs["beat"] = [before, after], beat
     s.check(after["runner"] not in (None, before["runner"]) and after["sshd"] == before["sshd"],
             "the runner was not restarted alone")
+    s.check(beat.get("pid") == after["runner"] and health[-1:] == ["up"],
+            "the restarted runner never reported up: %s" % health[-3:])
     out = s.obs["client"] = lab.client(lab.commit())
     s.check(out[-1] == "exit 0" and not any("ran locally" in x for x in out), "no job passed after the restart")
 
