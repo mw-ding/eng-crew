@@ -141,6 +141,8 @@ def floor_problems(cfg, data, where, custom=None):
                         where, sub, number, rule))
                 if key == "merge_grant" and child != "none":
                     out.append("%s:%s: a merge grant is the owner's, never a pack's" % (where, sub))
+                if key == "release_delegation" and child != "none":
+                    out.append("%s:%s: a release delegation is the owner's, never a pack's" % (where, sub))
                 scan(child, sub)
         elif isinstance(value, list):
             for i, child in enumerate(value):

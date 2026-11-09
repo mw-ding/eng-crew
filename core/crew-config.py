@@ -121,6 +121,7 @@ RUNTIME_OPTIONS = {"grok-bot": {"max_active_milestones": (int, 1)},
                                         "schedule_interval": (int, 120), "schedule_ramp": (int, 2), "stuck_after": (int, 1800), "poll_interval": (int, 60), "host_scan_interval": (int, 15),
                                         "land_poll_interval": (int, 60), "land_timeout": (int, 3600), "train_min": (int, 2), "train_window": (int, 600),
                                         "merge_grant": (str, "none"), "merge_grant_scope": ("list[str]", None), "lone_pr_land": (str, "train"),
+                                        "release_delegation": (str, "none"),
                                         "train_local_checks": (bool, False), "mirror_deferral": (str, "none"),
                                         "mirror": (str, "live-copy"),
                                         "hold_label_blocks": (bool, True), "permission_mode": (str, "bypass"),
@@ -818,6 +819,8 @@ def validate(profile, err, backends=BACKENDS, pack_dir=None, item=None):
             check_choices(err, "runtime.options.merge_grant_scope", opts.get("merge_grant_scope", []), MERGE_GRANT_SCOPES)
             if "spec" in opts.get("merge_grant_scope", []) and opts.get("merge_grant", "none") == "none":
                 err("runtime.options.merge_grant_scope", "spec needs a standing merge_grant; merge_grant is none")
+            if opts.get("release_delegation", "none") not in ("none", None) and "https://" not in opts["release_delegation"]:
+                err("runtime.options.release_delegation", "expected the owner's recorded words with a https:// link to the record")
             check_choice(err, "runtime.options.mirror", opts.get("mirror"), ["live-copy", "none"])
             check_choice(err, "runtime.options.memory_high", opts.get("memory_high"), ["warn", "critical"])
             if opts.get("mirror") == "none" and opts.get("mirror_deferral", "none") != "none":
