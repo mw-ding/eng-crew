@@ -575,8 +575,8 @@ class TmuxBriefs(unittest.TestCase):
         self.assertIn('`merge_grant = "all approved per #9"` (scope `["approved", "spec"]`, spec `["docs/specs/**", "rfcs/**"]`),', synth)
         self.assertIn("§7 spec changes need merge-ok unless scope has `spec`", synth)
 
-    def test_release_delegation_fills_tmux_briefs(self):
-        """#1435: a set release_delegation renders in the coordinator and synthesizer briefs; the goldens cover none."""
+    def test_release_delegation_fills_coordinator_brief(self):
+        """#1435: a set release_delegation renders in the coordinator brief; the golden covers none."""
         tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, tmp)
         project = os.path.join(tmp, "crew.toml")
@@ -590,9 +590,7 @@ class TmuxBriefs(unittest.TestCase):
             code = cr.main(["--project", project, "--out", os.path.join(tmp, "out")])
         self.assertEqual(code, 0, out.getvalue())
         coordinator = tree(os.path.join(tmp, "out"))["runtime/coordinator.md"]
-        synth = tree(os.path.join(tmp, "out"))["runtime/synthesizer.md"]
-        for brief in (coordinator, synth):
-            self.assertIn('Cut merge-ok: `release_delegation = "make releases https://x/985#c1"` (docs/release.md).', brief)
+        self.assertIn('Cut go: `release_delegation = "make releases https://x/985#c1"` (docs/release.md).', coordinator)
 
     def test_profile_values_fill_tmux_briefs(self):
         """14.1d (#233): mdstack path, merge grant and hold semantics render from the profile; booleans as TOML."""

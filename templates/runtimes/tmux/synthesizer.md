@@ -23,8 +23,6 @@ quarantine, or use an alternate or mirror package registry. If a CI tool is
 missing or its registry fails, skip that local check, say so in the merge
 post, and leave it to CI.
 
-Cut merge-ok: `release_delegation = "<release-delegation>"` (docs/release.md).
-
 <include:policy/synthesizer/merge-gate.md>
 3. <land-step>
 <include:policy/synthesizer/direct-land-ci.md>

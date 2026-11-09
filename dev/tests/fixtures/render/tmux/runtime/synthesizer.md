@@ -41,8 +41,6 @@ quarantine, or use an alternate or mirror package registry. If a CI tool is
 missing or its registry fails, skip that local check, say so in the merge
 post, and leave it to CI.
 
-Cut merge-ok: `release_delegation = "none"` (docs/release.md).
-
 Profile: `merge_grant = "none"` (scope `["approved"]`, spec `["docs/specs/**"]`),
 `hold_label_blocks = true`, `train_min = 2`,
 `train_window = 600` seconds, `lone_pr_land = "train"`,
