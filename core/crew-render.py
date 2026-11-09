@@ -12,6 +12,9 @@ briefs are per-routine files, the role's discovery file) gets the owner profile 
 memory/ in the checkout (paths.checkout, else the profile's directory), before any render note; inside the
 closing fence when the brief ends in one (a fenced routine prompt). A memory lint problem fails closed. The
 size-budget render (normalize_paths) leaves memory out: its files have their own limits.
+Budget headroom (#1056): after a successful render, stderr gets one line per role brief with its path-normalized
+bytes against [size_budget] (the bootstrap measure) and its delivered bytes (core memory and render notes
+included), and a WARNING inside BUDGET_BAND of the budget or over it. Output paths and exit codes are unchanged.
 Fails closed: every problem (an unknown placeholder, a missing mapping, an unsupported capability) prints as
 `file:line: reason`; exit 1 and write nothing if any, else 0.
 Placeholder map: scripts/README.md (Renderer).
@@ -52,6 +55,7 @@ crew_memory = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(crew_memory)
 
 ROLES = crew_config.ROLE_REGISTRY
+BUDGET_BAND = 0.05  # warn when a role brief is within 5% of its size_budget (#1056)
 # Install-time placeholder -> resolved profile keys (docs/profile.md "Replaces"); several keys must agree.
 MAPPED = {
     "control-item": ["repo.control_item"], "runtime-id": ["runtime.name", "runtime.instance"],
@@ -487,6 +491,24 @@ def render(args, paths, normalize_paths):
     return values, rendered, problems
 
 
+def budget_report(args, paths, values, delivered):
+    """Print each role brief's size_budget headroom to stderr; never changes the exit code."""
+    _, budgeted, problems = render(args, paths, normalize_paths=True)
+    for dst in [] if problems else sorted(budgeted):
+        role = os.path.splitext(os.path.basename(dst))[0].split("-")[0]
+        if not dst.endswith(".md") or role not in ROLES:
+            continue
+        size, budget = len(budgeted[dst].encode("utf-8")), values["size_budget." + role]
+        print("crew-render: budget %s %d/%d bytes (%d%%), delivered %d bytes" % (
+            dst, size, budget, 100 * size // budget, len(delivered[dst].encode("utf-8"))), file=sys.stderr)
+        if size > budget:
+            print("crew-render: WARNING %s is %d bytes over the %s size_budget" % (dst, size - budget, role),
+                  file=sys.stderr)
+        elif size >= budget * (1 - BUDGET_BAND):
+            print("crew-render: WARNING %s is within %d%% of the %s size_budget (%d bytes left)" % (
+                dst, round(BUDGET_BAND * 100), role, budget - size), file=sys.stderr)
+
+
 def main(argv=None, normalize_paths=False):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--project", required=True)
@@ -516,6 +538,8 @@ def main(argv=None, normalize_paths=False):
             f.write(text)
         print(path)
     print("crew-render: OK (%d files)" % len(rendered), file=sys.stderr)
+    if not normalize_paths:
+        budget_report(args, paths, values, rendered)
     return 0
 
 
