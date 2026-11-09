@@ -7,7 +7,8 @@ an unpushed branch that is not checked out) and the sentinel, `--remove` only wi
 session-targeted tmux kill on the sandbox socket, the tmux shim's socket pin and refusals, a scenario's bare
 `tmux kill-server` under an inherited decoy TMUX (#817), the fake forge's `--label` answers, per-state `issue list`
 answers, kept `--body-file -` bodies, the `gh api` forge stub (kept posts, a lost post, the post probe, a label
-delete) and the print-only level-b forge plan. tmux tests use throwaway sockets only. Run in CI.
+delete), the print-only level-b forge plan, and A28's two-team setup and `a28/teams.py` lifecycle (#1440). tmux tests
+use throwaway sockets only. Run in CI.
 """
 import contextlib
 import importlib.util
@@ -16,6 +17,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -122,6 +124,97 @@ class CampaignSandboxTest(unittest.TestCase):
             gh = subprocess.run([os.path.join(bindir, "gh"), "issue", "list", *argv], capture_output=True, text=True,
                                 env=env)
             self.assertEqual(gh.stdout, want, argv)
+
+    def test_setup_two_teams_separate_roots_sessions_and_instances(self):
+        """--teams 2 (#1440): team b's own checkout, session, roots and runtime instance; one repo and control item."""
+        code, out = self.run_cmd("setup", "--root", self.root, "--run-id", "r785", "--production", self.prod,
+                                 "--source", self.src, "--release", "v4.0.0", "--sentinel", self.sentinel,
+                                 "--scenario", "A28", "--teams", "2", "--engine", "claude-code/claude-opus-5-5")
+        self.assertEqual(code, 0, out)
+        teams = json.loads(self.read(os.path.join(self.root, "state", "sandbox.json")))["teams"]
+        self.assertEqual([(t["name"], t["session"]) for t in teams],
+                         [("a", "crew-campaign-r785"), ("b", "crew-campaign-r785-b")])
+        b = self.read(os.path.join(self.root, "repo-b", "crew.toml"))
+        self.assertIn('state_dir = "%s/team-b/state"' % self.root, b)
+        self.assertIn('name = "sandbox-r785"', b)
+        for t in teams:
+            org = self.read(t["org_profile"])
+            self.assertIn('instance = "%s"' % t["name"], org)
+            self.assertIn("control_item = 1", org)
+            self.assertIn('order = ["claude-code/claude-opus-5-5"]', org)
+            self.assertEqual((t["source"], t["release"]), (self.src, "v4.0.0"))
+        self.assertEqual(cs.git("remote", "get-url", "origin", cwd=os.path.join(self.root, "repo-b")).strip(),
+                         os.path.join(self.root, "origin.git"))
+        bindir = os.path.join(self.root, "state", "bin")
+        self.assertFalse(os.path.exists(os.path.join(bindir, "claude")), "the real engine is not stubbed")
+        self.assertTrue(os.access(os.path.join(bindir, "codex"), os.X_OK))
+
+    def test_teardown_refuses_a_team_profile_drifted_to_production(self):
+        """Team b's state_dir moved onto the production state root refuses teardown before any mutation (#1440 R1)."""
+        code, out = self.run_cmd("setup", "--root", self.root, "--run-id", "r785", "--production", self.prod,
+                                 "--source", os.path.dirname(SCRIPTS), "--release", "dev", "--sentinel",
+                                 self.sentinel, "--teams", "2")
+        self.assertEqual(code, 0, out)
+        project_b = os.path.join(self.root, "repo-b", "crew.toml")
+        prod_state = os.path.join(self.d, "prod", "state")
+        self.write(project_b, self.read(project_b).replace(os.path.join(self.root, "team-b", "state"), prod_state))
+        wake = os.path.join(prod_state, "campaign__sandbox-r785", "wake")
+        os.makedirs(wake)
+        watcher = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(300)", "watch"])
+        self.addCleanup(watcher.wait)
+        self.addCleanup(watcher.terminate)
+        self.write(os.path.join(wake, "watcher.pid"), str(watcher.pid))
+        code, out = self.run_cmd("teardown", self.manifest)
+        self.assertEqual(code, 2)
+        self.assertEqual(out.splitlines(), [
+            "refused: team b: %s changed since setup" % project_b,
+            "refused: team b: paths.state_dir %s is outside the sandbox or on a production root" % prod_state])
+        self.assertIsNone(watcher.poll(), "the outside watcher is untouched")
+        self.assertFalse(os.path.exists(os.path.join(self.root, "state", "cleanup.json")))
+
+    def teams(self, parent, env=None):
+        teams = os.path.join(TESTS, "scripts", "fixtures", "campaign", "a28", "teams.py")
+        env = env or {k: v for k, v in os.environ.items() if not k.startswith(("CREW_", "TMUX"))}
+        p = subprocess.run([sys.executable, teams, os.path.dirname(SCRIPTS), parent, "--production", self.prod,
+                            "--sentinel", self.sentinel, "--ready", "120"], capture_output=True, text=True, env=env,
+                           timeout=400)
+        return p, {r["phase"]: r for r in (json.loads(x) for x in p.stdout.splitlines() if x.startswith("{"))}
+
+    @unittest.skipUnless(shutil.which("tmux"), "tmux not installed")
+    def test_a28_teams_cleanup_preflight_up_ready_and_teardown(self):
+        """a28/teams.py (#1440) stops an earlier run through its manifest under an inherited decoy TMUX (#1474), runs
+        both full teams from this checkout and tears them down keeping their work."""
+        old = os.path.join(self.root, "old")
+        self.setup_sandbox(old)
+        sock = cs.tmux_socket(os.path.join(old, "state"))
+        self.addCleanup(self.tmux, sock, "kill-server")
+        self.assertEqual(self.tmux(sock, "new-session", "-d", "-s", "crew-campaign-r785", "sleep 300").returncode, 0)
+        decoy = self.decoy("crew-campaign-r785")
+        env = {k: v for k, v in os.environ.items() if not k.startswith("CREW_")}
+        env.update(TMUX=decoy + ",0,0", TMUX_PANE="%0",
+                   PATH=os.path.dirname(shutil.which("tmux")) + os.pathsep + env["PATH"])
+        p, phases = self.teams(self.root, env)
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertEqual(list(phases), ["cleanup", "setup", "preflight", "up-a", "up-b", "ready", "teardown"])
+        self.assertEqual(phases["cleanup"]["runs"], ["old"])
+        self.assertNotEqual(self.tmux(sock, "has-session", "-t", "=crew-campaign-r785").returncode, 0)
+        self.assertEqual(self.tmux(decoy, "has-session", "-t", "=crew-campaign-r785").returncode, 0, "decoy kept")
+        self.assertEqual({t["instance"] for t in phases["preflight"]["teams"]}, {"a", "b"})
+        for live in phases["ready"]["roles"].values():
+            self.assertEqual(set(live.values()), {"alive"})
+            self.assertIn("coordinator", live)
+        self.assertEqual([s["stopped"] for s in phases["teardown"]["teams"]], [True, True])
+        run = os.path.join(self.root, phases["setup"]["run"])
+        self.assertEqual(phases["teardown"]["retained"], [os.path.join(run, d) for d in ("repo", "repo-b")])
+        self.assertEqual(self.read(self.sentinel), "untouched\n")
+
+    def test_a28_teams_refuses_cleanup_without_a_manifest(self):
+        os.makedirs(os.path.join(self.root, "stray", "state"))
+        p, phases = self.teams(self.root)
+        self.assertEqual(p.returncode, 1, p.stdout + p.stderr)
+        self.assertEqual(list(phases), ["cleanup"])
+        self.assertEqual(phases["cleanup"]["problems"], ["stray: no valid manifest; refusing to clean it up"])
+        self.assertEqual(os.listdir(self.root), ["stray"])
 
     def test_gh_api_stub_keeps_posts_fails_lost_and_probes(self):
         self.setup_sandbox()
