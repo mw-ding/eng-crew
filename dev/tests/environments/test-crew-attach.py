@@ -1,7 +1,8 @@
 """Tests for mdstack attach, moved from test-crew.py; fixtures in crew_testlib.py (stdlib only).
 
 Covers: read-only by default, by role, the builders view leaves the layout unchanged, unknown
-window and missing session refused. Run in CI.
+window and missing session refused, and a run on a role host through `ssh -t` and `capture` (#348).
+Run in CI.
 """
 import json
 import os
@@ -83,6 +84,66 @@ class Attach(ObserveBase):
         self.assertEqual(r.returncode, 1)
         self.assertIn("no builder windows", r.stdout)
         self.assertEqual([c for c in self.calls() if c[0] in ("new-session", "attach-session")], [])
+
+
+class AttachRemote(ObserveBase):  # #348: a run on a role host, through its host's attach and capture verbs
+    def attach(self, *args, **env):
+        return self.crew("attach", *args, "--project", self.project, **env)
+
+    def attaches(self):
+        return [c for c in self.calls() if c[0] == "attach-session"]
+
+    def test_attach_remote_window_over_ssh_tty(self):
+        self.remote_run("ben-12")
+        os.remove(self.state_file)  # no local session needed for a remote run
+        r = self.attach("ben-12")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.attach("ben-12", "--rw").returncode, 0)
+        calls = self.ssh_calls()
+        self.assertEqual([(c["request"]["verb"], c["request"]["window"], c["request"]["rw"]) for c in calls],
+                         [("attach", "ben-12", False), ("attach", "ben-12", True)])
+        self.assertEqual(calls[0]["request"]["project"], "acme__widgets")
+        self.assertIn("-t", calls[0]["argv"])
+        self.assertNotIn("-T", calls[0]["argv"])
+        self.assertTrue(calls[0]["argv"][-1].startswith("crew-host "))
+        r = self.attach("ben-12", FAKE_SSH_EXIT="255")
+        self.assertEqual(r.returncode, 255)
+        self.assertIn("crew: host-b unreachable", r.stdout)
+
+    def test_attach_role_counts_remote_runs(self):
+        self.remote_run("ben-12")
+        r = self.attach("builder")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("ben-7, ben-8, ben-12", r.stdout)
+        with open(self.state_file, "w") as f:
+            json.dump({"crew-acme-widgets": {"0": "ash"}}, f)
+        self.assertEqual(self.attach("builder").returncode, 0)
+        self.assertEqual([c["request"]["window"] for c in self.ssh_calls()], ["ben-12"])
+        self.assertEqual(self.attaches(), [])
+
+    def test_attach_builders_adds_a_capture_pane_per_remote_builder(self):
+        self.remote_run("ben-12")
+        self.remote_run("vera-13", role="reviewer")
+        r = self.attach("builders")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        splits = [c for c in self.calls() if c[0] == "split-window"]
+        self.assertEqual(len(splits), 2)
+        self.assertIn("attach ben-12 --capture --project %s" % self.project, splits[1][-1])
+        self.assertIn("'ben-12 on host-b'", splits[1][-1])
+        self.assertIn("sleep 15", splits[1][-1])
+        self.assertNotIn("vera-13", json.dumps(self.calls()))
+        self.assertEqual(self.ssh_calls(), [])  # the view's pane polls; opening it calls no host
+
+    def test_capture_prints_the_remote_pane_once(self):
+        self.remote_run("ben-12", capture=dict(result="ok", text="$ make test\nok"))
+        r = self.attach("ben-12", "--capture")
+        self.assertEqual((r.returncode, r.stdout), (0, "$ make test\nok\n"))
+        self.assertEqual(self.ssh_calls()[0]["request"]["verb"], "capture")
+        self.remote_run("ben-12", capture=dict(result="refused", reason="no run ben-12 on this host"))
+        r = self.attach("ben-12", "--capture")
+        self.assertEqual((r.returncode, r.stdout), (1, "crew: host-b refused: no run ben-12 on this host\n"))
+        r = self.attach("ben-7", "--capture")
+        self.assertEqual((r.returncode, r.stdout), (1, "crew: no remote run ben-7\n"))
 
 
 if __name__ == "__main__":

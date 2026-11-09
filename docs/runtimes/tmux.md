@@ -209,7 +209,7 @@ the primary.
 |---|---|---|
 | Primary | The coordinator, the synthesizer, `mdstack poll`, the watcher, claims, the land lock, and every role run while M20 lasts | The table above, unchanged |
 | Forge-less runner host (`forge = false`) | `mdstack runner` jobs only: `check-repo`, named tests and offline evidence captures, run at a seeded head. Never a role session, model call or forge access | Unchanged. No wake, status line, inbox, claim or lock lives on the host. A role run on the primary starts the job and gets its result back by reference under `$CREW_STATE/runner/`. Unreachable or refused falls back to a local run ([Failure and fallback](multi-device.md#forge-less-hosts-remote-test-runner)). Added by the [runbook](multi-device.md#runbook-add-a-runner-host) |
-| Role host | Builder and reviewer runs, placed by `mdstack spawn` ([#345](https://github.com/mw-ding/eng-crew/issues/345)) | The [contract across hosts](multi-device.md#runtime-contract-across-hosts), with its C1 and C9 gaps. The [run lifecycle](multi-device.md#remote-run-lifecycle) is built; wakes, messages, partition handling and attach are not (#346–#348) |
+| Role host | Builder and reviewer runs, placed by `mdstack spawn` ([#345](https://github.com/mw-ding/eng-crew/issues/345)) | The [contract across hosts](multi-device.md#runtime-contract-across-hosts), with its C1 and C9 gaps. The [run lifecycle](multi-device.md#remote-run-lifecycle) and [attach and logs](multi-device.md#observability) are built; wakes, messages and partition handling are not (#346, #347) |
 
 ## Q1. Wake
 

@@ -17,7 +17,8 @@ CONTROLS = dict(disconnect="docker network disconnect, then connect", pause="doc
                 runner="docker exec kill of the runner pid; its supervisor restarts it",
                 recreate="docker rm -f of the container and network, then a new container")
 STUBS = ["sample repo branch lab: scripts/check-repo.py and dev/tests/lab/test-lab.py, not the project's checks",
-         "partition: a synthetic claim builder-issue1 and identity lab-bot; no engine or forge runs"]
+         "partition: a synthetic claim builder-issue1 and identity lab-bot; no engine or forge runs",
+         "attach: a run planted by docker exec as crew (record, tmux window and step summary); no spawn, engine or forge"]
 
 
 def now():

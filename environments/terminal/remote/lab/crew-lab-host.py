@@ -11,7 +11,7 @@ criteria and the local lab). `activate` checks the release bundle and SHA256SUMS
 with the shared verifier (scripts/crew-install.py), moves the bundle to --bundle only after every check passes, then
 writes --record: tag, bundle and SHA256SUMS digests, and the source SHA, which a non-release (dev) tag must name.
 `authorize` writes the run's public key as the user's only authorized_keys line, forced to the entrypoint with
-`restrict`. `supervise` is PID 1: it makes the container's own SSH host key on first start, starts sshd (as root) and the runner (as the non-root user, in a scrubbed env),
+`restrict,pty` (a TTY for the `attach` verb only, #348). `supervise` is PID 1: it makes the container's own SSH host key on first start, starts sshd (as root) and the runner (as the non-root user, in a scrubbed env),
 restarts either when it exits and reaps every other child. `ready` exits 0 only while the runner's runner.json
 heartbeat is fresh; it is the image's HEALTHCHECK. Nothing here reads or copies a login, token, SSH agent or home:
 the image creates the user's home empty and the runner gets only PATH, HOME, USER, LOGNAME and LANG.
@@ -60,7 +60,7 @@ def authorize(home, key, bundle):
     key = key.strip()
     if not KEY.fullmatch(key):
         raise ValueError("key file must hold one public key line, with no options")
-    line = 'command="python3 %s --root %s",restrict %s\n' % (
+    line = 'command="python3 %s --root %s",restrict,pty %s\n' % (
         os.path.join(bundle, ENTRY), os.path.join(home, ".mdstack"), key)
     ssh = os.path.join(home, ".ssh")
     os.makedirs(ssh, mode=0o700, exist_ok=True)

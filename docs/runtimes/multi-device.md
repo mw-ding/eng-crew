@@ -3,8 +3,8 @@
 > - **Status:** partly built
 > - **Applies to:** a tmux primary plus forge-less runner hosts
 > - **Current rules:** [tmux binding](tmux.md), [protocol](../protocol.md)
-> - **Built:** host inventory, `mdstack host check`, `mdstack hosts`, `mdstack host prepare`, the remote call and runner, [Forge-less hosts](#forge-less-hosts-remote-test-runner) and its [runbook](#runbook-add-a-runner-host), the [role-host runbook](#runbook-add-or-remove-a-role-host), the [host OS adapter](#host-os-adapters) dispatch and the `macos` and `linux` adapters, [placement](#placement) in `mdstack spawn`, the [remote run lifecycle](#remote-run-lifecycle) (`spawn`, `kill`, `restart`, `down`), proved on fakes (#204–#208, #345, #349, #726–#729, #1358, #1359, #1363)
-> - **Design only:** remote wakes and messages, partition handling and remote attach (#346–#348) and the two-host dry run (#209), all open
+> - **Built:** host inventory, `mdstack host check`, `mdstack hosts`, `mdstack host prepare`, the remote call and runner, [Forge-less hosts](#forge-less-hosts-remote-test-runner) and its [runbook](#runbook-add-a-runner-host), the [role-host runbook](#runbook-add-or-remove-a-role-host), the [host OS adapter](#host-os-adapters) dispatch and the `macos` and `linux` adapters, [placement](#placement) in `mdstack spawn`, the [remote run lifecycle](#remote-run-lifecycle) (`spawn`, `kill`, `restart`, `down`), [remote attach and logs](#observability), proved on fakes (#204–#208, #345, #348, #349, #726–#729, #1358, #1359, #1363)
+> - **Design only:** remote wakes and messages and partition handling (#346, #347) and the two-host dry run (#209), all open
 > - **Last checked:** 2026-11-08 at `e73ade4`
 
 How one coordinator runs role sessions on several hosts (laptops, a
@@ -264,10 +264,12 @@ Contract for [#208](https://github.com/mw-ding/eng-crew/issues/208)
 
 Built in `environments/terminal/remote/crew-remote.py` (#208): the entrypoint, the runner and the
 primary-side client `call()`. The crew key's `authorized_keys` line is
-`command="python3 <bundle>/environments/terminal/remote/crew-remote.py --root <root>",restrict <key>`,
+`command="python3 <bundle>/environments/terminal/remote/crew-remote.py --root <root>",restrict,pty <key>`,
 and the runner runs `crew-remote.py --root <root> runner` as the account's
-service. Built verbs: `version`, `check`, `prepare`, `seed`, `job`,
-`result`, and `spawn`, `probe` and `kill` ([remote run lifecycle](#remote-run-lifecycle)).
+service. The runner makes the default tmux socket's directory itself: tmux
+does not make it for a socket named by path, and still exits 0. Built verbs: `version`, `check`, `prepare`, `seed`, `job`,
+`result`, `spawn`, `probe` and `kill` ([remote run lifecycle](#remote-run-lifecycle)), and
+`attach`, `capture` and `logs` ([observability](#observability)).
 `version` reports the host's version and whether the runner is `up` (a
 fresh heartbeat and its tmux session) or `down`. Every other verb in the set
 is refused as not built until its issue lands.
@@ -317,8 +319,8 @@ record. A run on a role host counts toward its role's pool cap,
 reads `ambiguous` to the local probe (never restarted from here) and shows
 its host's probe in `mdstack status`. Not yet built, so a remote run still
 lacks them: status lines, wakes and `mdstack send` (#346), so the watcher
-skips its liveness; `unreachable` handling and reconcile (#347); attach and
-logs (#348). The window gets no `CREW_PROJECT` there, so the brief's
+skips its liveness; `unreachable` handling and reconcile (#347). Attach and
+logs are built ([observability](#observability), #348). The window gets no `CREW_PROJECT` there, so the brief's
 `mdstack ownership` and `action heartbeat` steps wait for #346. Worktrees
 come from a `--mirror` clone, so they have no `refs/remotes/origin/*`; spawn
 turns `remote.origin.mirror` off so a run can push a refspec.
@@ -445,9 +447,9 @@ Rules:
 | Command | Across hosts |
 |---|---|
 | `mdstack status` | Adds a `host` column; liveness may read `unreachable since <time>`; remote rows show the age of the last pull |
-| `mdstack attach <window>\|<role>` | For a remote window, `ssh -t` to the `attach` verb, which runs the host's `tmux attach-session`, read-only unless `--rw` |
-| `mdstack attach builders` | Includes remote builders through `capture`, refreshed every scan |
-| `mdstack logs` | The `logs` verb returns the step summary tail; never raw logs |
+| `mdstack attach <window>\|<role>` | For a remote window, `ssh -t` to the `attach` verb, which runs the host's `tmux attach-session`, read-only unless `--rw`. A role counts its remote runs too; a remote window needs no local session |
+| `mdstack attach builders` | Adds one pane per remote builder that prints its host's `capture` reply every 15 s; host_scan_interval (#346) replaces that interval |
+| `mdstack logs` | The `logs` verb returns the step summary tail (`-n`, at most 500 lines); never raw logs. `-f` is local only |
 | `mdstack hosts` | The inventory view above |
 
 ## Forge-less hosts: remote test runner
@@ -571,9 +573,11 @@ the host. Real-device proof of each step is logged in
    entrypoint:
 
    ```text
-   command="python3 <bundle>/environments/terminal/remote/crew-remote.py --root <root>",restrict <public-key>
+   command="python3 <bundle>/environments/terminal/remote/crew-remote.py --root <root>",restrict,pty <public-key>
    ```
 
+   `pty` lets the entrypoint take a TTY for the `attach` verb only; it
+   refuses every other verb with one ([#348 TTY contract](#remote-acceptance-criteria-and-the-local-lab)).
    Strict host-key checking never accepts a new key. Add the host's key to
    the primary's known-hosts once, after checking its fingerprint out of
    band.
@@ -637,8 +641,9 @@ Extends the [runner-host runbook](#runbook-add-a-runner-host) to a
 [role host](#terms): one with its own forge access (N5) that takes builder
 and reviewer runs (20.12 from [#1281](https://github.com/mw-ding/mdstack/issues/1281),
 [#1363](https://github.com/mw-ding/mdstack/issues/1363)). Every step is the
-owner's. Placement and the remote run lifecycle are built (#207, #345);
-remote wakes, partition handling and attach (#346–#348) are not.
+owner's. Placement, the remote run lifecycle and attach are built
+(#207, #345, #348); remote wakes and partition handling (#346, #347) are
+not.
 
 **Add a role host.** Runner-host steps 1 (overlay), 3 (crew key) and 5
 (smoke test) apply unchanged. The others change:
@@ -779,12 +784,18 @@ image, which is never pushed.
 run, not #209: it follows #345–#348 as a new #716 row on the real host
 ([#1281](https://github.com/mw-ding/mdstack/issues/1281) decision 4).
 
-**#348 TTY contract.** Today the key line is `restrict` (no TTY) and the
-client calls with `-T`. Attach adds `pty` to that one line
-(`restrict,pty`); the client passes `-t` for `attach` only and `-T` for
-every other verb. The entrypoint refuses `attach` without a TTY and every
-other verb with one, so the key still runs the closed verb set, never a
-shell.
+**#348 TTY contract** (built). The key line is `restrict,pty`; the client
+passes `-t` for `attach` only and `-T` for every other verb. With `-t`,
+stdin is the TTY, so the attach request travels in the SSH command as
+`crew-host <payload>`, its JSON base64url-encoded, and the entrypoint
+decodes and checks it as any other request. The host's tmux client runs
+with the `TERM` that `ssh` sends, so the host needs that terminal's
+terminfo entry. The entrypoint refuses
+`attach` without a TTY and every other verb with one, so the key still
+runs the closed verb set, never a shell. A read-only attach (tmux `-r`)
+can only detach or switch clients. `--rw` is the owner typing into the
+run's pane, which includes tmux's own command prompt, so it is as strong
+as a shell as the runner account on that host; it is never the default.
 
 ## Build issues
 
