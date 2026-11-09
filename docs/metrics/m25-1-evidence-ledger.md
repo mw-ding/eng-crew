@@ -15,9 +15,12 @@ was refreshed for #716 at `a679007` on 2026-11-09.
   the criteria name exists, with alternatives in its Decisions table, and the
   build issues are filed. Citations in [#157](#157-runtime-handoff) and
   [#158](#158-multi-device).
+- **#158 AC3: met on a simulated host** (2026-11-09, [#158 AC3](#158-ac3-record)):
+  #1442's A30 run in
+  [PR #1492](https://github.com/mw-ding/mdstack/pull/1492), under the owner's
+  simulated-host acceptance. Real-device proof stays with #716.
 - **Still open, as #1445 AC3 requires:** #157 AC3 (dry run, for
-  [#1441](https://github.com/mw-ding/mdstack/issues/1441)) and #158 AC3
-  (two-host run, for [#1442](https://github.com/mw-ding/mdstack/issues/1442)).
+  [#1441](https://github.com/mw-ding/mdstack/issues/1441)).
 - **#716:** cases 1–5 each have a recorded **simulated host** run on the
   M20.1 Docker lab (lab C), linked in the [case index](#716-case-index).
   Physical sleep, power loss and overlay-network loss stay unproven.
@@ -39,8 +42,44 @@ was refreshed for #716 at `a679007` on 2026-11-09.
 |---|---|---|
 | 1. Design doc: overlay assumptions, host inventory schema, placement, C1–C8 across hosts, failure/partition, security, alternatives | Met | Overlay N1–N6 `docs/runtimes/multi-device.md:56`; host inventory `:67`; placement `:135`; contract across hosts `:355` (C1–C8, plus C9 at `:371`); failure and partition `:373`; security `:390`; alternatives in the Decisions table `:24` |
 | 2. Profile schema extension proposal (on #122) | Met | Host inventory proposal `docs/runtimes/multi-device.md:67`, built by #204 (closed) |
-| 3. Two-host dry run, recorded (builder remote, coordinator local) | Open | #209 open; the run is #1442. See [Contradictions](#contradictions) 4 |
+| 3. Two-host dry run, recorded (builder remote, coordinator local) | Met, simulated host | #1442's A30 run R1 in [PR #1492](https://github.com/mw-ding/mdstack/pull/1492) (merged `a679007`), linked on [#158](https://github.com/mw-ding/mdstack/issues/158#issuecomment-6735001992). See [#158 AC3 record](#158-ac3-record); follow-up #1493 (#209) |
 | 4. Follow-up build issues filed | Met | `docs/runtimes/multi-device.md:760`: #204, #205, #206, #208, #349, #726–#729 (closed); #207, #209, #345–#348 (open). The forge relay row `:784` is conditional and correctly unfiled |
+
+### #158 AC3 record
+
+The run is labelled "simulated host" and closes AC3 under the owner's
+acceptance
+([#985 c6728250591](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6728250591));
+it adds no new Docker run. All facts are from PR #1492's Acceptance
+Evidence, proof R1 (`scripts/evidence-cli.py` at source
+`d40e460e0dd1b691fcbdc2562917d1a702c8e697`, lab run `laba30`,
+2026-11-09T07:49Z to 07:50Z).
+
+- **Builder remote:** `mdstack spawn` placed `ben-1` on lab host `lab-a`
+  (placement `capability`, `remote: True`) over the hardened `-F none` SSH call.
+- **Coordinator local:** the primary's watcher pulled `ben-1`'s status lines
+  into its mirror, and `mdstack send --wait-ack` to `ben-1` returned
+  `acked 20261109T074919Z-861cd5 by ben-1` through that mirror.
+- **Failure and recovery:** behind `docker network disconnect`, one
+  `unreachable` escalate wake, no respawn; reconcile on return found
+  `ben-1 alive`, 94 mirror lines once and in order. An owner abandon wrote a
+  tombstone; on return the run stopped and kept its unlanded file.
+- **Hashes and comparison:** bundle `85ceb8d4…f98b` is the same on host and
+  client; remote exits `[0, 0]` match local `[0, 0]`.
+- **Teardown:** 2 removed, sentinel unchanged, 0 lab containers left.
+
+Physical limits, as stated in the record:
+
+- one machine: the host is a Linux container on the primary, with no
+  independent power, sleep or hardware;
+- the SSH path is a loopback-published Docker port, not a private overlay;
+- a disconnect is a Docker network control, not a real link loss between
+  devices;
+- the placed builder's engine and the host's `gh` are stubs: no engine login,
+  quota or model runs on the host;
+- the forge is the sandbox's fake: the host never reaches a real forge.
+
+Real-device proof of these limits stays with #716 (owner-run).
 
 ## #716 case index
 
@@ -97,4 +136,6 @@ Reported for the issues that own them; the ledger picks no wording.
    #209 boundary (`docs/runtimes/multi-device.md:749`) moves the remote builder
    out of #209, while #1442 AC1 puts a placed remote builder back in. #158 AC3
    closes on #1442's record, so #1442 must show the remote builder, not only a
-   runner job.
+   runner job. **Met by the record (2026-11-09):** R1 shows `ben-1` placed by
+   `mdstack spawn` and acking a message, not only a runner job
+   ([#158 AC3 record](#158-ac3-record)). The `multi-device.md:749` wording is unchanged here.

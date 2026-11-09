@@ -3,9 +3,8 @@
 > - **Status:** partly built
 > - **Applies to:** a tmux primary plus forge-less runner hosts
 > - **Current rules:** [tmux binding](tmux.md), [protocol](../protocol.md)
-> - **Built:** host inventory, `mdstack host check`, `mdstack hosts`, `mdstack host prepare`, the remote call and runner, [Forge-less hosts](#forge-less-hosts-remote-test-runner) and its [runbook](#runbook-add-a-runner-host), the [role-host runbook](#runbook-add-or-remove-a-role-host), the [host OS adapter](#host-os-adapters) dispatch and the `macos` and `linux` adapters, [placement](#placement) in `mdstack spawn`, the [remote run lifecycle](#remote-run-lifecycle) (`spawn`, `kill`, `restart`, `down`), [remote attach and logs](#observability), [remote wakes and messages](#remote-wakes-and-messages) (`pull`, `send`, `host_scan_interval`), [partition handling](#failure-and-partition) (`unreachable`, reconcile, abandon with a tombstone), proved on fakes, and the pull through a disconnect and a placed run's partition on lab C (#204–#208, #345–#349, #726–#729, #1358, #1359, #1363)
-> - **Design only:** the two-host dry run (#209), open
-> - **Last checked:** 2026-11-08 at `e73ade4`
+> - **Built:** host inventory, `mdstack host check`, `mdstack hosts`, `mdstack host prepare`, the remote call and runner, [Forge-less hosts](#forge-less-hosts-remote-test-runner) and its [runbook](#runbook-add-a-runner-host), the [role-host runbook](#runbook-add-or-remove-a-role-host), the [host OS adapter](#host-os-adapters) dispatch and the `macos` and `linux` adapters, [placement](#placement) in `mdstack spawn`, the [remote run lifecycle](#remote-run-lifecycle) (`spawn`, `kill`, `restart`, `down`), [remote attach and logs](#observability), [remote wakes and messages](#remote-wakes-and-messages) (`pull`, `send`, `host_scan_interval`), [partition handling](#failure-and-partition) (`unreachable`, reconcile, abandon with a tombstone), proved on fakes, and the pull through a disconnect and a placed run's partition on lab C (#204–#208, #345–#349, #726–#729, #1358, #1359, #1363), plus the two-host dry run on lab C as a simulated host (#209, #1442)
+> - **Last checked:** 2026-11-09 at `a679007`
 
 How one coordinator runs role sessions on several hosts (laptops, a
 desktop, cloud VMs, a machine with a simulator or phone attached) joined by
@@ -809,7 +808,7 @@ image, which is never pushed.
 | [#347](https://github.com/mw-ding/mdstack/issues/347) | A both-alive partition keeps the claim and starts no duplicate; reconcile on return; abandon writes a tombstone | C, by network disconnect (a pause is the unresponsive case, not a partition) | #716 case 3 |
 | [#348](https://github.com/mw-ding/mdstack/issues/348) | Attach to a real remote pane, read-only unless `--rw`; `attach builders` captures; `logs` returns the step summary tail. Runner-job logs alone do not meet it | C, V | #716 case 4 |
 | 20.12 | The [runner-host runbook](#runbook-add-a-runner-host) extended to role hosts, with per-OS steps ([written](#runbook-add-or-remove-a-role-host), #1363) | C: Linux supervised; V: launchd | Overlay and attached devices |
-| [#209](https://github.com/mw-ding/mdstack/issues/209) | Runner first, as row 20.7 says ([#715](https://github.com/mw-ding/mdstack/issues/715)): the primary plus a forge-less runner host | Rehearsal on C | #716 case 2 completes it |
+| [#209](https://github.com/mw-ding/mdstack/issues/209) | Runner first, as row 20.7 says ([#715](https://github.com/mw-ding/mdstack/issues/715)): the primary plus a forge-less runner host | Recorded on C, a simulated host ([#1492](https://github.com/mw-ding/mdstack/pull/1492) R1) | #716 case 2 completes it |
 | #716 cases 1 and 5 | Seed, job, result parity with a local run, unreachable fallback | Rehearsal on C | Completion |
 
 **#209 boundary.** Its body's "builder on a remote host" is the role-host

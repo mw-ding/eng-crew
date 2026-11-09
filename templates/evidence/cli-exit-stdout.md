@@ -18,8 +18,11 @@ an API (`curl` request with status/body). Protocol:
    It prints the header line (`Proof R1 · scripts/evidence-cli.py · sha
    <sha> · cwd <dir>`), the copyable `sh` block and the output block below.
    Put any temp repo, fake `gh` or fake tmux in the `--setup` file so the
-   `sh` block recreates it. Without the helper, run this script instead,
-   replacing the example argv; it prints the same three parts:
+   `sh` block recreates it. In a working copy git does not serve, pass
+   `--sha <full head> --root <repo root>` so the header carries the real head
+   and a root-relative cwd; a `--sha` that differs from git's HEAD is refused.
+   Without the helper, run this script instead, replacing the example argv; it
+   prints the same three parts:
 
    ```sh
    python3 - <<'PY'

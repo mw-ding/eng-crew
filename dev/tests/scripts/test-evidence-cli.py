@@ -2,7 +2,8 @@
 """Fixture test for scripts/evidence-cli.py (offline, temp git repo only).
 
 Covers the header, exit codes, separate streams, setup, scrubbing and fences,
-and stored runner results (pass, red, fallback, head mismatch refused).
+stored runner results (pass, red, fallback, head mismatch refused) and the
+--sha / --root header in a non-git working copy (#1330).
 Run in CI.
 """
 import json
@@ -105,6 +106,33 @@ class EvidenceCliTest(unittest.TestCase):
                              cwd=self.repo, capture_output=True, text=True)
         self.assertEqual(out.returncode, 2)
         self.assertIn("cannot run no-such-binary-652", out.stderr)
+
+    def test_stated_sha_and_root_outside_git(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = os.path.realpath(tmp)
+            sub = os.path.join(root, "pkg", "sub")
+            os.makedirs(sub)
+            sha = "a" * 40
+            text = self.capture("--sha", sha, "--root", root, "--", "true", cwd=sub,
+                                env={"GIT_CEILING_DIRECTORIES": root})
+        self.assertTrue(text.startswith(
+            f"Proof R1 · `scripts/evidence-cli.py` · sha `{sha}` · cwd `pkg/sub`\n"))
+
+    def test_stated_sha_matching_git_head(self):
+        text = self.capture("--sha", self.sha, "--", "true")
+        self.assertTrue(text.startswith(
+            f"Proof R1 · `scripts/evidence-cli.py` · sha `{self.sha}` · cwd `.`\n"))
+
+    def test_stated_sha_mismatch_refused(self):
+        out = subprocess.run([PY, HELPER, "--sha", "f" * 40, "--", "true"],
+                             cwd=self.repo, capture_output=True, text=True)
+        self.assertEqual(out.returncode, 2)
+        self.assertEqual(out.stdout, "")
+        self.assertIn(f"--sha {'f' * 40} is not the checkout head {self.sha}", out.stderr)
+        out = subprocess.run([PY, HELPER, "--sha", "abc123", "--", "true"],
+                             cwd=self.repo, capture_output=True, text=True)
+        self.assertEqual(out.returncode, 2)
+        self.assertIn("--sha must be a full 40-character hex sha", out.stderr)
 
 
     def runner_result(self, head=None, exits=(0, 0)):

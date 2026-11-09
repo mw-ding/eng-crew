@@ -125,14 +125,17 @@ def custom_problems(cfg, custom, where):
 
 def floor_problems(cfg, data, where, custom=None):
     """A pack layer may tighten, never loosen: floor controls, merge grants and a flavor below the core default.
-    custom is every custom flavor the pack defines across its layers; a pack selects only a preset or one of those."""
+    custom is every custom flavor the pack defines across its layers; a pack selects only a preset or one of those.
+    Floor controls live in the flavor table and runtime.options, so a key elsewhere named like one (backends.ci) is not
+    a floor control (#1325)."""
     out = []
 
     def scan(value, path):
         if isinstance(value, dict):
             for key, child in value.items():
                 sub = path + "." + key if path else key
-                if key in cfg.FLAVOR_FLOOR and not (key == "hold_label_blocks" and child is True):
+                if key in cfg.FLAVOR_FLOOR and (path.split(".")[0] == "flavor" or path == "runtime.options") \
+                        and not (key == "hold_label_blocks" and child is True):
                     number, rule = cfg.FLAVOR_FLOOR[key]
                     out.append("%s:%s: floor F%d: %s; a pack may tighten rules, never loosen a core floor" % (
                         where, sub, number, rule))
@@ -184,7 +187,11 @@ def load(pack_dir, cfg, harnesses):
 
     def err(key, reason):
         problems.append("%s:%s: %s" % (path, key, reason))
-    top = cfg.check_table(err, "", data, {"pack": (dict, cfg.REQUIRED), "provides": (dict, cfg.REQUIRED)})
+    top = cfg.check_table(err, "", data, {"pack": (dict, cfg.REQUIRED), "provides": (dict, cfg.REQUIRED),
+                                          "vcs": (dict, None)})
+    if "vcs" in top:
+        cfg.check_table(err, "vcs", top["vcs"], {"clean": ("list[str]", cfg.REQUIRED),
+                                                 "commit": ("list[str]", cfg.REQUIRED)})
     pack = cfg.check_table(err, "pack", top.get("pack", {}), {"name": (str, cfg.REQUIRED), "version": (str, None),
                                                              "framework": (str, cfg.REQUIRED)})
     if "name" in pack and not NAME.fullmatch(pack["name"]):
@@ -265,14 +272,32 @@ def discover(cfg, harnesses, pack_dir=None):
 
 
 def commit(pack_dir):
-    """The pack checkout's full HEAD commit; ValueError unless it is a clean git checkout, so the commit pins it."""
-    def git(*argv):
-        proc = subprocess.run(["git", "-C", pack_dir, *argv], capture_output=True, text=True)
+    """The pack checkout's full commit; ValueError unless its working copy is clean, so the commit pins it. A pack
+    whose version control is not git declares [vcs] clean (prints nothing when clean) and commit (prints the commit)."""
+    try:
+        with open(os.path.join(pack_dir, "pack.toml"), "rb") as f:
+            vcs = tomllib.load(f).get("vcs")
+    except (OSError, tomllib.TOMLDecodeError):
+        vcs = None
+    if vcs is None:
+        vcs = {"clean": ["git", "status", "--porcelain", "--untracked-files=normal"],
+               "commit": ["git", "rev-parse", "HEAD"]}
+    if not isinstance(vcs, dict) or not all(isinstance(vcs.get(k), list) and vcs[k] and
+                                            all(isinstance(a, str) for a in vcs[k]) for k in ("clean", "commit")):
+        raise ValueError("pack %s: [vcs] needs clean and commit commands (lists of strings)" % pack_dir)
+
+    def run(key):
+        try:
+            proc = subprocess.run(vcs[key], cwd=pack_dir, capture_output=True, text=True)
+        except OSError as e:
+            raise ValueError("pack %s: [vcs] %s command failed to start (%s)" % (pack_dir, key, e.strerror))
         if proc.returncode:
-            raise ValueError("pack %s is not a git checkout; install pins a pack at a commit" % pack_dir)
-        return proc.stdout
-    head = git("rev-parse", "HEAD").strip()
-    if git("status", "--porcelain", "--untracked-files=normal").strip():
+            raise ValueError("pack %s is not a %s checkout; install pins a pack at a commit" % (pack_dir, vcs[key][0]))
+        return proc.stdout.strip()
+    head = run("commit")
+    if not head:
+        raise ValueError("pack %s: [vcs] commit printed no commit" % pack_dir)
+    if run("clean"):
         raise ValueError("pack %s has uncommitted changes; commit them so the install pins the pack at a commit"
                          % pack_dir)
     return head

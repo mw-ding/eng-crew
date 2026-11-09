@@ -488,6 +488,11 @@ def render(args, paths, normalize_paths):
                 except (OSError, UnicodeDecodeError) as e:
                     problems.append("%s:1: cannot read runtime.options.notes.render.%s file (%s)" % (note, note_role, e))
         rendered[dst] = "".join(out)
+    briefs = {os.path.splitext(dst)[0].split("/", 1)[1] for _, dst, _ in jobs if dst.count("/") == 1}
+    for note_role in crew_config.NOTE_ROLES if values is not None else []:
+        if values.get("runtime.options.notes.render." + note_role) and note_role not in briefs:
+            problems.append("%s:1: runtime.options.notes.render.%s: runtime %s renders no %s brief (note dropped)"
+                            % (args.project, note_role, values["runtime.name"], note_role))
     return values, rendered, problems
 
 
