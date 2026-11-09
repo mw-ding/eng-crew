@@ -6,7 +6,8 @@ Item [#1445](https://github.com/mw-ding/mdstack/issues/1445), from
 [Riley's plan](https://github.com/mw-ding/mdstack/issues/1438#issuecomment-6729592128).
 An audit of what already exists, not a design: it adds no rule, gate, label
 or product code. Repository citations are `path:line` at Base `aa9d26c`;
-issue states were read on 2026-11-08.
+issue states were read on 2026-11-08. The [#716 case index](#716-case-index)
+was refreshed for #716 at `a679007` on 2026-11-09.
 
 ## TL;DR
 
@@ -14,14 +15,15 @@ issue states were read on 2026-11-08.
   the criteria name exists, with alternatives in its Decisions table, and the
   build issues are filed. Citations in [#157](#157-runtime-handoff) and
   [#158](#158-multi-device).
+- **#158 AC3: met on a simulated host** (2026-11-09, [#158 AC3](#158-ac3-record)):
+  #1442's A30 run in
+  [PR #1492](https://github.com/mw-ding/mdstack/pull/1492), under the owner's
+  simulated-host acceptance. Real-device proof stays with #716.
 - **Still open, as #1445 AC3 requires:** #157 AC3 (dry run, for
   [#1441](https://github.com/mw-ding/mdstack/issues/1441)).
-- **#158 AC3: met on a simulated host** (#209, 2026-11-09): the two-host run
-  recorded by [#1442](https://github.com/mw-ding/mdstack/issues/1442) in
-  [PR #1492](https://github.com/mw-ding/mdstack/pull/1492) R1.
-- **#716:** none of cases 1–5 is closed yet; each row below names the run that
-  will close it. All five may close on a run labelled "simulated host"
-  ([#985 c6728250591](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6728250591)).
+- **#716:** cases 1–5 each have a recorded **simulated host** run on the
+  M20.1 Docker lab (lab C), linked in the [case index](#716-case-index).
+  Physical sleep, power loss and overlay-network loss stay unproven.
 - **Four wording contradictions, reported and not fixed here** (no new design):
   see [Contradictions](#contradictions).
 
@@ -40,25 +42,78 @@ issue states were read on 2026-11-08.
 |---|---|---|
 | 1. Design doc: overlay assumptions, host inventory schema, placement, C1–C8 across hosts, failure/partition, security, alternatives | Met | Overlay N1–N6 `docs/runtimes/multi-device.md:56`; host inventory `:67`; placement `:135`; contract across hosts `:355` (C1–C8, plus C9 at `:371`); failure and partition `:373`; security `:390`; alternatives in the Decisions table `:24` |
 | 2. Profile schema extension proposal (on #122) | Met | Host inventory proposal `docs/runtimes/multi-device.md:67`, built by #204 (closed) |
-| 3. Two-host dry run, recorded (builder remote, coordinator local) | Met, simulated host | [PR #1492](https://github.com/mw-ding/mdstack/pull/1492) R1: `mdstack spawn` placed a builder on lab host `lab-a`, its status was mirrored and a send acked, with a disconnect, reconcile, hashes, local comparison and teardown; linked from [#158](https://github.com/mw-ding/mdstack/issues/158#issuecomment-6735001992), follow-up #1493 (#209). This answers [Contradictions](#contradictions) 4 |
+| 3. Two-host dry run, recorded (builder remote, coordinator local) | Met, simulated host | #1442's A30 run R1 in [PR #1492](https://github.com/mw-ding/mdstack/pull/1492) (merged `a679007`), linked on [#158](https://github.com/mw-ding/mdstack/issues/158#issuecomment-6735001992). See [#158 AC3 record](#158-ac3-record); follow-up #1493 (#209) |
 | 4. Follow-up build issues filed | Met | `docs/runtimes/multi-device.md:760`: #204, #205, #206, #208, #349, #726–#729 (closed); #207, #209, #345–#348 (open). The forge relay row `:784` is conditional and correctly unfiled |
+
+### #158 AC3 record
+
+The run is labelled "simulated host" and closes AC3 under the owner's
+acceptance
+([#985 c6728250591](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6728250591));
+it adds no new Docker run. All facts are from PR #1492's Acceptance
+Evidence, proof R1 (`scripts/evidence-cli.py` at source
+`d40e460e0dd1b691fcbdc2562917d1a702c8e697`, lab run `laba30`,
+2026-11-09T07:49Z to 07:50Z).
+
+- **Builder remote:** `mdstack spawn` placed `ben-1` on lab host `lab-a`
+  (placement `capability`, `remote: True`) over the hardened `-F none` SSH call.
+- **Coordinator local:** the primary's watcher pulled `ben-1`'s status lines
+  into its mirror, and `mdstack send --wait-ack` to `ben-1` returned
+  `acked 20261109T074919Z-861cd5 by ben-1` through that mirror.
+- **Failure and recovery:** behind `docker network disconnect`, one
+  `unreachable` escalate wake, no respawn; reconcile on return found
+  `ben-1 alive`, 94 mirror lines once and in order. An owner abandon wrote a
+  tombstone; on return the run stopped and kept its unlanded file.
+- **Hashes and comparison:** bundle `85ceb8d4…f98b` is the same on host and
+  client; remote exits `[0, 0]` match local `[0, 0]`.
+- **Teardown:** 2 removed, sentinel unchanged, 0 lab containers left.
+
+Physical limits, as stated in the record:
+
+- one machine: the host is a Linux container on the primary, with no
+  independent power, sleep or hardware;
+- the SSH path is a loopback-published Docker port, not a private overlay;
+- a disconnect is a Docker network control, not a real link loss between
+  devices;
+- the placed builder's engine and the host's `gh` are stubs: no engine login,
+  quota or model runs on the host;
+- the forge is the sandbox's fake: the host never reaches a real forge.
+
+Real-device proof of these limits stays with #716 (owner-run).
 
 ## #716 case index
 
-Each case stays open until its run is recorded and linked here or on #716.
-A run on the Docker lab is labelled "simulated host" and proves lifecycle
-and transport only: **physical sleep, power loss, overlay-network loss and
-attached hardware stay unproven** (owner acceptance,
-[#985 c6728250591](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6728250591);
-lab scope `docs/runtimes/multi-device.md:691`).
+Every case below has a recorded run on lab C, the M20.1 Docker lab: a Linux
+container on the primary, reached by the hardened `-F none` SSH call over a
+loopback-published port. Each run is labelled **simulated host**. The owner
+accepted that label as closing evidence for cases 1–5
+([#985 c6728250591](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6728250591)).
+The runs prove lifecycle and transport only.
+**Physical sleep, power loss, overlay-network loss and attached hardware
+stay unproven.** Every run also shares these limits:
 
-| # | Case | Closing run | Waits on | Stated physical limit |
+- it ran on one machine, the owner's Docker Desktop daemon;
+- the SSH path was a loopback port, not an overlay;
+- an outage was a Docker control (`docker network disconnect`, `pause`,
+  container recreate), not a lost link;
+- the engine, `gh` and the forge were stubs.
+
+The lab scope is in the multi-device
+[lab section](../runtimes/multi-device.md#remote-acceptance-criteria-and-the-local-lab)
+and the [lab runner scenarios](../campaign-harness.md#lab-runner-scenarios).
+Lab G ([#1361](https://github.com/mw-ding/mdstack/issues/1361),
+[PR #1485](https://github.com/mw-ding/mdstack/pull/1485)) writes each run's
+evidence record: hosts, image digest, bundle and source hashes, transport,
+injected events and the timeline. It labels simulated controls and stubs, and
+a skipped scenario supplies no evidence.
+
+| # | Case | Recorded run (simulated host) | What the run shows | Still needs a real device |
 |---|---|---|---|---|
-| 1 | Forge-less runner: seed, job, result at a head, parity with a local run, no forge contact | Lab F [#1360](https://github.com/mw-ding/mdstack/issues/1360) scenarios, recorded by lab G [#1361](https://github.com/mw-ding/mdstack/issues/1361) | #1357 (lab C, open), then #1360, #1361 | Container on the primary, loopback-published SSH; no real overlay or second machine |
-| 2 | Two-host dry run, linked from #158, follow-ups filed | [#1442](https://github.com/mw-ding/mdstack/issues/1442) (#209's A30 journey), recorded in [PR #1492](https://github.com/mw-ding/mdstack/pull/1492) R1 | none: recorded 2026-11-09, follow-up #1493 | Simulated second host; no physical power or overlay loss |
-| 3 | Partition: both alive, `unreachable`, no respawn, reconcile on return | [#347](https://github.com/mw-ding/mdstack/issues/347) with [#346](https://github.com/mw-ding/mdstack/issues/346), recorded in #1442 AC2 | #345, #346, #347, #1360 | Container network disconnect stands in for a real drop (`docs/runtimes/multi-device.md:743`); laptop sleep is not proven |
-| 4 | Remote attach and log tail over the hardened call | [#348](https://github.com/mw-ding/mdstack/issues/348) on lab hosts | #345, #348, lab F/G | Container pane, not a real host; runner-job logs alone do not count (`:744`) |
-| 5 | Unreachable runner falls back locally, fallback recorded | Lab F #1360 (fallback scenario, its AC3), recorded by #1361 | #1357, #1360, #1361 | Injected unavailability (disconnect or pause), not a real host going away |
+| 1 | Forge-less runner: seed, job, result at a head, parity with a local run, no forge contact | Lab F [#1360](https://github.com/mw-ding/mdstack/issues/1360), [PR #1472](https://github.com/mw-ding/mdstack/pull/1472) R1; source and bundle hashes in [PR #1492](https://github.com/mw-ding/mdstack/pull/1492) R1 | `exact-head`, `red`, `idempotent` and `stale` run the bundle's `mdstack runner` over real SSH. The host job is `check-repo ok on linux` with `env: clean` of the client's decoy `GH_TOKEN`, `GITHUB_TOKEN` and `SSH_AUTH_SOCK`. Remote exits `[0, 0]` match the local `[0, 0]` | A second machine with no forge route. The loopback lab gives the host no forge credentials, but it does not isolate its network (`n3: unproved` without `--n3`) |
+| 2 | Two-host dry run, linked from #158, follow-ups filed | A30 [#1442](https://github.com/mw-ding/mdstack/issues/1442), [PR #1492](https://github.com/mw-ding/mdstack/pull/1492) R1; linked on #716 ([c6735002310](https://github.com/mw-ding/mdstack/issues/716#issuecomment-6735002310)) | `mdstack spawn` places `ben-1` on `lab-a`; its status lines are mirrored by the watcher's pulls; `mdstack send --wait-ack` returns `acked … by ben-1`. The record has the journey, the local comparison and teardown | A real second device on a private overlay, with a real engine logged in on it |
+| 3 | Partition: both alive, `unreachable`, no respawn, reconcile on return | [#347](https://github.com/mw-ding/mdstack/issues/347), [PR #1490](https://github.com/mw-ding/mdstack/pull/1490) R1, with [#346](https://github.com/mw-ding/mdstack/issues/346), [PR #1487](https://github.com/mw-ding/mdstack/pull/1487) R1; journey in PR #1492 R1 | A disconnect mid-run gives one `unreachable` escalate wake, no respawn and the same claim (digest unchanged). On return, reconcile reads `ben-1 alive`, and the mirrored status lines arrive once and in order (#1487: none lost or duplicated) | A real network drop or laptop sleep, the host returning, and no duplicate agent |
+| 4 | Remote attach and log tail over the hardened call | [#348](https://github.com/mw-ding/mdstack/issues/348), [PR #1488](https://github.com/mw-ding/mdstack/pull/1488) R1 | Over real SSH to `lab-a`, a pty client attaches read-only and detaches with exit 0, typed keys never reach the pane, `capture` reads the pane and `logs` returns the step summary tail (`- build ok`, `- tests ok`). Attach without a TTY is refused. The run is planted with `docker exec`, since `spawn` needs a forge; the record names it a stub | Attaching to and tailing a job on a real host from the primary |
+| 5 | Unreachable runner falls back locally, fallback recorded | Lab F [#1360](https://github.com/mw-ding/mdstack/issues/1360) AC3, [PR #1472](https://github.com/mw-ding/mdstack/pull/1472) R1; recorded by lab G | `disconnect`, `pause` and `recreate` each confirm the host `unreachable`, then print `runner: lab-a … ; ran locally` with green local exits. A lost job is refused after recreate (`refused: unknown job`) | A real host going away, rather than an injected outage |
 
 ## Contradictions
 
@@ -81,4 +136,6 @@ Reported for the issues that own them; the ledger picks no wording.
    #209 boundary (`docs/runtimes/multi-device.md:749`) moves the remote builder
    out of #209, while #1442 AC1 puts a placed remote builder back in. #158 AC3
    closes on #1442's record, so #1442 must show the remote builder, not only a
-   runner job.
+   runner job. **Met by the record (2026-11-09):** R1 shows `ben-1` placed by
+   `mdstack spawn` and acking a message, not only a runner job
+   ([#158 AC3 record](#158-ac3-record)). The `multi-device.md:749` wording is unchanged here.
