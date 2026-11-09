@@ -405,6 +405,12 @@ while True:
 def status_pull(lab, s):
     """A stub role run in the runner's session writes `step: <n>` every half second and acks each typed nudge; the
     primary's mirror is pulled through the toolkit's own _remote.pull and send, over the real hardened call."""
+    for _ in range(120):  # the runner owns the session the run starts in
+        if lab.call("version").get("runner") == "up":
+            break
+        time.sleep(1)
+    else:
+        return s.check(False, "the runner was never up")
     window, d = "lab-pull", Path(lab.d, "pull-state")
     shutil.rmtree(d, ignore_errors=True)
     state = "~/.mdstack/state/%s" % lab.project
