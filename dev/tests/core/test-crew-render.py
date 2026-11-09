@@ -6,7 +6,7 @@ Covers the renderer on a fixture profile and inputs in `fixtures/render/`
 capability), the real tmux briefs rendered from `profiles/tmux.toml` against
 `fixtures/render/tmux/`, a pack's render/ overlay, declared placeholders and render-time notes (#580),
 and core memory in every role brief, inside a fenced routine prompt, left out of the size-budget render and
-failing closed on a lint problem (#1230).
+failing closed on a lint problem (#1230), and the per-brief size_budget headroom lines and warning band (#1056).
 Run in CI.
 """
 import argparse
@@ -81,6 +81,31 @@ class Render(unittest.TestCase):
         self.assertEqual(sorted(got), sorted(expected))
         for rel, text in expected.items():
             self.assertEqual(got[rel], text, rel)
+
+    def test_budget_headroom_lines_and_warning_band(self):  # #1056
+        def run(budget):
+            project = os.path.join(self.tmp, "budget.toml")
+            with open(PROJECT, encoding="utf-8") as f, open(project, "w", encoding="utf-8") as g:
+                g.write(f.read() + ("\n[size_budget]\nbuilder = %d\n" % budget if budget else ""))
+            shutil.rmtree(self.out, ignore_errors=True)
+            out, err = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                code = cr.main(["--project", project, "--inputs", self.inputs, "--out", self.out])
+            return code, out.getvalue(), err.getvalue().splitlines()
+
+        code, out, err = run(None)
+        self.assertEqual(code, 0)
+        self.assertNotIn("budget", out, "stdout still lists only written paths")
+        self.assertIn("crew-render: budget briefs/builder.md 379/16384 bytes (2%), delivered 387 bytes", err)
+        self.assertIn("crew-render: budget runtime/builder-intake.md 216/16384 bytes (1%), delivered 216 bytes", err)
+        self.assertEqual(len([ln for ln in err if ln.startswith("crew-render: budget ")]), 6, err)
+        self.assertFalse([ln for ln in err if "WARNING" in ln], err)
+        warn = "crew-render: WARNING briefs/builder.md is within 5%% of the builder size_budget (%d bytes left)"
+        for budget, expected in ((399, None), (398, warn % 19), (379, warn % 0),
+                                 (378, "crew-render: WARNING briefs/builder.md is 1 bytes over the builder size_budget")):
+            code, _, err = run(budget)
+            self.assertEqual(code, 0, "warnings never change the exit code")
+            self.assertEqual([ln for ln in err if "WARNING" in ln], [expected] if expected else [], budget)
 
     def test_placeholders_follow_registry_identity_keys(self):
         roles = {key: dict(value, identity_key="identities.custom_" + key) for key, value in cr.ROLES.items()}

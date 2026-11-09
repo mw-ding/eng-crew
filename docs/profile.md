@@ -506,6 +506,11 @@ at the limit passes; an oversized file fails the self-test, naming its
 render-relative path, path-normalized UTF-8 byte count, role and budget. Missing keys use
 the default; org and project overrides follow normal layer precedence.
 
+Every successful `crew-render` also prints this measure to stderr, one line per role
+file, as `crew-render: budget <file> <bytes>/<budget> bytes (<percent>%), delivered <bytes> bytes`.
+The delivered size is the deployed file, core memory and render notes included. A file within 5% of
+its budget, or over it, adds a `crew-render: WARNING` line. The exit code does not change (#1056).
+
 ### `[tools.<name>]`
 
 Optional doctor checks for tools the profile names (#193). `running` and
