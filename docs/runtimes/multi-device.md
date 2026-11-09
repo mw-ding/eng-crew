@@ -711,7 +711,8 @@ runner heartbeat. `activate` verifies the bundle and `SHA256SUMS` that
 digests and, for a dev tag, the exact source SHA. `authorize` writes the
 run's key as the only `authorized_keys` line, forced and `restrict`. No
 login, token, SSH agent or home is copied in. Container setup and teardown
-is lab item C.
+(#1357) is `crew-lab-docker.py` on the primary, described in the
+[campaign harness](../campaign-harness.md#lab-hosts-in-docker).
 
 **Lab base.** `LAB_BASE` comes from `base.Dockerfile` beside it (#1430):
 official `debian:bookworm-slim` pinned by its `linux/arm64` manifest
