@@ -14,7 +14,9 @@ train early, recursive bisection and green-on-retry recovery; build and bisect r
 effect, and refuse, with nothing built, when the change backend declares land.tests_against_tip (#873 B4); a delegated
 train (#1391): `delegate` reserves the number and hands refs to the builder lead (a refused handoff closes it), `build
 --train` builds the recorded heads on the recorded base, a concurrent land makes it stale (at build or at land), a
-moved head drops as head-moved, a dead builder's train closes before any record, and a red one bisects. Run in CI.
+moved head drops as head-moved, a dead builder's train closes before any record, and a red one bisects; the release
+cut freeze (#1433): an open cut holds fragment PRs at check and land, and a cut behind main is blocked until
+update-branch. Run in CI.
 """
 import argparse
 import contextlib
@@ -37,7 +39,8 @@ PASS, PENDING, FAIL = ([{"name": name, "bucket": b, "link": LINK + "/job/%d" % i
                        for b in ("pass", "pending", "fail"))
 # Fake gh: pr view / issue view serve $FAKE_GH_DIR/pr-<n>.json / issue-<n>.json; pr checks plays checks.json in order
 # (null: no checks reported yet, exit 1), keeping the last; pr merge squashes refs/pull/<n>/head onto the origin's main
-# like GitHub does, refusing a head that is not --match-head-commit; every call is logged with its time.
+# like GitHub does, refusing a head that is not --match-head-commit; pr list serves open.json (default none open);
+# every call is logged with its time.
 FAKE_GH = textwrap.dedent("""\
     #!/usr/bin/env python3
     import json, os, re, subprocess, sys, tempfile, time
@@ -67,6 +70,9 @@ FAKE_GH = textwrap.dedent("""\
         print(open(path).read() if os.path.exists(path) else "[]")
     elif args[:1] == ["api"] and "--method" not in args:
         print(open(os.path.join(d, "tree.json")).read())
+    elif args[:2] == ["pr", "list"]:
+        path = os.path.join(d, "open.json")
+        print(open(path).read() if os.path.exists(path) else "[]")
     elif args[:2] == ["pr", "view"]:
         path = os.path.join(d, "views-%s.json" % args[2])
         if os.path.exists(path):
@@ -1659,6 +1665,85 @@ class Express(TrainBase):
         self.assertIn('pr=1 sha=%s name=verdict status=pass reason="express selfgate pass at' % head, r.stdout)
         self.assertIn('pr=1 sha=%s name=express status=pass reason="resolved express"' % head, r.stdout)
         self.assertIn('name=express status=blocked reason="spec change needs owner merge-ok at head"', r.stdout)
+
+
+class ReleaseCut(TrainBase):
+    """#1433, the 7.2.0 sequence (#1424, main-red #1432): a cut approved on an old base, a fragment PR landing after
+    it, then the cut landing on a stale merge ref."""
+    CUT_PATCH = "@@ -1,4 +1,6 @@\n ## [Unreleased]\n \n+## [7.2.0] - 2026-11-08\n+\n ### Added\n"
+
+    def files(self, n, files):
+        with open(os.path.join(self.gh_dir, "files-%d.json" % n), "w") as f:
+            json.dump(files, f)
+
+    def open_prs(self, *prs):
+        with open(os.path.join(self.gh_dir, "open.json"), "w") as f:
+            json.dump([{"number": n, "files": [{"path": p} for p in paths]} for n, paths in prs], f)
+
+    def setUp(self):
+        super().setUp()
+        self.commit({"CHANGELOG.md": "## [Unreleased]\n\n### Added\n", "changes/unreleased/1-a.md": "a\n"}, "fragment")
+        self.git("push", "-q", "origin", "main")
+        self.git("checkout", "-q", "-B", "pr1", "origin/main")  # the cut consumes 1-a.md into [7.2.0]
+        self.git("rm", "-q", "changes/unreleased/1-a.md")
+        self.commit({"CHANGELOG.md": "## [Unreleased]\n\n## [7.2.0] - 2026-11-08\n\n### Added\n\n- a\n"}, "cut 7.2.0")
+        self.git("push", "-q", "origin", "HEAD:refs/pull/1/head")
+        self.cut = self.git("rev-parse", "HEAD")
+        self.git("checkout", "-q", "main")
+        self.serve(1, self.cut, [])
+        self.complete_view(1)
+        self.files(1, [{"filename": "CHANGELOG.md", "status": "modified", "patch": self.CUT_PATCH},
+                       {"filename": "changes/unreleased/1-a.md", "status": "removed"}])
+        self.pr(2, {"changes/unreleased/2-b.md": "b\n", "b.txt": "b\n"})
+        self.complete_view(2)
+        self.files(2, [{"filename": "changes/unreleased/2-b.md", "status": "added"}, {"filename": "b.txt", "status": "added"}])
+        self.open_prs((1, ["CHANGELOG.md", "changes/unreleased/1-a.md"]), (2, ["changes/unreleased/2-b.md", "b.txt"]))
+
+    def gate(self, r, pr, name):
+        return next(line for line in r.stdout.splitlines() if line.startswith("gate pr=%d " % pr) and " name=%s " % name in line)
+
+    def test_open_cut_holds_the_fragment_pr_and_lands_nothing(self):
+        r = self.train("check", "1", "2")
+        self.assertIn("status=pass", self.gate(r, 1, "release-cut"))
+        self.assertIn("status=pass", self.gate(r, 1, "state-permission"))  # the cut itself is not held
+        self.assertIn('status=blocked reason="release cut #1 (7.2.0) open: fragment changes hold until it lands"',
+                      self.gate(r, 2, "state-permission"))
+        self.open_prs()
+        self.assertEqual(self.train("build", "2").returncode, 0)
+        self.open_prs((1, ["CHANGELOG.md"]), (2, ["changes/unreleased/2-b.md"]))  # the cut opened while the train ran
+        land = self.train("land", "1", "2")
+        self.assertEqual(land.returncode, 1, land.stdout + land.stderr)
+        self.assertIn("release cut #1 (7.2.0) open", land.stdout)
+        self.assertEqual(self.gh_calls("pr", "merge"), [])
+
+    def test_cut_behind_main_after_a_fragment_lands_is_refused_until_update_branch(self):
+        self.open_prs()  # 7.2.0: nothing held the fragment PR, so it landed after the cut's approval
+        self.commit({"changes/unreleased/2-b.md": "b\n"}, "squash #2")
+        self.git("push", "-q", "origin", "main")
+        base = self.remote("refs/heads/main")
+        r = self.train("check", "1")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn('status=blocked reason="release cut 7.2.0 behind %s: update-branch so release.yml validate '
+                      're-runs on current main; never land it direct"' % base[:7], self.gate(r, 1, "release-cut"))
+        self.git("checkout", "-q", "pr1")  # update-branch: the head now contains main, so validate saw 2-b.md
+        self.git("merge", "-q", "--no-edit", "origin/main")
+        self.git("push", "-q", "origin", "HEAD:refs/pull/1/head")
+        head = self.git("rev-parse", "HEAD")
+        self.git("checkout", "-q", "main")
+        path, view = self.complete_view(1)
+        view["headRefOid"] = head
+        with open(path, "w") as f:
+            json.dump(view, f)
+        self.complete_view(1)
+        self.assertIn("status=pass reason=\"release cut 7.2.0 contains %s\"" % base[:7],
+                      self.gate(self.train("check", "1"), 1, "release-cut"))
+
+    def test_unreadable_open_list_holds_fragment_prs_only(self):
+        with open(os.path.join(self.gh_dir, "open.json"), "w") as f:
+            f.write("not json")
+        r = self.train("check", "1", "2")
+        self.assertIn("status=pass", self.gate(r, 1, "state-permission"))
+        self.assertIn('status=blocked reason="release-cut hold unreadable:', self.gate(r, 2, "state-permission"))
 
 
 class Delegated(TrainBase):

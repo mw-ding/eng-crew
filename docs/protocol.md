@@ -1503,6 +1503,11 @@ merging:
   validate markers, CI green, no open rereview or hold, sensitive merge-ok,
   mirror and `MERGEABLE`. The merge record names
   `Tested-with-default-branch waiver: lone_pr_land=direct, exactly one ready PR`.
+  A release cut (a change adding a new version section to the CHANGELOG)
+  never takes this waiver, and while one is open every other change adding a
+  release fragment holds until it lands
+  ([release](release.md#cut-freeze); tmux `mdstack train check` gate
+  `release-cut`, #1433).
   Otherwise update-branch it at land; prove verdict portability at the new
   head, then require CI and every other gate here again. Being behind alone
   never sends it back. Backend alternative: on an

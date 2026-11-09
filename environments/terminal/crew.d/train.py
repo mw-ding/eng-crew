@@ -657,8 +657,16 @@ def train_check_prs(args, values, state, repo, slug, poll, clone):
                     fetch(repo, ref)
             drop = train_premerge(clone, base, head, verified_base, verified_head)
             collapsed = train_collapsed_drop(poll, slug, state, pr, head)
-        except RuntimeError as e:
-            drop, collapsed = "unreadable: %s" % e, None
+            cut = release_cut(poll, values, slug, pr)[0]
+            behind = cut and subprocess.run(["git", "-C", repo, "merge-base", "--is-ancestor", base, head]).returncode
+        except (RuntimeError, ValueError, KeyError, TypeError) as e:
+            drop, collapsed, cut, behind = "unreadable: %s" % e, None, None, None
+        # a release cut never lands on a stale merge ref (#1433): it is ready only at a head containing main, where
+        # update-branch re-ran release.yml validate
+        results["release-cut"] = ("blocked", drop) if drop and drop.startswith("unreadable") else (
+            "blocked", "release cut %s behind %s: update-branch so release.yml validate re-runs on current %s; "
+            "never land it direct" % (cut, base[:7], values["repo.default_branch"])) if behind else (
+            "pass", "release cut %s contains %s" % (cut, base[:7])) if cut else ("pass", "not a release cut")
         results["train-merge"] = ("blocked", collapsed + ": not ready until it lands or closes") if collapsed else (
             "pass", "merges onto %s with the verified patch" % base[:7]) if not drop else (
             "blocked", "%s on %s: route to merge-up before training" % (drop, base[:7]))
@@ -768,6 +776,39 @@ def train_paths(poll, slug, n):
     if len(files) >= 100:
         raise ValueError("100 or more changed files")
     return [p for f in files for p in (f["filename"], f.get("previous_filename")) if p]
+
+
+def release_cut(poll, values, slug, n):
+    """(cut version or None, fragment paths the change adds) from its changed files at head (#1433): a cut adds a new
+    version heading to the CHANGELOG. 100 or more changed files is unreadable (ValueError)."""
+    files = poll.gh_json("api", "repos/%s/pulls/%d/files?per_page=100" % (slug, n))
+    if len(files) >= 100:
+        raise ValueError("100 or more changed files")
+    changelog, fragments = values.get("release.changelog", "CHANGELOG.md"), values.get("release.fragments", "changes/unreleased")
+    cut = next((m.group(1) for f in files if f["filename"] == changelog
+                for m in [re.search(r"^\+## \[(\d+\.\d+\.\d+[^\]]*)\]", f.get("patch") or "", re.M)] if m), None)
+    return cut, [f["filename"] for f in files if f["filename"].startswith(fragments.rstrip("/") + "/")
+                 and f.get("status") != "removed"]
+
+
+def release_hold(poll, values, slug, n):
+    """While another change cuts a release, a change adding a CHANGELOG fragment waits for the cut to land (#1433):
+    the hold reason, or None. Unreadable holds too."""
+    try:
+        cut, added = release_cut(poll, values, slug, n)
+        if cut or not added:
+            return None
+        changelog = values.get("release.changelog", "CHANGELOG.md")
+        for pr in poll.gh_json("pr", "list", "-R", slug, "--state", "open", "--limit", "100", "--json", "number,files"):
+            if pr["number"] != n and any(f["path"] == changelog for f in pr.get("files") or []):
+                version = release_cut(poll, values, slug, pr["number"])[0]
+                if version:
+                    return "release cut #%d (%s) open: fragment changes hold until it lands" % (pr["number"], version)
+    except poll.RateLimited:
+        raise
+    except (KeyError, TypeError, ValueError, RuntimeError) as e:
+        return "release-cut hold unreadable: %s" % e
+    return None
 
 
 def train_spec(poll, values, slug, view):
@@ -914,6 +955,7 @@ def train_gate(poll, values, slug, view, head, state, verified_head=None, lane=F
         except RuntimeError as e:
             unclassified = str(e)
     sensitive = any(lb["name"] == "crew:sensitive" for lb in view["labels"])
+    release = release_hold(poll, values, slug, view["number"])
     why = (stop if stop else
            "PR is %s" % view["state"] if view["state"] != "OPEN" else
            "head changed: %s, tested %s" % (view["headRefOid"], head) if view["headRefOid"] != head else
@@ -928,6 +970,7 @@ def train_gate(poll, values, slug, view, head, state, verified_head=None, lane=F
            "express spec change needs owner merge-ok at head" if selfgate and spec else
            "spec change needs owner merge-ok at head: merge_grant_scope does not cover spec" if spec and not spec_scope(values) else
            "no merge permission: no merge-ok at head and merge_grant is none" if not merge_ok and grant == "none" else
+           release if release else
            "not mergeable: GitHub reports %s" % view.get("mergeable") if view.get("mergeable") != "MERGEABLE" else None)
     return why, merge_ok, spec
 

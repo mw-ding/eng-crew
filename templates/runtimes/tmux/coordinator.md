@@ -150,6 +150,11 @@ On every wake (watcher, owner, start), run
   exactly one ready PR without update-branch or a one-member train; all other
   §7 gates still apply and two or more ready PRs train. `train` retains the
   tested-with-default-branch gate and batching rules.
+- Release cut freeze (#1433, release doc Cut freeze): while a cut
+  PR is open, `mdstack train check` and `train land` hold every other PR that
+  adds a `changes/unreleased/` fragment until the cut lands, and refuse the
+  cut itself until its head contains the default branch. Do not hand-post a
+  `hold-until` on the cut for fragment PRs; the rule replaces it.
 - On `blocked: main red after #<n> <run-url>`, file a blocking `crew:ready`
   fix issue linking the landed PR and the default-branch CI run for its merge
   commit, its title starting `main-red:` so the scheduler ranks it class 1.
