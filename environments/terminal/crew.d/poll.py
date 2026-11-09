@@ -16,6 +16,8 @@ intake-card fields and P0 signals; a newly seen P0 candidate without a triage re
 the coordinator; owner feedback on a recorded P0 item queues the item but no wake (#1093). The
 scan also lists the project repo's milestones closed since its baseline under `milestones` until a sweep takes them
 (milestone-close sweep, triage.md T6, #374).
+Each crew PR whose ready sample (head, CI, verdict, mergeable, hold) changed is one line in
+`metrics/observations.jsonl` with the poll's time and the previous poll's, its sampling bound (self-improve.md, #1524).
 
 Usage: mdstack poll [--once] --project FILE
 """
@@ -34,6 +36,7 @@ from crew_shared import commands, ownership_module, profile, queue_lock, ROLES, 
 # (protocol §8). The coordinator drains the queue and routes each record by mdstack send or mdstack spawn.
 CONSUMER = {event: role for role, data in ROLES.items() for event in data["events"]["tmux"]}
 PR_FIELDS = "number,state,headRefOid,labels,statusCheckRollup,reviews"
+HOLDS = {"crew:hold", "crew:escalated"}  # a known hold: an approved, green, mergeable PR is still not ready (#1524)
 CREW_LINE = re.compile(r"<!-- crew:v1 ([^>]*?) -->")
 CI_OK, CI_BAD = {"SUCCESS", "NEUTRAL", "SKIPPED"}, {"FAILURE", "ERROR", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED",
                                                     "STARTUP_FAILURE"}
@@ -154,6 +157,25 @@ def decide(prev, prs, issues, merge_ups=None, express=()):
         if n not in prev.get("issues", []):
             emit("issue-assigned", "#%d" % n)
     return events, state
+
+
+def ready_sample(pr):
+    """Operational ready (self-improve.md#effect-measures): approval at head, green CI, mergeable and no known hold.
+    A sampled observation, never merge authorization."""
+    cur, hold = pr_snapshot(pr), any(label["name"] in HOLDS for label in pr["labels"])
+    ready = pr["state"] == "OPEN" and cur["verdict"] == "pass" and cur["ci"] == "passed" and \
+        pr.get("mergeable") == "MERGEABLE" and not hold
+    return {"state": pr["state"], "head": cur["head"], "ci": cur["ci"], "verdict": cur["verdict"],
+            "mergeable": pr.get("mergeable"), "hold": hold, "ready": ready}
+
+
+def observe(state, record):
+    """Append one sanitized observation (structured fields only, never pane text or paths) for
+    scripts/reflection-measures.py (#1524)."""
+    path = os.path.join(state, "metrics", "observations.jsonl")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(record, sort_keys=True) + "\n")
 
 
 def gh_json(*args, retry=()):
@@ -291,10 +313,11 @@ def poll_once(values, state, args):
     if os.path.exists(path):
         with open(path) as f:
             prev = json.load(f)
-    prs = gh_json("pr", "list", "-R", repo, "--state", "open", "--limit", "200", "--json", PR_FIELDS,
+    prs = gh_json("pr", "list", "-R", repo, "--state", "open", "--limit", "200", "--json", PR_FIELDS + ",mergeable",
                   retry=RETRY_DELAYS)
     gone = set((prev or {}).get("prs", {})) - {str(pr["number"]) for pr in prs}
-    prs += [gh_json("pr", "view", n, "-R", repo, "--json", PR_FIELDS, retry=RETRY_DELAYS) for n in sorted(gone)]
+    prs += [gh_json("pr", "view", n, "-R", repo, "--json", PR_FIELDS + ",mergeable", retry=RETRY_DELAYS)
+            for n in sorted(gone)]
     issues = gh_json("issue", "list", "-R", repo, "--state", "open", "--label", "crew:ready", "--limit", "200",
                      "--json", "number,labels,assignees", retry=RETRY_DELAYS)
     express = {str(pr["number"]) for pr in prs if pr["state"] == "OPEN" and express_lane(args, values, pr)}
@@ -319,6 +342,17 @@ def poll_once(values, state, args):
             ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
             f.write(json.dumps({"id": "poll-%s-%s" % (ts, os.urandom(3).hex()), "source": "poll", "reason": "poll", **e, "ts": ts}) + "\n")
             print("crew: poll: %s -> %s %s" % (e["event"], e["consumer"], " ".join(e["refs"])))
+    now, seen = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), (prev or {}).get("observed", {})
+    new["observed"], new["ts"] = {}, now
+    for pr in prs:
+        n = str(pr["number"])
+        if n in seen or pr["state"] == "OPEN" and any(label["name"].startswith("crew:") for label in pr["labels"]):
+            sample = ready_sample(pr)
+            if pr["state"] == "OPEN":
+                new["observed"][n] = sample
+            if sample != seen.get(n):
+                observe(state, dict(sample, ts=now, prev_ts=(prev or {}).get("ts"), source="poll", pr=int(n),
+                                    key="pr#%s@%s" % (n, sample["head"])))
     with open(path + ".tmp", "w") as f:
         json.dump(new, f, indent=2)
     os.replace(path + ".tmp", path)
