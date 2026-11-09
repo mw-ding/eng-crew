@@ -325,7 +325,8 @@ def retain_synthesizer(state, name):
 
 def kill_run(values, session, state, name, reason=None):
     """Stop the window, then remove only this run's worktree (build output inside it) and state files; a run on a
-    role host is stopped and checked there, and an unreachable host keeps everything.
+    role host is stopped and checked there, and an unreachable host keeps everything unless a discard reason is
+    recorded: the owner's abandon then leaves a tombstone for the host's return and drops the records here (#347).
 
     Removal needs the window's processes gone and the work landed, or a discard reason recorded on the item;
     otherwise keep the worktree and state files and return the blocking items."""
@@ -359,6 +360,12 @@ def kill_run(values, session, state, name, reason=None):
             reply = remote_run.kill(values, name, rec, discard=True)
         items = reply["unlanded"] if reply["result"] == "ok" else ["%s: %s" % (reply["result"], reply.get(
             "reason") or reply.get("error"))]
+        abandon = ["unreachable: %s; tombstoned, stopped when it returns, unlanded work kept" % rec["host"]]
+        if reply["result"] == "unreachable" and reason is not None and record_discard(values, rec, name, reason, abandon):
+            remote_run.tombstone(state, name, rec, reason)  # the owner's abandon (#347): the host stops it on return
+            print("crew: %s on %s is unreachable: tombstone written; its records and claim are dropped here" % (
+                name, rec["host"]))
+            items = []
         if items:
             print("crew: refusing to remove %s on %s: %s:\n  %s" % (
                 wt, rec["host"], "the host call failed" if reply["result"] != "ok" else "unlanded work in %s%s" % (

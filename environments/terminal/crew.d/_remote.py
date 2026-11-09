@@ -5,14 +5,19 @@ and retries with the same request id while the transport fails, at most 3 calls 
 opens a second window.
 Remote wakes and messages (#346): `pull` copies new status lines into the primary's status/<window>.status mirror and
 `send` delivers an `mdstack send` message through the host.
+Partition (#347): a host whose pulls fail 3 scans in a row is in an outage, kept by the watcher under `pulls` in
+wake/watch-state.json; its runs are `unreachable` and keep their claims. An owner's abandon of such a run leaves a
+tombstone in tombstones/<window>.json, which the watcher's reconcile stops on the host when it returns.
 """
 import base64
 import contextlib
 import fcntl
 import hashlib
 import importlib.util
+import json
 import os
 import re
+import time
 
 spec = importlib.util.spec_from_file_location("crew_remote", os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "remote", "crew-remote.py"))
@@ -68,12 +73,64 @@ def probe(values, name, rec):
         else "ambiguous"
 
 
-def kill(values, name, rec, discard=False, keep=False):
+def kill(values, name, rec, discard=False, keep=False, attempts=3):
     """Stop the run on its host and remove its worktree there unless it holds unlanded work against the default
     branch, the worktree's own branch and the run's PR heads."""
     prs = set(re.findall(r"PR #(\d+)", rec["item"])) | {str(n) for n in (rec.get("pr"), rec.get("args", {}).get("pr")) if n}
     refs = ["refs/heads/" + values["repo.default_branch"]] + ["refs/pull/%s/head" % n for n in sorted(prs)]
-    return call(values, rec["host"], "kill", window=name, refs=refs, discard=discard, keep=keep)
+    return call(values, rec["host"], "kill", attempts=attempts, window=name, refs=refs, discard=discard, keep=keep)
+
+
+OUTAGE = 3  # pulls failing in a row, one per scan, that make a host's runs unreachable
+
+
+def outage(state, host):
+    """When the host's open outage began (epoch seconds), from the watcher's pulls, or None while it answers."""
+    try:
+        with open(os.path.join(state, "wake", "watch-state.json")) as f:
+            pulled = json.load(f).get("pulls", {}).get(host, {})
+    except (OSError, ValueError):
+        return None
+    return pulled.get("since") if pulled.get("fails", 0) >= OUTAGE else None
+
+
+def tombstone(state, name, rec, reason):
+    """The owner abandoned this unreachable run: keep what reconcile needs to stop it on its host's return."""
+    os.makedirs(os.path.join(state, "tombstones"), exist_ok=True)
+    path = os.path.join(state, "tombstones", name + ".json")
+    with open(path + ".tmp", "w") as f:
+        json.dump(dict(window=name, host=rec["host"], reason=reason, at=time.strftime(
+            "%Y-%m-%dT%H:%M:%SZ", time.gmtime()), rec=rec), f, indent=2)
+    os.replace(path + ".tmp", path)
+
+
+def tombstones(state):
+    """(window, tombstone) pairs not yet stopped by reconcile."""
+    d, found = os.path.join(state, "tombstones"), []
+    for n in sorted(os.listdir(d)) if os.path.isdir(d) else []:
+        if n.endswith(".json"):
+            with open(os.path.join(d, n)) as f:
+                t = json.load(f)
+            if not t.get("stopped"):
+                found.append((n[:-5], t))
+    return found
+
+
+def reconcile_tombstone(values, state, name, t):
+    """Stop a tombstoned run on its returned host. A clean worktree goes with its tombstone; unlanded work keeps both,
+    the tombstone marked stopped with the host's list. The kill reply, `unreachable` while the host is still away."""
+    reply = kill(values, name, t["rec"], attempts=1)
+    if reply["result"] != "ok":
+        return reply
+    path = os.path.join(state, "tombstones", name + ".json")
+    if reply["unlanded"]:
+        t.update(stopped=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), unlanded=reply["unlanded"])
+        with open(path + ".tmp", "w") as f:
+            json.dump(t, f, indent=2)
+        os.replace(path + ".tmp", path)
+    else:
+        os.remove(path)
+    return reply
 
 
 def attach(values, name, rec, rw=False):
