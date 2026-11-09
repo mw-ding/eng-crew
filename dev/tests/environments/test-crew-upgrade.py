@@ -151,6 +151,26 @@ class Upgrade(bootstrap_tests.Bootstrap):
         self.assertIn("pack example supports mdstack >=3.0.0; v2.1.0 is incompatible", result.stdout + result.stderr)
         self.assertEqual(self.manifest.read_bytes(), before)
 
+    def test_pack_toml_declared_vcs_commit_pin(self):
+        """#1326: a pack in a non-git working copy pins through its declared [vcs] commands; a dirty one is refused."""
+        pack = Path(self.tmp) / "vcs-pack"
+        shutil.copytree(Path(__file__).resolve().parents[1] / "core/fixtures/packs/example", pack)
+        fake = [sys.executable, str(Path(__file__).resolve().parents[1] / "core/fixtures/vcs/fake-vcs.py")]
+        text = re.sub(r'framework = ".*"', 'framework = ">=2.0.0, <3.0.0"', (pack / "pack.toml").read_text())
+        (pack / "pack.toml").write_text(text + "\n[vcs]\nclean = %s\ncommit = %s\n" % (
+            json.dumps(fake + ["status"]), json.dumps(fake + ["rev"])))
+        subprocess.run(fake + ["commit"], cwd=pack, check=True)
+        rev = json.loads((pack / ".fakevcs/state.json").read_text())["rev"]
+        self.project_path.write_text(self.project_path.read_text() +
+                                     'pack = "%s"\n' % os.path.relpath(pack, self.project_path.parent))
+        result = self.bootstrap("--yes")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(json.loads(self.manifest.read_text())["pack"]["commit"], rev)
+        (pack / "profile.toml").write_text("")
+        result = self.upgrade("--dry-run")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("has uncommitted changes", result.stdout + result.stderr)
+
     mirror_release = bootstrap_tests.ReleaseSources.mirror_release
     source = bootstrap_tests.ReleaseSources.source
 
