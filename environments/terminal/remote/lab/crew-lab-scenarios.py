@@ -413,10 +413,12 @@ tmux new-window -d -t crew-host: -n %(project)s/ben-1 "echo lab-attach-pane; exe
 
 
 def on_pty(argv, until, keys=b"", timeout=30):
-    """Run argv on a fresh 40x120 pty; once `until` shows, type keys then C-b d. (exit code, everything it printed)."""
+    """Run argv on a fresh 40x120 xterm-256color pty, as a terminal would (the host's tmux client needs TERM); once
+    `until` shows, type keys then C-b d. (exit code, everything it printed)."""
     primary, secondary = os.openpty()
     fcntl.ioctl(secondary, termios.TIOCSWINSZ, struct.pack("HHHH", 40, 120, 0, 0))
-    p = subprocess.Popen(argv, stdin=secondary, stdout=secondary, stderr=secondary, start_new_session=True)
+    p = subprocess.Popen(argv, stdin=secondary, stdout=secondary, stderr=secondary, start_new_session=True,
+                         env=dict(os.environ, TERM="xterm-256color"))
     os.close(secondary)
     out, sent, deadline = b"", False, time.monotonic() + timeout
     while time.monotonic() < deadline:

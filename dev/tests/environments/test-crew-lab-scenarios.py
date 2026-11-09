@@ -208,11 +208,11 @@ class RunnerTest(unittest.TestCase):
 
 class PtyTest(unittest.TestCase):  # #348: the attach scenario's client runs on a pty of its own
     def test_on_pty_gives_a_tty_types_keys_once_ready_and_detaches(self):
-        script = "import os, sys; print('tty', os.isatty(0), os.get_terminal_size(0).columns); print('ready', " \
+        script = "import os, sys; print('tty', os.isatty(0), os.get_terminal_size(0).columns, os.environ['TERM']); print('ready', " \
                  "flush=True); print('got', repr(sys.stdin.readline().strip()), flush=True); import time; time.sleep(2)"
         code, out = sc.on_pty([sys.executable, "-c", script], b"ready", keys=b"abc\n", timeout=20)
         self.assertEqual(code, 0, out)
-        self.assertIn("tty True 120", out)
+        self.assertIn("tty True 120 xterm-256color", out)
         self.assertIn("got 'abc'", out)
 
 
