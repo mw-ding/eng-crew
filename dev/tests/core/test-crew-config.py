@@ -349,6 +349,23 @@ class ValidateTest(unittest.TestCase):
                 ('permission_mode = "bypass"', "permission_mode: unknown key"),
                 ('max_active_milestones = 0', "max_active_milestones: must be >= 1, got 0")]:
             self.assertFails(session % options, "crew.toml:runtime.options." + expected)
+
+    def test_session_present_caps_bounded_by_full_caps(self):  # #1053
+        session = VALID.replace('name = "tmux"\noptions = { builders = 3 }', 'name = "session"\noptions = { %s }')
+        for options in ("present_builders = 5, present_reviewers = 2", "builders = 3, present_builders = 1",
+                        "builders = 3, reviewers = 3, present_builders = 3, present_reviewers = 3"):
+            code, lines = validate(session % options)
+            self.assertEqual(code, 0, (options, lines))
+        for options, expected in [
+                ("builders = 2, present_builders = 3", "present_builders: must be <= builders (2), got 3"),
+                ("present_builders = 6", "present_builders: must be <= builders (5), got 6"),
+                ("present_reviewers = 3", "present_reviewers: must be <= reviewers (2), got 3"),
+                ("present_reviewers = 0", "present_reviewers: must be >= 1, got 0"),
+                ('present_builders = "2"', "present_builders: expected integer, got string")]:
+            self.assertFails(session % options, "crew.toml:runtime.options." + expected)
+        # tmux keeps its admission-time clamp: an over-cap present limit still validates.
+        code, lines = validate(VALID.replace("builders = 3", "builders = 3, present_builders = 9, present_reviewers = 9"))
+        self.assertEqual(code, 0, lines)
         self.assertFails(VALID.replace("builders = 3", 'session_backend = "native"'),
                          "crew.toml:runtime.options.session_backend: unknown value 'native' (expected one of: tmux, herdr)")
         for server in ("default", "dedicated"):  # #1327
@@ -962,7 +979,17 @@ class ResolveTest(unittest.TestCase):
                                      'runtime.options.max_active_milestones = 1  # core',
                                      'runtime.options.merge_grant = "none"  # core'],
                                     VALID.replace('name = "tmux"\noptions = { builders = 3 }', 'name = "session"'))
-        self.assertFalse([ln for ln in lines if "present_" in ln or "researchers" in ln], lines)
+        self.assertFalse([ln for ln in lines if "researchers" in ln], lines)
+        for line in ('runtime.options.present_builders = 5  # core', 'runtime.options.present_reviewers = 2  # core'):
+            self.assertIn(line, lines)  # #1053: owner-present limits default to the full caps
+
+    def test_session_present_cap_bound_spans_layers(self):  # #1053
+        project = VALID.replace('name = "tmux"\noptions = { builders = 3 }', 'name = "session"\noptions = { builders = 3 }')
+        org = '[runtime.options]\npresent_builders = %d\n'
+        lines = self.assertResolves(['runtime.options.present_builders = 2  # org'], project, default=VALID, org=org % 2)
+        self.assertIn('runtime.options.present_reviewers = 2  # core', lines)
+        self.assertFails("org.toml:runtime.options.present_builders: must be <= builders (3), got 4",
+                         project, default=VALID, org=org % 4)
 
     def test_core_defaults_under_project(self):
         self.assertResolves(['repo.default_branch = "main"  # core',

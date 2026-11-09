@@ -63,7 +63,7 @@ briefs omit their ownership line.
 | Engines | Claude Code coordinator with native subagents or external CLI workers; Codex coordinator with external CLI workers is a manual alternative. Each run follows tier routing and records its actual engine, model and effort. |
 | Independence | The coordinator schedules and combines outputs; separate workers review and validate. Validation never receives the review. Reviewer identity and engine diversity remain subject to the existing rules and recorded waivers. |
 | Dispatch | Re-read ownership and live item/head, check markers and claims, then pass a brief pointer and refs. A native subagent must enter its assigned unique worktree before changing files. |
-| Concurrency | Profile caps remain ceilings; dispatch only as many independent workers as the harness can track. No worker shares the coordinator checkout. |
+| Concurrency | Profile caps remain ceilings, with the owner-present limits `present_builders` and `present_reviewers` as on tmux ([runtime options](../configuration/runtime-options.md#session-options)); dispatch only as many independent workers as the harness can track. No worker shares the coordinator checkout. |
 | Landing | The synthesizer remains the landing role and selects the land rule; it lands each ready PR alone, with no merge train or async land (above). The coordinator dispatches it; one repo lock covers the final gate through the merge post. |
 | Persistence | Claims, run identities, inbox refs, status, summaries and unlanded worktrees live on disk; evidence and markers live on GitHub. Transcript memory is not recovery state. |
 

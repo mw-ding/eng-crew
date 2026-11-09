@@ -1025,9 +1025,17 @@ class SessionRuntime(unittest.TestCase):
                                   "Item, Pass or Base, do not start.", " ".join(text.split()))
         coordinator = " ".join(got["runtime/coordinator.md"].split())
         for rule in ("builder runs `2`, reviewer passes `1`, synthesizer runs 1;", "Session backend `native`",
+                     "While the owner is present, admit at most `2` builder runs and `1` reviewer passes;",  # #1053
                      'Append its "## This run" block verbatim to the worker prompt',
                      "Exit 2 (a missing Item, Pass or Base) means do not dispatch."):
             self.assertIn(rule, coordinator)
+
+    def test_present_caps_render(self):  # #1053
+        self.base = self.base.replace("builders = 2, reviewers = 1", "builders = 4, reviewers = 3, present_builders = 1")
+        coordinator = " ".join(self.render()["runtime/coordinator.md"].split())
+        self.assertIn("builder runs `4`, reviewer passes `3`", coordinator)
+        self.assertIn("admit at most `1` builder runs and `3` reviewer passes; an active recorded non-quiet away "
+                      "entry uses the full caps.", coordinator)
 
     def test_researchers_zero_renders_the_same_briefs(self):  # #1057: a no-op, the binding has no researcher
         upstream = self.render()
