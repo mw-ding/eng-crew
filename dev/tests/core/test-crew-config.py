@@ -2550,6 +2550,42 @@ class ControlItemIdsTest(unittest.TestCase):
             self.assertIn("crew.toml:ids: unknown key", out)
 
 
+    def test_marker_key_from_the_change_map(self):
+        """#1031: the change map's [ids] marker_key validates and resolves; other values are refused."""
+        with tempfile.TemporaryDirectory() as d:
+            text = VALID + '\npack = "pack"\n'
+            os.makedirs(os.path.join(d, "pack", "render", "backends"))
+            overlay = os.path.join(d, "pack", "render", "backends", "github.toml")
+            for value in ("item", "change"):
+                with open(overlay, "w") as f:
+                    f.write('[ids]\nmarker_key = "%s"\n' % value)
+                self.assertEqual(self.run_cli(d, "7", "validate", "<project>", text=text),
+                                 (0, "crew-config: OK (crew.toml)\n"))
+                code, out = self.run_cli(d, "7", "resolve", "--project", "<project>", text=text)
+                self.assertEqual(code, 0, out)
+                self.assertIn('ids.change = "[1-9][0-9]*"  # core\nids.marker_key = "%s"  # backend-map:github\n'
+                              % value, out)
+            for bad, reason in (('"issue"', "unknown value 'issue' (expected one of: change, item)"),
+                                ("1", "expected string, got integer")):
+                with open(overlay, "w") as f:
+                    f.write("[ids]\nmarker_key = %s\n" % bad)
+                for command in (["validate", "<project>"], ["resolve", "--project", "<project>"]):
+                    code, out = self.run_cli(d, "7", *command, text=text)
+                    self.assertEqual(code, 1, bad)
+                    self.assertIn("backend-map:github:ids.marker_key: " + reason, out)
+            os.unlink(overlay)
+            code, out = self.run_cli(d, "7", "resolve", "--project", "<project>", text=text)
+            self.assertEqual(code, 0, out)
+            self.assertNotIn("marker_key", out)
+
+    def test_marker_key_on_a_tracker_only_map_is_not_carried(self):
+        with tempfile.TemporaryDirectory() as d:
+            manifest = self.pack(d, '[ids]\nitem = "%s"\nmarker_key = "item"\n' % self.PATTERN)
+            code, out = self.run_cli(d, "7", "resolve", "--project", "<project>", "--pack-manifest", manifest)
+            self.assertEqual(code, 0, out)
+            self.assertIn('ids.item = "%s"  # backend-map:example\n' % self.PATTERN, out)
+            self.assertNotIn("marker_key", out)
+
 class InstallValidationTest(unittest.TestCase):
     def test_install_placeholders_rejected_with_key_paths(self):
         for original, leftover, key in [('"acme"', '"<owner>"', "repo.owner"),
