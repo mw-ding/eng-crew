@@ -437,7 +437,8 @@ A31 (from #804) puts a scenario `gh` (`state/m31/bin/gh`) first on `PATH`
 for `metrics-refresh.py` only, answering from a two-repo history in
 `state/m31/history.json`. The metrics-gate hold, waiver and intake
 acceptance are the coordinator's judgement, so steps play them as labels
-and records.
+and records. The report from actual campaign records is
+`scripts/campaign-report.py` ([metrics README](metrics/README.md#campaign-history-report)).
 
 ## Cleanup checks
 
