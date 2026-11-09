@@ -21,6 +21,12 @@ every `--interval` scan, and the next due time survives a re-arm; an exit-75 lin
 until that reset, at most an hour, so watchers sharing one GitHub login stop spending its quota (#1300).
 When `cli/mdstack`, `crew.d/*.py` or a `crew-*.py` module change on disk, the watcher re-execs itself before it queues or
 routes that scan's wakes, so new code resolves any new profile keys (#702).
+A run on a role host gets no liveness wake from this primary's tmux; every `runtime.options.host_scan_interval`
+(default 15 s) one `pull` per role host with runs copies their new status lines into the primary's status mirrors,
+which wake as local lines do; the host's answer is kept under `pulls` in watch-state.json (#346). Pulls failing 3 scans
+in a row make the host's runs `unreachable`: one `unreachable` escalate wake per outage past --stale, then a `reconcile`
+wake when it answers again, with a restart wake for each run found dead or missing; a tombstoned run (an owner's
+abandon) is stopped on its host then (#347).
 Once another runtime owns the repo (ownership `lost`, after a handoff's ack) the watcher refuses to arm (prompt stop).
 With `[triage] enabled`, each scan runs the triage sweep timer, which costs no model turn and queues no wake
 (docs/triage.md#triggers-and-cadence, #748); a newly closed milestone makes a sweep due at once (#374).
@@ -45,7 +51,7 @@ import signal
 import subprocess
 import sys
 import time
-from crew_shared import checkout, commands, CREW_BIN, dialog, ownership_module, ENGINE_CMD, foreground_matches, finished, gateway_error, HERE, heartbeat, idle_builder, probe, proc, profile, queue_lock, remember_pr, ROOT, runs, TRANSIENT, tmux, transient_lines
+from crew_shared import checkout, commands, CREW_BIN, dialog, ownership_module, ENGINE_CMD, foreground_matches, finished, gateway_error, HERE, heartbeat, idle_builder, probe, proc, profile, queue_lock, remember_pr, remote_run, ROOT, runs, TRANSIENT, tmux, transient_lines
 
 # Fields route adds to a record it leaves queued; a kept record still matches its candidate and wakes window 0 (#814).
 ROUTE_NOTES = ("at", "route_error", "consumer", "dependents")
@@ -91,6 +97,61 @@ def run_identity(rec):
     return [rec.get(k) for k in ("start", "pane_id", "pane_pid", "pane_start", "worktree")]
 
 
+def pull_hosts(values, state, seen, now, stale):
+    """One `pull` per role host with runs; each host's last result, time and run probes under seen["pulls"]. Pulls
+    failing in a row are an outage (#347): its runs are unreachable, keep their claims and are never restarted or
+    re-placed; past stale, one escalate wake per outage. The first ok pull after it reconciles (a refused or failed
+    reply keeps it pending): the pull brings the missed lines and each run's probe, a dead or missing run wakes for tmux's restart rules on that host, and the
+    coordinator re-reads GitHub. A tombstoned run is stopped on its host once the host answers. Returns the wakes."""
+    hosts, recs = {}, dict(runs(state))
+    for name, rec in recs.items():
+        if remote_run.host_of(rec):
+            hosts.setdefault(rec["host"], []).append(name)
+    pulls, wakes = seen.setdefault("pulls", {}), []
+    for host in [h for h in pulls if h not in hosts]:
+        del pulls[host]  # no run left there: a later run starts with no outage
+    for host, names in sorted(hosts.items()):
+        before, reply = pulls.get(host, {}), remote_run.pull(values, state, host, names)
+        liveness = {n: w.get("liveness") for n, w in (reply.get("windows") or {}).items()}
+        fails = before.get("fails", 0) + 1 if reply["result"] == "unreachable" else 0
+        pulls[host] = entry = dict(at=now, result=reply["result"], liveness=liveness, fails=fails, **({} if reply[
+            "result"] == "ok" else {"error": reply.get("reason") or reply.get("error")}))
+        pending = before.get("reconcile") or (before.get("since") if before.get("fails", 0) >= remote_run.OUTAGE else
+                                               None)  # an outage's start, kept until an ok pull brings the run probes
+        if fails:
+            entry.update({k: before[k] for k in ("since", "escalated", "reconcile") if k in before})
+            since = entry.setdefault("since", now)
+            if fails >= remote_run.OUTAGE:
+                entry.setdefault("reconcile", since)
+            if fails >= remote_run.OUTAGE and now - since >= stale and "escalated" not in entry:
+                entry["escalated"] = now
+                wakes.append({"reason": "unreachable", "host": host, "action": "escalate", "event": (
+                    "%s unreachable since %s: %s; claims kept, never restarted or re-placed" % (
+                        host, utc(since), ", ".join(names)))})
+        elif pending and reply["result"] != "ok":
+            entry["reconcile"] = pending  # refused or failed: the host answers, but without the probes
+        elif pending:
+            wakes.append({"reason": "reconcile", "host": host, "event": "%s answers after an outage since %s: %s; "
+                          "re-read GitHub (protocol 6 step 1)" % (host, utc(pending), ", ".join(
+                              "%s %s" % (n, liveness.get(n)) for n in names))})
+            wakes += [{"reason": "stale", "window": n, "liveness": liveness[n], "silent": int(now - pending),
+                       "action": "restart" if not recs[n].get("restarts") else "escalate"}
+                      for n in names if liveness.get(n) in ("dead", "missing")]
+    for name, t in remote_run.tombstones(state):
+        if pulls.get(t["host"], {}).get("fails"):
+            continue  # still away; the scan it answers stops the run
+        reply = remote_run.reconcile_tombstone(values, state, name, t)
+        if reply["result"] == "ok":
+            wakes.append({"reason": "reconcile", "host": t["host"], "event": "%s: tombstoned %s stopped; %s" % (
+                t["host"], name, "worktree kept, unlanded: " + "; ".join(reply["unlanded"]) if reply["unlanded"]
+                else "clean worktree removed")})
+    return wakes
+
+
+def utc(t):
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(t))
+
+
 def scan(state, session, now, stale, seen, idle_ttl=1800, stuck_after=1800, idle_stall=1800):
     """Wake records: new status lines, runs dead, missing or silent past stale, owner asks past their deadline and
     finishing work deferred past stuck_after; each fires once per key. A working run whose pane printed nothing for
@@ -106,6 +167,8 @@ def scan(state, session, now, stale, seen, idle_ttl=1800, stuck_after=1800, idle
         identities[name] = identity
         previous_pr = rec.get("pr")
         status = os.path.join(state, "status", name + ".status")
+        if remote_run.host_of(rec) and not os.path.exists(status):
+            continue  # a role host's mirror not pulled yet, or removed until the next pull rebuilds it: offsets kept
         size, off = os.path.getsize(status) if os.path.exists(status) else 0, seen["offsets"].get(name, 0)
         digests = seen.setdefault("digests", {})
         if size and (size != off or changed):
@@ -136,7 +199,7 @@ def scan(state, session, now, stale, seen, idle_ttl=1800, stuck_after=1800, idle
         except FileNotFoundError:
             continue  # reaped between listing and stat (#591)
         last, beat = heartbeat(state, name)
-        if beat is None:
+        if beat is None or remote_run.host_of(rec):  # a role host's run wakes by its pulled status lines (#346)
             continue
         cls = probe(session, name, rec, windows)
         if cls in ("alive", "ambiguous") and rec.get("harness") in TRANSIENT:
@@ -515,6 +578,9 @@ def run(args):
                     found += [{"reason": "poll", "event": line} for line in out.splitlines() if line.strip()]
             # after the sources: the timer reads the queue this scan's mdstack poll wrote, not a pre-pause one (#1098)
             triage_tick(values, state, time.time(), args.project, args.org_profile)
+            if time.time() >= seen.get("pulls_next", 0):  # role hosts' status lines into their mirrors (#346)
+                seen["pulls_next"] = time.time() + values["runtime.options.host_scan_interval"]
+                found += pull_hosts(values, state, seen, time.time(), args.stale)
             trial = json.loads(json.dumps(seen))  # committed only once its wakes are queued
             wakes = scan(state, session, time.time(), args.stale, trial, values["runtime.options.idle_builder_ttl"],
                          values["runtime.options.stuck_after"], args.idle_stall) + found

@@ -96,3 +96,50 @@ jobs:
           python3 scripts/check-repo.py
       - name: Test suite (every dev/tests/*/test-*.py once, in parallel)
         run: python3 scripts/run-tests.py
+
+  # Opt-in Linux Docker/SSH lab (M20.1 lab H, #1362): runs only on a PR labelled
+  # `lab` (it takes effect from the next push). LAB_BASE, a repo variable, is the
+  # owner-approved base image pinned by digest. Without it, Docker or an ARM64
+  # runner the job records a skip and passes. Never a required check or a waiver.
+  lab:
+    if: contains(github.event.pull_request.labels.*.name, 'lab')
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    env:
+      LAB_BASE: ${{ vars.LAB_BASE }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lab prerequisites (a recorded skip when absent)
+        id: pre
+        run: |
+          why=
+          echo "$LAB_BASE" | grep -Eq '^[^@ ]+@sha256:[0-9a-f]{64}$' || why="LAB_BASE is unset or not pinned by digest"
+          [ -n "$why" ] || [ "$(uname -m)" = aarch64 ] || why="runner is $(uname -m), not ARM64"
+          [ -n "$why" ] || docker info >/dev/null 2>&1 || why="no Docker daemon"
+          [ -n "$why" ] || docker pull -q "$LAB_BASE" >/dev/null || why="LAB_BASE $LAB_BASE did not pull"
+          if [ -n "$why" ]; then
+            echo "::notice::lab skipped: $why; no lab evidence"
+            echo "lab: skipped ($why); no lab evidence" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
+          fi
+          echo "skip=$why" >> "${GITHUB_OUTPUT:-/dev/null}"
+      - name: Lab scenarios (setup, every scenario, teardown)
+        if: steps.pre.outputs.skip == ''
+        run: |
+          t=$RUNNER_TEMP sha=$(git rev-parse HEAD) tag=v0.0.0-lab.$GITHUB_RUN_ID lab=environments/terminal/remote/lab
+          m=$t/sbx/state/manifest.json && mkdir "$t/stage" && echo lab > "$t/sentinel"
+          printf '[repo]\nowner = "mw-ding"\nname = "mdstack"\ndefault_branch = "main"\n[runtime]\nname = "tmux"\n[paths]\nstate_dir = "%s/p/state"\nworktree_root = "%s/p/wt"\nlive_dir = "%s/p/live"\n' "$t" "$t" "$t" > "$t/prod.toml"
+          python3 scripts/release-bundle.py "${tag#v}" --out "$t/stage" --repo mw-ding/mdstack
+          DOCKER_BUILDKIT=0 docker build -q -f $lab/Dockerfile --build-arg LAB_BASE="$LAB_BASE" -t mdstack-lab:ci .
+          python3 scripts/campaign-sandbox.py setup --root "$t/sbx" --run-id "lab-$GITHUB_RUN_ID" \
+            --production "$t/prod.toml" --source . --release "$tag" --sentinel "$t/sentinel"
+          trap 'python3 $lab/crew-lab-docker.py teardown "$m" || rc=1; cat "$t"/sbx/state/lab/runs/*.md >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true; exit $rc' EXIT
+          rc=0
+          python3 $lab/crew-lab-docker.py setup "$m" --image mdstack-lab:ci --stage "$t/stage" --tag "$tag" --source-sha "$sha" || rc=1
+          [ $rc != 0 ] || python3 $lab/crew-lab-scenarios.py "$m" --stage "$t/stage" || rc=1
+      - name: Keep the lab evidence
+        if: always() && steps.pre.outputs.skip == ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: lab-evidence
+          path: ${{ runner.temp }}/sbx/state/lab
+          if-no-files-found: ignore

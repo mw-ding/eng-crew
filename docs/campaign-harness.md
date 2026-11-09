@@ -588,6 +588,133 @@ the source, and the control issue. Once the owner has provided the repo:
    [docs/runbook-new-repo.md](runbook-new-repo.md) for the first crew run.
    Each scenario passes only on its recorded markers, heads, CI and cleanup.
 
+### Lab hosts in Docker
+
+`environments/terminal/remote/lab/crew-lab-docker.py` (M20.1 lab C, #1357)
+adds role-host containers, built from the [lab image](runtimes/multi-device.md#remote-acceptance-criteria-and-the-local-lab),
+to a level-a run. Each command runs the guard check first.
+
+```sh
+python3 environments/terminal/remote/lab/crew-lab-docker.py setup "$SANDBOX/state/manifest.json" \
+  --image "$LAB_IMAGE" --stage "$BUNDLE_STAGE" --tag "$TAG" [--source-sha SHA] [--n3]
+python3 environments/terminal/remote/lab/crew-lab-docker.py n3 "$SANDBOX/state/manifest.json"
+python3 environments/terminal/remote/lab/crew-lab-docker.py teardown "$SANDBOX/state/manifest.json"
+```
+
+- **Manifest.** `setup` adds a `lab` section to the run manifest: the Docker
+  context and its endpoint, the run ID, the owner label, the image ID, the
+  staged bundle hashes, and each network, container and volume ID as Docker
+  returns it, with each host's published port and activation record (bundle,
+  SHA256SUMS and source SHA); a host that activated another bundle or source
+  SHA than the staged one stops setup. It refuses before any Docker mutation when the
+  manifest already has a `lab` section, an alias is not lowercase, or a
+  container or network with a planned name or the run's label exists. A new
+  lab run needs a new manifest.
+- **Isolation.** Every child gets only `PATH` and locale plus the run's own
+  `HOME` and config directories under `state/lab/`: no inherited
+  `CREW_*`, forge token, SSH agent, `TMUX` or `TMUX_PANE`. Docker calls go
+  to the pinned endpoint. No host gets a mount: not the owner's home, the
+  Docker socket or a tmux socket. SSH is published on `127.0.0.1` only, and
+  `state/lab/home/.ssh/config` maps each alias to `127.0.0.1:<port>` with
+  a per-run key and `known_hosts`.
+- **N3.** Each host gets its own network. With `--n3` those networks are
+  internal, nothing is published, and a driver container joins all of them.
+  `n3` probes from each host to the other hosts, the Mac and the internet,
+  with the driver reaching each host as the positive control; with `--n3`
+  each host maps `host.docker.internal` to the host gateway, so the Mac
+  probe tests routing, not name lookup. It reports `n3: unproved` (exit 1)
+  unless every lateral probe is denied; an unresolved name is not denied,
+  and a loopback setup is always unproved.
+- **Teardown.** It first inspects every recorded ID and refuses, removing
+  nothing, when the context now points at another endpoint or a live ID lost
+  the run's owner or run label. Otherwise it saves each resource's inspect
+  JSON and logs under `state/lab/evidence/`, then removes only those IDs. It
+  never prunes, removes by wildcard or kills a tmux server. It records the
+  sentinel check and a tmux decoy's survival in `state/lab/cleanup.json`;
+  exit 1 means a changed sentinel or a lost decoy.
+
+### Lab runner scenarios
+
+`environments/terminal/remote/lab/crew-lab-scenarios.py` (M20.1 lab F, #1360)
+drives `mdstack runner` over the real hardened SSH call to a loopback lab
+host, between `setup` and `teardown`:
+
+```sh
+python3 environments/terminal/remote/lab/crew-lab-scenarios.py "$SANDBOX/state/manifest.json" \
+  --stage "$BUNDLE_STAGE" [--host lab-a] [--only NAME]
+```
+
+- **Client.** The primary runs the staged bundle itself, verified by
+  `scripts/crew-install.py` into `state/lab/toolkit/` and refused unless
+  its digest is the one the hosts activated, so both ends run one version.
+  macOS `ssh` reads `~/.ssh/config` from the account's home, never `HOME`,
+  so `state/lab/bin/ssh` adds `-F state/lab/home/.ssh/config` to `ssh -G`
+  only. Each call still runs the client's own `-F none` argv. The client
+  carries a decoy `GH_TOKEN`, `GITHUB_TOKEN`, `SSH_AUTH_SOCK` and `CREW_*`.
+- **Sample.** Branch `lab` of the sandbox repo has a `check-repo` that prints
+  its OS and any forge, crew or agent variable it sees, and
+  `dev/tests/lab/test-lab.py`, which each scenario commits red, green or
+  slow.
+- **Scenarios.** They start from A23's oracles. `exact-head`: the stored
+  result at HEAD matches the same commands run locally, and the host job
+  sees a clean env. `red`: a red run, not a fallback. `idempotent`: a
+  repeated request ID returns its first reply, and a new one for the job ID
+  returns the first job. `stale`: a stale head is refused before any call,
+  and an unseeded head by the host.
+- **Injections.** Each one is confirmed by a `version` call that fails
+  while it holds and answers once it is lifted. `disconnect` is
+  `docker network disconnect` mid-job, with the container and runner pids
+  kept: the client falls back locally, and after reconnect the same job's
+  result is pulled, with no second job at that head. `pause` is the
+  unresponsive host: the client falls back, and the job finishes after
+  `unpause`. `runner` kills the runner only: the supervisor starts a new
+  one, `sshd` keeps its pid, and a job passes. `recreate` replaces the
+  container mid-job (label-checked, with a new ID, host key and port, the
+  manifest and SSH config updated): the client falls back, the host never
+  reports the lost job done, and a fresh job passes. `partition` (#347)
+  places a builder on the host with the real `mdstack up` and `mdstack
+  spawn` in the sandbox session (a stub engine and `gh` on the host, the
+  host's mirror seeded from a bundle as its own origin). Behind a
+  `disconnect`, three watcher host scans (`pull_hosts`) give one
+  `unreachable` escalate wake, `mdstack status` reads `unreachable since`,
+  `mdstack restart` is refused, spawning the item again queues it (never
+  placed elsewhere) and the claim is unchanged. After reconnect, reconcile
+  finds the same pane alive and the mirror holds every line once. Behind a
+  second `disconnect`, `mdstack kill --discard` writes a tombstone and drops
+  the record and claim; on return the run is stopped on the host with its
+  unlanded file kept. `status-pull` (#346) starts a stub role run in the
+  runner's session that writes a status line every half second and acks
+  each typed nudge. The toolkit's own offset pull is `unreachable` behind a
+  `disconnect` while the run keeps writing; after reconnect, a repeated
+  pull and a fresh primary module, the mirror holds every line once and in
+  order, and a `send` through the host returns its ack through the mirror.
+- **Attach (#348).** A run is planted as the runner account in the
+  runner's tmux session, since `spawn` needs a forge (#345 proves it on
+  fakes). Over real SSH, `capture` shows its pane and `logs` its step
+  summary tail. A client on a pty attaches through the `restrict,pty` key
+  line, read-only, so typed keys never reach the pane, and detaches with
+  exit 0. Attach without a TTY and `version` with one are refused.
+- **Report.** Each scenario prints `PASS` or `FAIL`, and
+  `state/lab/scenarios.json` keeps what it saw. Exit 1 on any `FAIL`, 2 on
+  a refusal.
+- **Evidence.** Each run writes `state/lab/runs/<started>.json` and a
+  Markdown copy with `crew-lab-evidence.py` (M20.1 lab G, #1361). They
+  record lab C, each host's container, network, port, host key and
+  activated bundle and source SHA, the image digest, the staged bundle
+  hashes, the client bundle, the transport, every injected event with its
+  Docker control, and a timeline. The record is `simulated` and never
+  `real_device`: the loopback SSH path and each injection are labelled
+  simulated, and the sample checks and the engine, forge and mirror
+  origin behind the partition's placed run are labelled stubs. A scenario `--only` left out is `skipped` with
+  `evidence: false`, so it supplies no evidence for #207 or #345–#348.
+- **Opt-in CI.** The `lab` job in `.github/workflows/ci.yml` (M20.1 lab H,
+  #1362) runs on a PR labelled `lab`, from its next push, on an ARM64 runner.
+  It pulls `LAB_BASE`, a repo variable naming the owner-approved base image
+  pinned by digest, builds the lab image, and runs setup, every scenario and
+  teardown, keeping `state/lab` as the `lab-evidence` artifact. With no
+  `LAB_BASE`, Docker or ARM64 it records `lab: skipped (<why>); no lab
+  evidence` and passes. It is no required check; the other jobs still run.
+
 ### Level c: owner-run devices and second environment
 
 Level c reuses
@@ -597,3 +724,65 @@ Level c reuses
 scenario IDs and manifest. Record each host's capability, OS, runtime, bundle
 and profile fingerprints in the run issue. Loopback counts as simulated. A
 real-device criterion stays open until the owner records the run.
+
+### Attended owner-channel and sleep run
+
+`scripts/campaign-attended.py` (#1463, part of #804) runs A26 around an
+actual sleep of the owner's Mac, with one real sandbox Slack delivery. It
+splits A26 at its first `resume-*` step. Before the sleep it runs the
+handled head and the forge moving while paused. It then sends one `ask`
+through `mdstack notify` under a sandbox away record, starts builder #3 as
+existing work, and snapshots the claims, worktrees and tmux windows. After
+the wake it checks the snapshot is unchanged and takes the receipt code. It
+then runs the resume steps: the missed head, red CI and one overdue sweep,
+each caught up exactly once. The result holds the before-sleep and
+after-resume timestamps, the sleep length and each owner unblock.
+
+Rehearsal first, by the crew at any time, with no owner step:
+
+```sh
+python3 scripts/campaign-sandbox.py setup --root /tmp/att-r1 --run-id att-r1 \
+  --production config.toml --source . --release "$RELEASE" \
+  --sentinel "$OUTSIDE_FILE" --scenario A26
+python3 scripts/campaign-attended.py /tmp/att-r1/state/manifest.json \
+  --scenarios dev/tests/scripts/fixtures/campaign \
+  --out /tmp/att-r1/state/attended.json --dry-run
+python3 scripts/campaign-sandbox.py teardown /tmp/att-r1/state/manifest.json
+```
+
+Keep the root short: the tmux socket path must fit the OS limit. A dry run
+posts to a loopback webhook and never sleeps. It prints and records
+`rehearsal` and `evidence: false`, so it never counts as #804 evidence.
+
+The owner's part, at a time agreed on #804 with no other lab journey
+running on the Mac:
+
+1. Before: create a Slack incoming webhook on a sandbox channel the live
+   crew does not use. In the owner's own terminal, not a crew pane, run
+   `export CAMPAIGN_WEBHOOK=<url>`. Never paste the URL into the tracker, a
+   file or a crew window. The driver refuses a URL that is not https or that
+   equals the live crew's own webhook.
+2. Start: run the setup and driver commands above, without `--dry-run`,
+   in that terminal.
+3. Sleep: when the driver prints `owner: sleep this machine now`, choose
+   Apple menu > Sleep, or close the lid. Stay asleep for at least `--gap`
+   (default 60 s); 10 minutes is better. While asleep, read the receipt
+   code from the Slack message on another device.
+4. Wake: log in. The driver sees the wall-clock jump and asks for the code.
+   Type it.
+5. After: the crew posts the result's summary inline on #804, runs
+   teardown and records the sentinel and retained-work checks.
+
+Physical test boundary. The run proves:
+
+- a real OS sleep of one Mac with every sandbox process suspended;
+- the channel accepted the message and the owner read it on a device;
+- the missed state and the overdue sweep catch up once after the wake;
+- the claims, worktrees and windows survive the sleep.
+
+It does not prove a forge that moves during the sleep: the forge is local,
+and A26 moves it just before the sleep. Nor does it prove overdue time from
+the sleep itself (A26 backdates the triage slot), delivery while asleep,
+network or power loss, a second device or real GitHub (level b). The sandbox
+uses its own profile and session. The live crew's profile is read only to
+refuse its webhook; its channels and webhook are never used or changed.

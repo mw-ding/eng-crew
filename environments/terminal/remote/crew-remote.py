@@ -5,7 +5,7 @@ Usage: crew-remote.py --root DIR                                  (forced comman
        crew-remote.py --root DIR runner [--once] [--interval SECS]  (the host's user-level runner service)
 
 Install on a host: the crew key's authorized_keys line is
-`command="python3 <bundle>/environments/terminal/remote/crew-remote.py --root <root>",restrict <key>`. The client (`call`) runs
+`command="python3 <bundle>/environments/terminal/remote/crew-remote.py --root <root>",restrict,pty <key>`. The client (`call`) runs
 `ssh <host> crew-host` with batch mode, strict host keys, no forwarding and bounded dead-peer timeouts. It takes only
 the host's auth and host-key settings from the SSH config (`ssh -G`) and then runs with `-F none`, so no SendEnv,
 SetEnv, forwarding or proxy from any config reaches the call; the entrypoint reads no environment but SSH_ORIGINAL_COMMAND.
@@ -29,17 +29,33 @@ leftovers that no state/*/toolkit.json names and lists them. `version` with a `t
 reports whether that project's pinned toolkit, its record and every file hash match the pin (host check row 2); `job` (refused unless `head` is a commit in the project mirror: a detached worktree
 jobs/<job_id>/wt/ at head runs the closed command set in the background with a scrubbed env and writes
 jobs/<job_id>/result.json; a retried job_id returns the first job; jobs past JOB_RETENTION are removed) and `result`
-(`running`, or the result with capped log tails). A retried request id returns its first reply. The runner keeps the host's crew tmux session
+(`running`, or the result with capped log tails); `spawn` (needs the runner: fetch the run's ref into the mirror
+without moving its refs, refuse unless it is the given sha, add the detached worktree wt/<name>, write the brief and
+the PR's review files under state/<owner>__<repo>/, start the harness in the runner session's window <owner>__<repo>/<window> and keep
+the run record with its pane identity and the primary that spawned it; `relaunch` restarts a kept run in its own
+worktree), `probe` (C5 liveness on this host's clock) and `kill` (stop the window, then remove the worktree and run
+files unless it holds unlanded work, which is kept and listed; `discard` removes it anyway, `keep` only stops),
+`attach` (the caller's TTY on the run's pane, read-only unless `rw`; the only verb that takes a TTY, with its request
+base64url-encoded in the SSH command `crew-host <payload>` since stdin is the TTY; the key line is `restrict,pty`),
+`capture` (the pane's screen) and `logs` (the tail of the run's newest step summary, never raw logs), and
+`pull` (read-only: each named run's complete status lines past the primary's offset, from 0 when the primary's
+prefix digest does not match, with the run's probe) and `send` (append a refs-only message to the run's inbox and
+type the nudge `inbox: <id>` once, Enter retried only, no key into a dialog), #346.
+Run verbs on a run from another primary are refused. A retried request id returns its first reply. The runner keeps the host's crew tmux session
 alive, so runs outlive the SSH session, and writes runner.json under root as its heartbeat.
 """
 import argparse
 import base64
+import glob
+import hashlib
 import importlib.util
 import json
 import os
 import platform
 import re
+import shlex
 import shutil
+import signal
 import subprocess
 import sys
 import tarfile
@@ -59,7 +75,7 @@ TAG = re.compile(r"v\d+\.\d+\.\d+(-rc\.\d+)?")
 TEST_NAME = re.compile(r"test-[A-Za-z0-9._-]+\.py")  # dev/tests/*/test-*.py, a basename only
 COMMANDS = {"check-repo", "tests", "evidence"}
 JOB_ENV = {"PATH", "HOME", "LANG", "LC_ALL", "LC_CTYPE", "TMPDIR", "USER", "LOGNAME"}  # no token, agent or profile
-JOB_RETENTION, TAIL = 7 * 86400, 4000
+JOB_RETENTION, TAIL, LOG_LINES = 7 * 86400, 4000, 500
 PREPARE_TIMEOUT = 600
 DISK_FLOOR = 1 << 30  # free bytes under root below which the capacity row fails
 LOGGED_IN = r"Logged in to \S+ (account|as) %s(\s|$)"  # a `gh auth status` line, as mdstack doctor reads it
@@ -69,6 +85,16 @@ ADAPTERS = {"macos", "linux"}  # hostos/<os>.py
 SSH = ["ssh", "-F", "none", "-T", "-a", "-x", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes",
        "-o", "ClearAllForwardings=yes", "-o", "ConnectTimeout=10", "-o", "ServerAliveInterval=5",
        "-o", "ServerAliveCountMax=2"]
+WORD = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/:-]{0,63}")  # a role, model, effort, gh login or primary name
+REF = re.compile(r"refs/(heads|pull)/[A-Za-z0-9._/-]+")
+VERDICT = re.compile(r"pr\d+-[0-9a-f]{7}-r\d+-[a-z]+\.md")  # verdicts/pr<n>-<sha7>-r<k>-<pass>.md
+POINTER = "Read your brief at $CREW_BRIEF and follow it."  # crew_shared.POINTER and LAUNCH, built here from checked fields
+LAUNCH = 'export GH_TOKEN="$(gh auth token --user "$CREW_IDENTITY")"; exec %s "%s"'
+PULL_MAX = 1 << 18  # bytes of status lines one pull returns per window; the next pull resumes from there
+MSG_ID = re.compile(r"\d{8}T\d{6}Z-[0-9a-f]{6}")  # an `mdstack send` message id, as send.py makes it
+KIND = re.compile(r"[a-z][a-z0-9-]{0,31}")  # send.py's KIND and REF: refs only, never a diff or a log
+MSG_REF = re.compile(r"#\d+|[0-9a-f]{40}|https://[^\s]+|[\w.~/-]+")
+MAX_REF, MAX_LINE, ENTERS = 200, 1024, 3
 KEEP = {"hostname", "user", "port", "identityfile", "identitiesonly", "certificatefile", "identityagent",
         "userknownhostsfile", "globalknownhostsfile", "hostkeyalias"}  # auth and host keys; never env, forwards, proxies
 
@@ -523,8 +549,342 @@ def check_verb(request, root):
     return dict(result="ok", checks=checks, projects=projects, load=load)
 
 
-HANDLERS = {"version": version_verb, "check": check_verb,
-            "prepare": prepare, "seed": seed, "job": job, "result": result}
+def run_record(request, root):
+    """(state dir, record path, record or None) of the request's run, or a refusal string."""
+    project, window, primary = request.get("project"), request.get("window"), request.get("primary")
+    if not (isinstance(project, str) and PROJECT.fullmatch(project)) or not (
+            isinstance(window, str) and REQUEST_ID.fullmatch(window)) or not (isinstance(primary, str) and WORD.fullmatch(primary)):
+        return "needs project=owner__repo, a window name and the primary"
+    state = os.path.join(root, "state", project)
+    path = os.path.join(state, "runs", window + ".json")
+    rec = load(path) if os.path.exists(path) else None
+    if rec and rec["primary"] != primary:
+        return "run %s belongs to primary %s" % (window, rec["primary"])
+    return state, path, rec
+
+
+def window_name(request):
+    """The run's window in the shared runner session, named <owner>__<repo>/<window> so projects never collide."""
+    return "%s/%s" % (request["project"], request["window"])
+
+
+def find_window(request):
+    return next((i for i, n in tmux().list_windows(SESSION) if n == window_name(request)), None)
+
+
+def start_time(pid):
+    adapter, _ = host_os(UNAMES.get(platform.system()))
+    return adapter.start_time(run_probe, pid) if adapter and pid else "missing"
+
+
+def stop(pid, grace=2.0):
+    """SIGTERM the pane's process group, SIGKILL it after grace seconds; the pgid if it survives."""
+    try:
+        pgid = os.getpgid(int(pid))
+    except (ProcessLookupError, ValueError, TypeError):
+        return None
+    if pgid <= 1 or pgid == os.getpgrp():
+        return None
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        try:
+            os.killpg(pgid, sig)
+        except (ProcessLookupError, PermissionError):  # macOS answers EPERM for a group of zombies only
+            return None
+        deadline = time.monotonic() + grace
+        while time.monotonic() < deadline:
+            try:
+                os.killpg(pgid, 0)
+            except (ProcessLookupError, PermissionError):
+                return None
+            time.sleep(0.05)
+    return pgid
+
+
+def spawn_verb(request, root):
+    """Start a role run in the runner's tmux session, so it outlives this call: fetch `ref` into the mirror (it must
+    be `sha`), add a detached worktree at wt/<name>, write the brief and the PR's review files, launch the engine's
+    harness. `relaunch` restarts a kept run in its own worktree with a fresh brief. Never a second window."""
+    found = run_record(request, root)
+    if isinstance(found, str):
+        return dict(result="refused", reason="spawn " + found)
+    state, path, rec = found
+    if runner_state(root) != "up":
+        return dict(result="refused", reason="runner down")
+    adapter = load_harnesses().ADAPTERS.get(request.get("engine"))
+    if not hasattr(adapter, "role_argv") or request.get("permission_mode") not in adapter.PERMISSION:
+        return dict(result="refused", reason="engine or permission_mode not launchable on this host")
+    if not all(isinstance(request.get(k), str) and WORD.fullmatch(request[k]) for k in ("role", "model", "effort", "identity")) \
+            or not isinstance(request.get("brief"), str):
+        return dict(result="refused", reason="spawn needs role, model, effort, identity and brief")
+    window, index = request["window"], find_window(request)
+    if request.get("relaunch"):
+        if rec is None:
+            return dict(result="refused", reason="no run %s to relaunch" % window)
+        if index is not None and stop((tmux().pane(SESSION, index) or {}).get("pid")):
+            return dict(result="failed", error="process group of %s survived SIGKILL" % window)
+        if index is not None:
+            tmux().kill_window(SESSION, index)
+        wt = rec["worktree"]
+    else:
+        wt_rel, sha, ref, verdicts = (request.get(k) for k in ("worktree_path", "sha", "ref", "verdicts"))
+        if rec or index is not None:
+            return dict(result="refused", reason="run %s exists" % window)
+        if not isinstance(wt_rel, str) or os.path.dirname(os.path.normpath(wt_rel)) != "wt" or not (
+                isinstance(sha, str) and SHA.fullmatch(sha)) or not (isinstance(ref, str) and REF.fullmatch(ref)) or \
+                not isinstance(verdicts, dict) or not all(VERDICT.fullmatch(str(n)) and isinstance(t, str) for n, t in verdicts.items()):
+            return dict(result="refused", reason="spawn needs worktree_path=wt/<name>, sha, ref and verdicts")
+        wt, mirror = os.path.join(root, os.path.normpath(wt_rel)), os.path.join(root, "mirrors", request["project"] + ".git")
+        if os.path.lexists(wt) or not os.path.isdir(mirror):
+            return dict(result="refused", reason="%s exists" % wt_rel if os.path.lexists(wt) else "project mirror not prepared")
+        try:  # --refmap= fetches without touching the mirror's refs, which run branches share
+            sh("fetch", "git", "-C", mirror, "fetch", "--quiet", "--refmap=", "origin", ref)
+            if sh("fetch", "git", "-C", mirror, "rev-parse", "FETCH_HEAD").strip() != sha:
+                return dict(result="refused", reason="stale spawn: %s is not %s" % (ref, sha))
+            sh("worktree", "git", "-C", mirror, "worktree", "add", "--quiet", "--detach", wt, sha)
+            sh("worktree", "git", "-C", mirror, "config", "remote.origin.mirror", "false")  # a run pushes refspecs
+        except Failed as e:
+            return e.reply
+        with open(os.path.join(wt, sh("worktree", "git", "-C", wt, "rev-parse", "--git-path", "info/exclude").strip()), "a") as f:
+            f.write("\n.crew/\n")  # step summaries never count as unlanded
+        for d in ("runs", "status", "inbox", "verdicts"):
+            os.makedirs(os.path.join(state, d), exist_ok=True)
+        for name, text in verdicts.items():
+            with open(os.path.join(state, "verdicts", name), "w", encoding="utf-8") as f:
+                f.write(text)
+        rec = dict(window=window, primary=request["primary"], worktree=wt)
+    rec.update({k: request[k] for k in ("role", "engine", "model", "effort", "permission_mode", "identity")})
+    brief = os.path.join(state, "runs", window + ".brief.md")
+    with open(brief, "w", encoding="utf-8") as f:
+        f.write(request["brief"])
+    env = {"CREW_ROLE": rec["role"], "CREW_ID": window, "CREW_STATE": state, "CREW_BRIEF": brief,
+           "CREW_BIN": os.path.join(ROOT, "cli", "mdstack"), "CREW_IDENTITY": rec["identity"],
+           "CREW_STATUS": os.path.join(state, "status", window + ".status"),
+           "CREW_INBOX": os.path.join(state, "inbox", window + ".jsonl")}
+    save(path, rec)  # before the window, so a failed launch still leaves a run kill can remove
+    argv = adapter.role_argv(rec["model"], rec["effort"], wt, state, adapter.PERMISSION[rec["permission_mode"]])
+    index = max(i for i, _ in tmux().list_windows(SESSION)) + 1
+    tmux().new_window(SESSION, index, window_name(request), wt, env, LAUNCH % (shlex.join(argv), POINTER))
+    pane = tmux().pane(SESSION, index) or {}
+    rec.update(pane_id=pane.get("id"), pane_pid=pane.get("pid"), pane_start=start_time(pane.get("pid")))
+    save(path, rec)
+    return dict(result="ok", worktree=wt, brief=brief, **{k: rec[k] for k in ("pane_id", "pane_pid", "pane_start")})
+
+
+def probe_verb(request, root):
+    """C5 liveness of a run on this host's own clock, read-only: alive, dead, missing or ambiguous."""
+    found = run_record(request, root)
+    if isinstance(found, str):
+        return dict(result="refused", reason="probe " + found)
+    rec, index = found[2], find_window(request)
+    p = tmux().pane(SESSION, index) if rec and index is not None else None
+    liveness = ("missing" if rec is None or index is None else "ambiguous" if p is None else "missing"
+                if (p["id"], p["pid"]) != (rec.get("pane_id"), rec.get("pane_pid")) else "dead" if p["dead"] == "1" else
+                "missing" if start_time(p["pid"]) != rec.get("pane_start") else "alive")  # spawn saves before the pane
+    return dict(result="ok", liveness=liveness)
+
+
+def unlanded(wt, refs):
+    """Uncommitted or untracked paths, and commits on none of refs (the first, the default branch, must fetch) nor
+    the worktree's own branch on origin."""
+    items = ["uncommitted: " + line for line in sh("status", "git", "-C", wt, "status", "--porcelain",
+                                                   "--untracked-files=all").splitlines() if line]
+    branch = subprocess.run(["git", "-C", wt, "symbolic-ref", "-q", "HEAD"], capture_output=True, text=True).stdout.strip()
+    landed = []
+    for i, ref in enumerate(refs + ([branch] if branch else [])):
+        if subprocess.run(["git", "-C", wt, "fetch", "--quiet", "--refmap=", "origin", ref], stdin=subprocess.DEVNULL,
+                          capture_output=True, timeout=PREPARE_TIMEOUT).returncode == 0:
+            landed.append(sh("fetch", "git", "-C", wt, "rev-parse", "FETCH_HEAD").strip())
+        elif i == 0:
+            return items + ["unchecked: cannot fetch " + ref]
+    log = sh("log", "git", "-C", wt, "log", "--format=%H %s", "HEAD", "--not", *landed)
+    return items + ["commit: " + line for line in log.splitlines() if line]
+
+
+def kill_verb(request, root):
+    """Stop a run's window, then remove its worktree and run files unless the worktree holds unlanded work (kept
+    and listed); `discard` removes it anyway (the primary posted the owner's reason), `keep` only stops."""
+    found = run_record(request, root)
+    if isinstance(found, str):
+        return dict(result="refused", reason="kill " + found)
+    state, path, rec = found
+    refs = request.get("refs")
+    if not isinstance(refs, list) or not refs or not all(isinstance(r, str) and REF.fullmatch(r) for r in refs):
+        return dict(result="refused", reason="kill needs refs, the default branch first")
+    if rec is None:  # spawn keeps the record before the window, so no record means no run of this project here
+        return dict(result="ok", unlanded=[], removed=False)
+    index = find_window(request)
+    if index is not None:
+        pgid = stop((tmux().pane(SESSION, index) or {}).get("pid"))
+        if pgid:
+            return dict(result="failed", error="process group %d survived SIGKILL" % pgid)
+        tmux().kill_window(SESSION, index)
+    if request.get("keep"):
+        return dict(result="ok", unlanded=[], removed=False)
+    wt = rec["worktree"]
+    try:
+        items = [] if request.get("discard") or not os.path.isdir(wt) else unlanded(wt, refs)
+    except Failed as e:
+        items = ["unchecked: %s" % e]
+    if items:
+        return dict(result="ok", unlanded=items, removed=False)
+    mirror = os.path.join(root, "mirrors", request["project"] + ".git")
+    subprocess.run(["git", "-C", mirror, "worktree", "remove", "--force", wt], capture_output=True)
+    shutil.rmtree(wt, ignore_errors=True)
+    subprocess.run(["git", "-C", mirror, "worktree", "prune"], capture_output=True)
+    window = request["window"]
+    for p in (path, os.path.join(state, "runs", window + ".brief.md"), os.path.join(state, "status", window + ".status"),
+              os.path.join(state, "inbox", window + ".jsonl")):
+        if os.path.exists(p):
+            os.remove(p)
+    return dict(result="ok", unlanded=[], removed=True)
+
+
+def pull_verb(request, root):
+    """New complete status lines of each named run since the primary's offset (multi-device C1, C4), read-only. The
+    primary sends {window: {offset, digest}}, its mirror's size and SHA-256; a digest that is not this file's prefix
+    (a rewritten or shorter file) answers from offset 0. Each reply carries offset, base64 data ending on a newline
+    (at most PULL_MAX bytes), the file's size and the run's probe."""
+    windows = request.get("windows")
+    if not isinstance(windows, dict) or not windows:
+        return dict(result="refused", reason="pull needs windows {name: {offset, digest}}")
+    out = {}
+    for window, at in windows.items():
+        found = run_record(dict(request, window=window), root)
+        if isinstance(found, str):
+            return dict(result="refused", reason="pull " + found)
+        if not isinstance(at, dict) or not isinstance(at.get("offset"), int) or at["offset"] < 0 or \
+                not isinstance(at.get("digest"), str):
+            return dict(result="refused", reason="pull needs an offset and digest for " + window)
+        status = os.path.join(found[0], "status", window + ".status")
+        data = b""
+        if os.path.exists(status):
+            with open(status, "rb") as f:
+                data = f.read()
+        offset = at["offset"]
+        if offset > len(data) or hashlib.sha256(data[:offset]).hexdigest() != at["digest"]:
+            offset = 0
+        chunk = data[offset:offset + PULL_MAX]
+        chunk = chunk[:chunk.rfind(b"\n") + 1]  # complete lines only; a line being written waits for the next pull
+        out[window] = dict(offset=offset, data=base64.b64encode(chunk).decode(), size=len(data),
+                           liveness=probe_verb(dict(request, window=window), root)["liveness"])
+    return dict(result="ok", windows=out)
+
+
+def composer_draft(screen, at):
+    """The composer rows from the prompt-glyph row down to the cursor row at (column, row), glyph and indent stripped;
+    None when the cursor is not in a composer (send.py's composer_draft, #308: later rows are indented two spaces, so
+    an Enter swallowed as a newline still reads as the draft)."""
+    rows = screen.split("\n")
+    if not at or at[1] >= len(rows):
+        return None
+    glyphs = "".join(getattr(a, "COMPOSER", "") for a in load_harnesses().ADAPTERS.values())
+    glyph = re.compile(r"[%s]\s?" % re.escape(glyphs)) if glyphs else None
+    for top in range(at[1], -1, -1):
+        if glyph and glyph.match(rows[top]):
+            return [glyph.sub("", rows[top], 1).strip()] + [r.strip() for r in rows[top + 1:at[1] + 1]]
+        if rows[top].strip() and not rows[top].startswith("  "):
+            return None
+    return None
+
+
+def on_dialog(screen, engine):
+    """A blocking prompt or fatal API error of the run's harness on screen, as crew_shared.dialog reads it (#315)."""
+    a = load_harnesses().ADAPTERS.get(engine)
+    lines = [line.strip().lstrip(getattr(a, "COMPOSER", "") + "> ") for line in screen.splitlines() if line.strip()]
+    fatal = getattr(a, "FATAL", None)
+    return bool(fatal) and any(re.match(fatal, line) for line in lines) or bool(lines) and any(
+        re.match(foot, lines[-1]) and any(re.match(head, line) for line in lines) for head, foot in getattr(a, "PROMPTS", []))
+
+
+def send_verb(request, root):
+    """mdstack send on this host (multi-device C3): append the refs-only message to the run's inbox, then type the fixed
+    nudge `inbox: <id>` into its window once, retrying Enter only while it stays in the composer. A dialog on screen
+    gets no key. Reply `nudge`: None when submitted, else why not; the message stays in the inbox either way."""
+    found = run_record(request, root)
+    if isinstance(found, str):
+        return dict(result="refused", reason="send " + found)
+    state, _, rec = found
+    msg = request.get("message")
+    if not isinstance(msg, dict) or set(msg) != {"id", "kind", "refs", "from", "ts"} or not isinstance(msg["id"], str) \
+            or not MSG_ID.fullmatch(msg["id"]) or not isinstance(msg["kind"], str) or not KIND.fullmatch(msg["kind"]) \
+            or not isinstance(msg["refs"], list) or not msg["refs"] or not all(
+                isinstance(r, str) and len(r) <= MAX_REF and MSG_REF.fullmatch(r) for r in msg["refs"]) or not all(
+                isinstance(msg[k], str) and WORD.fullmatch(msg[k]) for k in ("from", "ts")):
+        return dict(result="refused", reason="send needs a refs-only message {id, kind, refs, from, ts}")
+    line = json.dumps(msg) + "\n"
+    index = find_window(request)
+    if rec is None or index is None:
+        return dict(result="refused", reason="no window %s on this host" % request["window"])
+    if len(line.encode()) > MAX_LINE:
+        return dict(result="refused", reason="message over %d bytes" % MAX_LINE)
+    os.makedirs(os.path.join(state, "inbox"), exist_ok=True)
+    with open(os.path.join(state, "inbox", request["window"] + ".jsonl"), "a", encoding="utf-8") as f:
+        f.write(line)
+    text, t = "inbox: " + msg["id"], tmux()
+    if on_dialog(t.capture(SESSION, index), rec["engine"]):
+        return dict(result="ok", nudge="dialog: a prompt is on its screen; nothing typed")
+    t.send_keys(SESSION, index, text)
+    for retry in range(ENTERS + 1):
+        time.sleep(0.5)
+        if text not in (composer_draft(t.capture(SESSION, index), t.cursor(SESSION, index)) or []):
+            return dict(result="ok", nudge=None)
+        if retry < ENTERS:
+            if on_dialog(t.capture(SESSION, index), rec["engine"]):
+                return dict(result="ok", nudge="dialog: a prompt came up after the nudge was typed; Enter not retried")
+            t.press(SESSION, index, "Enter")
+    return dict(result="ok", nudge="`%s` is still in its composer after %d Enter retries" % (text, ENTERS))
+
+
+def run_window(request, root, verb):
+    """(run record, window index) of a live run of this project and primary, or a refusal reply."""
+    found = run_record(request, root)
+    if isinstance(found, str):
+        return dict(result="refused", reason="%s %s" % (verb, found))
+    index = find_window(request) if found[2] else None
+    if index is None:
+        return dict(result="refused", reason="no run %s on this host" % request["window"])
+    return found[2], index
+
+
+def attach_verb(request, root):
+    """Attach the caller's TTY to the run's pane in the runner session, read-only unless `rw`; returns on detach."""
+    found = run_window(request, root, "attach")
+    if isinstance(found, dict):
+        return found
+    code = tmux().attach("=%s:%d" % (SESSION, found[1]), request.get("rw") is not True)
+    return dict(result="ok", exit=code)
+
+
+def capture_verb(request, root):
+    """The run pane's visible screen, trailing blank lines dropped, for `mdstack attach builders`."""
+    found = run_window(request, root, "capture")
+    if isinstance(found, dict):
+        return found
+    return dict(result="ok", text=tmux().capture(SESSION, found[1]).rstrip("\n"))
+
+
+def logs_verb(request, root):
+    """The last `lines` lines of the newest step summary under the run's worktree; never raw logs."""
+    found = run_record(request, root)
+    if isinstance(found, str):
+        return dict(result="refused", reason="logs " + found)
+    rec, lines = found[2], request.get("lines", 20)
+    if not isinstance(lines, int) or isinstance(lines, bool) or not 1 <= lines <= LOG_LINES:
+        return dict(result="refused", reason="lines must be 1 to %d" % LOG_LINES)
+    if rec is None:
+        return dict(result="refused", reason="no run %s on this host" % request["window"])
+    runs = os.path.join(rec["worktree"], ".crew", "runs")
+    found = [p for p in glob.glob(os.path.join(runs, "**", "summary.md"), recursive=True) if confined(root, p)]
+    if not found:
+        return dict(result="ok", path=None, lines=[])
+    summary = max(found, key=os.path.getmtime)
+    with open(summary, encoding="utf-8", errors="replace") as f:
+        return dict(result="ok", path=os.path.relpath(summary, root), lines=f.read().splitlines()[-lines:])
+
+
+HANDLERS = {"version": version_verb, "check": check_verb, "prepare": prepare, "seed": seed, "job": job,
+            "result": result, "spawn": spawn_verb, "probe": probe_verb, "kill": kill_verb, "attach": attach_verb,
+            "capture": capture_verb, "logs": logs_verb, "pull": pull_verb, "send": send_verb}
 
 
 def confined(root, path):
@@ -532,12 +892,14 @@ def confined(root, path):
     return real == os.path.realpath(root) or real.startswith(os.path.realpath(root) + os.sep)
 
 
-def handle(request, root, command=None):
+def handle(request, root, command=None, tty=False):
     if command not in (None, "", "crew-host"):
         return dict(result="refused", reason="SSH command must be crew-host")
     if not isinstance(request, dict) or request.get("verb") not in VERBS:
         return dict(result="refused", reason="unknown verb")
     verb = request["verb"]
+    if (verb == "attach") != tty:  # the key line allows a pty for attach only; every other verb runs without one
+        return dict(result="refused", reason="attach needs a TTY" if verb == "attach" else "only attach takes a TTY")
     if verb != "version" and request.get("version") != version():
         return dict(result="refused", reason="version skew: host %s, call %s" % (version(), request.get("version")))
     if "root" in request and os.path.realpath(os.path.expanduser(str(request["root"]))) != os.path.realpath(root):
@@ -568,6 +930,9 @@ def handle(request, root, command=None):
 
 def runner(root, once=False, interval=INTERVAL):
     adapter = tmux()
+    # The adapter names the default server by path (-S); tmux never makes that socket's directory and still exits 0,
+    # so on a host where tmux never ran the runner's first server would fail silently.
+    os.makedirs(os.path.dirname(adapter.default_socket()), mode=0o700, exist_ok=True)
     while True:
         if not adapter.has_session(SESSION):
             adapter.new_session(SESSION, "runner", root, {}, "tail -f /dev/null")
@@ -585,6 +950,17 @@ def ssh_argv(host, config=None):
                        timeout=10)
     settings = [line.split(" ", 1) for line in r.stdout.splitlines() if line.split(" ", 1)[0] in KEEP]
     return None if r.returncode else [*SSH, *[x for k, v in settings for x in ("-o", k + "=" + v)], host, "crew-host"]
+
+
+def attach(host, config=None, **fields):
+    """`ssh -t` to the attach verb with this terminal: the request travels JSON in the SSH command, base64url-encoded,
+    since stdin is the TTY. Returns the ssh exit code; 255 is a transport failure."""
+    argv = ssh_argv(host, config)
+    if argv is None:
+        return 255
+    payload = base64.urlsafe_b64encode(json.dumps(dict(fields, verb="attach", version=version())).encode()).decode()
+    argv = ["-t" if a == "-T" else a for a in argv[:-1]] + ["crew-host " + payload]
+    return subprocess.run(argv).returncode
 
 
 def call(host, verb, request_id=None, timeout=45, config=None, **fields):
@@ -624,12 +1000,16 @@ def main():
         return runner(root, args.once, args.interval)
     if args.mode == "job":
         return run_job(root, args.job_id)
+    command, _, payload = (os.environ.get("SSH_ORIGINAL_COMMAND") or "").partition(" ")
     try:
-        request = json.load(sys.stdin)
+        request = json.loads(base64.urlsafe_b64decode(payload.encode())) if payload else json.load(sys.stdin)
     except ValueError:
         request = None
-    print(json.dumps(handle(request, root, os.environ.get("SSH_ORIGINAL_COMMAND"))))
-    return 0
+    reply = handle(request, root, command, os.isatty(0))
+    if reply["result"] == "ok" and request.get("verb") == "attach":  # the tmux client already used the TTY
+        return reply["exit"]
+    print(json.dumps(reply))
+    return 1 if payload and reply["result"] != "ok" else 0
 
 
 if __name__ == "__main__":

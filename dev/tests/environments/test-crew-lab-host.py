@@ -91,7 +91,7 @@ class AuthorizeTest(Base):
         keys = home / ".ssh" / "authorized_keys"
         self.assertEqual(keys.read_text(), line)
         self.assertEqual(line, 'command="python3 /opt/mdstack/environments/terminal/remote/crew-remote.py --root %s",'
-                               'restrict %s\n' % (home / ".mdstack", KEY))
+                               'restrict,pty %s\n' % (home / ".mdstack", KEY))
         self.assertEqual((keys.stat().st_mode & 0o777, (home / ".ssh").stat().st_mode & 0o777), (0o600, 0o700))
 
     def test_refuses_options_extra_lines_or_non_keys(self):

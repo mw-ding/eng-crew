@@ -3,9 +3,9 @@
 > - **Status:** partly built
 > - **Applies to:** a tmux primary plus forge-less runner hosts
 > - **Current rules:** [tmux binding](tmux.md), [protocol](../protocol.md)
-> - **Built:** host inventory, `mdstack host check`, `mdstack hosts`, `mdstack host prepare`, the remote call and runner, [Forge-less hosts](#forge-less-hosts-remote-test-runner) and its [runbook](#runbook-add-a-runner-host), the [role-host runbook](#runbook-add-or-remove-a-role-host), the [host OS adapter](#host-os-adapters) dispatch and the `macos` and `linux` adapters, [placement](#placement) in `mdstack spawn` (a host other than the primary refuses until #345), proved on fakes (#204–#208, #349, #726–#729, #1358, #1359, #1363)
-> - **Design only:** remote role sessions (#345–#348) and the two-host dry run (#209), all open
-> - **Last checked:** 2026-11-08 at `0e80f1d`
+> - **Built:** host inventory, `mdstack host check`, `mdstack hosts`, `mdstack host prepare`, the remote call and runner, [Forge-less hosts](#forge-less-hosts-remote-test-runner) and its [runbook](#runbook-add-a-runner-host), the [role-host runbook](#runbook-add-or-remove-a-role-host), the [host OS adapter](#host-os-adapters) dispatch and the `macos` and `linux` adapters, [placement](#placement) in `mdstack spawn`, the [remote run lifecycle](#remote-run-lifecycle) (`spawn`, `kill`, `restart`, `down`), [remote attach and logs](#observability), [remote wakes and messages](#remote-wakes-and-messages) (`pull`, `send`, `host_scan_interval`), [partition handling](#failure-and-partition) (`unreachable`, reconcile, abandon with a tombstone), proved on fakes, and the pull through a disconnect and a placed run's partition on lab C (#204–#208, #345–#349, #726–#729, #1358, #1359, #1363)
+> - **Design only:** the two-host dry run (#209), open
+> - **Last checked:** 2026-11-08 at `e73ade4`
 
 How one coordinator runs role sessions on several hosts (laptops, a
 desktop, cloud VMs, a machine with a simulator or phone attached) joined by
@@ -264,12 +264,16 @@ Contract for [#208](https://github.com/mw-ding/eng-crew/issues/208)
 
 Built in `environments/terminal/remote/crew-remote.py` (#208): the entrypoint, the runner and the
 primary-side client `call()`. The crew key's `authorized_keys` line is
-`command="python3 <bundle>/environments/terminal/remote/crew-remote.py --root <root>",restrict <key>`,
+`command="python3 <bundle>/environments/terminal/remote/crew-remote.py --root <root>",restrict,pty <key>`,
 and the runner runs `crew-remote.py --root <root> runner` as the account's
-service. Only `version` is built; it reports the host's version and whether
-the runner is `up` (a fresh heartbeat and its tmux session) or `down`. Every
-other verb in the set is refused as not built until its issue lands, and the
-one-primary-per-run tag arrives with `spawn` (20.8).
+service. The runner makes the default tmux socket's directory itself: tmux
+does not make it for a socket named by path, and still exits 0. Built verbs: `version`, `check`, `prepare`, `seed`, `job`,
+`result`, `spawn`, `probe` and `kill` ([remote run lifecycle](#remote-run-lifecycle)), and
+`attach`, `capture` and `logs` ([observability](#observability)), and `pull` and
+`send` ([remote wakes and messages](#remote-wakes-and-messages)).
+`version` reports the host's version and whether the runner is `up` (a
+fresh heartbeat and its tmux session) or `down`. Every other verb in the set
+is refused as not built until its issue lands.
 
 The client keeps the primary's SSH config for auth only. It resolves the
 host with `ssh -G` and keeps the host name, user, port, identity and
@@ -296,6 +300,48 @@ Runs live under the runner's tmux session, never under the SSH session, so
 a dropped link ends only the call: the run keeps going, and the next call
 sees it. A runner that is down leaves `version` and the read-only verbs
 answering; only verbs that start runs need it.
+
+### Remote run lifecycle
+
+Built in #345 (`crew-remote.py` verbs, `environments/terminal/crew.d/_remote.py`
+on the primary), proved on fakes; the lab C and V runs are separate
+evidence.
+
+| Command | On the primary | On the host |
+|---|---|---|
+| `mdstack spawn` placed on a role host | Renders the brief as for a local run, its Worktree line naming the host's path, and keeps the run record (`remote`, `host`), claim and brief copy. A validate pass sends the PR's retained `-review.md` files at that head | `spawn` needs the runner up. It fetches the run's ref into the mirror without moving any mirror ref and refuses unless it is the given head (no stale base), adds the detached worktree `wt/<n>-<sha7>-<role>-<pass>`, writes the brief and review files under `state/<owner>__<repo>/`, then starts the engine's harness in a window of the runner's tmux session named `<owner>__<repo>/<window>`, so projects sharing a host never collide, with the argv built on the host from checked fields. The run record there keeps the pane identity and the spawning primary |
+| `mdstack kill` | Posts a `--discard` reason first, as for a local run, then removes its own record, claim and brief copy | `kill` stops the window, then runs the unlanded-work check (uncommitted paths, and commits on none of the default branch, the worktree's branch on origin or the run's PR heads). Unlanded work keeps the worktree and lists it; only `discard` removes it anyway |
+| `mdstack restart` | Asks the host's `probe` (`unreachable` refuses, as `ambiguous` does) | `kill` without discard: unlanded work relaunches in its own worktree (`spawn` with `relaunch`, the brief sent again); a clean worktree is removed, and the primary spawns again, so placement re-runs |
+| `mdstack down` | Stops every remote run through `kill`, even when the primary's session is gone; `--preserve` sends `keep` (stop only) | A run the host cannot stop or clear (unlanded work, unreachable) keeps its records, and `down` exits 1 naming it |
+
+A run on another primary is refused by `spawn`, `probe` and `kill` (one
+primary per run), and `kill` touches no window without its project's run
+record. A run on a role host counts toward its role's pool cap,
+reads `ambiguous` to the local probe (never restarted from here) and shows
+its host's probe in `mdstack status`. Its status lines, wakes and
+`mdstack send` are [below](#remote-wakes-and-messages); the watcher still
+queues no liveness wake for it. Attach and logs are built
+([observability](#observability), #348), and so is [partition
+handling](#failure-and-partition) (#347). The window gets no `CREW_PROJECT` there, so
+the brief's `mdstack ownership` and `action heartbeat` steps do not run
+there yet (a follow-up). Worktrees
+come from a `--mirror` clone, so they have no `refs/remotes/origin/*`; spawn
+turns `remote.origin.mirror` off so a run can push a refspec.
+
+### Remote wakes and messages
+
+Built in #346 (`pull` and `send` in `crew-remote.py`, `pull` and `send` in
+`crew.d/_remote.py`), proved on fakes and, for the pull through a network
+disconnect and a send's ack, on lab C (the `status-pull`
+[lab scenario](../campaign-harness.md#lab-runner-scenarios)).
+
+| Piece | Behaviour |
+|---|---|
+| `pull` (host, read-only) | For each named run of the calling primary, the complete status lines past the primary's offset (at most 256 KiB a call; the rest on the next pull), the file's size and the run's probe. The primary sends its mirror's size as the offset and the mirror's SHA-256; a digest that is not the host file's prefix (a rewritten, shorter or torn file) answers from offset 0 |
+| Status mirror (primary) | `status/<window>.status` is a byte copy of the host's file. Its own size is the offset, so an interrupted, repeated or concurrent pull and a primary restart neither lose nor double a line; a pull answered from 0 replaces the mirror, a removed mirror is rebuilt, and an empty or missing host file leaves it as it is. `status/.pull.lock` serializes pulls, so the watcher and `mdstack acked` never append the same lines twice |
+| `mdstack watch` | Every `host_scan_interval` (default 15 s), one `pull` per role host with runs, before the scan; pulled lines wake as local status lines do. A missing mirror keeps the scan's offsets until the next pull rebuilds it. Each host's last result, time and run probes are kept under `pulls` in `wake/watch-state.json`. One attempt per scan: the next scan is the retry |
+| `mdstack send` | A run on a role host gets the refs-only message through `send`, retried with its request id while unreachable: the host appends it to its `inbox/<window>.jsonl` and types the fixed nudge into the run's window, confirming the submit as on the primary (no key into a dialog; Enter retried only). An unreachable host fails after the bounded call (exit 1), never queued; a nudge not submitted exits 4 |
+| `mdstack acked`, `send --wait-ack` | Pull the run's status lines into the mirror before each check, then read `ack: <msg-id>` from the mirror |
 
 ### Host OS adapters
 
@@ -360,7 +406,7 @@ unchanged. Gaps use the [gap format](README.md#gap-declaration).
 
 | Capability | Across hosts | Gap |
 |---|---|---|
-| C1 Wake on event | Every `host_scan_interval` the watcher makes one `pull` per role host with a run: new status lines since the stored offsets (in `wake/watch-state.json`), plus probe results. It appends the lines to the primary's `status/<window>.status` mirror and wakes as for a local line. `mdstack poll` stays on the primary | C1 wake on event: partial, compensated by offset-based pulls that resume losslessly and the §6 step 3 sweep after a host returns; residual risk: wakes from an unreachable host wait until it returns or the owner abandons its runs, and remote wakes lag by up to one scan interval |
+| C1 Wake on event | Every `host_scan_interval` the watcher makes one `pull` per role host with a run: new status lines since each mirror's offset (its size, checked by a prefix digest), plus probe results kept in `wake/watch-state.json`. It appends the lines to the primary's `status/<window>.status` mirror and wakes as for a local line. `mdstack poll` stays on the primary | C1 wake on event: partial, compensated by offset-based pulls that resume losslessly and the §6 step 3 sweep after a host returns; residual risk: wakes from an unreachable host wait until it returns or the owner abandons its runs, and remote wakes lag by up to one scan interval |
 | C2 One consumer per event | Unchanged: one `mdstack poll` on the primary decides every consumer; role hosts never read GitHub events. Runs there still fetch, push and post to GitHub themselves | None |
 | C3 Messages by reference, proof of delivery | `mdstack send` calls `send`: the host appends the refs to its `inbox/<window>.jsonl` and types the fixed nudge locally. Proof is still `ack: <msg-id>`, read from the mirrored status file. An unreachable host makes `mdstack send` fail after the bounded timeout (exit 1), never queue silently; the coordinator then probes | None |
 | C4 Status protocol | Runs append to the host's status file; the mirror on the primary is a cache rebuilt by pulling from offset 0. The coordinator reads only primary files | None |
@@ -386,6 +432,20 @@ unchanged. Gaps use the [gap format](README.md#gap-declaration).
 `mdstack down` stops remote runs through `kill`. A run on an unreachable host
 keeps its records, and `mdstack down` exits 1 naming it, as it does for
 unlanded work.
+
+Built in #347 (`pull_hosts` in `crew.d/watch.py`, the outage and tombstone
+helpers in `crew.d/_remote.py`, `kill_run` in `crew.d/_shared.py`), proved
+on fakes and on lab C (the `partition`
+[lab scenario](../campaign-harness.md#lab-runner-scenarios), a run placed by
+`mdstack spawn`):
+
+| Piece | Behaviour |
+|---|---|
+| Outage | Only an `unreachable` pull counts; `refused` and `failed` reset the count but leave a reached outage's reconcile pending. The watcher keeps each host's `fails`, `since` and `escalated` under `pulls` in `wake/watch-state.json`; at 3 the host's runs are `unreachable` and `mdstack status` reads `unreachable since <time>` |
+| Escalate | One `unreachable` wake (`action: escalate`) per outage, once it is older than the watcher's `--stale`. It names the host and runs; nothing restarts or re-places them, and their claims stay |
+| Reconcile | The first `ok` pull after the outage (a `refused` or `failed` reply carries no probes, so it waits) queues a `reconcile` wake naming each run's probe, so the coordinator re-reads GitHub (§6 step 1). The pull itself brought the missed lines from the mirror's offset. Each run found `dead` or `missing` also gets the local `stale` wake (`action: restart`, or `escalate` after one restart), so `mdstack restart` runs on that host |
+| Abandon | `mdstack kill <window> --discard --reason "<why>"` whose host call is `unreachable` posts the reason, writes `tombstones/<window>.json` (host, reason, time and the run record) and drops the run record, claim, brief and mirror on the primary |
+| Tombstone | Each host scan tries a tombstoned run's `kill` once (not while its host is in an outage). A clean worktree goes with the tombstone; unlanded work stays on the host, and the tombstone is kept, marked `stopped` with the host's list. Either way a `reconcile` wake says which |
 
 ## Security model
 
@@ -419,9 +479,9 @@ Rules:
 | Command | Across hosts |
 |---|---|
 | `mdstack status` | Adds a `host` column; liveness may read `unreachable since <time>`; remote rows show the age of the last pull |
-| `mdstack attach <window>\|<role>` | For a remote window, `ssh -t` to the `attach` verb, which runs the host's `tmux attach-session`, read-only unless `--rw` |
-| `mdstack attach builders` | Includes remote builders through `capture`, refreshed every scan |
-| `mdstack logs` | The `logs` verb returns the step summary tail; never raw logs |
+| `mdstack attach <window>\|<role>` | For a remote window, `ssh -t` to the `attach` verb, which runs the host's `tmux attach-session`, read-only unless `--rw`. A role counts its remote runs too; a remote window needs no local session |
+| `mdstack attach builders` | Adds one pane per remote builder that prints its host's `capture` reply every 15 s; host_scan_interval (#346) replaces that interval |
+| `mdstack logs` | The `logs` verb returns the step summary tail (`-n`, at most 500 lines); never raw logs. `-f` is local only |
 | `mdstack hosts` | The inventory view above |
 
 ## Forge-less hosts: remote test runner
@@ -545,9 +605,11 @@ the host. Real-device proof of each step is logged in
    entrypoint:
 
    ```text
-   command="python3 <bundle>/environments/terminal/remote/crew-remote.py --root <root>",restrict <public-key>
+   command="python3 <bundle>/environments/terminal/remote/crew-remote.py --root <root>",restrict,pty <public-key>
    ```
 
+   `pty` lets the entrypoint take a TTY for the `attach` verb only; it
+   refuses every other verb with one ([#348 TTY contract](#remote-acceptance-criteria-and-the-local-lab)).
    Strict host-key checking never accepts a new key. Add the host's key to
    the primary's known-hosts once, after checking its fingerprint out of
    band.
@@ -611,8 +673,9 @@ Extends the [runner-host runbook](#runbook-add-a-runner-host) to a
 [role host](#terms): one with its own forge access (N5) that takes builder
 and reviewer runs (20.12 from [#1281](https://github.com/mw-ding/mdstack/issues/1281),
 [#1363](https://github.com/mw-ding/mdstack/issues/1363)). Every step is the
-owner's. Placement and remote role runs (#207, #345–#348) are not built, so
-a role host can reach `ready` today but no run is placed on it yet.
+owner's. Placement, the remote run lifecycle, attach and remote wakes and
+messages are built (#207, #345, #346, #348), and so is partition handling
+(#347).
 
 **Add a role host.** Runner-host steps 1 (overlay), 3 (crew key) and 5
 (smoke test) apply unchanged. The others change:
@@ -711,7 +774,10 @@ runner heartbeat. `activate` verifies the bundle and `SHA256SUMS` that
 digests and, for a dev tag, the exact source SHA. `authorize` writes the
 run's key as the only `authorized_keys` line, forced and `restrict`. No
 login, token, SSH agent or home is copied in. Container setup and teardown
-is lab item C.
+(#1357) is `crew-lab-docker.py` on the primary, described in the
+[campaign harness](../campaign-harness.md#lab-hosts-in-docker). Its runner
+scenarios and failure injection (#1360) are
+[`crew-lab-scenarios.py`](../campaign-harness.md#lab-runner-scenarios).
 
 **Lab base.** `LAB_BASE` comes from `base.Dockerfile` beside it (#1430):
 official `debian:bookworm-slim` pinned by its `linux/arm64` manifest
@@ -750,12 +816,18 @@ image, which is never pushed.
 run, not #209: it follows #345–#348 as a new #716 row on the real host
 ([#1281](https://github.com/mw-ding/mdstack/issues/1281) decision 4).
 
-**#348 TTY contract.** Today the key line is `restrict` (no TTY) and the
-client calls with `-T`. Attach adds `pty` to that one line
-(`restrict,pty`); the client passes `-t` for `attach` only and `-T` for
-every other verb. The entrypoint refuses `attach` without a TTY and every
-other verb with one, so the key still runs the closed verb set, never a
-shell.
+**#348 TTY contract** (built). The key line is `restrict,pty`; the client
+passes `-t` for `attach` only and `-T` for every other verb. With `-t`,
+stdin is the TTY, so the attach request travels in the SSH command as
+`crew-host <payload>`, its JSON base64url-encoded, and the entrypoint
+decodes and checks it as any other request. The host's tmux client runs
+with the `TERM` that `ssh` sends, so the host needs that terminal's
+terminfo entry. The entrypoint refuses
+`attach` without a TTY and every other verb with one, so the key still
+runs the closed verb set, never a shell. A read-only attach (tmux `-r`)
+can only detach or switch clients. `--rw` is the owner typing into the
+run's pane, which includes tmux's own command prompt, so it is as strong
+as a shell as the runner account on that host; it is never the default.
 
 ## Build issues
 

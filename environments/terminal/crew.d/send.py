@@ -3,7 +3,9 @@ submit confirmed (earlier nudges stacked in the composer cleared, `Enter` retrie
 key at all into a window showing a dialog, #315).
 The window lookup and inbox append share the queue lock with route's synthesizer check and reap.
 Solo findings/CI/merge-up refs are never delivered to builder windows. An `unblocked` to the coordinator that matches an
-earlier `blocked` message's refs is recorded in its inbox without a nudge (#578).
+earlier `blocked` message's refs is recorded in its inbox without a nudge (#578). A run on a role host gets the message
+through its host's `send` verb, which appends the inbox line and types the nudge there; an unreachable host fails
+after the bounded call (exit 1), never queued, and `--wait-ack` reads the ack from the pulled status mirror (#346).
 
 Usage: mdstack send WINDOW KIND REF... [--wait-ack SECS] --project FILE
 """
@@ -11,8 +13,8 @@ import json
 import os
 import re
 import time
-from crew_shared import (commands, COMPOSER, coordinator_window, dialog, NAMES, profile, queue_lock, tmux, wait_ack, runs,
-                         synthesizer_work, window_alias)
+from crew_shared import (commands, COMPOSER, coordinator_window, dialog, NAMES, profile, queue_lock, remote_run, tmux,
+                         wait_ack, runs, synthesizer_work, window_alias)
 
 
 # mdstack send (tmux.md C3): refs only. A ref is an issue/PR number, a full SHA, an https link or a path; no whitespace,
@@ -84,6 +86,23 @@ def nudge(session, index, text):
     return "`%s` is still in its composer after %d Enter retries" % (text, RETRIES)
 
 
+def remote_send(values, state, args, rec, msg):
+    """mdstack send to a run on a role host: one bounded call (retried with its request id while unreachable)."""
+    reply = remote_run.send(values, args.window, rec, msg)
+    if reply["result"] != "ok":
+        print("crew: send to %s on %s failed: %s; not delivered%s" % (
+            args.window, rec["host"], reply["result"] + ": " + (reply.get("reason") or reply.get("error") or ""),
+            "; probe the run" if reply["result"] == "unreachable" else ""))
+        return 1
+    if reply.get("nudge"):
+        print("crew: nudge not submitted: %s to %s on %s: %s; the message is in its inbox there; treat %s as ambiguous"
+              % (msg["id"], args.window, rec["host"], reply["nudge"], args.window))
+        return 4
+    print("crew: sent %s to %s on %s" % (msg["id"], args.window, rec["host"]))
+    return wait_ack(state, args.window, msg["id"], args.wait_ack, remote_run.refresh(values, state, args.window, rec)) \
+        if args.wait_ack is not None else 0
+
+
 def register(sub):
     p = sub.add_parser("send")
     p.add_argument("window")
@@ -115,6 +134,9 @@ def run(args):
     if len(line.encode()) > MAX_LINE:
         print("crew: refusing send: message is %d bytes, over %d; send fewer refs" % (len(line.encode()), MAX_LINE))
         return 2
+    rec = dict(runs(state)).get(args.window, {})
+    if remote_run.host_of(rec):
+        return remote_send(values, state, args, rec, msg)
     with queue_lock(state):
         index = dict((n, i) for i, n in tmux.list_windows(session)).get(args.window) if tmux.has_session(session) else None
         if index is None:

@@ -6,6 +6,7 @@ No network or real host: a fake `ssh` on PATH either replies from the environmen
 locally (a simulated host), and a fake `tmux` holds the runner's session.
 """
 import base64
+import hashlib
 import importlib.util
 import io
 import json
@@ -23,7 +24,7 @@ import uuid
 import warnings
 from unittest import mock
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # dev/tests/: crew_testlib
-from crew_testlib import FAKE_TMUX
+from crew_testlib import FAKE_COMPOSER, FAKE_TMUX
 
 TESTS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # dev/tests/
 SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(TESTS)), "scripts")
@@ -35,16 +36,19 @@ REAL_SSH = shutil.which("ssh")
 
 # Fake ssh: `-G` prints a resolved config with env settings the client must drop. Otherwise it logs argv and the
 # request, then replies from FAKE_SSH_MODE: `host` runs the real entrypoint (the simulated host's forced command),
-# `sleep` hangs, otherwise prints FAKE_SSH_REPLY and exits FAKE_SSH_EXIT.
+# `sleep` hangs, otherwise prints FAKE_SSH_REPLY and exits FAKE_SSH_EXIT. With `-t` (attach) stdin stays the caller's
+# terminal: the request is the SSH command's payload and the host runs with the caller's stdin.
 FAKE_SSH = """#!/usr/bin/env python3
-import json, os, subprocess, sys, time
+import base64, json, os, subprocess, sys, time
 if "-G" in sys.argv:
     print("user crew\\nhostname " + sys.argv[-1] + ".overlay\\nport 2222\\nidentityfile ~/.ssh/crew_key")
     print("sendenv LANG\\nsetenv CREW_SECRET=1\\nforwardagent yes\\nproxyjump jump")
     sys.exit(int(os.environ.get("FAKE_SSH_G_EXIT", "0")))
-data = sys.stdin.read()
+tty = "-t" in sys.argv
+data = None if tty else sys.stdin.read()
+request = json.loads(base64.urlsafe_b64decode(sys.argv[-1].split(" ", 1)[1])) if tty else json.loads(data)
 with open(os.environ["FAKE_SSH_LOG"], "a") as f:
-    f.write(json.dumps({"argv": sys.argv[1:], "request": json.loads(data)}) + "\\n")
+    f.write(json.dumps({"argv": sys.argv[1:], "request": request}) + "\\n")
 mode = os.environ.get("FAKE_SSH_MODE", "")
 if mode == "host":
     env = {k: v for k, v in os.environ.items() if k == "PATH" or k.startswith("FAKE_TMUX_")}
@@ -116,7 +120,6 @@ class Entrypoint(Base):
             (self.request("logs", log_path="link/outside"), "path outside root"),
             (self.request("logs", path=["a"]), "path outside root"),
             (self.request("spawn"), "needs a request id"), (self.request("spawn", request_id="../x"), "needs a request id"),
-            (self.request("probe", path="wt/run", root=self.root), "verb probe not built"),
         ]
         for request, reason in cases:
             with self.subTest(request=request):
@@ -196,7 +199,7 @@ class Client(Base):
                                                                 os=remote.UNAMES.get(platform.system(), platform.system().lower())))
         subprocess.run([sys.executable, SCRIPT, "--root", self.root, "runner", "--once"], check=True)
         self.assertEqual(remote.call("host-b", "version")["runner"], "up")
-        self.assertIn("not built", remote.call("host-b", "spawn")["reason"])
+        self.assertIn("pull needs windows", remote.call("host-b", "pull")["reason"])  # every verb is built (#346)
         self.assertIn("path outside root", remote.call("host-b", "logs", path="../x")["reason"])
 
 
@@ -867,9 +870,315 @@ class RealSshConfig(Base):
             self.assertIn(line, lines)
 
 
+class RunBase(Mirror):
+    """A prepared host with its runner up and one live pane process for a spawned run."""
+    def setUp(self):
+        super().setUp()
+        self.assertEqual(remote.call("host-b", "prepare", project="acme__widgets", root=self.root)["result"], "ok")
+        remote.runner(self.root, once=True)
+        self.pane()
+        self.sha = self.head(self.origin)
+        self.wt = os.path.join(self.root, "wt", "7-%s-builder-build" % self.sha[:7])
+        self.state = os.path.join(self.root, "state", "acme__widgets")
+
+    def pane(self):
+        """A live pane process whose group stop() can end: orphaned, so init reaps it."""
+        out = subprocess.run(["sh", "-c", "sleep 60 >/dev/null 2>&1 & echo $!"], capture_output=True, text=True,
+                             start_new_session=True).stdout.strip()
+        self.pid = int(out)
+        os.environ["FAKE_TMUX_PANE"] = "%%1 %d 0 0 /dev/ttys001 claude" % self.pid
+        self.addCleanup(lambda pid=self.pid: subprocess.run(["kill", "-9", str(pid)], capture_output=True))
+
+    def spawn(self, request_id=None, **fields):
+        request = dict(project="acme__widgets", window="ben-7", primary="host-a", role="builder",
+                       engine="claude-code", model="opus", effort="high", permission_mode="bypass",
+                       identity="acme-bot", brief="# Brief\n", worktree_path="wt/" + os.path.basename(self.wt),
+                       sha=self.sha, ref="refs/heads/main", verdicts={"pr9-%s-r1-review.md" % self.sha[:7]: "review\n"})
+        return remote.call("host-b", "spawn", request_id=request_id, **dict(request, **fields))
+
+    def kill(self, **fields):
+        return remote.call("host-b", "kill", **dict(dict(project="acme__widgets", window="ben-7", primary="host-a",
+                                                         refs=["refs/heads/main"]), **fields))
+
+    def probe(self, **fields):
+        return remote.call("host-b", "probe", **dict(dict(project="acme__widgets", window="ben-7", primary="host-a"),
+                                                     **fields))
+
+    def windows(self):
+        return self.load(os.environ["FAKE_TMUX_STATE"])["crew-host"]
+
+
+class RunLifecycle(RunBase):
+    """#345: spawn, probe and kill a role run in the runner's session; the worktree guards hold on the host."""
+    def test_spawn_starts_in_the_runner_session_once(self):
+        reply = self.spawn("spawn-1")
+        self.assertEqual((reply["result"], reply["worktree"], reply["pane_pid"]), ("ok", self.wt, str(self.pid)))
+        self.assertEqual(self.windows(), {"0": "runner", "1": "acme__widgets/ben-7"})
+        self.assertEqual(self.spawn("spawn-1"), reply)  # a retried request id never opens a second window
+        self.assertEqual(self.windows(), {"0": "runner", "1": "acme__widgets/ben-7"})
+        self.assertEqual(self.spawn()["reason"], "run ben-7 exists")
+        self.assertEqual(subprocess.run(["git", "-C", self.wt, "rev-parse", "HEAD"], capture_output=True, text=True)
+                         .stdout.strip(), self.sha)
+        with open(os.path.join(self.state, "runs", "ben-7.brief.md")) as f:
+            self.assertEqual(f.read(), "# Brief\n")
+        with open(os.path.join(self.state, "verdicts", "pr9-%s-r1-review.md" % self.sha[:7])) as f:
+            self.assertEqual(f.read(), "review\n")
+        with open(os.environ["FAKE_TMUX_LOG"]) as f:
+            (launch,) = [json.loads(line) for line in f if '"new-window"' in line]
+        env = dict(a.split("=", 1) for a in launch if a.startswith("CREW_"))
+        self.assertEqual((env["CREW_ID"], env["CREW_STATE"], env["CREW_IDENTITY"]), ("ben-7", self.state, "acme-bot"))
+        self.assertTrue(launch[-1].startswith('export GH_TOKEN="$(gh auth token --user "$CREW_IDENTITY")"; exec claude '))
+        rec = self.load(os.path.join(self.state, "runs", "ben-7.json"))
+        self.assertEqual((rec["primary"], rec["worktree"], rec["pane_id"]), ("host-a", self.wt, "%1"))
+
+    def test_spawn_refusals_start_nothing(self):
+        for fields, reason in ((dict(sha="0" * 40), "stale spawn: refs/heads/main is not " + "0" * 40),
+                               (dict(engine="nope"), "engine or permission_mode not launchable on this host"),
+                               (dict(permission_mode="ask"), "engine or permission_mode not launchable on this host"),
+                               (dict(worktree_path="mirrors/x"), "spawn needs worktree_path=wt/<name>, sha, ref and verdicts"),
+                               (dict(ref="--upload-pack=x"), "spawn needs worktree_path=wt/<name>, sha, ref and verdicts"),
+                               (dict(verdicts={"../x.md": ""}), "spawn needs worktree_path=wt/<name>, sha, ref and verdicts"),
+                               (dict(model="a b"), "spawn needs role, model, effort, identity and brief"),
+                               (dict(relaunch=True), "no run ben-7 to relaunch")):
+            self.assertEqual(self.spawn(**fields), dict(result="refused", reason=reason))
+        self.assertEqual(self.spawn(worktree_path="../x")["reason"], "path outside root")
+        os.remove(os.path.join(self.root, "runner.json"))
+        self.assertEqual(self.spawn()["reason"], "runner down")
+        self.assertEqual(self.windows(), {"0": "runner"})
+        self.assertFalse(os.path.exists(self.wt))
+
+    def test_probe_classes(self):
+        self.assertEqual(self.probe()["liveness"], "missing")
+        self.spawn()
+        self.assertEqual(self.probe()["liveness"], "alive")
+        self.assertEqual(self.probe(primary="host-c")["reason"], "probe run ben-7 belongs to primary host-a")
+        tmux = self.load(os.environ["FAKE_TMUX_STATE"])
+        tmux["_panes"]["crew-host:1"] = "%%1 %d 1 0 /dev/ttys001 claude" % self.pid
+        with open(os.environ["FAKE_TMUX_STATE"], "w") as f:
+            json.dump(tmux, f)
+        self.assertEqual(self.probe()["liveness"], "dead")
+        tmux["_panes"]["crew-host:1"] = "%%2 %d 0 0 /dev/ttys001 claude" % self.pid
+        with open(os.environ["FAKE_TMUX_STATE"], "w") as f:
+            json.dump(tmux, f)
+        self.assertEqual(self.probe()["liveness"], "missing")  # same name, another run
+
+    def test_kill_keeps_unlanded_work_then_discards_on_request(self):
+        self.spawn()
+        with open(os.path.join(self.wt, "a.txt"), "w") as f:
+            f.write("x\n")
+        self.assertEqual(self.kill(primary="host-c")["reason"], "kill run ben-7 belongs to primary host-a")
+        reply = self.kill()
+        self.assertEqual(reply, dict(result="ok", unlanded=["uncommitted: ?? a.txt"], removed=False))
+        self.assertEqual(self.windows(), {"0": "runner"})  # the window stops either way
+        self.assertTrue(os.path.isdir(self.wt))
+        self.assertTrue(os.path.exists(os.path.join(self.state, "runs", "ben-7.json")))
+        self.pane()
+        reply = self.spawn(relaunch=True, brief="# Brief 2\n")  # restart in place: same worktree, fresh brief
+        self.assertEqual((reply["result"], reply["worktree"]), ("ok", self.wt))
+        self.assertEqual(self.windows(), {"0": "runner", "1": "acme__widgets/ben-7"})
+        self.assertTrue(os.path.exists(os.path.join(self.wt, "a.txt")))
+        self.assertEqual(self.kill(keep=True), dict(result="ok", unlanded=[], removed=False))
+        self.assertTrue(os.path.isdir(self.wt))
+        self.assertEqual(self.kill(discard=True), dict(result="ok", unlanded=[], removed=True))
+        self.assertFalse(os.path.exists(self.wt))
+        self.assertEqual(os.listdir(os.path.join(self.state, "runs")), [])
+        self.assertEqual(self.kill(), dict(result="ok", unlanded=[], removed=False))  # already gone
+
+    def test_kill_removes_landed_work_and_lists_unpushed_commits(self):
+        self.spawn()
+        subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid", "-C", self.wt, "commit",
+                        "-q", "--allow-empty", "-m", "local"], check=True)
+        reply = self.kill()
+        self.assertEqual(len(reply["unlanded"]), 1)
+        self.assertTrue(reply["unlanded"][0].startswith("commit: ") and reply["unlanded"][0].endswith(" local"))
+        subprocess.run(["git", "-C", self.wt, "push", "-q", "origin", "HEAD:refs/heads/main"], check=True,
+                       capture_output=True)
+        self.assertEqual(self.kill(), dict(result="ok", unlanded=[], removed=True))
+        self.assertFalse(os.path.exists(self.wt))
+        self.assertEqual(self.kill(refs=["main"])["reason"], "kill needs refs, the default branch first")
+
+    def test_kill_never_touches_another_projects_run(self):  # review r1 P1: one runner session, many projects
+        self.spawn()
+        self.assertEqual(self.kill(project="other__project", primary="host-c"),
+                         dict(result="ok", unlanded=[], removed=False))
+        self.assertEqual(self.windows(), {"0": "runner", "1": "acme__widgets/ben-7"})
+        self.assertEqual(self.probe()["liveness"], "alive")
+        self.assertEqual(self.probe(project="other__project")["liveness"], "missing")
+
+
+class PullSend(RunLifecycle):
+    """#346: pull returns status lines by offset with a prefix digest; send appends the inbox line and nudges once."""
+    def status(self, text, mode="a"):
+        with open(os.path.join(self.state, "status", "ben-7.status"), mode) as f:
+            f.write(text)
+
+    def pull(self, data=b"", **fields):
+        at = dict(offset=len(data), digest=hashlib.sha256(data).hexdigest())
+        return remote.call("host-b", "pull", **dict(dict(project="acme__widgets", windows={"ben-7": at},
+                                                         primary="host-a"), **fields))
+
+    def chunk(self, reply):
+        got = reply["windows"]["ben-7"]
+        return got["offset"], base64.b64decode(got["data"])
+
+    def test_pull_by_offset_resumes_and_resets_on_a_rewritten_file(self):
+        self.spawn()
+        self.status("ack: a\nstep: half")  # a line still being written waits for the next pull
+        reply = self.pull()
+        self.assertEqual((self.chunk(reply), reply["windows"]["ben-7"]["liveness"]), ((0, b"ack: a\n"), "alive"))
+        self.assertEqual(self.chunk(self.pull(b"ack: a\n")), (7, b""))  # a repeated pull adds nothing
+        self.status(" done\nstep: 2\n")
+        self.assertEqual(self.chunk(self.pull(b"ack: a\n")), (7, b"step: half done\nstep: 2\n"))
+        self.assertEqual(self.chunk(self.pull(b"ack: X\n")), (0, b"ack: a\nstep: half done\nstep: 2\n"))  # torn mirror
+        self.status("new run\n", "w")  # a shorter, rewritten file: from 0
+        self.assertEqual(self.chunk(self.pull(b"ack: a\nstep: half done\n")), (0, b"new run\n"))
+        self.assertEqual(self.pull(primary="host-c")["reason"], "pull run ben-7 belongs to primary host-a")
+        self.assertEqual(self.pull(windows={"ben-7": {"offset": -1, "digest": ""}})["reason"],
+                         "pull needs an offset and digest for ben-7")
+        gone = self.pull(windows={"ben-8": {"offset": 0, "digest": hashlib.sha256(b"").hexdigest()}})
+        self.assertEqual(gone["windows"]["ben-8"], dict(offset=0, data="", size=0, liveness="missing"))
+
+    def send(self, request_id=None, **fields):
+        msg = dict(id="20261108T120000Z-abc123", kind="fix", refs=["#9", "a" * 40], **{"from": "ash"},
+                   ts="2026-11-08T12:00:00Z")
+        return remote.call("host-b", "send", request_id=request_id, **dict(dict(
+            project="acme__widgets", window="ben-7", primary="host-a", message=msg), **fields))
+
+    def test_send_appends_the_inbox_line_and_types_the_nudge_once(self):
+        self.assertEqual(self.send()["reason"], "no window ben-7 on this host")
+        self.spawn()
+        self.assertEqual(self.send("send-1"), dict(result="ok", nudge=None))
+        self.assertEqual(self.send("send-1"), dict(result="ok", nudge=None))  # a retried request id acts once
+        with open(os.path.join(self.state, "inbox", "ben-7.jsonl")) as f:
+            (line,) = [json.loads(x) for x in f]
+        self.assertEqual((line["id"], line["refs"]), ("20261108T120000Z-abc123", ["#9", "a" * 40]))
+        with open(os.environ["FAKE_TMUX_LOG"]) as f:
+            typed = [json.loads(x) for x in f if '"send-keys"' in x]
+        self.assertEqual(typed[0], ["send-keys", "-t", "=crew-host:1", "-l", "inbox: 20261108T120000Z-abc123"])
+        self.assertEqual(typed[1:], [["send-keys", "-t", "=crew-host:1", "Enter"]])
+        for message in (dict(id="x"), dict(id="20261108T120000Z-abc123", kind="fix", refs=["--- a/x"], ts="t",
+                                           **{"from": "ash"})):
+            self.assertEqual(self.send(message=message)["reason"],
+                             "send needs a refs-only message {id, kind, refs, from, ts}")
+        self.assertEqual(self.send(primary="host-c")["reason"], "send run ben-7 belongs to primary host-a")
+
+    def composer(self, enters):
+        """The host's tmux behind send.py's composer model (env renamed: the fake ssh passes FAKE_TMUX_* only)."""
+        os.rename(os.path.join(self.bin, "tmux"), os.path.join(self.bin, "tmux-base"))
+        with open(os.path.join(self.bin, "tmux"), "w") as f:
+            f.write(FAKE_COMPOSER.replace('"FAKE_COMPOSER"', '"FAKE_TMUX_COMPOSER"'))
+        os.chmod(os.path.join(self.bin, "tmux"), 0o755)
+        path = os.path.join(self.tmp, "composer.json")
+        os.environ["FAKE_TMUX_COMPOSER"] = path
+        with open(path, "w") as f:
+            json.dump({"history": [], "draft": [], "enters": enters}, f)
+        return lambda: self.load(path)
+
+    def enters(self):
+        with open(os.environ["FAKE_TMUX_LOG"]) as f:
+            return sum(1 for x in f if json.loads(x)[-1:] == ["Enter"])
+
+    def test_send_retries_an_enter_swallowed_as_a_newline(self):  # review r1: the draft spans the indented row
+        self.spawn()
+        model = self.composer(["newline", "submit"])
+        self.assertEqual(self.send("send-2"), dict(result="ok", nudge=None))
+        self.assertEqual((model()["draft"], model()["history"], self.enters()),
+                         ([], ["› inbox: 20261108T120000Z-abc123", "  "], 2))
+
+    def test_send_reports_a_nudge_that_never_submits(self):
+        self.spawn()
+        model = self.composer(["newline"])
+        self.assertEqual(self.send("send-3"), dict(result="ok", nudge="`inbox: 20261108T120000Z-abc123` is still in "
+                                                                        "its composer after 3 Enter retries"))
+        self.assertEqual((model()["history"], self.enters()), ([], 4))
+
+
+class Observe(RunBase):
+    """#348: attach to a run's pane through a TTY only, capture its screen and tail its step summary."""
+    def setUp(self):
+        super().setUp()
+        self.spawn()
+        self.scope = dict(project="acme__widgets", window="ben-7", primary="host-a")
+
+    def attaches(self):
+        with open(os.environ["FAKE_TMUX_LOG"]) as f:
+            return [args for args in map(json.loads, f) if args[0] == "attach-session"]
+
+    def test_only_attach_takes_a_tty(self):
+        self.assertEqual(remote.handle(self.request("attach", **self.scope), self.root),
+                         dict(result="refused", reason="attach needs a TTY"))
+        self.assertEqual(remote.handle(self.request("probe", **self.scope), self.root, tty=True),
+                         dict(result="refused", reason="only attach takes a TTY"))
+        self.assertEqual(self.attaches(), [])
+
+    def test_attach_runs_tmux_on_the_runs_pane_read_only_unless_rw(self):
+        self.assertEqual(remote.handle(self.request("attach", **self.scope), self.root, tty=True),
+                         dict(result="ok", exit=0))
+        remote.handle(self.request("attach", rw=True, **self.scope), self.root, tty=True)
+        self.assertEqual(self.attaches(), [["attach-session", "-r", "-t", "=crew-host:1"],
+                                           ["attach-session", "-t", "=crew-host:1"]])
+        for fields, reason in ((dict(primary="host-c"), "attach run ben-7 belongs to primary host-a"),
+                               (dict(window="ben-8"), "no run ben-8 on this host"),
+                               (dict(project="other__project"), "no run ben-7 on this host")):
+            self.assertEqual(remote.handle(self.request("attach", **dict(self.scope, **fields)), self.root, tty=True),
+                             dict(result="refused", reason=reason))
+        self.assertEqual(len(self.attaches()), 2)
+
+    def test_attach_over_ssh_carries_the_request_in_the_command(self):
+        code = remote.attach("host-b", **self.scope)  # the test's stdin is no TTY, so the host refuses
+        self.assertEqual(code, 1)
+        (call,) = [c for c in self.calls() if c["request"]["verb"] == "attach"]
+        self.assertIn("-t", call["argv"])
+        self.assertNotIn("-T", call["argv"])
+        self.assertEqual((call["argv"][-2], call["argv"][-1].split(" ")[0]), ("host-b", "crew-host"))
+        self.assertEqual(call["request"], dict(self.scope, verb="attach", version=remote.version()))
+        self.assertEqual(self.attaches(), [])
+        payload = base64.urlsafe_b64encode(json.dumps(self.request("attach", **self.scope)).encode()).decode()
+        env = dict(os.environ, SSH_ORIGINAL_COMMAND="crew-host " + payload)
+        primary, secondary = os.openpty()
+        self.addCleanup(os.close, primary)
+        with os.fdopen(secondary) as tty:  # sshd's pty: the entrypoint attaches and exits with tmux's code
+            r = subprocess.run([sys.executable, SCRIPT, "--root", self.root], stdin=tty, capture_output=True,
+                               text=True, env=env)
+        self.assertEqual((r.returncode, r.stdout), (0, ""))
+        self.assertEqual(self.attaches(), [["attach-session", "-r", "-t", "=crew-host:1"]])
+        r = subprocess.run([sys.executable, SCRIPT, "--root", self.root], stdin=subprocess.DEVNULL,
+                           capture_output=True, text=True, env=env)
+        self.assertEqual((r.returncode, json.loads(r.stdout)), (1, dict(result="refused", reason="attach needs a TTY")))
+
+    def test_capture_returns_the_pane_screen(self):
+        os.environ["FAKE_TMUX_SCREEN"] = "line 1\nline 2\n\n\n"
+        self.assertEqual(remote.call("host-b", "capture", **self.scope), dict(result="ok", text="line 1\nline 2"))
+        self.assertEqual(remote.call("host-b", "capture", **dict(self.scope, window="ben-8")),
+                         dict(result="refused", reason="no run ben-8 on this host"))
+
+    def test_logs_tails_the_newest_step_summary_only(self):
+        self.assertEqual(remote.call("host-b", "logs", **self.scope), dict(result="ok", path=None, lines=[]))
+        for rel, count, mtime in (("issue-7/build", 3, 1000), ("pr-9/fix-1", 30, 2000)):
+            path = os.path.join(self.wt, ".crew", "runs", rel, "summary.md")
+            os.makedirs(os.path.join(os.path.dirname(path), "steps"))
+            with open(path, "w") as f:
+                f.write("".join("%s step %d\n" % (rel, i) for i in range(count)))
+            os.utime(path, (mtime, mtime))
+            with open(os.path.join(os.path.dirname(path), "steps", "build.log"), "w") as f:
+                f.write("RAW\n")
+        reply = remote.call("host-b", "logs", lines=2, **self.scope)
+        self.assertEqual(reply, dict(result="ok", path=os.path.relpath(path, self.root),
+                                     lines=["pr-9/fix-1 step 28", "pr-9/fix-1 step 29"]))
+        self.assertEqual(len(remote.call("host-b", "logs", **self.scope)["lines"]), 20)
+        for lines in (0, 501, True, "5"):
+            self.assertEqual(remote.call("host-b", "logs", lines=lines, **self.scope),
+                             dict(result="refused", reason="lines must be 1 to 500"))
+        self.assertEqual(remote.call("host-b", "logs", **dict(self.scope, primary="host-c"))["reason"],
+                         "logs run ben-7 belongs to primary host-a")
+
+
 class Runner(Base):
     def test_runner_owns_one_session_and_beats(self):
+        os.environ["TMUX_TMPDIR"] = os.path.join(self.tmp, "tmux-tmp")
         remote.runner(self.root, once=True)
+        socket_dir = os.path.join(self.tmp, "tmux-tmp", "tmux-%d" % os.getuid())  # -S never makes it (#348 lab)
+        self.assertEqual(os.stat(socket_dir).st_mode & 0o777, 0o700)
         remote.runner(self.root, once=True)
         with open(os.environ["FAKE_TMUX_LOG"]) as f:
             log = [json.loads(line) for line in f]

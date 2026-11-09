@@ -22,6 +22,7 @@ Role scratch files (JSON, drafts, logs) go in the worktree's `.crew/`; only
 `$CREW_ID.body.md` goes in `$CREW_STATE/runs/` (a stray `runs/*.json` crashes
 `mdstack watch`).
 <include:policy/shared/no-downloads.md>
+<include:policy/shared/tmux-kill.md>
 
 Build pass:
 

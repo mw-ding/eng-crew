@@ -52,6 +52,7 @@ tmux = SessionBackend()
 proc = load("crew_proc", "environments/terminal/crew-proc.py")  # OS process helpers every session backend shares
 
 
+remote_run = load("crew_remote_run", "environments/terminal/crew.d/_remote.py")  # runs on a role host (#345)
 ownership_module = load("crew_ownership", "environments/terminal/crew.d/_ownership.py")
 ownership, require_ownership = ownership_module.ownership, ownership_module.require_ownership
 
@@ -323,7 +324,9 @@ def retain_synthesizer(state, name):
 
 
 def kill_run(values, session, state, name, reason=None):
-    """Stop the window, then remove only this run's worktree (build output inside it) and state files.
+    """Stop the window, then remove only this run's worktree (build output inside it) and state files; a run on a
+    role host is stopped and checked there, and an unreachable host keeps everything unless a discard reason is
+    recorded: the owner's abandon then leaves a tombstone for the host's return and drops the records here (#347).
 
     Removal needs the window's processes gone and the work landed, or a discard reason recorded on the item;
     otherwise keep the worktree and state files and return the blocking items."""
@@ -350,7 +353,25 @@ def kill_run(values, session, state, name, reason=None):
         retain_synthesizer(state, name)
         commands()["land-lock"].cleanup(state)
     wt = rec.get("worktree")
-    if wt and os.path.dirname(os.path.realpath(wt)) == os.path.realpath(values["paths.worktree_root"]):
+    if remote_run.host_of(rec):  # the host stops the run and keeps or removes the worktree there
+        reply = remote_run.kill(values, name, rec)
+        if reply["result"] == "ok" and reply["unlanded"] and reason is not None and \
+                record_discard(values, rec, name, reason, reply["unlanded"]):
+            reply = remote_run.kill(values, name, rec, discard=True)
+        items = reply["unlanded"] if reply["result"] == "ok" else ["%s: %s" % (reply["result"], reply.get(
+            "reason") or reply.get("error"))]
+        abandon = ["unreachable: %s; tombstoned, stopped when it returns, unlanded work kept" % rec["host"]]
+        if reply["result"] == "unreachable" and reason is not None and record_discard(values, rec, name, reason, abandon):
+            remote_run.tombstone(state, name, rec, reason)  # the owner's abandon (#347): the host stops it on return
+            print("crew: %s on %s is unreachable: tombstone written; its records and claim are dropped here" % (
+                name, rec["host"]))
+            items = []
+        if items:
+            print("crew: refusing to remove %s on %s: %s:\n  %s" % (
+                wt, rec["host"], "the host call failed" if reply["result"] != "ok" else "unlanded work in %s%s" % (
+                    name, "" if reason is None else " (discard reason not recorded on the item)"), "\n  ".join(items)))
+            return items
+    elif wt and os.path.dirname(os.path.realpath(wt)) == os.path.realpath(values["paths.worktree_root"]):
         try:
             items = unlanded(values, rec, wt) if os.path.isdir(wt) else []
         except RuntimeError as e:
@@ -446,13 +467,18 @@ def acked(state, window, msg_id):
         return False
 
 
-def wait_ack(state, window, msg_id, secs):
+def wait_ack(state, window, msg_id, secs, refresh=None):
+    """Wait up to secs for the ack; `refresh` (a remote run's pull into its mirror) runs before each check."""
     deadline = time.monotonic() + secs
-    while not acked(state, window, msg_id):
+    while True:
+        if refresh:
+            refresh()
+        if acked(state, window, msg_id):
+            break
         if time.monotonic() >= deadline:
             print("crew: no ack: %s from %s after %ss" % (msg_id, window, secs))
             return 3
-        time.sleep(0.2)
+        time.sleep(1 if refresh else 0.2)
     print("crew: acked %s by %s" % (msg_id, window))
     return 0
 
@@ -543,9 +569,11 @@ def pool_cap(values, role, state):
 
 
 def over_cap(values, role, windows, state=None):
-    """Busy builders count toward their cap; every window still occupies a physical band slot."""
+    """Busy builders count toward their cap; every window still occupies a physical band slot. A run on a role host
+    has no window here but counts toward the cap (#345)."""
     used = [name for name, i in windows.items() if BANDS[role][0] <= i <= BANDS[role][1]]
     busy = [name for name in used if role != "builder" or not state or idle_builder(state, name) is None]
+    busy += [name for name, rec in runs(state) if rec["role"] == role and remote_run.host_of(rec)] if state else []
     return len(used) >= BANDS[role][1] - BANDS[role][0] + 1 or role in CAPS and len(busy) >= pool_cap(values, role, state)
 
 
@@ -594,7 +622,10 @@ def heartbeat(state, name):
 
 
 def probe(session, name, rec, windows):
-    """C5 liveness from tmux, never from the agent: alive | dead | missing | ambiguous (tmux.md Q7)."""
+    """C5 liveness from tmux, never from the agent: alive | dead | missing | ambiguous (tmux.md Q7). A run on a role host
+    has no pane here: ambiguous, which never restarts; its host answers remote_run.probe (#345)."""
+    if remote_run.host_of(rec):
+        return "ambiguous"
     if windows.get(name) != rec.get("index"):
         return "missing"
     p = tmux.pane(session, rec["index"])
