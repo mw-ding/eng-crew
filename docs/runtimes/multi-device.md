@@ -441,9 +441,9 @@ on fakes and on lab C (the `partition`
 
 | Piece | Behaviour |
 |---|---|
-| Outage | Only an `unreachable` pull counts; `refused` and `failed` reset the count. The watcher keeps each host's `fails`, `since` and `escalated` under `pulls` in `wake/watch-state.json`; at 3 the host's runs are `unreachable` and `mdstack status` reads `unreachable since <time>` |
+| Outage | Only an `unreachable` pull counts; `refused` and `failed` reset the count but leave a reached outage's reconcile pending. The watcher keeps each host's `fails`, `since` and `escalated` under `pulls` in `wake/watch-state.json`; at 3 the host's runs are `unreachable` and `mdstack status` reads `unreachable since <time>` |
 | Escalate | One `unreachable` wake (`action: escalate`) per outage, once it is older than the watcher's `--stale`. It names the host and runs; nothing restarts or re-places them, and their claims stay |
-| Reconcile | The first pull that answers again queues a `reconcile` wake naming each run's probe, so the coordinator re-reads GitHub (§6 step 1). The pull itself brought the missed lines from the mirror's offset. Each run found `dead` or `missing` also gets the local `stale` wake (`action: restart`, or `escalate` after one restart), so `mdstack restart` runs on that host |
+| Reconcile | The first `ok` pull after the outage (a `refused` or `failed` reply carries no probes, so it waits) queues a `reconcile` wake naming each run's probe, so the coordinator re-reads GitHub (§6 step 1). The pull itself brought the missed lines from the mirror's offset. Each run found `dead` or `missing` also gets the local `stale` wake (`action: restart`, or `escalate` after one restart), so `mdstack restart` runs on that host |
 | Abandon | `mdstack kill <window> --discard --reason "<why>"` whose host call is `unreachable` posts the reason, writes `tombstones/<window>.json` (host, reason, time and the run record) and drops the run record, claim, brief and mirror on the primary |
 | Tombstone | Each host scan tries a tombstoned run's `kill` once (not while its host is in an outage). A clean worktree goes with the tombstone; unlanded work stays on the host, and the tombstone is kept, marked `stopped` with the host's list. Either way a `reconcile` wake says which |
 

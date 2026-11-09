@@ -100,8 +100,8 @@ def run_identity(rec):
 def pull_hosts(values, state, seen, now, stale):
     """One `pull` per role host with runs; each host's last result, time and run probes under seen["pulls"]. Pulls
     failing in a row are an outage (#347): its runs are unreachable, keep their claims and are never restarted or
-    re-placed; past stale, one escalate wake per outage. The first answer after it reconciles: the pull brings the
-    missed lines and each run's probe, a dead or missing run wakes for tmux's restart rules on that host, and the
+    re-placed; past stale, one escalate wake per outage. The first ok pull after it reconciles (a refused or failed
+    reply keeps it pending): the pull brings the missed lines and each run's probe, a dead or missing run wakes for tmux's restart rules on that host, and the
     coordinator re-reads GitHub. A tombstoned run is stopped on its host once the host answers. Returns the wakes."""
     hosts, recs = {}, dict(runs(state))
     for name, rec in recs.items():
@@ -116,19 +116,25 @@ def pull_hosts(values, state, seen, now, stale):
         fails = before.get("fails", 0) + 1 if reply["result"] == "unreachable" else 0
         pulls[host] = entry = dict(at=now, result=reply["result"], liveness=liveness, fails=fails, **({} if reply[
             "result"] == "ok" else {"error": reply.get("reason") or reply.get("error")}))
+        pending = before.get("reconcile") or (before.get("since") if before.get("fails", 0) >= remote_run.OUTAGE else
+                                               None)  # an outage's start, kept until an ok pull brings the run probes
         if fails:
-            entry.update({k: before[k] for k in ("since", "escalated") if k in before})
+            entry.update({k: before[k] for k in ("since", "escalated", "reconcile") if k in before})
             since = entry.setdefault("since", now)
+            if fails >= remote_run.OUTAGE:
+                entry.setdefault("reconcile", since)
             if fails >= remote_run.OUTAGE and now - since >= stale and "escalated" not in entry:
                 entry["escalated"] = now
                 wakes.append({"reason": "unreachable", "host": host, "action": "escalate", "event": (
                     "%s unreachable since %s: %s; claims kept, never restarted or re-placed" % (
                         host, utc(since), ", ".join(names)))})
-        elif before.get("fails", 0) >= remote_run.OUTAGE:
+        elif pending and reply["result"] != "ok":
+            entry["reconcile"] = pending  # refused or failed: the host answers, but without the probes
+        elif pending:
             wakes.append({"reason": "reconcile", "host": host, "event": "%s answers after an outage since %s: %s; "
-                          "re-read GitHub (protocol 6 step 1)" % (host, utc(before["since"]), ", ".join(
-                              "%s %s" % (n, liveness.get(n) or reply["result"]) for n in names))})
-            wakes += [{"reason": "stale", "window": n, "liveness": liveness[n], "silent": int(now - before["since"]),
+                          "re-read GitHub (protocol 6 step 1)" % (host, utc(pending), ", ".join(
+                              "%s %s" % (n, liveness.get(n)) for n in names))})
+            wakes += [{"reason": "stale", "window": n, "liveness": liveness[n], "silent": int(now - pending),
                        "action": "restart" if not recs[n].get("restarts") else "escalate"}
                       for n in names if liveness.get(n) in ("dead", "missing")]
     for name, t in remote_run.tombstones(state):
