@@ -752,6 +752,27 @@ class Placement(KillLandedBase):  # #207: placement in mdstack spawn; the decisi
         self.assertEqual((rec["host"], rec["placement"], rec["override_reason"]),
                          ("host-a", "override", "host-b quota spent"))
 
+    def test_queued_override_keeps_host_and_reason_through_dequeue(self):  # review r1: cap -> queue -> slot freed
+        with open(self.project) as f:
+            text = f.read()
+        with open(self.project, "w") as f:
+            f.write(text.replace('name = "tmux"\n', 'name = "tmux"\noptions = { builders = 1 }\n'))
+        self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
+        r = self.spawn("builder", "--issue", "8", "--host", "host-a", "--reason", "host-b quota spent")
+        self.assertIn("builder cap reached", r.stdout)
+        with open(os.path.join(self.state, "spawn-queue.jsonl")) as f:
+            entry = json.loads(f.read())
+        self.assertEqual((entry["host"], entry["override_reason"]), ("host-a", "host-b quota spent"))
+        self.assertEqual(self.gh_calls(), [])  # nothing posted while queued
+        r = self.kill()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        rec = self.record("ben-8")
+        self.assertEqual((rec["host"], rec["placement"], rec["override_reason"]),
+                         ("host-a", "override", "host-b quota spent"))
+        (call,) = self.gh_calls()
+        self.assertEqual(call[:3], ["issue", "comment", "8"])
+        self.assertIn("Reason: host-b quota spent", call[call.index("--body") + 1])
+
     def test_override_refusals_spawn_nothing(self):
         self.gh_exit = 1
         self.write_gh()

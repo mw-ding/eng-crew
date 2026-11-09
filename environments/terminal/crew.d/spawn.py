@@ -117,6 +117,8 @@ def enqueue(state, args, pass_, reason=None):
         entry["train"] = args.train
     if reason:
         entry["reason"] = reason
+    if getattr(args, "host", None):  # an override survives the queue; dequeue posts its reason at the spawn
+        entry["host"], entry["override_reason"] = args.host, args.reason
     os.makedirs(state, exist_ok=True)
     with open(os.path.join(state, "spawn-queue.jsonl"), "a") as f:
         f.write(json.dumps(entry) + "\n")
