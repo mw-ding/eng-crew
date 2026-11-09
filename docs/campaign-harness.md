@@ -573,3 +573,65 @@ Level c reuses
 scenario IDs and manifest. Record each host's capability, OS, runtime, bundle
 and profile fingerprints in the run issue. Loopback counts as simulated. A
 real-device criterion stays open until the owner records the run.
+
+### Attended owner-channel and sleep run
+
+`scripts/campaign-attended.py` (#1463, part of #804) runs A26 around an
+actual sleep of the owner's Mac, with one real sandbox Slack delivery. It
+splits A26 at its first `resume-*` step. Before the sleep it runs the
+handled head and the forge moving while paused. It then sends one `ask`
+through `mdstack notify` under a sandbox away record, starts builder #3 as
+existing work, and snapshots the claims, worktrees and tmux windows. After
+the wake it checks the snapshot is unchanged and takes the receipt code. It
+then runs the resume steps: the missed head, red CI and one overdue sweep,
+each caught up exactly once. The result holds the before-sleep and
+after-resume timestamps, the sleep length and each owner unblock.
+
+Rehearsal first, by the crew at any time, with no owner step:
+
+```sh
+python3 scripts/campaign-sandbox.py setup --root /tmp/att-r1 --run-id att-r1 \
+  --production config.toml --source . --release "$RELEASE" \
+  --sentinel "$OUTSIDE_FILE" --scenario A26
+python3 scripts/campaign-attended.py /tmp/att-r1/state/manifest.json \
+  --scenarios dev/tests/scripts/fixtures/campaign \
+  --out /tmp/att-r1/state/attended.json --dry-run
+python3 scripts/campaign-sandbox.py teardown /tmp/att-r1/state/manifest.json
+```
+
+Keep the root short: the tmux socket path must fit the OS limit. A dry run
+posts to a loopback webhook and never sleeps. It prints and records
+`rehearsal` and `evidence: false`, so it never counts as #804 evidence.
+
+The owner's part, at a time agreed on #804 with no other lab journey
+running on the Mac:
+
+1. Before: create a Slack incoming webhook on a sandbox channel the live
+   crew does not use. In the owner's own terminal, not a crew pane, run
+   `export CAMPAIGN_WEBHOOK=<url>`. Never paste the URL into the tracker, a
+   file or a crew window. The driver refuses a URL that is not https or that
+   equals the live crew's own webhook.
+2. Start: run the setup and driver commands above, without `--dry-run`,
+   in that terminal.
+3. Sleep: when the driver prints `owner: sleep this machine now`, choose
+   Apple menu > Sleep, or close the lid. Stay asleep for at least `--gap`
+   (default 60 s); 10 minutes is better. While asleep, read the receipt
+   code from the Slack message on another device.
+4. Wake: log in. The driver sees the wall-clock jump and asks for the code.
+   Type it.
+5. After: the crew posts the result's summary inline on #804, runs
+   teardown and records the sentinel and retained-work checks.
+
+Physical test boundary. The run proves:
+
+- a real OS sleep of one Mac with every sandbox process suspended;
+- the channel accepted the message and the owner read it on a device;
+- the missed state and the overdue sweep catch up once after the wake;
+- the claims, worktrees and windows survive the sleep.
+
+It does not prove a forge that moves during the sleep: the forge is local,
+and A26 moves it just before the sleep. Nor does it prove overdue time from
+the sleep itself (A26 backdates the triage slot), delivery while asleep,
+network or power loss, a second device or real GitHub (level b). The sandbox
+uses its own profile and session. The live crew's profile is read only to
+refuse its webhook; its channels and webhook are never used or changed.
