@@ -1,0 +1,9 @@
+[
+ {"number": 985, "url": "https://github.com/mw-ding/mdstack/issues/985", "title": "Owner decision log",
+  "comments": [
+   {"createdAt": "2026-11-09T04:05:00Z", "url": "https://github.com/mw-ding/mdstack/issues/985#issuecomment-1",
+    "body": "Decision: no private socket for the crew server (#1475).\n\nFixture extract."},
+   {"createdAt": "2026-10-01T00:00:00Z", "url": "https://github.com/mw-ding/mdstack/issues/985#issuecomment-2",
+    "body": "Decision: an old standing grant (#900).\n\nFixture extract."}
+  ]}
+]
