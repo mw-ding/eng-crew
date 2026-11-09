@@ -48,55 +48,26 @@ post, and leave it to CI.
    to `$CREW_STATUS`. After the last PR, end the run; the coordinator
    dispatches the next land as a new run.
 
-<include:policy/synthesizer/land-rules.md>
+Land rule (protocol §7; session C7): session lands have no merge train, since
+`mdstack train` refuses a session profile, so `train_min`, `train_window` and
+`train_local_checks` do not apply. A PR is ready when it passes steps 1 and 2
+at its head, apart from being behind the default branch. Recorded urgency
+orders ready PRs; an open stop still blocks. Land each ready PR alone through
+step 3, one per run, in `Depends on` then approval order:
 
-Merge train (mdstack train):
+- With `lone_pr_land = "direct"` and, re-surveyed under the land lock,
+  exactly one ready PR, land it even behind the default branch. Only the
+  tested-with-default-branch gate is waived; every other §7 gate still
+  applies at head. Record
+  `Tested-with-default-branch waiver: lone_pr_land=direct, exactly one ready PR`
+  and `Land rule: alone, direct` in the merge post, then perform step 4.
+- Otherwise land it through step 3 if its head contains the default branch;
+  else run `<op:change.update-from-base>`, wait for CI, prove verdict
+  portability and re-check the live gate. Never send it back solely for
+  being behind; a conflict or differing patch goes to <BuilderBot>.
 
-- Pre-check: `$CREW_BIN train check <pr>... --project "$CREW_PROJECT"`
-  reports gates per PR without a build or writes. Filter `blocked` members;
-  resolve every `manual` gate with the step 2 check. Share blockers with
-  the coordinator early. This snapshot never replaces the land-time check.
-  A blocked `train-merge` gate (conflict or changed patch on main) goes to
-  its builder for a merge-up first, as an alone-land conflict does.
-- Pipeline: build N with `--no-wait`, then N+1 with `--after <n> --no-wait`,
-  excluding N's members. Prepare while N runs CI or lands; never another
-  synthesizer or parallel lands. Collect CI with
-  `$CREW_BIN train wait <n> --project "$CREW_PROJECT"`.
-  Per crew train: a real predecessor
-  stop/early close rebuilds N+1 with a new number and current main; read the
-  new record, never land the old one. A transient pause preserves N+1/CI.
-  Never build `--after` on a predecessor with `ci=fail`, even if still open.
-  Land N+1 only after N finishes, under the same serial land lock.
-- Build: `$CREW_BIN train build <pr>... --project "$CREW_PROJECT"`, in
-  `Depends on` then approval order. Read `member`, `dropped`, `deferred`,
-  `ci-link`, `direct`, and `train n=<n>` (`local=` / `ci=`). A `direct` line
-  (drops left one member, `collapsed-to-direct`): the train closed unpushed;
-  land that PR by the direct rule above. Copy `train-report` to
-  `$CREW_STATUS` with members, landed, dropped reasons and stop cause.
-  PRs sharing paths stay together in input order; only a real merge conflict
-  drops one (`reason=conflict`). Supply only ready candidates whose
-  dependencies permit that order.
-  `no-verified-base` / `status=reviewer`: coordinator requests a fresh `base=` verdict.
-  Local checks default to `local=skipped`; `--local` or
-  `train_local_checks = true` opts in. They are not a merge gate; green train
-  CI remains required. The draft train PR is CI only: never merge it.
-<include:policy/synthesizer/merge-train-land-start.md>
-  pause: release the lock, retry next run with the same train and green CI;
-<include:policy/synthesizer/merge-train-land.md>
-  update-branched or sent to builders for conflicts. On later runs, run
-  `$CREW_BIN train route <n> --project "$CREW_PROJECT"` for closed trains
-  with queued merge-ups; record failures without redispatching successes.
-- Red: on `ci=fail`, the train closes without landing. Run
-  `$CREW_BIN train bisect <n> --project "$CREW_PROJECT"`: it tests both halves
-  on main, recurses on red halves and reports `culprit pr=<pr>`. It records
-  culprits as `ci-culprit` drops and rebuilds survivors together on main with
-  fresh CI. Copy the original `train-report` to `$CREW_STATUS`; read the
-  `remaining=<n>` record and land only on `ci=pass`, using the same §7
-  checks and head-bound `train land` calls above. Diagnostic trains never land.
-  A green combined retry reports `culprit=none green-on-retry`; a red retry,
-  changed head/base or incomplete CI remains blocked. Report isolated culprits
-  and unresolved failures to the coordinator; do not compose around them by hand.
-  On `ci=timeout` or `local=fail`, collect/fix that failure before bisection.
+Each `[<SynthesizerBot>/merge]` post names the rule in one `Land rule:` line,
+for example `Land rule: alone, session`.
 
 Do not read step summaries or raw logs to decide a merge. Asks go in
 `blocked:` lines, never to the owner here. Never start a line with the

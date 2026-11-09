@@ -3,7 +3,8 @@
 
 Usage:
   evidence-cli.py [--label R1] [--setup FILE] [--scrub-env VAR]...
-      [--volatile NOTE]... [--runner-fallback LINE] -- <argv...>
+      [--volatile NOTE]... [--runner-fallback LINE] [--sha SHA] [--root DIR]
+      -- <argv...>
   evidence-cli.py [--label R1] --runner REF
 
 Runs <argv> in the current directory and prints the pair from
@@ -27,6 +28,11 @@ $CREW_STATE/runner/, or a result.json path) as a capture whose header names
 log tail. It refuses (exit 2) a result whose head is not the checkout's HEAD.
 --runner-fallback LINE adds the runner's `runner: ...; ran locally` line to a
 local capture.
+
+--sha SHA (the full 40-character head) and --root DIR (the repository root)
+set the header's capture sha and the root the cwd is made relative to, for a
+working copy git does not serve. When git does report a HEAD that differs
+from --sha, the helper refuses (exit 2) rather than record the capture.
 """
 import argparse
 import importlib.util
@@ -95,11 +101,11 @@ def fence_for(*texts):
     return "`" * max(3, longest + 1)
 
 
-def header(label):
-    sha = git("rev-parse", "HEAD") or "unknown (not a git checkout)"
+def header(label, stated_sha=None, root=None):
+    sha = stated_sha or git("rev-parse", "HEAD") or "unknown (not a git checkout)"
     if git("status", "--porcelain"):
         sha += " (dirty)"
-    top = git("rev-parse", "--show-toplevel")
+    top = os.path.realpath(root) if root else git("rev-parse", "--show-toplevel")
     cwd = os.path.relpath(os.getcwd(), top) if top else "<cwd>"
     return f"Proof {label} · `scripts/evidence-cli.py` · sha `{sha}` · cwd `{cwd}`"
 
@@ -151,12 +157,22 @@ def main(argv=None):
                     help="render a stored mdstack runner result instead of running")
     ap.add_argument("--runner-fallback", metavar="LINE",
                     help="the runner's `runner: ...; ran locally` line")
+    ap.add_argument("--sha", help="full 40-character head for the header")
+    ap.add_argument("--root", metavar="DIR",
+                    help="repository root the header's cwd is relative to")
     ap.add_argument("command", nargs=argparse.REMAINDER)
     args = ap.parse_args(argv)
     if args.runner:
         return runner_capture(args.label, args.runner)
     if args.runner_fallback and not FALLBACK.fullmatch(args.runner_fallback):
         ap.error("--runner-fallback must be a `runner: ...; ran locally` line")
+    if args.sha and not re.fullmatch(r"[0-9a-f]{40}", args.sha):
+        ap.error("--sha must be a full 40-character hex sha")
+    head = git("rev-parse", "HEAD")
+    if args.sha and head and head != args.sha:
+        print(f"evidence-cli: --sha {args.sha} is not the checkout head "
+              f"{head}; refusing to record the capture", file=sys.stderr)
+        return 2
     command = args.command[1:] if args.command[:1] == ["--"] else args.command
     if not command:
         ap.error("missing command after --")
@@ -185,7 +201,7 @@ def main(argv=None):
     body += (f"exit: {result.returncode}\n--- stdout\n{section(stdout)}"
              f"--- stderr\n{section(stderr)}")
     sh_fence, text_fence = fence_for(shown), fence_for(body)
-    print(header(args.label) + "\n")
+    print(header(args.label, args.sha, args.root) + "\n")
     print(f"{sh_fence}sh\n{section(shown)}{sh_fence}\n")
     print(f"{text_fence}text\n{body}{text_fence}")
     return 0

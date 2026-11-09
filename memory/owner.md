@@ -30,3 +30,5 @@ through a reviewed memory PR (`docs/memory.md`).
   `max_load` 288, `load_high`/`load_low` 18/12 per CPU, `schedule_interval`
   60 s, `schedule_ramp` 5; apply it as is when the owner asks (#985
   c6726893407).
+- Batch work that needs a temporary owner resource (such as the Docker
+  daemon) first, then pause, so the owner can release it (#985 c6734826673).

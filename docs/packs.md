@@ -260,10 +260,24 @@ table except the `bootstrap --harness` install choices. `mdstack pack list
 
 Bootstrap and upgrade refuse a pack whose `framework` does not admit the
 installed stable release tag. Pre-releases and `--dev` commits satisfy no
-range. The pack directory must be a clean git checkout. Install records
+range. The pack directory must be a clean checkout. Install records
 `"pack": {"name", "version", "framework", "commit"}` in `install.json`. A
 new pack commit makes `mdstack upgrade` re-plan, and uncommitted changes are
 refused.
+
+By default the clean check and the commit read run `git` in the pack
+directory. A pack whose working copy belongs to another version control
+tool, such as a subdirectory of a monorepo, declares both commands in
+`pack.toml` (#1326). They run in the pack directory:
+
+```toml
+[vcs]
+clean = ["hg", "status"]                           # exits 0, prints nothing when clean
+commit = ["hg", "log", "-r", ".", "-T", "{node}"]  # exits 0, prints the commit
+```
+
+A failing command, an empty commit or any output from `clean` refuses the
+pack.
 
 ### Floors
 
@@ -272,7 +286,10 @@ A pack may tighten rules, such as a stricter flavor, extra sensitive paths,
 loader refuses a pack whose `profile.toml` or environment defaults:
 
 - set a floor control (F1–F7, such as `ci_waiver` or
-  `hold_label_blocks = false`);
+  `hold_label_blocks = false`) in the `[flavor]` table, its custom
+  flavors and classes, or `runtime.options`. A key elsewhere that only
+  shares a name, such as the `[backends.ci]` selector, is not a floor
+  control;
 - set a `merge_grant` other than `none`, because a merge grant is the
   owner's;
 - define a custom flavor that is less strict than the core default,

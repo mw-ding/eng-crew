@@ -615,7 +615,8 @@ Render-time notes: each file in `runtime.options.notes.render.<role>` (path
 relative to the project file) is appended verbatim to that role's
 `briefs/<role>.md` or `runtime/<role>.md`, under `## Render note: <path>`,
 after the precheck block. The size budget and the render-vs-live drift check
-see them like any other brief text.
+see them like any other brief text. A nonempty list for a role with no such
+brief in the selected runtime fails the render, naming the key and runtime.
 
 Every `<name>` token is a placeholder. Install-time placeholders are
 replaced from resolved profile keys (the "Replaces" columns of

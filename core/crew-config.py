@@ -9,7 +9,8 @@ Usage: crew-config.py validate FILE [--install] [--pack-manifest FILE] (profile 
 `validate` checks one profile against the schema; `resolve` merges the config
 layers and prints each key with the layer that set it (per-key provenance).
 Both also load the tracker and change backend maps' [ids] patterns; `resolve`
-prints them as ids.item and ids.change (docs/handoff.md#id-declaration).
+prints them as ids.item and ids.change, plus the change map's ids.marker_key
+when declared (docs/handoff.md#id-declaration).
 Every problem prints as `file:key: reason`; exit 1 if any, else 0.
 `precheck-scope` classifies each changed path by builder.precheck.owners and
 prints JSON; exit 3 on unowned code, 4 on an owners query failure (stop).
@@ -128,7 +129,9 @@ RUNTIME_OPTIONS = {"grok-bot": {"max_active_milestones": (int, 1)},
                                         "slack_webhook_env": (str, None), "slack_digest_interval": (int, 3600)},
                    # Hosted or hand-started coordinator with native-subagent or CLI workers (docs/runtimes/session.md, #914).
                    "session": {"max_active_milestones": (int, 1), "session_backend": (str, "native"), "builders": (int, 5),
-                               "reviewers": (int, 2), "merge_grant": (str, "none"), "merge_grant_scope": ("list[str]", None),
+                               "reviewers": (int, 2), "researchers": (int, None), "present_builders": (int, None),
+                               "present_reviewers": (int, None), "merge_grant": (str, "none"),
+                               "merge_grant_scope": ("list[str]", None),
                                "lone_pr_land": (str, "train"), "train_min": (int, 2), "train_window": (int, 600),
                                "train_local_checks": (bool, False), "mirror_deferral": (str, "none"),
                                "mirror": (str, "live-copy"), "hold_label_blocks": (bool, True), "notes": (dict, {})}}
@@ -156,6 +159,7 @@ HARNESS_INSTALLS = harnesses.INSTALLS
 HARNESS_BUILTINS = harnesses.INSTALL_BUILTINS
 # Backend map [ids] (docs/handoff.md#id-declaration, #936): item from the tracker map, change from the change map.
 ID_CONCERNS = {"item": "tracker", "change": "change"}
+ID_MARKER_KEYS = ["change", "item"]  # the change map's marker_key: selfgate keys on pr= or issue= (#876, #1031)
 ID_DEFAULT = "[1-9][0-9]*"
 ID_UNSAFE = set(" \t\r\n<>=\"'`")  # an id must never break a marker line or a command argument
 TEMPLATES_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "templates")
@@ -164,8 +168,10 @@ TEMPLATES_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__f
 def backend_ids(profile, pack_base, err, backends=BACKENDS):
     """{key: (pattern, map name or None)} from the tracker and change backend maps; None is the default.
 
+    A declared marker_key in the change map adds marker_key: (value, map name); undeclared, it is absent.
+
     A map is the pack's render/backends/<name>.toml, else templates/backends/<name>.toml. err(name, key, reason)."""
-    out, maps = {key: (ID_DEFAULT, None) for key in ID_CONCERNS}, {}
+    out, maps, markers = {key: (ID_DEFAULT, None) for key in ID_CONCERNS}, {}, {}
     table = profile.get("backends") if isinstance(profile.get("backends"), dict) else {}
     for key, concern in ID_CONCERNS.items():
         name = table[concern].get("name") if isinstance(table.get(concern), dict) else None
@@ -185,7 +191,11 @@ def backend_ids(profile, pack_base, err, backends=BACKENDS):
                 err(name, "(file)", "cannot read backend map %s (%s)" % (path, e))
                 continue
             maps[name] = check_table(lambda k, reason: err(name, k, reason), "ids", ids,
-                                     {k: (str, None) for k in ID_CONCERNS})
+                                     dict({k: (str, None) for k in ID_CONCERNS}, marker_key=(str, None)))
+            marker = maps[name].pop("marker_key", None)
+            check_choice(lambda k, reason: err(name, k, reason), "ids.marker_key", marker, ID_MARKER_KEYS)
+            if marker in ID_MARKER_KEYS:
+                markers[name] = marker
             for k, pattern in list(maps[name].items()):
                 try:
                     unsafe = [c for c in [""] + sorted(ID_UNSAFE) if re.fullmatch(pattern, c)]
@@ -199,6 +209,8 @@ def backend_ids(profile, pack_base, err, backends=BACKENDS):
                     del maps[name][k]
         if key in maps[name]:
             out[key] = (maps[name][key], name)
+        if concern == "change" and name in markers:
+            out["marker_key"] = (markers[name], name)
     return out
 
 
@@ -326,8 +338,10 @@ def validate_hosts(profile, top, err):
         hosts[name] = dict(caps, primary=h.get("primary", False), forge=forge,
                            roles=h.get("roles", list(PLACED_PASSES)) if forge else [])
     rt = profile.get("runtime")
-    if "hosts" in top and isinstance(rt, dict) and rt.get("name") not in (None, "tmux"):
-        err("hosts", "a host inventory needs runtime tmux, got %r" % rt.get("name"))
+    if "hosts" in top and isinstance(rt, dict) and rt.get("name") not in (None, "tmux", "session"):
+        err("hosts", "a host inventory needs runtime tmux or session, got %r" % rt.get("name"))
+    if "placement" in top and isinstance(rt, dict) and rt.get("name") == "session":  # host check only (#1122)
+        err("placement", "placement needs runtime tmux, got 'session'")
     primaries = [n for n, h in hosts.items() if h["primary"]]
     if "hosts" in top and len(primaries) != 1:
         err("hosts", "expected exactly one host with primary = true, got %d" % len(primaries))
@@ -838,6 +852,14 @@ def validate(profile, err, backends=BACKENDS, pack_dir=None, item=None):
                                  ("stuck_after", 1), ("land_poll_interval", 1), ("land_timeout", 1), ("host_scan_interval", 1)):
                 if key in opts and opts[key] < minimum:
                     err("runtime.options." + key, "must be >= %d, got %d" % (minimum, opts[key]))
+            if rt["name"] == "session":  # tmux clamps an over-cap present limit at admission instead (#1053)
+                for key in ("builders", "reviewers"):
+                    full = opts.get(key, RUNTIME_OPTIONS["session"][key][1])
+                    if opts.get("present_" + key, full) > full:
+                        err("runtime.options.present_" + key, "must be <= %s (%d), got %d" % (key, full, opts["present_" + key]))
+            if rt["name"] == "session" and opts.get("researchers", 0) > 0:  # no researcher binding; 0 says so (#1057)
+                err("runtime.options.researchers", "the session runtime has no researcher; only 0 (no researcher) "
+                    "is accepted, got %d" % opts["researchers"])
             if opts.get("land_timeout", 3600) < opts.get("land_poll_interval", 60):
                 err("runtime.options.land_timeout", "must be >= land_poll_interval (%d), got %d"
                     % (opts.get("land_poll_interval", 60), opts.get("land_timeout", 3600)))
@@ -1369,7 +1391,7 @@ def resolve_profile(project, org_profile=None, pack_manifest=None, meta=None):
             for key, (_, default) in RUNTIME_OPTIONS[rt["name"]].items():
                 if default is not None and key not in rt["options"]:
                     rt["options"][key], prov["runtime.options." + key] = default, "core"
-            if rt["name"] == "tmux":
+            if rt["name"] in ("tmux", "session"):
                 for key in ("builders", "reviewers"):
                     present = "present_" + key
                     if present not in rt["options"] and type(rt["options"][key]) is int and rt["options"][key] >= 1:
