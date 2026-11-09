@@ -42,9 +42,14 @@ guard, crew_repo = load("campaign_guard", "campaign-guard.py"), load("crew_repo"
 EXTRA_LABELS = ["integration:finding", "integration:run"]
 IDENTITIES = {"builder": "sandbox-builder", "reviewer": "sandbox-reviewer"}
 PROFILE = """[repo]\nowner = "campaign"\nname = "sandbox-{run}"\ndefault_branch = "main"\n
-[runtime]\nname = "tmux"\n\n[runtime.options]\nsession = "crew-campaign-{run}"\n
-[paths]\nstate_dir = "{root}/state"\nworktree_root = "{root}/wt"\nlive_dir = "{root}/live"\n
+[runtime]\nname = "tmux"\n\n[runtime.options]\nsession = "{session}"\n
+[paths]\nstate_dir = "{base}/state"\nworktree_root = "{base}/wt"\nlive_dir = "{base}/live"\n
 toolchain_bin = "{root}/state/bin"\n"""
+# Each team's --org-profile (#801, #1440): its runtime instance and the one control item; --engine adds the engine.
+TEAM = """[repo]\ncontrol_item = 1\n\n[runtime]\ninstance = "{name}"\n\n[identities.coordinator]
+gh_user = "sandbox-coordinator"\n"""
+ENGINES = """\n[engines]\ncoordinator = "{engine}"\nfallback_engine = "{engine}"\ntrivial = {{ order = ["{pick}"] }}
+default = {{ order = ["{pick}"] }}\ndeep = {{ order = ["{pick}"] }}\n"""
 # An inherited $TMUX beats TMUX_TMPDIR, so a bare `tmux kill-server` from a crew pane kills the owner's server (#817).
 SHIM = """#!/bin/sh
 # Campaign sandbox tmux shim (#817): pin every call to the sandbox socket and never follow an inherited $TMUX.
@@ -148,16 +153,20 @@ sys.exit(code)
 """
 
 
-def stubs(bindir):
+def stubs(bindir, real=None):
+    """The engine and forge stubs; the real engine (--engine) gets no stub, so its own CLI runs."""
     os.makedirs(os.path.join(bindir, "exe"), exist_ok=True)
     Path(bindir, "stub-body.sh").write_text(STUB_BODY)
     for name in ("claude", "codex"):
+        if name == real:
+            continue
         os.symlink("/bin/bash", os.path.join(bindir, "exe", name))
         Path(bindir, name).write_text(STUB_ENGINE.format(bin=bindir, name=name))
     Path(bindir, "gh").write_text(STUB_GH)
     Path(bindir, "gh-api").write_text(STUB_GH_API)
     for name in ("claude", "codex", "gh", "gh-api"):
-        os.chmod(os.path.join(bindir, name), 0o755)
+        if name != real:
+            os.chmod(os.path.join(bindir, name), 0o755)
     return bindir
 
 
@@ -205,11 +214,32 @@ def setup(a):
     git("commit", "-q", "-m", "campaign sandbox seed", cwd=repo)
     git("push", "-q", "origin", "HEAD:main", cwd=repo)
     Path(repo, ".git", "info", "exclude").write_text("crew.toml\n")
-    Path(repo, "crew.toml").write_text(PROFILE.format(run=a.run_id, root=root))
+    session = "crew-campaign-%s" % a.run_id
+    Path(repo, "crew.toml").write_text(PROFILE.format(run=a.run_id, root=root, base=root, session=session))
+    teams = [{"name": "a", "repo": repo, "session": session, "worktree_root": os.path.join(root, "wt")}]
+    if a.teams == 2:  # A28's second team (#1440): its own checkout, session and roots, on the same origin
+        base, repo_b = os.path.join(root, "team-b"), os.path.join(root, "repo-b")
+        for sub in ("state", "wt", "live"):
+            os.makedirs(os.path.join(base, sub))
+        git("clone", "-q", os.path.join(root, "origin.git"), repo_b)
+        Path(repo_b, ".git", "info", "exclude").write_text("crew.toml\n")
+        Path(repo_b, "crew.toml").write_text(PROFILE.format(run=a.run_id, root=root, base=base, session=session + "-b"))
+        teams.append({"name": "b", "repo": repo_b, "session": session + "-b",
+                      "worktree_root": os.path.join(base, "wt")})
+    engine = a.engine.split("/", 1)[0] if a.engine else None
+    for t in teams if a.teams == 2 else []:
+        t["org_profile"] = os.path.join(root, "state", "team-%s.toml" % t["name"])
+        Path(t["org_profile"]).write_text(TEAM.format(name=t["name"]) + (
+            ENGINES.format(engine=engine, pick=a.engine) if engine else ""))
+    for t in teams:
+        t.update(project=os.path.join(t["repo"], "crew.toml"), source=os.path.realpath(a.source), release=a.release)
+        t["sha256"] = {p: guard.sha256(p) for p in (t["project"], t.get("org_profile")) if p}
     labels = [n for n, _, _ in crew_repo.LABELS] + EXTRA_LABELS
     Path(root, "state", "sandbox.json").write_text(json.dumps({
         "level": "a", "run_id": a.run_id, "labels": labels, "identities": IDENTITIES, "ci": "ci.sh",
-        "tmux": install_shim(os.path.join(root, "state")), "stubs": stubs(os.path.join(root, "state", "bin")),
+        "tmux": install_shim(os.path.join(root, "state")),
+        "stubs": stubs(os.path.join(root, "state", "bin"), guard.config.harnesses.ENGINE_CMD.get(engine)),
+        "teams": teams,
         "control_item": {"number": 1, "title": "M25 campaign control (%s)" % a.run_id, "labels": ["integration:run"]},
     }, indent=2) + "\n")
     argv = ["manifest", "--sandbox", os.path.join(repo, "crew.toml"), "--production", a.production, "--source",
@@ -218,12 +248,39 @@ def setup(a):
     return guard.main(argv + [x for s in a.scenario for x in ("--scenario", s)])
 
 
-def retained(m):
-    """Every sandbox repo or worktree with uncommitted changes or commits not on a remote, on any local branch."""
+def teams_of(m):
+    """The sandbox's teams from state/sandbox.json; a record from before #1440 is the pinned team alone."""
     root = sandbox_root(m)
-    wt = m["roots"]["worktree_root"]
-    out = []
-    for path in [os.path.join(root, "repo")] + sorted(os.path.join(wt, d) for d in os.listdir(wt)):
+    rec = json.loads(Path(root, "state", "sandbox.json").read_text())
+    return rec.get("teams") or [{"name": "a", "repo": os.path.join(root, "repo"), "session": m["session"],
+                                 "worktree_root": m["roots"]["worktree_root"], "project": m["profile"]["path"]}]
+
+
+def team_refusals(m):
+    """Every reason teardown must not act on a team: a profile changed since setup, or a resolved root outside the
+    sandbox or on a production root (#1440 R1). The manifest pins only the first team's profile."""
+    root, out = os.path.realpath(sandbox_root(m)), []
+    prod = [v for v in guard.target(m["production"]["path"])["roots"].values() if "<" not in v]
+    for t in teams_of(m):
+        out += ["team %s: %s changed since setup" % (t["name"], p) for p, h in t.get("sha256", {}).items()
+                if not os.path.isfile(p) or guard.sha256(p) != h]
+        merged, _, problems, _ = guard.config.resolve_profile(t["project"], t.get("org_profile"))
+        out += ["team %s: %s" % (t["name"], e) for e in problems]
+        for key, path in ({} if problems else merged["paths"]).items():
+            path = os.path.realpath(path)
+            if key in guard.ROOTS and (not path.startswith(root + os.sep) or any(guard.nested(path, q) for q in prod)):
+                out.append("team %s: paths.%s %s is outside the sandbox or on a production root" % (
+                    t["name"], key, path))
+    return out
+
+
+def retained(m):
+    """Every team's repo or worktree with uncommitted changes or commits not on a remote, on any local branch."""
+    out, paths = [], []
+    for t in teams_of(m):
+        wt = t["worktree_root"]
+        paths += [t["repo"]] + sorted(os.path.join(wt, d) for d in os.listdir(wt))
+    for path in paths:
         if not os.path.exists(os.path.join(path, ".git")):
             continue
         dirty = git("status", "--porcelain", cwd=path).splitlines()
@@ -236,18 +293,29 @@ def retained(m):
 
 def teardown(a):
     m = json.loads(Path(a.manifest).read_text())
-    problems = guard.refusals(m)
+    problems = guard.refusals(m) or team_refusals(m)
     if problems:
         return problems
-    session = m["session"]
-    env = {k: v for k, v in os.environ.items() if k not in ("TMUX", "TMUX_PANE")}
-    killed = bool(shutil.which("tmux")) and subprocess.run(
-        ["tmux", "-S", tmux_socket(m["roots"]["state_dir"]), "kill-session", "-t", "=" + session],
-        capture_output=True, env=env).returncode == 0
+    session, state = m["session"], m["roots"]["state_dir"]
+    sock = tmux_socket(state)
+    env = {k: v for k, v in os.environ.items() if k not in ("TMUX", "TMUX_PANE") and not k.startswith("CREW_")}
+    env.update(TMUX_TMPDIR=os.path.join(state, "tmux"), PATH=os.path.join(state, "bin") + os.pathsep + env["PATH"])
+    stopped = []
+    for t in teams_of(m) if shutil.which("tmux") else []:
+        # mdstack down --preserve stops the team's watcher and pane processes and keeps every run's work (#1440)
+        argv = [sys.executable, os.path.join(m["source"]["path"], "cli", "mdstack"), "down", "--preserve",
+                "--project", t["project"]] + (["--org-profile", t["org_profile"]] if t.get("org_profile") else [])
+        down = subprocess.run(argv, capture_output=True, text=True, env=dict(env, CREW_PROJECT=t["project"]))
+        subprocess.run(["tmux", "-S", sock, "kill-session", "-t", "=" + t["session"]], capture_output=True, env=env)
+        gone = subprocess.run(["tmux", "-S", sock, "has-session", "-t", "=" + t["session"]], capture_output=True,
+                              env=env).returncode != 0
+        stopped.append({"team": t["name"], "session": t["session"], "stopped": gone,
+                        "down": (down.stdout.strip().splitlines() or ["exit %d" % down.returncode])[-1]})
+    killed = bool(stopped) and all(s["stopped"] for s in stopped)
     keep = retained(m)
     sentinel = guard.main(["sentinel", a.manifest]) == 0
-    record = {"run_id": m["run_id"], "session": session, "session_killed": killed, "retained": keep,
-              "sentinel_unchanged": sentinel}
+    record = {"run_id": m["run_id"], "session": session, "session_killed": killed, "teams": stopped,
+              "retained": keep, "sentinel_unchanged": sentinel}
     Path(m["roots"]["state_dir"], "cleanup.json").write_text(json.dumps(record, indent=2) + "\n")
     print("retained: %d worktree(s)%s" % (len(keep), "".join("\n  " + r["path"] for r in keep)))
     root = sandbox_root(m)
@@ -283,6 +351,8 @@ def main(argv=None):
     for flag in ("root", "run-id", "production", "source", "release", "sentinel"):
         s.add_argument("--" + flag, required=True)
     s.add_argument("--scenario", action="append", default=[])
+    s.add_argument("--teams", type=int, choices=(1, 2), default=1, help="2: A28's second team (#1440)")
+    s.add_argument("--engine", help="ENGINE/MODEL for both teams' roles, unstubbed (needs --teams 2)")
     t = sub.add_parser("teardown")
     t.add_argument("manifest")
     t.add_argument("--remove", action="store_true")

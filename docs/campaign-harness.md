@@ -455,6 +455,27 @@ never read), so the detached actor must outlive the session it tears down.
 Teardown kills only the pinned session, so A28's last step takes the second
 team down.
 
+`a28/teams.py` (#1440) is the two-full-team preflight and lifecycle.
+`teams.py SOURCE ROOT` is the one command for a repeated run. It first runs
+`campaign-sandbox.py teardown` on every earlier run under `ROOT`, which
+stops that run's teams and keeps their work. It refuses to go on when an
+earlier run has no valid manifest. A sandbox cleanup never calls tmux bare:
+an inherited `TMUX` beats `TMUX_TMPDIR`, so a bare `tmux kill-server` from a
+crew pane kills the crew's own server (#817, #1474). Each run then sets up
+a fresh sandbox in `ROOT/<run>`. `setup --teams 2` builds team b in the
+sandbox: its own `repo-b` clone of
+the one origin, session `crew-campaign-<run>-b` and `team-b/` roots. Each
+team gets `state/team-<a|b>.toml` as its `--org-profile`, with its
+`runtime.instance` and control item 1. The preflight fails on a shared
+session, instance or nested root, and on a different repo, control item,
+source, release or skills (the source's `templates` and `roles` trees).
+It then runs `mdstack up` for each team and waits until the coordinator and
+each enabled lead probe alive. Last, it leaves one unlanded commit in each
+checkout and tears down. Both teams must stop, both commits must be
+retained and the sentinel must be unchanged. Without `--engine` every role
+is an engine stub. `--engine ENGINE/MODEL` leaves that engine unstubbed and
+runs it in both teams' tiers, from an operator shell only.
+
 ### A31
 
 A31 (from #804) puts a scenario `gh` (`state/m31/bin/gh`) first on `PATH`
@@ -532,9 +553,12 @@ or overlaps a production root. It then creates:
 - when tmux is installed, `state/bin/tmux`, the socket-pinning shim, with
   its socket under `state/tmux/` (recorded as `tmux` in `sandbox.json`).
 
-`teardown` runs the guard check first and refuses on drift. It kills only
-the exact sandbox session on the sandbox socket
-(`tmux -S <socket> kill-session -t =<session>`), lists every
+`teardown` runs the guard check first and refuses on drift. It also
+refuses when a team's profile or `--org-profile` changed since setup, or
+resolves a root outside `$SANDBOX` or on a production root. For each team
+in `state/sandbox.json` it runs `mdstack down --preserve`, then kills only
+that team's exact session on the sandbox socket
+(`tmux -S <socket> kill-session -t =<session>`). It lists every
 repo or worktree with uncommitted or unpushed work, and checks the sentinel.
 It records all three in `state/cleanup.json`. Exit 1 means the sentinel
 changed: a P0 isolation finding. After the results are posted,
