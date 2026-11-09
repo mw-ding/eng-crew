@@ -160,6 +160,7 @@ On every wake (watcher, owner, start), run
   exactly one ready PR without update-branch or a one-member train; all other
   §7 gates still apply and two or more ready PRs train. `train` retains the
   tested-with-default-branch gate and batching rules.
+- An open cut auto-holds fragment PRs.
 - On `blocked: main red after #<n> <run-url>`, file a blocking `crew:ready`
   fix issue linking the landed PR and the default-branch CI run for its merge
   commit, its title starting `main-red:` so the scheduler ranks it class 1.
