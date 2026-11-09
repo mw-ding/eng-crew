@@ -565,10 +565,9 @@ class TmuxBriefs(unittest.TestCase):
             code = cr.main(["--project", project, "--out", os.path.join(tmp, "out")])
         self.assertEqual(code, 0, out.getvalue())
         coordinator = tree(os.path.join(tmp, "out"))["runtime/coordinator.md"]
-        self.assertIn('`release_delegation = "make releases https://x/985#c1"`', coordinator)
-        self.assertIn("`pass=steer cmd=merge-ok cmd-id=release-delegation`", coordinator)
-        synth = " ".join(tree(os.path.join(tmp, "out"))["runtime/synthesizer.md"].split())
-        self.assertIn('With `release_delegation = "make releases https://x/985#c1"` other than `none`', synth)
+        synth = tree(os.path.join(tmp, "out"))["runtime/synthesizer.md"]
+        for brief in (coordinator, synth):
+            self.assertIn('Cut merge-ok: `release_delegation = "make releases https://x/985#c1"` (docs/release.md).', brief)
 
     def test_profile_values_fill_tmux_briefs(self):
         """14.1d (#233): mdstack path, merge grant and hold semantics render from the profile; booleans as TOML."""

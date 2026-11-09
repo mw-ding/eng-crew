@@ -23,10 +23,7 @@ quarantine, or use an alternate or mirror package registry. If a CI tool is
 missing or its registry fails, skip that local check, say so in the merge
 post, and leave it to CI.
 
-A release cut PR needs the owner's merge-ok at head; no standing merge grant
-covers it. With `release_delegation = "<release-delegation>"` other than
-`none`, the coordinator's `cmd-id=release-delegation` merge-ok at head counts,
-never on a `crew:sensitive` cut (`<mdstack>/docs/release.md`).
+Cut merge-ok: `release_delegation = "<release-delegation>"` (docs/release.md).
 
 <include:policy/synthesizer/merge-gate.md>
 3. <land-step>
