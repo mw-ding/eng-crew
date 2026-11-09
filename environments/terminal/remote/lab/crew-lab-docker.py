@@ -19,7 +19,7 @@ as positive control; it writes lab/n3.json and exits 1 with `n3: unproved` unles
 unresolved name is not denied). `teardown` first inspects every recorded ID and refuses, removing nothing, when
 the context now points elsewhere or a live ID lost the run's owner or run label. Otherwise it saves each
 resource's inspect JSON and logs under lab/evidence/, removes only those IDs, then checks the state sentinel and a
-tmux decoy: no prune, wildcard or kill-server.
+tmux decoy, and adds that cleanup to each evidence record under lab/runs/: no prune, wildcard or kill-server.
 Every child gets only PATH and locale plus the run's own HOME and auth dirs: no CREW_*, token, SSH agent or TMUX.
 """
 import argparse
@@ -293,6 +293,10 @@ def teardown(a):
     if decoy:
         call(["tmux", "-S", decoy, "kill-session", "-t", "=decoy"], child_env(m))
     Path(lab_dir(m), "cleanup.json").write_text(json.dumps(record, indent=2) + "\n")
+    evidence = importlib.util.spec_from_file_location("crew_lab_evidence", os.path.join(HERE, "crew-lab-evidence.py"))
+    labe = importlib.util.module_from_spec(evidence)
+    evidence.loader.exec_module(labe)
+    labe.close(lab_dir(m), record)  # each scenario run's evidence record gets its teardown (#1442)
     print("removed: %d, gone: %d" % (len(record["removed"]), len(record["gone"])))
     ok = record["sentinel_unchanged"] and record["tmux_decoy_alive"]
     return 0 if ok else 1

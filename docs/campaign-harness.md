@@ -655,7 +655,10 @@ python3 environments/terminal/remote/lab/crew-lab-scenarios.py "$SANDBOX/state/m
   `unreachable` escalate wake, `mdstack status` reads `unreachable since`,
   `mdstack restart` is refused, spawning the item again queues it (never
   placed elsewhere) and the claim is unchanged. After reconnect, reconcile
-  finds the same pane alive and the mirror holds every line once. Behind a
+  finds the same pane alive and the mirror holds every line once. Before
+  the outage, the watcher's pulls mirror the placed run's status lines, and
+  `mdstack send --wait-ack` is typed into its pane on the host and gets its
+  ack back through the mirror (A30, #1442). Behind a
   second `disconnect`, `mdstack kill --discard` writes a tombstone and drops
   the record and claim; on return the run is stopped on the host with its
   unlanded file kept. `status-pull` (#346) starts a stub role run in the
@@ -683,6 +686,13 @@ python3 environments/terminal/remote/lab/crew-lab-scenarios.py "$SANDBOX/state/m
   simulated, and the sample checks and the engine, forge and mirror
   origin behind the partition's placed run are labelled stubs. A scenario `--only` left out is `skipped` with
   `evidence: false`, so it supplies no evidence for #207 or #345–#348.
+  With `partition` and `exact-head` both run, the record adds the A30
+  remote-builder journey (#209, #1442): the placed builder, its mirrored
+  status and acked send, the outage and reconcile, the abandon and the
+  local comparison, labelled a simulated host with its physical limits
+  (one machine, a loopback port rather than an overlay, a Docker network
+  control rather than a lost link, a stub engine and forge). `teardown`
+  adds its cleanup record to each run record.
 - **Opt-in CI.** The `lab` job in `.github/workflows/ci.yml` (M20.1 lab H,
   #1362) runs on a PR labelled `lab`, from its next push, on an ARM64 runner.
   It pulls `LAB_BASE`, a repo variable naming the owner-approved base image
