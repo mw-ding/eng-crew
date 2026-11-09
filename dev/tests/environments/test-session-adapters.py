@@ -9,10 +9,12 @@ import importlib.util
 from importlib.machinery import SourceFileLoader
 import os
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # dev/tests/: crew_testlib
 from crew_testlib import SCRIPTS, SpawnBase
 
@@ -150,6 +152,16 @@ class ShippedBackends(unittest.TestCase):
         self.assertEqual({n: (a.EXECUTABLE, a.CAPABILITIES) for n, a in s.ADAPTERS.items()},
                          {"tmux": ("tmux", {"reload", "dead-keeps-pid", "icon"}),
                           "herdr": ("herdr", {"doorbell", "icon"})})
+
+    def test_tmux_makes_its_default_socket_directory(self):  # #346: a fresh role host's runner, before any tmux run
+        a = load("crew_tmux_fresh", os.path.join(os.path.dirname(SCRIPTS), "environments", "terminal", "sessions", "tmux",
+                                                 "adapter.py"))
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        folder = os.path.join(tmp, "tmux-%d" % os.getuid())
+        with mock.patch.dict(os.environ, {"TMUX_TMPDIR": tmp}):
+            self.assertEqual(a.server(), ["-S", os.path.join(folder, "default")])
+        self.assertEqual(stat.S_IMODE(os.stat(folder).st_mode), 0o700)
 
 
 class FakeBackend(SpawnBase):
