@@ -456,7 +456,14 @@ Teardown kills only the pinned session, so A28's last step takes the second
 team down.
 
 `a28/teams.py` (#1440) is the two-full-team preflight and lifecycle.
-`setup --teams 2` builds team b in the sandbox: its own `repo-b` clone of
+`teams.py SOURCE ROOT` is the one command for a repeated run. It first runs
+`campaign-sandbox.py teardown` on every earlier run under `ROOT`, which
+stops that run's teams and keeps their work. It refuses to go on when an
+earlier run has no valid manifest. A sandbox cleanup never calls tmux bare:
+an inherited `TMUX` beats `TMUX_TMPDIR`, so a bare `tmux kill-server` from a
+crew pane kills the crew's own server (#817, #1474). Each run then sets up
+a fresh sandbox in `ROOT/<run>`. `setup --teams 2` builds team b in the
+sandbox: its own `repo-b` clone of
 the one origin, session `crew-campaign-<run>-b` and `team-b/` roots. Each
 team gets `state/team-<a|b>.toml` as its `--org-profile`, with its
 `runtime.instance` and control item 1. The preflight fails on a shared

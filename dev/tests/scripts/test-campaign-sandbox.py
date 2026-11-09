@@ -149,24 +149,49 @@ class CampaignSandboxTest(unittest.TestCase):
         self.assertFalse(os.path.exists(os.path.join(bindir, "claude")), "the real engine is not stubbed")
         self.assertTrue(os.access(os.path.join(bindir, "codex"), os.X_OK))
 
-    @unittest.skipUnless(shutil.which("tmux"), "tmux not installed")
-    def test_a28_teams_preflight_up_ready_and_teardown(self):
-        """a28/teams.py (#1440) runs both full teams from this checkout and tears them down keeping their work."""
-        source = os.path.dirname(SCRIPTS)
+    def teams(self, parent, env=None):
         teams = os.path.join(TESTS, "scripts", "fixtures", "campaign", "a28", "teams.py")
-        env = {k: v for k, v in os.environ.items() if not k.startswith(("CREW_", "TMUX"))}
-        p = subprocess.run([sys.executable, teams, source, self.root, "--production", self.prod, "--sentinel",
-                            self.sentinel, "--ready", "120"], capture_output=True, text=True, env=env, timeout=400)
+        env = env or {k: v for k, v in os.environ.items() if not k.startswith(("CREW_", "TMUX"))}
+        p = subprocess.run([sys.executable, teams, os.path.dirname(SCRIPTS), parent, "--production", self.prod,
+                            "--sentinel", self.sentinel, "--ready", "120"], capture_output=True, text=True, env=env,
+                           timeout=400)
+        return p, {r["phase"]: r for r in (json.loads(x) for x in p.stdout.splitlines() if x.startswith("{"))}
+
+    @unittest.skipUnless(shutil.which("tmux"), "tmux not installed")
+    def test_a28_teams_cleanup_preflight_up_ready_and_teardown(self):
+        """a28/teams.py (#1440) stops an earlier run through its manifest under an inherited decoy TMUX (#1474), runs
+        both full teams from this checkout and tears them down keeping their work."""
+        old = os.path.join(self.root, "old")
+        self.setup_sandbox(old)
+        sock = cs.tmux_socket(os.path.join(old, "state"))
+        self.addCleanup(self.tmux, sock, "kill-server")
+        self.assertEqual(self.tmux(sock, "new-session", "-d", "-s", "crew-campaign-r785", "sleep 300").returncode, 0)
+        decoy = self.decoy("crew-campaign-r785")
+        env = {k: v for k, v in os.environ.items() if not k.startswith("CREW_")}
+        env.update(TMUX=decoy + ",0,0", TMUX_PANE="%0",
+                   PATH=os.path.dirname(shutil.which("tmux")) + os.pathsep + env["PATH"])
+        p, phases = self.teams(self.root, env)
         self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
-        phases = {r["phase"]: r for r in map(json.loads, p.stdout.splitlines()[:-1])}
-        self.assertEqual(list(phases), ["setup", "preflight", "up-a", "up-b", "ready", "teardown"])
+        self.assertEqual(list(phases), ["cleanup", "setup", "preflight", "up-a", "up-b", "ready", "teardown"])
+        self.assertEqual(phases["cleanup"]["runs"], ["old"])
+        self.assertNotEqual(self.tmux(sock, "has-session", "-t", "=crew-campaign-r785").returncode, 0)
+        self.assertEqual(self.tmux(decoy, "has-session", "-t", "=crew-campaign-r785").returncode, 0, "decoy kept")
         self.assertEqual({t["instance"] for t in phases["preflight"]["teams"]}, {"a", "b"})
         for live in phases["ready"]["roles"].values():
             self.assertEqual(set(live.values()), {"alive"})
             self.assertIn("coordinator", live)
         self.assertEqual([s["stopped"] for s in phases["teardown"]["teams"]], [True, True])
-        self.assertEqual(phases["teardown"]["retained"], [os.path.join(self.root, d) for d in ("repo", "repo-b")])
+        run = os.path.join(self.root, phases["setup"]["run"])
+        self.assertEqual(phases["teardown"]["retained"], [os.path.join(run, d) for d in ("repo", "repo-b")])
         self.assertEqual(self.read(self.sentinel), "untouched\n")
+
+    def test_a28_teams_refuses_cleanup_without_a_manifest(self):
+        os.makedirs(os.path.join(self.root, "stray", "state"))
+        p, phases = self.teams(self.root)
+        self.assertEqual(p.returncode, 1, p.stdout + p.stderr)
+        self.assertEqual(list(phases), ["cleanup"])
+        self.assertEqual(phases["cleanup"]["problems"], ["stray: no valid manifest; refusing to clean it up"])
+        self.assertEqual(os.listdir(self.root), ["stray"])
 
     def test_gh_api_stub_keeps_posts_fails_lost_and_probes(self):
         self.setup_sandbox()

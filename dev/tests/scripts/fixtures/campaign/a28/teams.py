@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """A28 two-full-team preflight and lifecycle (docs/campaign-harness.md#a28, #1440): `teams.py SOURCE ROOT --production
-FILE --sentinel FILE [--engine ENGINE/MODEL] [--release ID] [--ready SECS]` sets up a level-a sandbox with two teams
-(`campaign-sandbox.py setup --teams 2`), checks the preflight (separate roots, sessions and runtime instances; one repo
+FILE --sentinel FILE [--engine ENGINE/MODEL] [--release ID] [--ready SECS]` first tears down every earlier run under
+ROOT through its manifest (`campaign-sandbox.py teardown`, never a bare tmux call; a run without a valid manifest is
+refused, #1474), then sets up a fresh level-a sandbox with two teams in ROOT/<run> (`campaign-sandbox.py setup --teams
+2`), checks the preflight (separate roots, sessions and runtime instances; one repo
 and control item; the same source, release and skills), starts both full teams with `mdstack up`, waits until every
 required role (the coordinator and each enabled lead) probes alive, leaves one unlanded commit in each team's checkout
 and tears down: both teams stopped, the commits retained, the sentinel unchanged. Without --engine every role is an
@@ -82,9 +84,19 @@ ap.add_argument("--engine")
 ap.add_argument("--release", default="dev")
 ap.add_argument("--ready", type=float, default=300)
 a = ap.parse_args()
-SRC, ROOT, RUN = os.path.realpath(a.source), os.path.realpath(a.root), "teams-%d" % os.getpid()
+SRC, PARENT, RUN = os.path.realpath(a.source), os.path.realpath(a.root), "teams-%d" % os.getpid()
+ROOT = os.path.join(PARENT, RUN)
 guard, cr = load("campaign_guard", "scripts/campaign-guard.py"), load("campaign_run", "scripts/campaign-run.py")
 sandbox = [sys.executable, os.path.join(SRC, "scripts", "campaign-sandbox.py")]
+problems, earlier = [], sorted(os.listdir(PARENT)) if os.path.isdir(PARENT) else []
+for d in earlier:  # a repeated run stops what an earlier one left running, keeping its work (#1474)
+    old = os.path.join(PARENT, d, "state", "manifest.json")
+    r = subprocess.run(sandbox + ["teardown", old], capture_output=True, text=True) if os.path.isfile(old) else None
+    if not r or r.returncode:
+        problems.append("%s: no valid manifest; refusing to clean it up" % d if not r else
+                        "%s: teardown exit %d: %s" % (d, r.returncode, (r.stdout + r.stderr).strip()))
+if not emit("cleanup", problems, runs=earlier):
+    sys.exit(1)
 r = subprocess.run(sandbox + ["setup", "--root", ROOT, "--run-id", RUN, "--production", a.production, "--source", SRC,
                               "--release", a.release, "--sentinel", a.sentinel, "--scenario", "A28", "--teams", "2"] +
                    (["--engine", a.engine] if a.engine else []), capture_output=True, text=True)
