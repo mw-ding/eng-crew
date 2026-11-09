@@ -67,7 +67,11 @@ def away(gh, state, cmd, record):
 
 def snapshot(m, state, env):
     claims = {p.name: p.read_text() for p in sorted(Path(state, "claims").glob("*"))} if Path(state, "claims").is_dir() else {}
-    run = lambda *a: subprocess.run(a, capture_output=True, text=True, env=env).stdout
+    def run(*a):  # a failed read would make an empty snapshot that always compares equal
+        r = subprocess.run(a, capture_output=True, text=True, env=env)
+        if r.returncode:
+            raise RuntimeError("snapshot: %s exited %d: %s" % (a[0], r.returncode, r.stderr.strip()))
+        return r.stdout
     return {"claims": claims, "worktrees": run("git", "-C", str(Path(m["roots"]["state_dir"]).parent / "repo"),
                                                "worktree", "list", "--porcelain"),
             "windows": run("tmux", "list-windows", "-t", "=" + m["session"], "-F", "#{window_name}")}
@@ -147,7 +151,10 @@ def main(argv=None):
                       capture_output=True).returncode:
         return save("work: builder #3 did not start before the sleep")
     Path(state, "status", "builder-3.status").write_text("ack: attended\n")  # existing work the sleep must keep
-    before, t, mono = snapshot(m, state, env), time.time(), time.monotonic()
+    try:
+        before, t, mono = snapshot(m, state, env), time.time(), time.monotonic()
+    except (OSError, RuntimeError) as e:
+        return save(str(e))
     doc["before"] = {"utc": utc(t), "claims": sorted(before["claims"]),
                     "worktrees": before["worktrees"].count("worktree "), "windows": before["windows"].split()}
     save(status="WAITING")
@@ -164,7 +171,11 @@ def main(argv=None):
         if "sleep" not in doc:
             return save("sleep: no wall-clock jump over %ds within %ds" % (args.gap, args.max_wait))
     doc["after"] = {"utc": utc()}
-    if snapshot(m, state, env) != before:
+    try:
+        changed = snapshot(m, state, env) != before
+    except (OSError, RuntimeError) as e:
+        return save(str(e))
+    if changed:
         return save("preserved: claims, worktrees or tmux windows changed across the sleep")
     doc["preserved"] = True
     got = posts[0].split("receipt code ")[1][:6] if args.dry_run else input("owner: the receipt code on the channel: ")

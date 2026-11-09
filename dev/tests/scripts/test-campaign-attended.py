@@ -3,8 +3,8 @@
 
 Covers the refusals (A26 outside the manifest, a non-https webhook, the live crew's webhook) writing nothing, the
 dry-run rehearsal passing end to end without sleep and labelled not evidence, the attended run passing only after a
-wall-clock jump and a matching receipt code, and failing on no sleep, a wrong code, an undelivered message or a
-changed tmux window across the sleep. Run in CI.
+wall-clock jump and a matching receipt code, and failing on no sleep, a wrong code, an undelivered message, an
+unreadable snapshot or a changed tmux window across the sleep. Run in CI.
 """
 import contextlib
 import importlib.util
@@ -63,7 +63,7 @@ elif a[0] == "spawn":
     os.makedirs(s + "/status", exist_ok=True)
     open(s + "/claims/builder-issue3", "w").write("heartbeat: x\n")
 """
-FAKE_TMUX = "#!/bin/sh\ncat \"$FAKE_WINDOWS\"\n"
+FAKE_TMUX = "#!/bin/sh\n[ -z \"$FAKE_TMUX_FAIL\" ] || { echo \"no server\" >&2; exit 1; }\ncat \"$FAKE_WINDOWS\"\n"
 STEPS = [{"name": "baseline", "run": "echo baseline >> {state_dir}/order"},
          {"name": "paused", "run": "echo paused >> {state_dir}/order"},
          {"name": "resume-catch-up", "run": "echo resume >> {state_dir}/order"}]
@@ -83,6 +83,7 @@ class CampaignAttendedTest(unittest.TestCase):
         subprocess.run(["git", "init", "-q", src], check=True)
         subprocess.run(["git", "-C", src, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-q",
                         "--allow-empty", "-m", "c"], check=True)
+        subprocess.run(["git", "init", "-q", d + "/sand/repo"], check=True)  # the sandbox clone campaign-sandbox.py makes
         self.write(d + "/outside.txt", "untouched\n")
         self.state = d + "/sand/state"
         for sub in ("bin", "gh", "acme__sandbox"):  # campaign-sandbox.py setup makes these
@@ -202,6 +203,12 @@ class CampaignAttendedTest(unittest.TestCase):
             self.assertEqual(code, 1, out)
             self.assertIn(reason, self.doc()["reason"])
             self.assertEqual(self.order(), order, "A26's resume steps never run after a failed check")
+
+    def test_unreadable_snapshot_fails_before_sleep(self):
+        code, out = self.attended(jump=900, FAKE_TMUX_FAIL="1")
+        self.assertEqual(code, 1, out)
+        self.assertEqual(self.doc()["reason"], "snapshot: tmux exited 1: no server")
+        self.assertEqual(self.order(), ["baseline", "paused"])
 
     def test_changed_window_across_sleep_fails(self):
         def receipt(_prompt):
