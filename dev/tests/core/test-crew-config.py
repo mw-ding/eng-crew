@@ -2313,6 +2313,20 @@ class SpecTest(unittest.TestCase):
                       lines)
         self.assertEqual(validate(VALID.replace("builders = 3", 'builders = 3, merge_grant_scope = ["approved"]'))[0], 0)
 
+    def test_release_delegation_defaults_none_and_needs_a_link(self):
+        """#1435: absent keeps a per-cut owner merge-ok; a set delegation carries the owner's words and link."""
+        code, lines = resolve(VALID)
+        self.assertEqual(code, 0, lines)
+        self.assertIn('runtime.options.release_delegation = "none"  # core', lines)
+        words = 'builders = 3, release_delegation = "all approvals incl. releases https://github.com/o/r/issues/985#c1"'
+        code, lines = resolve(VALID.replace("builders = 3", words))
+        self.assertIn('runtime.options.release_delegation = "all approvals incl. releases '
+                      'https://github.com/o/r/issues/985#c1"  # project', lines)
+        code, lines = validate(VALID.replace("builders = 3", 'builders = 3, release_delegation = "releases ok"'))
+        self.assertEqual(code, 1, lines)
+        self.assertIn("crew.toml:runtime.options.release_delegation: expected the owner's recorded words with a "
+                      "https:// link to the record", lines)
+
     def test_team_repo_sections_set_spec_paths_and_scope(self):
         text = TEAM.replace('merge_grant = "docs PRs"', 'merge_grant = "docs PRs"\nmerge_grant_scope = ["approved", "spec"]\n'
                             'spec = ["rfcs/**"]')

@@ -68,6 +68,7 @@ MAPPED = {
     "train-min": ["runtime.options.train_min"], "train-window": ["runtime.options.train_window"],
     "mdstack": ["paths.mdstack"], "merge-grant": ["runtime.options.merge_grant"],
     "merge-grant-scope": ["runtime.options.merge_grant_scope"], "spec-paths": ["spec.paths"],
+    "release-delegation": ["runtime.options.release_delegation"],
     "hold-label-blocks": ["runtime.options.hold_label_blocks"], "timezone": ["runtime.timezone"], "fallback-engine": ["engines.fallback_engine"],
     "tested-update": ["strategy.update_from_base"],
     "land-step": ["land.mode"], "land-publish": ["land.opens_draft"], "land-rule": ["land.tests_against_tip"],
