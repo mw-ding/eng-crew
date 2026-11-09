@@ -53,17 +53,23 @@ def verify(stage, tag, destination, sha256sums_digest=None):
     return sha, sums_sha
 
 
+def extract(tar, where, root, what):
+    """Extract tar into where only after every member is a regular file or directory under root, with no `..` part
+    (a link, device, absolute path or other root is refused). filter="data" is added where tarfile has it (3.11.4+);
+    on 3.11.0 to 3.11.3 the member checks alone gate the extract (#1447)."""
+    for member in tar.getmembers():
+        parts = Path(member.name).parts
+        if not parts or parts[0] != root or ".." in parts or not (member.isfile() or member.isdir()):
+            raise ValueError("unsafe %s member: %s" % (what, member.name))
+    tar.extractall(where, **({"filter": "data"} if hasattr(tarfile, "data_filter") else {}))
+
+
 def unpack(archive, tag, destination):
     """Verifier steps 4 and 5: member checks, extract beside the archive, VERSION and entry point, then move."""
     archive, name = Path(archive), bundle_name(tag)
     extracted = archive.parent / "extract"
     with tarfile.open(archive, "r:gz") as tar:
-        for member in tar.getmembers():
-            parts = Path(member.name).parts
-            if (not parts or parts[0] != name or ".." in parts or
-                    not (member.isfile() or member.isdir())):
-                raise ValueError("unsafe release archive member: " + member.name)
-        tar.extractall(extracted, filter="data")
+        extract(tar, extracted, name, "release archive")
     bundle = extracted / name
     version = bundle / "VERSION"
     if not version.is_file() or version.read_text().strip() != tag or not (bundle / "cli/mdstack").is_file():
@@ -127,7 +133,7 @@ def build_git(location, tag, commit, where):
     archive = where / "scripts.tar"
     archive.write_bytes(run("archive", *git, "archive", "--format=tar", commit, "scripts"))
     with tarfile.open(archive) as tar:
-        tar.extractall(tools, filter="data")
+        extract(tar, tools, "scripts", "git source archive")
     run("build", sys.executable, str(tools / "scripts/release-bundle.py"), tag[1:], "--out", str(where), "--ref",
         commit, "--repo", "mw-ding/mdstack", "--root", str(repo))
     return where / (bundle_name(tag) + ".tar.gz")

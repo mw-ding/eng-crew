@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Offline tests for scripts/crew-install.py (stdlib only): the shared release verifier on a staged fake bundle
 (a good bundle moves into place; a SHA256SUMS pin mismatch, missing, duplicate and mismatched entries, unsafe
-members and a bad VERSION are refused before the destination exists, with nothing extracted before the
-checksum checks), the git source on a local bare repository (a tag that peels to the pinned commit is built by
+members (escape, absolute path, symlink, hard link, device, FIFO, other root) and a bad VERSION are refused before
+the destination exists, with nothing extracted before the checksum checks; the same holds without tarfile's
+data_filter, as on Python 3.11.0 to 3.11.3, #1447), the git source on a local bare repository (a tag that peels to the pinned commit is built by
 that commit's own release-bundle.py; a moved tag, a missing tag and a bad built bundle are refused, and nothing
 from the commit runs before the pin check) and the install.json transport record (none for github; url, mirror
 and git fields; an old record reads as github). Run in CI.
@@ -24,6 +25,39 @@ ci = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(ci)
 
 TAG, NAME = "v5.1.0", "mdstack-5.1.0"
+
+
+class NoDataFilter:
+    """Python 3.11.0 to 3.11.3 (#1447): tarfile has no data_filter, and extractall takes no filter argument."""
+
+    def __enter__(self):
+        self.saved, self.real, self.calls = tarfile.data_filter, tarfile.TarFile.extractall, []
+        del tarfile.data_filter
+        real, calls = self.real, self.calls
+
+        def extractall(tar, path=".", members=None, *, numeric_owner=False, **kw):
+            calls.append(kw)
+            if kw:
+                raise TypeError("extractall() got an unexpected keyword argument %r" % next(iter(kw)))
+            return real(tar, path, members, numeric_owner=numeric_owner, filter="fully_trusted")
+
+        tarfile.TarFile.extractall = extractall
+        return self
+
+    def __exit__(self, *exc):
+        tarfile.data_filter, tarfile.TarFile.extractall = self.saved, self.real
+
+
+def unsafe_members():
+    """One member of each refused kind: a `..` escape, an absolute path, a symlink, a hard link, a device, a FIFO
+    and a file outside the bundle root."""
+    escape, absolute = tarfile.TarInfo(NAME + "/../../escape"), tarfile.TarInfo("/" + NAME + "/abs")
+    symlink, hardlink = tarfile.TarInfo(NAME + "/link"), tarfile.TarInfo(NAME + "/hard")
+    symlink.type, symlink.linkname = tarfile.SYMTYPE, "/etc/passwd"
+    hardlink.type, hardlink.linkname = tarfile.LNKTYPE, NAME + "/VERSION"
+    device, fifo = tarfile.TarInfo(NAME + "/dev"), tarfile.TarInfo(NAME + "/fifo")
+    device.type, fifo.type = tarfile.CHRTYPE, tarfile.FIFOTYPE
+    return escape, absolute, symlink, hardlink, device, fifo, tarfile.TarInfo("other/file")
 
 
 def stage_bundle(stage, version=TAG, extra=None, sums=None, name=NAME):
@@ -75,15 +109,35 @@ class VerifyTest(unittest.TestCase):
                 self.refused("SHA256SUMS mismatch or missing entry", extracted=False)
 
     def test_unsafe_members_and_bad_version_are_refused(self):
-        escape = tarfile.TarInfo(NAME + "/../../escape")
-        link = tarfile.TarInfo(NAME + "/link")
-        link.type, link.linkname = tarfile.SYMTYPE, "/etc/passwd"
-        for member in (escape, link, tarfile.TarInfo("other/file")):
+        for member in unsafe_members():
             with self.subTest(member.name):
                 stage_bundle(self.stage, extra=member)
                 self.refused("unsafe release archive member", extracted=False)
         stage_bundle(self.stage, version="v5.0.0")
         self.refused("VERSION or bootstrap entry point does not match")
+
+    def test_without_data_filter_unsafe_members_are_refused_and_a_good_bundle_installs(self):
+        with NoDataFilter() as nd:
+            for member in unsafe_members():
+                with self.subTest(member.name):
+                    stage_bundle(self.stage, extra=member)
+                    self.refused("unsafe release archive member", extracted=False)
+            self.assertEqual(nd.calls, [])
+            sha = stage_bundle(self.stage)
+            self.assertEqual(ci.verify(self.stage, TAG, self.dest)[0], sha)
+            self.assertEqual(nd.calls, [{}])
+        self.assertEqual((self.dest / "VERSION").read_text(), TAG + "\n")
+        self.assertTrue((self.dest / "cli/mdstack").is_file())
+
+    def test_with_data_filter_the_extract_passes_it(self):
+        real, calls = tarfile.TarFile.extractall, []
+        tarfile.TarFile.extractall = lambda tar, *a, **kw: calls.append(kw) or real(tar, *a, **kw)
+        try:
+            stage_bundle(self.stage)
+            ci.verify(self.stage, TAG, self.dest)
+        finally:
+            tarfile.TarFile.extractall = real
+        self.assertEqual(calls, [{"filter": "data"}])
 
 
 class BundleNameTest(unittest.TestCase):
@@ -180,6 +234,27 @@ class GitSourceTest(unittest.TestCase):
                 (self.tmp / NAME / "cli/mdstack").unlink()
                 (self.tmp / NAME / "cli").rmdir()
                 (self.tmp / NAME).rmdir()
+
+    def test_without_data_filter_the_pinned_tag_still_builds(self):
+        self.tag(self.good)
+        with NoDataFilter() as nd:
+            self.fetch(self.good)
+        self.assertEqual(nd.calls, [{}, {}])
+        self.assertEqual((self.tmp / NAME / "VERSION").read_text(), TAG + "\n")
+
+    def test_git_archive_members_outside_scripts_or_not_plain_are_refused(self):
+        for case, member in (("outside", tarfile.TarInfo("cli/mdstack")),
+                             ("escape", tarfile.TarInfo("scripts/../../x")),
+                             ("symlink", tarfile.TarInfo("scripts/link"))):
+            member.type = tarfile.SYMTYPE if case == "symlink" else member.type
+            with self.subTest(case), tempfile.TemporaryDirectory() as tmp:
+                archive = Path(tmp) / "scripts.tar"
+                with tarfile.open(archive, "w") as tar:
+                    tar.addfile(member)
+                with tarfile.open(archive) as tar, \
+                        self.assertRaisesRegex(ValueError, "unsafe git source archive member"):
+                    ci.extract(tar, Path(tmp) / "tools", "scripts", "git source archive")
+                self.assertFalse((Path(tmp) / "tools").exists())
 
     def test_moved_or_missing_tag_is_refused_before_anything_runs(self):
         moved = self.commit("v" + TAG[1:])
