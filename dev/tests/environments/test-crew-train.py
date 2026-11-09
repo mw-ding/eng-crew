@@ -159,6 +159,21 @@ class TrainBase(Base):
                        "statusCheckRollup": [], "reviews": list(reviews), "comments": [{"body": b} for b in comments],
                        "mergeable": mergeable, "closingIssuesReferences": []}, f)
 
+    def complete_view(self, n):
+        path = os.path.join(self.gh_dir, "pr-%d.json" % n)
+        with open(path) as f:
+            view = json.load(f)
+        head = view["headRefOid"]
+        body = "\n".join("<!-- crew:v1 role=reviewer-validator pass=%s sha=%s verdict=pass -->" % (p, head)
+                         for p in ("review", "validate", "verdict"))
+        view.update(body="## Acceptance Evidence\nN/A: no observable behaviour changes\n", files=[],
+                    isDraft=False, baseRefName="main", closingIssuesReferences=[{"number": 1}],
+                    statusCheckRollup=[{"__typename": "StatusContext", "state": "SUCCESS"}],
+                    reviews=[{"body": body, "state": "APPROVED", "author": {"login": "acme-reviewer"}}])
+        with open(path, "w") as f:
+            json.dump(view, f)
+        return path, view
+
     def view(self, n):
         with open(os.path.join(self.gh_dir, "pr-%d.json" % n)) as f:
             pr = json.load(f)
@@ -501,7 +516,7 @@ class LonePrLand(TrainBase):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn("dropped pr=2 reason=conflict", r.stdout)
         self.assertIn("direct pr=1 head=%s reason=collapsed-to-direct: train 1 dropped #2 (conflict)" % h1, r.stdout)
-        self.assertIn("merge-up pr=2 status=queued", r.stdout)  # closed now, so its drop routes at once
+        self.assertNotIn("merge-up", r.stdout)  # its drop routes after the direct land (train route 1)
         self.assertIn("train-report n=1 members=1 landed=none dropped=2:conflict stop=none "
                       "path=direct:collapsed-to-direct", r.stdout)
         rec = self.record()
@@ -514,6 +529,37 @@ class LonePrLand(TrainBase):
         self.assertEqual(land.returncode, 1)
         self.assertIn("train 1 is CI none; nothing landed", land.stdout)
         self.assertEqual(self.gh_calls("pr", "merge"), [])
+
+    def test_resurvey_after_collapse_sees_the_survivor_alone_until_it_lands(self):
+        self.direct()
+        h1 = self.pr(1, {"a.txt": "one\n"})
+        h2 = self.pr(2, {"a.txt": "two\n"})  # merges into main alone, conflicts only with #1
+        for n in (1, 2):
+            self.complete_view(n)
+        self.assertIn("direct pr=1 ", self.train("build", "1", "2").stdout)
+        r = self.train("check", "1", "2")  # the lone-ready re-survey: #2 is not ready at its dropped head
+        self.assertIn("gate pr=1 sha=%s name=train-merge status=pass" % h1, r.stdout)
+        self.assertIn('gate pr=2 sha=%s name=train-merge status=blocked reason="dropped at this head by collapsed '
+                      'train 1 while #1 is open: not ready until it lands or closes"' % h2, r.stdout)
+        h3 = self.pr(3, {"c.txt": "three\n"})
+        self.complete_view(3)
+        r = self.train("check", "1", "2", "3")  # a new ready PR: #1 and #3 are ready, so they train
+        self.assertIn("gate pr=3 sha=%s name=train-merge status=pass" % h3, r.stdout)
+        self.assertIn("pr=2 sha=%s name=train-merge status=blocked" % h2, r.stdout)
+        self.git("fetch", "-q", "origin", "pull/1/head")  # the survivor lands directly
+        self.git("merge", "-q", "--squash", "FETCH_HEAD")
+        self.git("commit", "-q", "-m", "squash #1")
+        self.git("push", "-q", "origin", "main")
+        path = os.path.join(self.gh_dir, "pr-1.json")
+        with open(path) as f:
+            view = json.load(f)
+        view["state"] = "MERGED"
+        with open(path, "w") as f:
+            json.dump(view, f)
+        r = self.train("check", "2")  # now the conflict is real on main
+        self.assertIn('name=train-merge status=blocked reason="conflict on %s' % self.remote("refs/heads/main")[:7], r.stdout)
+        route = self.train("route", "1")
+        self.assertIn("merge-up pr=2 status=queued", route.stdout)  # a conflict waits for its builder
 
     def test_train_policy_or_no_drop_keeps_the_one_member_train(self):
         self.pr(1, {"a.txt": "one\n"})
@@ -652,21 +698,6 @@ class Pipeline(TrainBase):
 
 
 class Precheck(TrainBase):
-    def complete_view(self, n):
-        path = os.path.join(self.gh_dir, "pr-%d.json" % n)
-        with open(path) as f:
-            view = json.load(f)
-        head = view["headRefOid"]
-        body = "\n".join("<!-- crew:v1 role=reviewer-validator pass=%s sha=%s verdict=pass -->" % (p, head)
-                         for p in ("review", "validate", "verdict"))
-        view.update(body="## Acceptance Evidence\nN/A: no observable behaviour changes\n", files=[],
-                    isDraft=False, baseRefName="main", closingIssuesReferences=[{"number": 1}],
-                    statusCheckRollup=[{"__typename": "StatusContext", "state": "SUCCESS"}],
-                    reviews=[{"body": body, "state": "APPROVED", "author": {"login": "acme-reviewer"}}])
-        with open(path, "w") as f:
-            json.dump(view, f)
-        return path, view
-
     def test_reports_all_prs_without_git_build_or_github_writes(self):
         self.pr(1, {"one.txt": "one"})
         self.pr(2, {"two.txt": "two"})

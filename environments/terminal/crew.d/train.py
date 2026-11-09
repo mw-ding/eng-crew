@@ -402,8 +402,7 @@ def train_build(args, values, state, repo, slug):
         print("deferred pr=%d reason=%s" % (d["pr"], d["reason"]))
     for link in rec["ci_links"]:
         print("ci-link %s" % link)
-    if rec["path"] == "direct":
-        train_route(args, values, state, repo, slug, rec)  # closed unpushed: its drops route to merge-up now
+    if rec["path"] == "direct":  # its drops route (`train route <n>`) after the direct land: main has nothing new yet
         print("direct pr=%d head=%s reason=%s" % (rec["members"][0]["pr"], rec["members"][0]["head"], rec["path_reason"]))
     print("train n=%d branch=%s base=%s sha=%s pr=%s local=%s ci=%s" % (
         n, rec["branch"], base, rec["sha"], rec["pr"] or "none", rec["local"].replace(" ", ":"), rec["ci"]))
@@ -531,6 +530,20 @@ def train_check(args, values, state, repo, slug):
         shutil.rmtree(clone, ignore_errors=True)
 
 
+def train_collapsed_drop(poll, slug, state, pr, head):
+    """A collapsed train's drop at this head while its survivor is open (#1425): not ready, so the lone-ready
+    re-survey sees only the survivor; the survivor's land then makes the conflict real for its merge-up."""
+    for path in sorted(glob.glob(os.path.join(state, "trains", "train-*.json"))):
+        with open(path) as f:
+            rec = json.load(f)
+        if rec.get("path") != "direct" or not any(d["pr"] == pr and d.get("head") == head for d in rec["dropped"]):
+            continue
+        survivor = rec["members"][0]["pr"]
+        if poll.gh_json("pr", "view", str(survivor), "-R", slug, "--json", "state")["state"] == "OPEN":
+            return "dropped at this head by collapsed train %d while #%d is open" % (rec["n"], survivor)
+    return None
+
+
 def train_check_prs(args, values, state, repo, slug, poll, clone):
     blocked, base = False, fetch(repo, values["repo.default_branch"])
     for pr in args.items:
@@ -643,9 +656,11 @@ def train_check_prs(args, values, state, repo, slug, poll, clone):
                 if ref:
                     fetch(repo, ref)
             drop = train_premerge(clone, base, head, verified_base, verified_head)
+            collapsed = train_collapsed_drop(poll, slug, state, pr, head)
         except RuntimeError as e:
-            drop = "unreadable: %s" % e
-        results["train-merge"] = ("pass", "merges onto %s with the verified patch" % base[:7]) if not drop else (
+            drop, collapsed = "unreadable: %s" % e, None
+        results["train-merge"] = ("blocked", collapsed + ": not ready until it lands or closes") if collapsed else (
+            "pass", "merges onto %s with the verified patch" % base[:7]) if not drop else (
             "blocked", "%s on %s: route to merge-up before training" % (drop, base[:7]))
         for gate, (status, reason) in results.items():
             print("gate pr=%d sha=%s name=%s status=%s reason=%s" % (pr, head, gate, status, json.dumps(reason)))

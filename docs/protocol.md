@@ -1730,8 +1730,10 @@ dropped changes route to merge-up as before; exactly one, left by drops on
 `<default-branch>` with `lone_pr_land = "direct"`, closes the train
 unpushed (`direct`, reason `collapsed-to-direct`) and lands that change
 directly under the rule above, at its own head with CI green there and the
-lone-ready re-survey under the merge lock. Ready changes that arrive
-meanwhile train with it instead. Its merge record also names the collapse
+lone-ready re-survey under the merge lock. A change the collapse dropped
+is not ready at that head while the survivor is open, and routes to
+merge-up after the direct land. Ready changes that arrive meanwhile train
+with it instead. Its merge record also names the collapse
 reason. With `"train"`, a one-member train still runs as before.
 
 After a direct land, the synthesizer reads the PR's merge commit SHA and

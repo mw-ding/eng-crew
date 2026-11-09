@@ -1521,7 +1521,9 @@ pre-filter (#1425): it runs `build`'s drop checks for each PR alone on the
 freshly fetched default branch, with `git merge-tree` in a temporary bare
 clone without `info/attributes`, never a worktree merge. A conflict, a
 changed verified patch (`content-different`) or `no-verified-base` blocks
-it; route that PR to merge-up before it joins a train. Mirror deployment freshness, evidence
+it; route that PR to merge-up before it joins a train. It also blocks a
+PR still at the head an open collapsed train dropped (step 6) while that
+train's survivor is open. Mirror deployment freshness, evidence
 agreement or reasoned N/A, grant scope, engine attribution, linkage and
 runtime/inbox gates explicitly require manual verification. Filter blockers
 before building and resolve manual gates with the synthesizer's §7 check.
@@ -1582,12 +1584,17 @@ The build then:
    `runtime.options.lone_pr_land = "direct"`. A `direct` build skips steps
    3–5: no local suite, push, train PR or CI wait. It saves the record
    closed with `ci=none` and `path_reason` `collapsed-to-direct: train <n>
-   dropped #<pr> (<reason>), ...`, routes the dropped PRs to merge-up at
-   once and prints `direct pr=<pr> head=<sha> reason=<path_reason>`. `sam`
-   then lands that PR by the direct land rule: every §7 gate at its own head,
-   CI green there, the lone-ready re-survey under the land lock (two or more
-   ready PRs build a new train instead), and the merge record names
-   `lone_pr_land=direct` and the `path_reason`. `train land` refuses the
+   dropped #<pr> (<reason>), ...`, keeps its drops queued and prints
+   `direct pr=<pr> head=<sha> reason=<path_reason>`. `sam` then lands that
+   PR by the direct land rule: every §7 gate at its own head, CI green
+   there, the lone-ready re-survey under the land lock (two or more ready
+   PRs build a new train instead), and the merge record names
+   `lone_pr_land=direct` and the `path_reason`. In that re-survey a PR the
+   collapse dropped is not ready while it is still at its dropped head and
+   the survivor is open (`train check` gate `train-merge`), so the same
+   conflicting pair never re-trains. After the direct land, or when `sam`
+   gives it up, `train route <n>` routes the drops: only then does main hold
+   the conflict a merge-up resolves. `train land` refuses the
    collapsed train. With `lone_pr_land = "train"`, the one-member train runs
    as before.
 7. Removes the clone, saves the record and prints these lines; exit 0

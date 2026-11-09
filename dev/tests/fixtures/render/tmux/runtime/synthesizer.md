@@ -156,6 +156,9 @@ Recorded urgency takes precedence over batching below; an open stop still blocks
   and `Land rule: alone, direct` in the merge post, then perform step 4.
   A train whose drops left one member (`path=direct`, `collapsed-to-direct`)
   lands this way; its merge post also copies the record's `path_reason`.
+  Its drops are not ready at their dropped heads (`train-merge` blocked)
+  while it is open; after its land, or when you give it up, run
+  `$CREW_BIN train route <n> --project "$CREW_PROJECT"`.
 - With `lone_pr_land = "direct"`, two or more ready PRs use a merge train,
   regardless of `train_min`. With `lone_pr_land = "train"`, use the rules below.
 - An urgent ready PR (a release blocker, a security fix or an owner
