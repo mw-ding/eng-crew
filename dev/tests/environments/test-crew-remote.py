@@ -24,7 +24,7 @@ import uuid
 import warnings
 from unittest import mock
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # dev/tests/: crew_testlib
-from crew_testlib import FAKE_TMUX
+from crew_testlib import FAKE_COMPOSER, FAKE_TMUX
 
 TESTS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # dev/tests/
 SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(TESTS)), "scripts")
@@ -1056,6 +1056,36 @@ class PullSend(RunLifecycle):
             self.assertEqual(self.send(message=message)["reason"],
                              "send needs a refs-only message {id, kind, refs, from, ts}")
         self.assertEqual(self.send(primary="host-c")["reason"], "send run ben-7 belongs to primary host-a")
+
+    def composer(self, enters):
+        """The host's tmux behind send.py's composer model (env renamed: the fake ssh passes FAKE_TMUX_* only)."""
+        os.rename(os.path.join(self.bin, "tmux"), os.path.join(self.bin, "tmux-base"))
+        with open(os.path.join(self.bin, "tmux"), "w") as f:
+            f.write(FAKE_COMPOSER.replace('"FAKE_COMPOSER"', '"FAKE_TMUX_COMPOSER"'))
+        os.chmod(os.path.join(self.bin, "tmux"), 0o755)
+        path = os.path.join(self.tmp, "composer.json")
+        os.environ["FAKE_TMUX_COMPOSER"] = path
+        with open(path, "w") as f:
+            json.dump({"history": [], "draft": [], "enters": enters}, f)
+        return lambda: self.load(path)
+
+    def enters(self):
+        with open(os.environ["FAKE_TMUX_LOG"]) as f:
+            return sum(1 for x in f if json.loads(x)[-1:] == ["Enter"])
+
+    def test_send_retries_an_enter_swallowed_as_a_newline(self):  # review r1: the draft spans the indented row
+        self.spawn()
+        model = self.composer(["newline", "submit"])
+        self.assertEqual(self.send("send-2"), dict(result="ok", nudge=None))
+        self.assertEqual((model()["draft"], model()["history"], self.enters()),
+                         ([], ["› inbox: 20261108T120000Z-abc123", "  "], 2))
+
+    def test_send_reports_a_nudge_that_never_submits(self):
+        self.spawn()
+        model = self.composer(["newline"])
+        self.assertEqual(self.send("send-3"), dict(result="ok", nudge="`inbox: 20261108T120000Z-abc123` is still in "
+                                                                        "its composer after 3 Enter retries"))
+        self.assertEqual((model()["history"], self.enters()), ([], 4))
 
 
 class Runner(Base):

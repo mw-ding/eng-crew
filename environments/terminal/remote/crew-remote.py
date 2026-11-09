@@ -766,15 +766,21 @@ def pull_verb(request, root):
     return dict(result="ok", windows=out)
 
 
-def composer_line(screen, at):
-    """The composer row text at the cursor (column, row), its prompt glyph stripped; None when the cursor row does not
-    open with a glyph (send.py's verified nudge, #308, reduced to the one-line nudge)."""
+def composer_draft(screen, at):
+    """The composer rows from the prompt-glyph row down to the cursor row at (column, row), glyph and indent stripped;
+    None when the cursor is not in a composer (send.py's composer_draft, #308: later rows are indented two spaces, so
+    an Enter swallowed as a newline still reads as the draft)."""
     rows = screen.split("\n")
     if not at or at[1] >= len(rows):
         return None
     glyphs = "".join(getattr(a, "COMPOSER", "") for a in load_harnesses().ADAPTERS.values())
-    m = re.match(r"[%s]\s?" % re.escape(glyphs), rows[at[1]]) if glyphs else None
-    return rows[at[1]][m.end():].strip() if m else None
+    glyph = re.compile(r"[%s]\s?" % re.escape(glyphs)) if glyphs else None
+    for top in range(at[1], -1, -1):
+        if glyph and glyph.match(rows[top]):
+            return [glyph.sub("", rows[top], 1).strip()] + [r.strip() for r in rows[top + 1:at[1] + 1]]
+        if rows[top].strip() and not rows[top].startswith("  "):
+            return None
+    return None
 
 
 def on_dialog(screen, engine):
@@ -816,9 +822,11 @@ def send_verb(request, root):
     t.send_keys(SESSION, index, text)
     for retry in range(ENTERS + 1):
         time.sleep(0.5)
-        if composer_line(t.capture(SESSION, index), t.cursor(SESSION, index)) != text:
+        if text not in (composer_draft(t.capture(SESSION, index), t.cursor(SESSION, index)) or []):
             return dict(result="ok", nudge=None)
         if retry < ENTERS:
+            if on_dialog(t.capture(SESSION, index), rec["engine"]):
+                return dict(result="ok", nudge="dialog: a prompt came up after the nudge was typed; Enter not retried")
             t.press(SESSION, index, "Enter")
     return dict(result="ok", nudge="`%s` is still in its composer after %d Enter retries" % (text, ENTERS))
 
