@@ -1,5 +1,5 @@
 # Lab test host sshd (#1356): public key only, runner user only; no forwarding, agent or user env.
-# The forced key line carries `restrict`, so it gets no TTY.
+# The forced key line carries `restrict,pty`: a TTY only for the entrypoint, which takes one for `attach` alone.
 Port 22
 HostKey /etc/ssh/crew-lab/ssh_host_ed25519_key
 AllowUsers crew

@@ -45,6 +45,8 @@ FAKE_TMUX = textwrap.dedent("""\
         state.setdefault("_panes", {})[target] = os.environ.get("FAKE_TMUX_PANE", launch)
     elif cmd == "display-message":
         print(state.get("_panes", {}).get(target, ""))
+    elif cmd == "capture-pane":
+        sys.stdout.write(os.environ.get("FAKE_TMUX_SCREEN", ""))
     elif cmd == "list-windows":
         if target not in state:  # as tmux: no such session, nothing on stdout
             sys.exit(1)
@@ -311,6 +313,31 @@ class ObserveBase(Base):
         self.session = {"0": "ash", "1": "sam", "10": "ben-7", "11": "ben-8", "20": "vera-9-r1-review"}
         with open(self.state_file, "w") as f:
             json.dump({"crew-acme-widgets": self.session}, f)
+
+    def remote_run(self, name, role="builder", **replies):
+        """A run record placed on host-b (#348) and a fake `ssh` that logs each call and answers a verb from replies;
+        an attach (`-t`) exits FAKE_SSH_EXIT, as the host's tmux client would."""
+        self.put("runs/%s.json" % name, json.dumps(dict(
+            index=None, role=role, item="issue #12", repo="acme/widgets", claim=None, engine="claude-code",
+            model="opus", effort="high", harness="claude", remote=True, host="host-b", **{"pass": "build"},
+            worktree="/home/crew/.mdstack/wt/12-abcdef0-%s-build" % role)))
+        self.ssh_log = os.path.join(self.tmp, "ssh.log")
+        with open(os.path.join(self.tmp, "bin", "ssh"), "w") as f:
+            f.write("#!/usr/bin/env python3\nimport base64, json, os, sys\n"
+                    "if '-G' in sys.argv:\n    print('hostname host-b')\n    sys.exit(0)\n"
+                    "tty = '-t' in sys.argv\n"
+                    "request = json.loads(base64.urlsafe_b64decode(sys.argv[-1].split(' ', 1)[1]) if tty else sys.stdin.read())\n"
+                    "open(%r, 'a').write(json.dumps(dict(argv=sys.argv[1:], request=request)) + '\\n')\n"
+                    "code = int(os.environ.get('FAKE_SSH_EXIT', '0'))\n"
+                    "if not tty and code != 255:\n    print(json.dumps(%r.get(request['verb'])))\n"
+                    "sys.exit(code)\n" % (self.ssh_log, replies))
+        os.chmod(os.path.join(self.tmp, "bin", "ssh"), 0o755)
+
+    def ssh_calls(self):
+        if not os.path.exists(self.ssh_log):
+            return []
+        with open(self.ssh_log) as f:
+            return [json.loads(line) for line in f]
 
 
 HEAD = "1" * 40

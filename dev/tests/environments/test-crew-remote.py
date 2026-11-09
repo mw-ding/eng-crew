@@ -35,16 +35,19 @@ REAL_SSH = shutil.which("ssh")
 
 # Fake ssh: `-G` prints a resolved config with env settings the client must drop. Otherwise it logs argv and the
 # request, then replies from FAKE_SSH_MODE: `host` runs the real entrypoint (the simulated host's forced command),
-# `sleep` hangs, otherwise prints FAKE_SSH_REPLY and exits FAKE_SSH_EXIT.
+# `sleep` hangs, otherwise prints FAKE_SSH_REPLY and exits FAKE_SSH_EXIT. With `-t` (attach) stdin stays the caller's
+# terminal: the request is the SSH command's payload and the host runs with the caller's stdin.
 FAKE_SSH = """#!/usr/bin/env python3
-import json, os, subprocess, sys, time
+import base64, json, os, subprocess, sys, time
 if "-G" in sys.argv:
     print("user crew\\nhostname " + sys.argv[-1] + ".overlay\\nport 2222\\nidentityfile ~/.ssh/crew_key")
     print("sendenv LANG\\nsetenv CREW_SECRET=1\\nforwardagent yes\\nproxyjump jump")
     sys.exit(int(os.environ.get("FAKE_SSH_G_EXIT", "0")))
-data = sys.stdin.read()
+tty = "-t" in sys.argv
+data = None if tty else sys.stdin.read()
+request = json.loads(base64.urlsafe_b64decode(sys.argv[-1].split(" ", 1)[1])) if tty else json.loads(data)
 with open(os.environ["FAKE_SSH_LOG"], "a") as f:
-    f.write(json.dumps({"argv": sys.argv[1:], "request": json.loads(data)}) + "\\n")
+    f.write(json.dumps({"argv": sys.argv[1:], "request": request}) + "\\n")
 mode = os.environ.get("FAKE_SSH_MODE", "")
 if mode == "host":
     env = {k: v for k, v in os.environ.items() if k == "PATH" or k.startswith("FAKE_TMUX_")}
@@ -196,7 +199,7 @@ class Client(Base):
                                                                 os=remote.UNAMES.get(platform.system(), platform.system().lower())))
         subprocess.run([sys.executable, SCRIPT, "--root", self.root, "runner", "--once"], check=True)
         self.assertEqual(remote.call("host-b", "version")["runner"], "up")
-        self.assertIn("not built", remote.call("host-b", "logs")["reason"])
+        self.assertIn("not built", remote.call("host-b", "pull")["reason"])
         self.assertIn("path outside root", remote.call("host-b", "logs", path="../x")["reason"])
 
 
@@ -867,8 +870,8 @@ class RealSshConfig(Base):
             self.assertIn(line, lines)
 
 
-class RunLifecycle(Mirror):
-    """#345: spawn, probe and kill a role run in the runner's session; the worktree guards hold on the host."""
+class RunBase(Mirror):
+    """A prepared host with its runner up and one live pane process for a spawned run."""
     def setUp(self):
         super().setUp()
         self.assertEqual(remote.call("host-b", "prepare", project="acme__widgets", root=self.root)["result"], "ok")
@@ -904,6 +907,9 @@ class RunLifecycle(Mirror):
     def windows(self):
         return self.load(os.environ["FAKE_TMUX_STATE"])["crew-host"]
 
+
+class RunLifecycle(RunBase):
+    """#345: spawn, probe and kill a role run in the runner's session; the worktree guards hold on the host."""
     def test_spawn_starts_in_the_runner_session_once(self):
         reply = self.spawn("spawn-1")
         self.assertEqual((reply["result"], reply["worktree"], reply["pane_pid"]), ("ok", self.wt, str(self.pid)))
@@ -998,6 +1004,86 @@ class RunLifecycle(Mirror):
         self.assertEqual(self.windows(), {"0": "runner", "1": "acme__widgets/ben-7"})
         self.assertEqual(self.probe()["liveness"], "alive")
         self.assertEqual(self.probe(project="other__project")["liveness"], "missing")
+
+
+class Observe(RunBase):
+    """#348: attach to a run's pane through a TTY only, capture its screen and tail its step summary."""
+    def setUp(self):
+        super().setUp()
+        self.spawn()
+        self.scope = dict(project="acme__widgets", window="ben-7", primary="host-a")
+
+    def attaches(self):
+        with open(os.environ["FAKE_TMUX_LOG"]) as f:
+            return [args for args in map(json.loads, f) if args[0] == "attach-session"]
+
+    def test_only_attach_takes_a_tty(self):
+        self.assertEqual(remote.handle(self.request("attach", **self.scope), self.root),
+                         dict(result="refused", reason="attach needs a TTY"))
+        self.assertEqual(remote.handle(self.request("probe", **self.scope), self.root, tty=True),
+                         dict(result="refused", reason="only attach takes a TTY"))
+        self.assertEqual(self.attaches(), [])
+
+    def test_attach_runs_tmux_on_the_runs_pane_read_only_unless_rw(self):
+        self.assertEqual(remote.handle(self.request("attach", **self.scope), self.root, tty=True),
+                         dict(result="ok", exit=0))
+        remote.handle(self.request("attach", rw=True, **self.scope), self.root, tty=True)
+        self.assertEqual(self.attaches(), [["attach-session", "-r", "-t", "=crew-host:1"],
+                                           ["attach-session", "-t", "=crew-host:1"]])
+        for fields, reason in ((dict(primary="host-c"), "attach run ben-7 belongs to primary host-a"),
+                               (dict(window="ben-8"), "no run ben-8 on this host"),
+                               (dict(project="other__project"), "no run ben-7 on this host")):
+            self.assertEqual(remote.handle(self.request("attach", **dict(self.scope, **fields)), self.root, tty=True),
+                             dict(result="refused", reason=reason))
+        self.assertEqual(len(self.attaches()), 2)
+
+    def test_attach_over_ssh_carries_the_request_in_the_command(self):
+        code = remote.attach("host-b", **self.scope)  # the test's stdin is no TTY, so the host refuses
+        self.assertEqual(code, 1)
+        (call,) = [c for c in self.calls() if c["request"]["verb"] == "attach"]
+        self.assertIn("-t", call["argv"])
+        self.assertNotIn("-T", call["argv"])
+        self.assertEqual((call["argv"][-2], call["argv"][-1].split(" ")[0]), ("host-b", "crew-host"))
+        self.assertEqual(call["request"], dict(self.scope, verb="attach", version=remote.version()))
+        self.assertEqual(self.attaches(), [])
+        payload = base64.urlsafe_b64encode(json.dumps(self.request("attach", **self.scope)).encode()).decode()
+        env = dict(os.environ, SSH_ORIGINAL_COMMAND="crew-host " + payload)
+        primary, secondary = os.openpty()
+        self.addCleanup(os.close, primary)
+        with os.fdopen(secondary) as tty:  # sshd's pty: the entrypoint attaches and exits with tmux's code
+            r = subprocess.run([sys.executable, SCRIPT, "--root", self.root], stdin=tty, capture_output=True,
+                               text=True, env=env)
+        self.assertEqual((r.returncode, r.stdout), (0, ""))
+        self.assertEqual(self.attaches(), [["attach-session", "-r", "-t", "=crew-host:1"]])
+        r = subprocess.run([sys.executable, SCRIPT, "--root", self.root], stdin=subprocess.DEVNULL,
+                           capture_output=True, text=True, env=env)
+        self.assertEqual((r.returncode, json.loads(r.stdout)), (1, dict(result="refused", reason="attach needs a TTY")))
+
+    def test_capture_returns_the_pane_screen(self):
+        os.environ["FAKE_TMUX_SCREEN"] = "line 1\nline 2\n\n\n"
+        self.assertEqual(remote.call("host-b", "capture", **self.scope), dict(result="ok", text="line 1\nline 2"))
+        self.assertEqual(remote.call("host-b", "capture", **dict(self.scope, window="ben-8")),
+                         dict(result="refused", reason="no run ben-8 on this host"))
+
+    def test_logs_tails_the_newest_step_summary_only(self):
+        self.assertEqual(remote.call("host-b", "logs", **self.scope), dict(result="ok", path=None, lines=[]))
+        for rel, count, mtime in (("issue-7/build", 3, 1000), ("pr-9/fix-1", 30, 2000)):
+            path = os.path.join(self.wt, ".crew", "runs", rel, "summary.md")
+            os.makedirs(os.path.join(os.path.dirname(path), "steps"))
+            with open(path, "w") as f:
+                f.write("".join("%s step %d\n" % (rel, i) for i in range(count)))
+            os.utime(path, (mtime, mtime))
+            with open(os.path.join(os.path.dirname(path), "steps", "build.log"), "w") as f:
+                f.write("RAW\n")
+        reply = remote.call("host-b", "logs", lines=2, **self.scope)
+        self.assertEqual(reply, dict(result="ok", path=os.path.relpath(path, self.root),
+                                     lines=["pr-9/fix-1 step 28", "pr-9/fix-1 step 29"]))
+        self.assertEqual(len(remote.call("host-b", "logs", **self.scope)["lines"]), 20)
+        for lines in (0, 501, True, "5"):
+            self.assertEqual(remote.call("host-b", "logs", lines=lines, **self.scope),
+                             dict(result="refused", reason="lines must be 1 to 500"))
+        self.assertEqual(remote.call("host-b", "logs", **dict(self.scope, primary="host-c"))["reason"],
+                         "logs run ben-7 belongs to primary host-a")
 
 
 class Runner(Base):

@@ -5,7 +5,7 @@ Usage: crew-remote.py --root DIR                                  (forced comman
        crew-remote.py --root DIR runner [--once] [--interval SECS]  (the host's user-level runner service)
 
 Install on a host: the crew key's authorized_keys line is
-`command="python3 <bundle>/environments/terminal/remote/crew-remote.py --root <root>",restrict <key>`. The client (`call`) runs
+`command="python3 <bundle>/environments/terminal/remote/crew-remote.py --root <root>",restrict,pty <key>`. The client (`call`) runs
 `ssh <host> crew-host` with batch mode, strict host keys, no forwarding and bounded dead-peer timeouts. It takes only
 the host's auth and host-key settings from the SSH config (`ssh -G`) and then runs with `-F none`, so no SendEnv,
 SetEnv, forwarding or proxy from any config reaches the call; the entrypoint reads no environment but SSH_ORIGINAL_COMMAND.
@@ -34,12 +34,16 @@ without moving its refs, refuse unless it is the given sha, add the detached wor
 the PR's review files under state/<owner>__<repo>/, start the harness in the runner session's window <owner>__<repo>/<window> and keep
 the run record with its pane identity and the primary that spawned it; `relaunch` restarts a kept run in its own
 worktree), `probe` (C5 liveness on this host's clock) and `kill` (stop the window, then remove the worktree and run
-files unless it holds unlanded work, which is kept and listed; `discard` removes it anyway, `keep` only stops).
-Lifecycle verbs on a run from another primary are refused. A retried request id returns its first reply. The runner keeps the host's crew tmux session
+files unless it holds unlanded work, which is kept and listed; `discard` removes it anyway, `keep` only stops),
+`attach` (the caller's TTY on the run's pane, read-only unless `rw`; the only verb that takes a TTY, with its request
+base64url-encoded in the SSH command `crew-host <payload>` since stdin is the TTY; the key line is `restrict,pty`),
+`capture` (the pane's screen) and `logs` (the tail of the run's newest step summary, never raw logs).
+Run verbs on a run from another primary are refused. A retried request id returns its first reply. The runner keeps the host's crew tmux session
 alive, so runs outlive the SSH session, and writes runner.json under root as its heartbeat.
 """
 import argparse
 import base64
+import glob
 import importlib.util
 import json
 import os
@@ -67,7 +71,7 @@ TAG = re.compile(r"v\d+\.\d+\.\d+(-rc\.\d+)?")
 TEST_NAME = re.compile(r"test-[A-Za-z0-9._-]+\.py")  # dev/tests/*/test-*.py, a basename only
 COMMANDS = {"check-repo", "tests", "evidence"}
 JOB_ENV = {"PATH", "HOME", "LANG", "LC_ALL", "LC_CTYPE", "TMPDIR", "USER", "LOGNAME"}  # no token, agent or profile
-JOB_RETENTION, TAIL = 7 * 86400, 4000
+JOB_RETENTION, TAIL, LOG_LINES = 7 * 86400, 4000, 500
 PREPARE_TIMEOUT = 600
 DISK_FLOOR = 1 << 30  # free bytes under root below which the capacity row fails
 LOGGED_IN = r"Logged in to \S+ (account|as) %s(\s|$)"  # a `gh auth status` line, as mdstack doctor reads it
@@ -726,8 +730,56 @@ def kill_verb(request, root):
     return dict(result="ok", unlanded=[], removed=True)
 
 
+def run_window(request, root, verb):
+    """(run record, window index) of a live run of this project and primary, or a refusal reply."""
+    found = run_record(request, root)
+    if isinstance(found, str):
+        return dict(result="refused", reason="%s %s" % (verb, found))
+    index = find_window(request) if found[2] else None
+    if index is None:
+        return dict(result="refused", reason="no run %s on this host" % request["window"])
+    return found[2], index
+
+
+def attach_verb(request, root):
+    """Attach the caller's TTY to the run's pane in the runner session, read-only unless `rw`; returns on detach."""
+    found = run_window(request, root, "attach")
+    if isinstance(found, dict):
+        return found
+    code = tmux().attach("=%s:%d" % (SESSION, found[1]), request.get("rw") is not True)
+    return dict(result="ok", exit=code)
+
+
+def capture_verb(request, root):
+    """The run pane's visible screen, trailing blank lines dropped, for `mdstack attach builders`."""
+    found = run_window(request, root, "capture")
+    if isinstance(found, dict):
+        return found
+    return dict(result="ok", text=tmux().capture(SESSION, found[1]).rstrip("\n"))
+
+
+def logs_verb(request, root):
+    """The last `lines` lines of the newest step summary under the run's worktree; never raw logs."""
+    found = run_record(request, root)
+    if isinstance(found, str):
+        return dict(result="refused", reason="logs " + found)
+    rec, lines = found[2], request.get("lines", 20)
+    if not isinstance(lines, int) or isinstance(lines, bool) or not 1 <= lines <= LOG_LINES:
+        return dict(result="refused", reason="lines must be 1 to %d" % LOG_LINES)
+    if rec is None:
+        return dict(result="refused", reason="no run %s on this host" % request["window"])
+    runs = os.path.join(rec["worktree"], ".crew", "runs")
+    found = [p for p in glob.glob(os.path.join(runs, "**", "summary.md"), recursive=True) if confined(root, p)]
+    if not found:
+        return dict(result="ok", path=None, lines=[])
+    summary = max(found, key=os.path.getmtime)
+    with open(summary, encoding="utf-8", errors="replace") as f:
+        return dict(result="ok", path=os.path.relpath(summary, root), lines=f.read().splitlines()[-lines:])
+
+
 HANDLERS = {"version": version_verb, "check": check_verb, "prepare": prepare, "seed": seed, "job": job,
-            "result": result, "spawn": spawn_verb, "probe": probe_verb, "kill": kill_verb}
+            "result": result, "spawn": spawn_verb, "probe": probe_verb, "kill": kill_verb, "attach": attach_verb,
+            "capture": capture_verb, "logs": logs_verb}
 
 
 def confined(root, path):
@@ -735,12 +787,14 @@ def confined(root, path):
     return real == os.path.realpath(root) or real.startswith(os.path.realpath(root) + os.sep)
 
 
-def handle(request, root, command=None):
+def handle(request, root, command=None, tty=False):
     if command not in (None, "", "crew-host"):
         return dict(result="refused", reason="SSH command must be crew-host")
     if not isinstance(request, dict) or request.get("verb") not in VERBS:
         return dict(result="refused", reason="unknown verb")
     verb = request["verb"]
+    if (verb == "attach") != tty:  # the key line allows a pty for attach only; every other verb runs without one
+        return dict(result="refused", reason="attach needs a TTY" if verb == "attach" else "only attach takes a TTY")
     if verb != "version" and request.get("version") != version():
         return dict(result="refused", reason="version skew: host %s, call %s" % (version(), request.get("version")))
     if "root" in request and os.path.realpath(os.path.expanduser(str(request["root"]))) != os.path.realpath(root):
@@ -790,6 +844,17 @@ def ssh_argv(host, config=None):
     return None if r.returncode else [*SSH, *[x for k, v in settings for x in ("-o", k + "=" + v)], host, "crew-host"]
 
 
+def attach(host, config=None, **fields):
+    """`ssh -t` to the attach verb with this terminal: the request travels JSON in the SSH command, base64url-encoded,
+    since stdin is the TTY. Returns the ssh exit code; 255 is a transport failure."""
+    argv = ssh_argv(host, config)
+    if argv is None:
+        return 255
+    payload = base64.urlsafe_b64encode(json.dumps(dict(fields, verb="attach", version=version())).encode()).decode()
+    argv = ["-t" if a == "-T" else a for a in argv[:-1]] + ["crew-host " + payload]
+    return subprocess.run(argv).returncode
+
+
 def call(host, verb, request_id=None, timeout=45, config=None, **fields):
     """One hardened SSH call; a mutating verb gets a request id, reused on retry so the host acts once."""
     request = dict(fields, verb=verb, version=version())
@@ -827,12 +892,16 @@ def main():
         return runner(root, args.once, args.interval)
     if args.mode == "job":
         return run_job(root, args.job_id)
+    command, _, payload = (os.environ.get("SSH_ORIGINAL_COMMAND") or "").partition(" ")
     try:
-        request = json.load(sys.stdin)
+        request = json.loads(base64.urlsafe_b64decode(payload.encode())) if payload else json.load(sys.stdin)
     except ValueError:
         request = None
-    print(json.dumps(handle(request, root, os.environ.get("SSH_ORIGINAL_COMMAND"))))
-    return 0
+    reply = handle(request, root, command, os.isatty(0))
+    if reply["result"] == "ok" and request.get("verb") == "attach":  # the tmux client already used the TTY
+        return reply["exit"]
+    print(json.dumps(reply))
+    return 1 if payload and reply["result"] != "ok" else 0
 
 
 if __name__ == "__main__":
