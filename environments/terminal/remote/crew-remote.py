@@ -29,7 +29,13 @@ leftovers that no state/*/toolkit.json names and lists them. `version` with a `t
 reports whether that project's pinned toolkit, its record and every file hash match the pin (host check row 2); `job` (refused unless `head` is a commit in the project mirror: a detached worktree
 jobs/<job_id>/wt/ at head runs the closed command set in the background with a scrubbed env and writes
 jobs/<job_id>/result.json; a retried job_id returns the first job; jobs past JOB_RETENTION are removed) and `result`
-(`running`, or the result with capped log tails). A retried request id returns its first reply. The runner keeps the host's crew tmux session
+(`running`, or the result with capped log tails); `spawn` (needs the runner: fetch the run's ref into the mirror
+without moving its refs, refuse unless it is the given sha, add the detached worktree wt/<name>, write the brief and
+the PR's review files under state/<owner>__<repo>/, start the harness in a window of the runner's session and keep
+the run record with its pane identity and the primary that spawned it; `relaunch` restarts a kept run in its own
+worktree), `probe` (C5 liveness on this host's clock) and `kill` (stop the window, then remove the worktree and run
+files unless it holds unlanded work, which is kept and listed; `discard` removes it anyway, `keep` only stops).
+Lifecycle verbs on a run from another primary are refused. A retried request id returns its first reply. The runner keeps the host's crew tmux session
 alive, so runs outlive the SSH session, and writes runner.json under root as its heartbeat.
 """
 import argparse
@@ -39,7 +45,9 @@ import json
 import os
 import platform
 import re
+import shlex
 import shutil
+import signal
 import subprocess
 import sys
 import tarfile
@@ -69,6 +77,11 @@ ADAPTERS = {"macos", "linux"}  # hostos/<os>.py
 SSH = ["ssh", "-F", "none", "-T", "-a", "-x", "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes",
        "-o", "ClearAllForwardings=yes", "-o", "ConnectTimeout=10", "-o", "ServerAliveInterval=5",
        "-o", "ServerAliveCountMax=2"]
+WORD = re.compile(r"[A-Za-z0-9][A-Za-z0-9._/:-]{0,63}")  # a role, model, effort, gh login or primary name
+REF = re.compile(r"refs/(heads|pull)/[A-Za-z0-9._/-]+")
+VERDICT = re.compile(r"pr\d+-[0-9a-f]{7}-r\d+-[a-z]+\.md")  # verdicts/pr<n>-<sha7>-r<k>-<pass>.md
+POINTER = "Read your brief at $CREW_BRIEF and follow it."  # crew_shared.POINTER and LAUNCH, built here from checked fields
+LAUNCH = 'export GH_TOKEN="$(gh auth token --user "$CREW_IDENTITY")"; exec %s "%s"'
 KEEP = {"hostname", "user", "port", "identityfile", "identitiesonly", "certificatefile", "identityagent",
         "userknownhostsfile", "globalknownhostsfile", "hostkeyalias"}  # auth and host keys; never env, forwards, proxies
 
@@ -523,8 +536,191 @@ def check_verb(request, root):
     return dict(result="ok", checks=checks, projects=projects, load=load)
 
 
-HANDLERS = {"version": version_verb, "check": check_verb,
-            "prepare": prepare, "seed": seed, "job": job, "result": result}
+def run_record(request, root):
+    """(state dir, record path, record or None) of the request's run, or a refusal string."""
+    project, window, primary = request.get("project"), request.get("window"), request.get("primary")
+    if not (isinstance(project, str) and PROJECT.fullmatch(project)) or not (
+            isinstance(window, str) and REQUEST_ID.fullmatch(window)) or not (isinstance(primary, str) and WORD.fullmatch(primary)):
+        return "needs project=owner__repo, a window name and the primary"
+    state = os.path.join(root, "state", project)
+    path = os.path.join(state, "runs", window + ".json")
+    rec = load(path) if os.path.exists(path) else None
+    if rec and rec["primary"] != primary:
+        return "run %s belongs to primary %s" % (window, rec["primary"])
+    return state, path, rec
+
+
+def find_window(name):
+    return next((i for i, n in tmux().list_windows(SESSION) if n == name), None)
+
+
+def start_time(pid):
+    adapter, _ = host_os(UNAMES.get(platform.system()))
+    return adapter.start_time(run_probe, pid) if adapter and pid else "missing"
+
+
+def stop(pid, grace=2.0):
+    """SIGTERM the pane's process group, SIGKILL it after grace seconds; the pgid if it survives."""
+    try:
+        pgid = os.getpgid(int(pid))
+    except (ProcessLookupError, ValueError, TypeError):
+        return None
+    if pgid <= 1 or pgid == os.getpgrp():
+        return None
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        try:
+            os.killpg(pgid, sig)
+        except (ProcessLookupError, PermissionError):  # macOS answers EPERM for a group of zombies only
+            return None
+        deadline = time.monotonic() + grace
+        while time.monotonic() < deadline:
+            try:
+                os.killpg(pgid, 0)
+            except (ProcessLookupError, PermissionError):
+                return None
+            time.sleep(0.05)
+    return pgid
+
+
+def spawn_verb(request, root):
+    """Start a role run in the runner's tmux session, so it outlives this call: fetch `ref` into the mirror (it must
+    be `sha`), add a detached worktree at wt/<name>, write the brief and the PR's review files, launch the engine's
+    harness. `relaunch` restarts a kept run in its own worktree with a fresh brief. Never a second window."""
+    found = run_record(request, root)
+    if isinstance(found, str):
+        return dict(result="refused", reason="spawn " + found)
+    state, path, rec = found
+    if runner_state(root) != "up":
+        return dict(result="refused", reason="runner down")
+    adapter = load_harnesses().ADAPTERS.get(request.get("engine"))
+    if not hasattr(adapter, "role_argv") or request.get("permission_mode") not in adapter.PERMISSION:
+        return dict(result="refused", reason="engine or permission_mode not launchable on this host")
+    if not all(isinstance(request.get(k), str) and WORD.fullmatch(request[k]) for k in ("role", "model", "effort", "identity")) \
+            or not isinstance(request.get("brief"), str):
+        return dict(result="refused", reason="spawn needs role, model, effort, identity and brief")
+    window, index = request["window"], find_window(request["window"])
+    if request.get("relaunch"):
+        if rec is None:
+            return dict(result="refused", reason="no run %s to relaunch" % window)
+        if index is not None and stop((tmux().pane(SESSION, index) or {}).get("pid")):
+            return dict(result="failed", error="process group of %s survived SIGKILL" % window)
+        if index is not None:
+            tmux().kill_window(SESSION, index)
+        wt = rec["worktree"]
+    else:
+        wt_rel, sha, ref, verdicts = (request.get(k) for k in ("worktree_path", "sha", "ref", "verdicts"))
+        if rec or index is not None:
+            return dict(result="refused", reason="run %s exists" % window)
+        if not isinstance(wt_rel, str) or os.path.dirname(os.path.normpath(wt_rel)) != "wt" or not (
+                isinstance(sha, str) and SHA.fullmatch(sha)) or not (isinstance(ref, str) and REF.fullmatch(ref)) or \
+                not isinstance(verdicts, dict) or not all(VERDICT.fullmatch(str(n)) and isinstance(t, str) for n, t in verdicts.items()):
+            return dict(result="refused", reason="spawn needs worktree_path=wt/<name>, sha, ref and verdicts")
+        wt, mirror = os.path.join(root, os.path.normpath(wt_rel)), os.path.join(root, "mirrors", request["project"] + ".git")
+        if os.path.lexists(wt) or not os.path.isdir(mirror):
+            return dict(result="refused", reason="%s exists" % wt_rel if os.path.lexists(wt) else "project mirror not prepared")
+        try:  # --refmap= fetches without touching the mirror's refs, which run branches share
+            sh("fetch", "git", "-C", mirror, "fetch", "--quiet", "--refmap=", "origin", ref)
+            if sh("fetch", "git", "-C", mirror, "rev-parse", "FETCH_HEAD").strip() != sha:
+                return dict(result="refused", reason="stale spawn: %s is not %s" % (ref, sha))
+            sh("worktree", "git", "-C", mirror, "worktree", "add", "--quiet", "--detach", wt, sha)
+            sh("worktree", "git", "-C", mirror, "config", "remote.origin.mirror", "false")  # a run pushes refspecs
+        except Failed as e:
+            return e.reply
+        with open(os.path.join(wt, sh("worktree", "git", "-C", wt, "rev-parse", "--git-path", "info/exclude").strip()), "a") as f:
+            f.write("\n.crew/\n")  # step summaries never count as unlanded
+        for d in ("runs", "status", "inbox", "verdicts"):
+            os.makedirs(os.path.join(state, d), exist_ok=True)
+        for name, text in verdicts.items():
+            with open(os.path.join(state, "verdicts", name), "w", encoding="utf-8") as f:
+                f.write(text)
+        rec = dict(window=window, primary=request["primary"], worktree=wt)
+    rec.update({k: request[k] for k in ("role", "engine", "model", "effort", "permission_mode", "identity")})
+    brief = os.path.join(state, "runs", window + ".brief.md")
+    with open(brief, "w", encoding="utf-8") as f:
+        f.write(request["brief"])
+    env = {"CREW_ROLE": rec["role"], "CREW_ID": window, "CREW_STATE": state, "CREW_BRIEF": brief,
+           "CREW_BIN": os.path.join(ROOT, "cli", "mdstack"), "CREW_IDENTITY": rec["identity"],
+           "CREW_STATUS": os.path.join(state, "status", window + ".status"),
+           "CREW_INBOX": os.path.join(state, "inbox", window + ".jsonl")}
+    save(path, rec)  # before the window, so a failed launch still leaves a run kill can remove
+    argv = adapter.role_argv(rec["model"], rec["effort"], wt, state, adapter.PERMISSION[rec["permission_mode"]])
+    index = max(i for i, _ in tmux().list_windows(SESSION)) + 1
+    tmux().new_window(SESSION, index, window, wt, env, LAUNCH % (shlex.join(argv), POINTER))
+    pane = tmux().pane(SESSION, index) or {}
+    rec.update(pane_id=pane.get("id"), pane_pid=pane.get("pid"), pane_start=start_time(pane.get("pid")))
+    save(path, rec)
+    return dict(result="ok", worktree=wt, brief=brief, **{k: rec[k] for k in ("pane_id", "pane_pid", "pane_start")})
+
+
+def probe_verb(request, root):
+    """C5 liveness of a run on this host's own clock, read-only: alive, dead, missing or ambiguous."""
+    found = run_record(request, root)
+    if isinstance(found, str):
+        return dict(result="refused", reason="probe " + found)
+    rec, index = found[2], find_window(request["window"])
+    p = tmux().pane(SESSION, index) if rec and index is not None else None
+    liveness = ("missing" if rec is None or index is None else "ambiguous" if p is None else "missing"
+                if (p["id"], p["pid"]) != (rec["pane_id"], rec["pane_pid"]) else "dead" if p["dead"] == "1" else
+                "missing" if start_time(p["pid"]) != rec["pane_start"] else "alive")
+    return dict(result="ok", liveness=liveness)
+
+
+def unlanded(wt, refs):
+    """Uncommitted or untracked paths, and commits on none of refs (the first, the default branch, must fetch) nor
+    the worktree's own branch on origin."""
+    items = ["uncommitted: " + line for line in sh("status", "git", "-C", wt, "status", "--porcelain",
+                                                   "--untracked-files=all").splitlines() if line]
+    branch = subprocess.run(["git", "-C", wt, "symbolic-ref", "-q", "HEAD"], capture_output=True, text=True).stdout.strip()
+    landed = []
+    for i, ref in enumerate(refs + ([branch] if branch else [])):
+        if subprocess.run(["git", "-C", wt, "fetch", "--quiet", "--refmap=", "origin", ref], stdin=subprocess.DEVNULL,
+                          capture_output=True, timeout=PREPARE_TIMEOUT).returncode == 0:
+            landed.append(sh("fetch", "git", "-C", wt, "rev-parse", "FETCH_HEAD").strip())
+        elif i == 0:
+            return items + ["unchecked: cannot fetch " + ref]
+    log = sh("log", "git", "-C", wt, "log", "--format=%H %s", "HEAD", "--not", *landed)
+    return items + ["commit: " + line for line in log.splitlines() if line]
+
+
+def kill_verb(request, root):
+    """Stop a run's window, then remove its worktree and run files unless the worktree holds unlanded work (kept
+    and listed); `discard` removes it anyway (the primary posted the owner's reason), `keep` only stops."""
+    found = run_record(request, root)
+    if isinstance(found, str):
+        return dict(result="refused", reason="kill " + found)
+    state, path, rec = found
+    refs = request.get("refs")
+    if not isinstance(refs, list) or not refs or not all(isinstance(r, str) and REF.fullmatch(r) for r in refs):
+        return dict(result="refused", reason="kill needs refs, the default branch first")
+    index = find_window(request["window"])
+    if index is not None:
+        pgid = stop((tmux().pane(SESSION, index) or {}).get("pid"))
+        if pgid:
+            return dict(result="failed", error="process group %d survived SIGKILL" % pgid)
+        tmux().kill_window(SESSION, index)
+    if rec is None or request.get("keep"):
+        return dict(result="ok", unlanded=[], removed=False)
+    wt = rec["worktree"]
+    try:
+        items = [] if request.get("discard") or not os.path.isdir(wt) else unlanded(wt, refs)
+    except Failed as e:
+        items = ["unchecked: %s" % e]
+    if items:
+        return dict(result="ok", unlanded=items, removed=False)
+    mirror = os.path.join(root, "mirrors", request["project"] + ".git")
+    subprocess.run(["git", "-C", mirror, "worktree", "remove", "--force", wt], capture_output=True)
+    shutil.rmtree(wt, ignore_errors=True)
+    subprocess.run(["git", "-C", mirror, "worktree", "prune"], capture_output=True)
+    window = request["window"]
+    for p in (path, os.path.join(state, "runs", window + ".brief.md"), os.path.join(state, "status", window + ".status"),
+              os.path.join(state, "inbox", window + ".jsonl")):
+        if os.path.exists(p):
+            os.remove(p)
+    return dict(result="ok", unlanded=[], removed=True)
+
+
+HANDLERS = {"version": version_verb, "check": check_verb, "prepare": prepare, "seed": seed, "job": job,
+            "result": result, "spawn": spawn_verb, "probe": probe_verb, "kill": kill_verb}
 
 
 def confined(root, path):
