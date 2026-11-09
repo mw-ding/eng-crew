@@ -3,8 +3,8 @@
 > - **Status:** partly built
 > - **Applies to:** a tmux primary plus forge-less runner hosts
 > - **Current rules:** [tmux binding](tmux.md), [protocol](../protocol.md)
-> - **Built:** host inventory, `mdstack host check`, `mdstack hosts`, `mdstack host prepare`, the remote call and runner, [Forge-less hosts](#forge-less-hosts-remote-test-runner) and its [runbook](#runbook-add-a-runner-host), the [role-host runbook](#runbook-add-or-remove-a-role-host), the [host OS adapter](#host-os-adapters) dispatch and the `macos` and `linux` adapters, [placement](#placement) in `mdstack spawn`, the [remote run lifecycle](#remote-run-lifecycle) (`spawn`, `kill`, `restart`, `down`), [remote attach and logs](#observability), [remote wakes and messages](#remote-wakes-and-messages) (`pull`, `send`, `host_scan_interval`), proved on fakes, and the pull through a disconnect on lab C (#204–#208, #345, #346, #348, #349, #726–#729, #1358, #1359, #1363)
-> - **Design only:** partition handling (#347) and the two-host dry run (#209), both open
+> - **Built:** host inventory, `mdstack host check`, `mdstack hosts`, `mdstack host prepare`, the remote call and runner, [Forge-less hosts](#forge-less-hosts-remote-test-runner) and its [runbook](#runbook-add-a-runner-host), the [role-host runbook](#runbook-add-or-remove-a-role-host), the [host OS adapter](#host-os-adapters) dispatch and the `macos` and `linux` adapters, [placement](#placement) in `mdstack spawn`, the [remote run lifecycle](#remote-run-lifecycle) (`spawn`, `kill`, `restart`, `down`), [remote attach and logs](#observability), [remote wakes and messages](#remote-wakes-and-messages) (`pull`, `send`, `host_scan_interval`), [partition handling](#failure-and-partition) (`unreachable`, reconcile, abandon with a tombstone), proved on fakes, and the pull through a disconnect and a placed run's partition on lab C (#204–#208, #345–#349, #726–#729, #1358, #1359, #1363)
+> - **Design only:** the two-host dry run (#209), open
 > - **Last checked:** 2026-11-08 at `e73ade4`
 
 How one coordinator runs role sessions on several hosts (laptops, a
@@ -321,8 +321,8 @@ reads `ambiguous` to the local probe (never restarted from here) and shows
 its host's probe in `mdstack status`. Its status lines, wakes and
 `mdstack send` are [below](#remote-wakes-and-messages); the watcher still
 queues no liveness wake for it. Attach and logs are built
-([observability](#observability), #348). Not yet built: `unreachable`
-handling and reconcile (#347). The window gets no `CREW_PROJECT` there, so
+([observability](#observability), #348), and so is [partition
+handling](#failure-and-partition) (#347). The window gets no `CREW_PROJECT` there, so
 the brief's `mdstack ownership` and `action heartbeat` steps do not run
 there yet (a follow-up). Worktrees
 come from a `--mirror` clone, so they have no `refs/remotes/origin/*`; spawn
@@ -432,6 +432,20 @@ unchanged. Gaps use the [gap format](README.md#gap-declaration).
 `mdstack down` stops remote runs through `kill`. A run on an unreachable host
 keeps its records, and `mdstack down` exits 1 naming it, as it does for
 unlanded work.
+
+Built in #347 (`pull_hosts` in `crew.d/watch.py`, the outage and tombstone
+helpers in `crew.d/_remote.py`, `kill_run` in `crew.d/_shared.py`), proved
+on fakes and on lab C (the `partition`
+[lab scenario](../campaign-harness.md#lab-runner-scenarios), a run placed by
+`mdstack spawn`):
+
+| Piece | Behaviour |
+|---|---|
+| Outage | Only an `unreachable` pull counts; `refused` and `failed` reset the count but leave a reached outage's reconcile pending. The watcher keeps each host's `fails`, `since` and `escalated` under `pulls` in `wake/watch-state.json`; at 3 the host's runs are `unreachable` and `mdstack status` reads `unreachable since <time>` |
+| Escalate | One `unreachable` wake (`action: escalate`) per outage, once it is older than the watcher's `--stale`. It names the host and runs; nothing restarts or re-places them, and their claims stay |
+| Reconcile | The first `ok` pull after the outage (a `refused` or `failed` reply carries no probes, so it waits) queues a `reconcile` wake naming each run's probe, so the coordinator re-reads GitHub (§6 step 1). The pull itself brought the missed lines from the mirror's offset. Each run found `dead` or `missing` also gets the local `stale` wake (`action: restart`, or `escalate` after one restart), so `mdstack restart` runs on that host |
+| Abandon | `mdstack kill <window> --discard --reason "<why>"` whose host call is `unreachable` posts the reason, writes `tombstones/<window>.json` (host, reason, time and the run record) and drops the run record, claim, brief and mirror on the primary |
+| Tombstone | Each host scan tries a tombstoned run's `kill` once (not while its host is in an outage). A clean worktree goes with the tombstone; unlanded work stays on the host, and the tombstone is kept, marked `stopped` with the host's list. Either way a `reconcile` wake says which |
 
 ## Security model
 
@@ -660,8 +674,8 @@ Extends the [runner-host runbook](#runbook-add-a-runner-host) to a
 and reviewer runs (20.12 from [#1281](https://github.com/mw-ding/mdstack/issues/1281),
 [#1363](https://github.com/mw-ding/mdstack/issues/1363)). Every step is the
 owner's. Placement, the remote run lifecycle, attach and remote wakes and
-messages are built (#207, #345, #346, #348); partition handling (#347) is
-not.
+messages are built (#207, #345, #346, #348), and so is partition handling
+(#347).
 
 **Add a role host.** Runner-host steps 1 (overlay), 3 (crew key) and 5
 (smoke test) apply unchanged. The others change:

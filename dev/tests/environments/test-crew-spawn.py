@@ -804,15 +804,18 @@ class RemoteRun(KillLandedBase):  # #345: spawn, kill, restart, down and status 
         ready = dict(result="ok", checks=[dict(status="ok", check=n, detail="passed") for n in
                                           ("tools", "logins", "project mirror")], projects=["acme__widgets"], load=0)
         self.down_flag = os.path.join(self.tmp, "host-b.down")
+        self.answer_flag = os.path.join(self.tmp, "host-b.answer")  # its text is the entrypoint's whole reply
         with open(os.path.join(self.tmp, "bin", "ssh"), "w") as f:  # check answers ready; other verbs run the host
             f.write("#!/usr/bin/env python3\nimport json, os, subprocess, sys\n"
                     "if '-G' in sys.argv:\n print('hostname host-b\\nport 22')\n sys.exit(0)\n"
                     "data = sys.stdin.read()\nif os.path.exists(%r):\n sys.exit(255)\n"
+                    "if os.path.exists(%r):\n print(open(%r).read())\n sys.exit(0)\n"
                     "if json.loads(data)['verb'] == 'check':\n print(%r)\n sys.exit(0)\n"
                     "env = {k: v for k, v in os.environ.items() if k == 'PATH' or k.startswith('FAKE_TMUX_')}\n"
                     "env['SSH_ORIGINAL_COMMAND'] = sys.argv[-1]\n"
                     "sys.exit(subprocess.run([sys.executable, %r, '--root', %r], input=data, text=True, env=env)"
-                    ".returncode)\n" % (self.down_flag, json.dumps(ready), self.ENTRY, self.root))
+                    ".returncode)\n" % (self.down_flag, self.answer_flag, self.answer_flag, json.dumps(ready), self.ENTRY,
+                                         self.root))
         os.chmod(os.path.join(self.tmp, "bin", "ssh"), 0o755)
         os.makedirs(os.path.join(self.root, "mirrors"))
         self.git("clone", "-q", "--mirror", self.origin, os.path.join(self.root, "mirrors", "acme__widgets.git"))
@@ -998,6 +1001,108 @@ class RemoteRun(KillLandedBase):  # #345: spawn, kill, restart, down and status 
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         self.assertIn("on host-b failed: unreachable: ", r.stdout)
         self.assertIn("not delivered; probe the run", r.stdout)
+
+    def wakes(self, *args):
+        """Run the watcher (pulls every second) until it queues a wake; every wake queued so far."""
+        r = subprocess.run([sys.executable, CREW, "watch", "--project", self.project, "--interval", "0.05",
+                            "--no-nudge", *args], capture_output=True, text=True, env=self.env, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        with open(os.path.join(self.state, "wake", "queue.jsonl")) as f:
+            return [{k: v for k, v in w.items() if k != "at"} for w in map(json.loads, f)]
+
+    def outage(self, since=1000.0):
+        """The watcher's record of host-b failing 3 pulls in a row since `since`, as the watcher leaves it."""
+        os.makedirs(os.path.join(self.state, "wake"), exist_ok=True)
+        with open(os.path.join(self.state, "wake", "watch-state.json"), "w") as f:
+            json.dump({"pulls": {"host-b": dict(at=since + 30, result="unreachable", fails=3, since=since,
+                                                escalated=since + 30, reconcile=since)}}, f)
+
+    def test_partition_keeps_the_claim_escalates_once_and_reconciles_on_return(self):  # #347
+        with open(self.project, "a") as f:
+            f.write("[runtime.options]\nhost_scan_interval = 1\n")
+        self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
+        pane = self.record("ben-7")["pane_pid"]
+        open(self.down_flag, "w").close()  # the link drops; the run keeps going on the host
+        (wake,) = self.wakes("--stale", "0")
+        self.assertEqual((wake["reason"], wake["host"], wake["action"]), ("unreachable", "host-b", "escalate"))
+        self.assertRegex(wake["event"], r"^host-b unreachable since \S+Z: ben-7; claims kept, never restarted or re-placed$")
+        self.assertTrue(os.path.exists(os.path.join(self.state, "claims", "builder-issue7")))
+        self.assertEqual(self.host_windows(), {"0": "runner", "1": "acme__widgets/ben-7"})
+        self.assertRegex(self.crew("status", "--project", self.project).stdout, r"unreachable since \S+Z")
+        r = self.crew("restart", "ben-7", "--project", self.project)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("refusing restart: ben-7 is unreachable", r.stdout)
+        os.remove(os.path.join(self.state, "wake", "queue.jsonl"))
+        self.assertEqual([w["reason"] for w in self.wakes("--stale", "0", "--backstop", "2")], ["backstop"])  # once
+        os.remove(self.down_flag)
+        os.remove(os.path.join(self.state, "wake", "queue.jsonl"))
+        self.host_status("step: while away\n")
+        got = self.wakes()
+        self.assertEqual([w["reason"] for w in got], ["status", "reconcile"])  # the scan's wakes, then the pull's
+        self.assertEqual(got[0]["line"], "step: while away")  # the missed line, pulled from the stored offset
+        self.assertRegex(got[1]["event"], r"^host-b answers after an outage since \S+Z: ben-7 alive; re-read GitHub")
+        self.assertEqual((self.record("ben-7")["pane_pid"], self.host_windows()),
+                         (pane, {"0": "runner", "1": "acme__widgets/ben-7"}))  # never respawned
+        self.assertTrue(os.path.exists(os.path.join(self.state, "claims", "builder-issue7")))
+        self.assertNotIn("since", self.crew("status", "--project", self.project).stdout)
+
+    def test_reconcile_wakes_a_restart_for_a_run_dead_on_return(self):  # #347: tmux's restart rules on that host
+        self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
+        self.set_host_pane(self.env["FAKE_TMUX_PANE"].replace(" 0 0 ", " 1 0 "))  # the harness exited while away
+        self.outage()
+        got = self.wakes()
+        self.assertEqual([w["reason"] for w in got], ["reconcile", "stale"])
+        self.assertIn("ben-7 dead", got[0]["event"])
+        self.assertEqual({k: got[1][k] for k in ("window", "liveness", "action")},
+                         dict(window="ben-7", liveness="dead", action="restart"))
+
+    def test_reconcile_waits_through_refused_and_failed_replies_for_an_ok_pull(self):  # #347 review r1
+        self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
+        self.set_host_pane(self.env["FAKE_TMUX_PANE"].replace(" 0 0 ", " 1 0 "))
+        self.outage()
+        for answer in (json.dumps(dict(result="refused", reason="version skew")), "not a structured reply"):
+            with open(self.answer_flag, "w") as f:
+                f.write(answer)
+            self.assertEqual([w["reason"] for w in self.wakes("--backstop", "1")], ["backstop"])
+            with open(os.path.join(self.state, "wake", "watch-state.json")) as f:
+                pulled = json.load(f)["pulls"]["host-b"]
+            self.assertEqual((pulled["fails"], pulled["reconcile"]), (0, 1000.0))  # still pending
+            os.remove(os.path.join(self.state, "wake", "queue.jsonl"))
+        os.remove(self.answer_flag)
+        got = self.wakes()
+        self.assertEqual([w["reason"] for w in got], ["reconcile", "stale"])
+        self.assertIn("since 1970-01-01T00:16:40Z: ben-7 dead", got[0]["event"])
+        self.assertEqual((got[1]["window"], got[1]["action"]), ("ben-7", "restart"))
+        with open(os.path.join(self.state, "wake", "watch-state.json")) as f:
+            self.assertNotIn("reconcile", json.load(f)["pulls"]["host-b"])
+
+    def test_owner_abandon_writes_a_tombstone_that_reconcile_stops_keeping_unlanded_work(self):  # #347
+        self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
+        with open(os.path.join(self.wt, "wip.txt"), "w") as f:
+            f.write("x\n")
+        open(self.down_flag, "w").close()
+        r = self.kill("--discard", "--reason", "owner abandons host-b")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("ben-7 on host-b is unreachable: tombstone written", r.stdout)
+        (call,) = self.gh_calls()
+        self.assertEqual(call[:3], ["issue", "comment", "7"])
+        self.assertIn("Reason: owner abandons host-b", call[-1])
+        with open(os.path.join(self.state, "tombstones", "ben-7.json")) as f:
+            grave = json.load(f)
+        self.assertEqual((grave["host"], grave["reason"], grave["rec"]["worktree"]), ("host-b", "owner abandons host-b", self.wt))
+        for gone in ("runs/ben-7.json", "claims/builder-issue7"):
+            self.assertFalse(os.path.exists(os.path.join(self.state, gone)), gone)
+        self.assertEqual(self.host_windows(), {"0": "runner", "1": "acme__widgets/ben-7"})  # not reached
+        os.remove(self.down_flag)
+        (wake,) = self.wakes()
+        self.assertEqual(wake["reason"], "reconcile")
+        self.assertEqual(wake["event"], "host-b: tombstoned ben-7 stopped; worktree kept, unlanded: uncommitted: ?? wip.txt")
+        self.assertEqual(self.host_windows(), {"0": "runner"})
+        self.assertTrue(os.path.exists(os.path.join(self.wt, "wip.txt")))
+        with open(os.path.join(self.state, "tombstones", "ben-7.json")) as f:
+            self.assertEqual(json.load(f)["unlanded"], ["uncommitted: ?? wip.txt"])
+        os.remove(os.path.join(self.state, "wake", "queue.jsonl"))
+        self.assertEqual([w["reason"] for w in self.wakes("--backstop", "2")], ["backstop"])  # stopped once
 
 if __name__ == "__main__":
     unittest.main()

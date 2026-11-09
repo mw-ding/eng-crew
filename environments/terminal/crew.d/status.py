@@ -1,7 +1,8 @@
 """`mdstack status` prints the coordinator's and each run's liveness (alive, dead, missing, ambiguous; a trust or Codex
 hooks-review dialog on screen is ambiguous) from its pane identity, and the host placement chose for each run (- for
 a record from before placement or a crew with no [hosts] inventory, #207). A run on a role host shows its host's probe
-(#345), `unreachable` when the host does not answer.
+(#345), `unreachable` when the host does not answer, with `since <time>` once the watcher's pulls have failed 3 scans
+in a row (#347).
 
 Usage: mdstack status --project FILE [--org-profile FILE]
 """
@@ -29,9 +30,10 @@ def run(args):
         last, beat = heartbeat(state, name)
         head = subprocess.run(["git", "-C", rec.get("worktree") or "/nonexistent", "rev-parse", "--short=7", "HEAD"],
                               capture_output=True, text=True).stdout.strip() or "-"
+        cls = remote_run.probe(values, name, rec) if remote_run.host_of(rec) else probe(session, name, rec, windows)
+        since = remote_run.outage(state, rec["host"]) if cls == "unreachable" else None
         rows.append((name, rec["role"], rec.get("host") or "-", rec["item"], head, "%dm" % ((time.time() - beat) // 60),
-                     remote_run.probe(values, name, rec) if remote_run.host_of(rec) else probe(session, name, rec, windows),
-                     last or "-"))
+                     cls + time.strftime(" since %Y-%m-%dT%H:%M:%SZ", time.gmtime(since)) if since else cls, last or "-"))
     widths = [max(len(r[i]) for r in rows) for i in range(7)]
     print("\n".join("  ".join(c.ljust(w) for c, w in zip(r, widths)) + "  " + r[7] for r in rows))
     return 0

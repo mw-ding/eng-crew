@@ -4,8 +4,8 @@
 crew-lab-scenarios.py calls write() once per run. It writes state/lab/runs/<started>.json and a Markdown copy to
 paste as PR evidence for #207 and #345-#348. The record names lab C, the hosts, the image digest, the staged bundle
 hashes and source SHA, the client bundle, the transport, every injected event and a timeline. It labels what is
-simulated or a stub: loopback SSH and Docker network controls are simulated, the sample checks and the partition's
-claim and identity are stubs, and nothing is a real device. A scenario that did not run is `skipped` with
+simulated or a stub: loopback SSH and Docker network controls are simulated, the sample checks and the engine, forge
+and mirror origin behind the partition's placed run are stubs, and nothing is a real device. A scenario that did not run is `skipped` with
 `evidence: false`, so it supplies no evidence.
 """
 import datetime
@@ -17,7 +17,9 @@ CONTROLS = dict(disconnect="docker network disconnect, then connect", pause="doc
                 runner="docker exec kill of the runner pid; its supervisor restarts it",
                 recreate="docker rm -f of the container and network, then a new container")
 STUBS = ["sample repo branch lab: scripts/check-repo.py and dev/tests/lab/test-lab.py, not the project's checks",
-         "partition: a synthetic claim builder-issue1 and identity lab-bot; no engine or forge runs",
+         "partition: mdstack spawn places a real run, but its engine is a shell loop installed as claude and the host's "
+         "gh a stub answering for lab-bot; the primary has the sandbox's fake forge, and the host's mirror is seeded "
+         "from a bundle and is its own origin",
          "attach: a run planted by docker exec as crew (record, tmux window and step summary); no spawn, engine or forge"]
 
 
