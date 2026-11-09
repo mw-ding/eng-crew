@@ -12,7 +12,8 @@ written and read through the same read-item binding as the guard, #937), and the
 (off is ok; triage.enabled warns that no Grok timer is installed; no row on tmux), the pack row (the install's
 recorded pack name and version; no row without one), the install source row (a recorded non-github transport; no row
 without one), no latest-release query under a non-github source, the checkout row (a clone of another repo fails,
-no or a path origin warns, https and ssh URLs of [repo] pass) and the install and mdstack link rows (#1323). Run in CI.
+no or a path origin warns, https and ssh URLs of [repo] pass), the install and mdstack link rows (#1323), and when gh
+is needed: a github-bound concern or the github release source (#1123). Run in CI.
 """
 import importlib.machinery
 import importlib.util
@@ -537,6 +538,22 @@ class Version(DoctorBase):
         self.tool("gh", "exit 1")
         self.assertEqual(self.version("v2.1.0")[0], "warn")
         self.assertEqual(self.version(None)[2], "no VERSION: not a release bundle")
+
+
+class Forge(DoctorBase):
+    """gh is needed only for a github-bound concern or the github release source (#1123)."""
+
+    def test_github_binding_or_source_needs_gh(self):
+        loader = importlib.machinery.SourceFileLoader("crew_cli", CREW)
+        mod = importlib.util.module_from_spec(importlib.util.spec_from_loader("crew_cli", loader))
+        loader.exec_module(mod)
+        forge = mod.commands()["doctor"].forge
+        packed = {"backends.change.name": "example", "backends.release.name": "github", "install.source": "mirror"}
+        self.assertFalse(forge(packed))
+        self.assertTrue(forge(dict(packed, **{"release.changelog": "CHANGELOG.md"})))
+        self.assertTrue(forge(dict(packed, **{"backends.markers.name": "github"})))
+        self.assertTrue(forge(dict(packed, **{"install.source": "github"})))
+        self.assertTrue(forge({"backends.change.name": "example"}))
 
 
 if __name__ == "__main__":
