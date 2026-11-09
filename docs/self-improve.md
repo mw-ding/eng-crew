@@ -303,9 +303,11 @@ prints for the window:
 | `stall_minutes` | watch samples | union of overlapping stalls, an unclosed one up to its observed time |
 | `false_throttles` | confirmed incidents | count by incident `id`, so related issues are one incident |
 
-Each measure carries its sample size, refs and coverage. With no samples
-(for `false_throttles`, no incident file) the value is null and coverage
-`unknown`: missing history is never zero. Lines in `schedule/errors.jsonl`
+Each measure carries its sample size, refs and coverage. Sample coverage is
+the part of the window between the first and last sample; stalls count only
+where they overlap it. With no samples in the window (for `false_throttles`,
+no incident file) the value is null and coverage `unknown`: missing history
+is never zero. Lines in `schedule/errors.jsonl`
 (`--errors`) count only as `unclassified_errors` until an incident file
 confirms them.
 

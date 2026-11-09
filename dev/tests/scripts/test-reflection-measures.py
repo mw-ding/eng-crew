@@ -4,7 +4,7 @@
 Covers the CSV round means (a missing column stays unknown), first-ready to merged with polling bounds, the union of
 overlapping stalls with replayed samples deduped and an open stall bounded by its observation, confirmed
 false-throttles counted by incident id while unconfirmed errors stay unclassified, null values and `unknown` coverage
-without samples, and the ledger: merge ref with pending or confirmed activation, a baseline refused once activation is
+without samples or for a window before or after capture, stall counts limited to the covered window, and the ledger: merge ref with pending or confirmed activation, a baseline refused once activation is
 confirmed. Run in CI.
 """
 import json
@@ -116,6 +116,25 @@ class ReflectionMeasures(unittest.TestCase):
         out = self.measure(empty)
         for name in ("ready_to_land", "stall_minutes"):
             self.assertEqual((out[name]["value"], out[name]["n"], out[name]["coverage"]), (None, 0, "unknown"))
+
+    def test_windows_outside_capture_stay_unknown(self):  # r1: no invented zero or unrelated cohort
+        for since, until in (("2026-10-01", "2026-10-05"), ("2026-11-10", "2026-11-15")):
+            with self.subTest(since=since):
+                args = self.window()
+                args[1], args[3] = since, until
+                out = json.loads(self.run_cli("measure", *args).stdout)
+                for name in ("ready_to_land", "stall_minutes"):
+                    self.assertEqual((out[name]["value"], out[name]["n"], out[name]["refs"], out[name]["coverage"]),
+                                     (None, 0, [], "unknown"))
+                self.assertEqual(out["stall_minutes"]["open"], 0)
+
+    def test_stall_counts_only_stalls_inside_the_covered_window(self):
+        args = self.window()
+        args[1], args[3] = "2026-11-02T12:35:00Z", "2026-11-03"  # covered 12:35-12:40: only vera-2's wait
+        stall = json.loads(self.run_cli("measure", *args).stdout)["stall_minutes"]
+        self.assertEqual((stall["value"], stall["n"], stall["refs"], stall["open"]), (5.0, 1, ["run:vera-2"], 1))
+        self.assertEqual(stall["coverage"], {"from": "2026-11-02T12:35:00Z", "to": "2026-11-02T12:40:00Z",
+                                             "partial": True})
 
     def test_ledger_baseline_before_activation_only(self):
         self.run_cli("baseline", "--ledger", self.ledger, "--proposal", "P1", *self.window())

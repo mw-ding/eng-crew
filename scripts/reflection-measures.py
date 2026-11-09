@@ -77,7 +77,8 @@ def ready_to_land(obs, since, until):
 
 
 def stall_minutes(obs, since, until):
-    """Union of stall intervals [since, resume ts or, still open, the stall's observed ts], clipped to the window."""
+    """Union of stall intervals [since, resume ts or, still open, the stall's observed ts], clipped to the covered
+    part of the window (since/until); only stalls overlapping it count. No coverage: null."""
     stalls, ends = {}, {}
     for o in (o for o in obs if o.get("source") == "watch"):
         key = (o["key"], o["since"])
@@ -85,8 +86,9 @@ def stall_minutes(obs, since, until):
             stalls.setdefault(key, o["ts"])  # a replayed sample repeats (key, since): one stall
         elif o["kind"] == "resume":
             ends.setdefault(key, o["ts"])
-    spans = sorted((max(key[1], since), min(ends.get(key, ts), until)) for key, ts in stalls.items())
-    spans = [(start, end) for start, end in spans if start < end]
+    clipped = {key: (max(key[1], since), min(ends.get(key, ts), until)) for key, ts in stalls.items()}
+    clipped = {key: span for key, span in clipped.items() if span[0] < span[1]}
+    spans = sorted(clipped.values())
     total, cur = 0.0, None
     for start, end in spans:
         if cur and start <= cur[1]:
@@ -95,9 +97,10 @@ def stall_minutes(obs, since, until):
         total += minutes(*cur) if cur else 0
         cur = [start, end]
     total += minutes(*cur) if cur else 0
-    keys = sorted({key for key, _ in stalls})
-    return measure(total if keys else None, len(stalls), "observations:watch", keys, None, unit="minutes",
-                   open=sum(k not in ends for k in stalls))
+    covered = since is not None
+    return dict(measure(total, len(clipped), "observations:watch", sorted({key for key, _ in clipped}), None,
+                        unit="minutes", open=sum(key not in ends for key in clipped)),
+                value=round(total, 1) if covered else None)  # observed and none stalled: zero
 
 
 def throttles(path, errors, since, until):
@@ -116,15 +119,16 @@ def measures(args):
     since, until = stamp(args.since), stamp(args.until)
     obs = jsonl(args.observations)
     stamps = sorted(o["ts"] for o in obs)
-    coverage = {"from": stamps[0], "to": stamps[-1], "partial": stamps[0] > since or stamps[-1] < until} \
-        if stamps else "unknown"
+    lo, hi = (max(stamps[0], since), min(stamps[-1], until)) if stamps else (None, None)
+    if lo is not None and lo >= hi:  # samples exist but none during the window: its history is unknown
+        lo = hi = None
+    coverage = {"from": lo, "to": hi, "partial": lo > since or hi < until} if lo is not None else "unknown"
+    stalls = stall_minutes(obs, lo, hi) if lo is not None else stall_minutes([], None, None)
     out = {"window": {"since": since, "until": until}, **csv_means(args.csv, since, until),
-           "ready_to_land": ready_to_land(obs, since, until), "stall_minutes": stall_minutes(obs, since, until),
+           "ready_to_land": ready_to_land(obs, since, until), "stall_minutes": stalls,
            "false_throttles": throttles(args.incidents, jsonl(args.errors), since, until)}
     for name in ("ready_to_land", "stall_minutes"):
         out[name]["coverage"] = coverage
-    if stamps and out["stall_minutes"]["value"] is None:
-        out["stall_minutes"]["value"] = 0.0  # samples were taken and none stalled
     return out
 
 
