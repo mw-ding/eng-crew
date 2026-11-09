@@ -117,7 +117,7 @@ RUNTIME_OPTIONS = {"grok-bot": {"max_active_milestones": (int, 1)},
                                         "tmux_server": (str, "default"), "present_builders": (int, None), "present_reviewers": (int, None),
                                         "idle_builder_ttl": (int, 1800), "max_suites": (int, None), "max_load": ("number", None),
                                         "load_high": ("number", 6.0), "load_low": ("number", 4.0), "error_high": (int, 3), "memory_high": (str, None),
-                                        "schedule_interval": (int, 120), "schedule_ramp": (int, 2), "stuck_after": (int, 1800), "poll_interval": (int, 60),
+                                        "schedule_interval": (int, 120), "schedule_ramp": (int, 2), "stuck_after": (int, 1800), "poll_interval": (int, 60), "host_scan_interval": (int, 15),
                                         "land_poll_interval": (int, 60), "land_timeout": (int, 3600), "train_min": (int, 2), "train_window": (int, 600),
                                         "merge_grant": (str, "none"), "merge_grant_scope": ("list[str]", None), "lone_pr_land": (str, "train"),
                                         "train_local_checks": (bool, False), "mirror_deferral": (str, "none"),
@@ -832,7 +832,7 @@ def validate(profile, err, backends=BACKENDS, pack_dir=None, item=None):
                                  ("max_active_milestones", 1), ("train_min", 2), ("train_window", 1),
                                  ("max_suites", 1), ("idle_builder_ttl", 0), ("slack_digest_interval", 1),
                                  ("error_high", 1), ("schedule_interval", 1), ("schedule_ramp", 1),
-                                 ("stuck_after", 1), ("land_poll_interval", 1), ("land_timeout", 1)):
+                                 ("stuck_after", 1), ("land_poll_interval", 1), ("land_timeout", 1), ("host_scan_interval", 1)):
                 if key in opts and opts[key] < minimum:
                     err("runtime.options." + key, "must be >= %d, got %d" % (minimum, opts[key]))
             if opts.get("land_timeout", 3600) < opts.get("land_poll_interval", 60):

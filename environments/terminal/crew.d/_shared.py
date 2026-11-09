@@ -460,13 +460,18 @@ def acked(state, window, msg_id):
         return False
 
 
-def wait_ack(state, window, msg_id, secs):
+def wait_ack(state, window, msg_id, secs, refresh=None):
+    """Wait up to secs for the ack; `refresh` (a remote run's pull into its mirror) runs before each check."""
     deadline = time.monotonic() + secs
-    while not acked(state, window, msg_id):
+    while True:
+        if refresh:
+            refresh()
+        if acked(state, window, msg_id):
+            break
         if time.monotonic() >= deadline:
             print("crew: no ack: %s from %s after %ss" % (msg_id, window, secs))
             return 3
-        time.sleep(0.2)
+        time.sleep(1 if refresh else 0.2)
     print("crew: acked %s by %s" % (msg_id, window))
     return 0
 

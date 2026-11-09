@@ -2,7 +2,13 @@
 kill a role run on its placed host through the hardened call (crew-remote.py). A run record with `remote` set ran
 on its `host`; every call carries the project, the host's root and this primary's name, and retries with the same
 request id while the transport fails, at most 3 calls in a row, so a retried spawn never opens a second window.
+Remote wakes and messages (#346): `pull` copies new status lines into the primary's status/<window>.status mirror and
+`send` delivers an `mdstack send` message through the host.
 """
+import base64
+import contextlib
+import fcntl
+import hashlib
 import importlib.util
 import os
 import re
@@ -18,12 +24,12 @@ def host_of(rec):
     return rec.get("host") if rec.get("remote") else None
 
 
-def call(values, host, verb, **fields):
+def call(values, host, verb, attempts=3, **fields):
     primary = next((k.split(".")[1] for k, v in values.items() if k.startswith("hosts.") and k.endswith(".primary")
                     and v), None)
     fields.update(project=values["repo.owner"] + "__" + values["repo.name"], primary=primary,
                   root=values.get("hosts.%s.root" % host, "~/.mdstack"))
-    for _ in range(3):
+    for _ in range(attempts):
         reply = REMOTE.call(host, verb, **fields)
         if reply["result"] != "unreachable":
             return reply
@@ -62,3 +68,50 @@ def kill(values, name, rec, discard=False, keep=False):
     prs = set(re.findall(r"PR #(\d+)", rec["item"])) | {str(n) for n in (rec.get("pr"), rec.get("args", {}).get("pr")) if n}
     refs = ["refs/heads/" + values["repo.default_branch"]] + ["refs/pull/%s/head" % n for n in sorted(prs)]
     return call(values, rec["host"], "kill", window=name, refs=refs, discard=discard, keep=keep)
+
+
+@contextlib.contextmanager
+def pull_lock(state):
+    """status/.pull.lock: one pull at a time per crew, so the watcher and `mdstack acked` never append a line twice."""
+    os.makedirs(os.path.join(state, "status"), exist_ok=True)
+    with open(os.path.join(state, "status", ".pull.lock"), "a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        yield
+
+
+def pull(values, state, host, names):
+    """One `pull` call for the runs `names` on host: append each run's new complete status lines to its primary
+    mirror. The mirror's own size is the offset and its SHA-256 proves the prefix, so an interrupted, repeated or
+    concurrent pull and a primary restart neither lose nor double a line; a host answering from 0 (its file was
+    rewritten, or the mirror is gone or torn) rebuilds the mirror. One attempt: the next scan is the retry."""
+    with pull_lock(state):
+        mirrors, windows = {}, {}
+        for n in names:
+            mirrors[n] = os.path.join(state, "status", n + ".status")
+            try:
+                with open(mirrors[n], "rb") as f:
+                    data = f.read()
+            except FileNotFoundError:
+                data = b""
+            windows[n] = dict(offset=len(data), digest=hashlib.sha256(data).hexdigest())
+        reply = call(values, host, "pull", attempts=1, windows=windows)
+        for n, got in (reply.get("windows") or {}).items() if reply["result"] == "ok" else ():
+            chunk = base64.b64decode(got["data"]) if n in mirrors else b""
+            if n in mirrors and got["offset"] != windows[n]["offset"]:
+                with open(mirrors[n] + ".tmp", "wb") as f:
+                    f.write(chunk)
+                os.replace(mirrors[n] + ".tmp", mirrors[n])
+            elif chunk:
+                with open(mirrors[n], "ab") as f:
+                    f.write(chunk)
+        return reply
+
+
+def send(values, name, rec, message):
+    """Deliver an `mdstack send` message through the run's host: its inbox line and nudge are the host's."""
+    return call(values, rec["host"], "send", window=name, message=message)
+
+
+def refresh(values, state, name, rec):
+    """A wait_ack refresh for a remote run: pull its status lines into the mirror."""
+    return lambda: pull(values, state, rec["host"], [name])
