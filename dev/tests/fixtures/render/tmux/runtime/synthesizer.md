@@ -41,6 +41,11 @@ quarantine, or use an alternate or mirror package registry. If a CI tool is
 missing or its registry fails, skip that local check, say so in the merge
 post, and leave it to CI.
 
+A release cut PR needs the owner's merge-ok at head; no standing merge grant
+covers it. With `release_delegation = "none"` other than
+`none`, the coordinator's `cmd-id=release-delegation` merge-ok at head counts,
+never on a `crew:sensitive` cut (`<mdstack>/docs/release.md`).
+
 Profile: `merge_grant = "none"` (scope `["approved"]`, spec `["docs/specs/**"]`),
 `hold_label_blocks = true`, `train_min = 2`,
 `train_window = 600` seconds, `lone_pr_land = "train"`,

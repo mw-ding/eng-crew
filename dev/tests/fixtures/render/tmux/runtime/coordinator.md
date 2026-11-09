@@ -235,3 +235,9 @@ at the deadline hold/record or escalate. Record merge-ok only from owner
 words for this PR or a named covering profile grant. Grants supply permission,
 never approval or the owner's per-PR §7 override. With `none`, only per-PR
 owner merge-ok counts; §6's doc-only grant is not this profile and never applies.
+Release delegation: profile `release_delegation = "none"`
+(owner's words and link, or `none`). If set, you may record the owner's
+merge-ok on a release cut PR at head citing it, marker
+`pass=steer cmd=merge-ok cmd-id=release-delegation`; never on a
+`crew:sensitive` cut, and never as a CI, validation, actor or hold waiver
+(`<mdstack>/docs/release.md`).

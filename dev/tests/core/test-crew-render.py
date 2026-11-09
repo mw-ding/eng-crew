@@ -550,6 +550,26 @@ class TmuxBriefs(unittest.TestCase):
         self.assertIn('`merge_grant = "all approved per #9"` (scope `["approved", "spec"]`, spec `["docs/specs/**", "rfcs/**"]`),', synth)
         self.assertIn("§7 spec changes need merge-ok unless scope has `spec`", synth)
 
+    def test_release_delegation_fills_tmux_briefs(self):
+        """#1435: a set release_delegation renders in the coordinator and synthesizer briefs; the goldens cover none."""
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        project = os.path.join(tmp, "crew.toml")
+        with open(example_profile(tmp), encoding="utf-8") as f:
+            text = f.read().replace('options = { permission_mode = "bypass", researchers = 2 }\n',
+                                    'options = { release_delegation = "make releases https://x/985#c1" }\n')
+        with open(project, "w", encoding="utf-8") as f:
+            f.write(text)
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+            code = cr.main(["--project", project, "--out", os.path.join(tmp, "out")])
+        self.assertEqual(code, 0, out.getvalue())
+        coordinator = tree(os.path.join(tmp, "out"))["runtime/coordinator.md"]
+        self.assertIn('`release_delegation = "make releases https://x/985#c1"`', coordinator)
+        self.assertIn("`pass=steer cmd=merge-ok cmd-id=release-delegation`", coordinator)
+        synth = " ".join(tree(os.path.join(tmp, "out"))["runtime/synthesizer.md"].split())
+        self.assertIn('With `release_delegation = "make releases https://x/985#c1"` other than `none`', synth)
+
     def test_profile_values_fill_tmux_briefs(self):
         """14.1d (#233): mdstack path, merge grant and hold semantics render from the profile; booleans as TOML."""
         tmp = tempfile.mkdtemp()
