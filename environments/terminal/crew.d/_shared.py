@@ -107,22 +107,27 @@ def placeholder_paths(args, values, keys):
             if re.search(r"<[^<>]+>", str(values.get("paths." + k, "")))]
 
 
-def profile(args, *keys):
-    """Resolved profile, session name and state dir; exit 1 on a resolve problem, a non-tmux runtime, or a placeholder
-    in paths.state_dir or another path key the command uses (keys)."""
+def profile(args, *keys, runtimes=("tmux",)):
+    """Resolved profile, session name and state dir; exit 1 on a resolve problem, a runtime outside runtimes, or a
+    placeholder in paths.state_dir or another path key the command uses (keys). A non-tmux runtime binds no session
+    backend and its session name is None (#1122)."""
     values, problems = crew_render.resolve(args.project, args.org_profile)
-    if values and values["runtime.name"] != "tmux":
-        problems = ["%s:runtime.name: runtime.name is %s, not tmux" % (args.project, values["runtime.name"])]
+    if values and values["runtime.name"] not in runtimes:
+        problems = ["%s:runtime.name: runtime.name is %s, not %s" % (args.project, values["runtime.name"],
+                                                                  " or ".join(runtimes))]
     elif values:  # an unrendered copy (a worktree's config.toml) would put locks and state in the wrong place (#139 F5)
         problems = placeholder_paths(args, values, ("state_dir",) + keys)
     if problems:
         print("\n".join(problems))
         sys.exit(1)
     owner, repo = values["repo.owner"], values["repo.name"]
+    state = os.path.join(os.path.abspath(values["paths.state_dir"]), "%s__%s" % (owner, repo))
+    if values["runtime.name"] != "tmux":
+        return values, None, state
     tmux.name = values.get("runtime.options.session_backend", "tmux")
     session = values.get("runtime.options.session") or "crew-%s-%s" % (owner, repo)
     tmux.bind(session, values.get("runtime.options.tmux_server") or "default")
-    return values, session, os.path.join(os.path.abspath(values["paths.state_dir"]), "%s__%s" % (owner, repo))
+    return values, session, state
 
 
 def checkout(values, project):

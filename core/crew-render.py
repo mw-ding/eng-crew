@@ -12,6 +12,9 @@ briefs are per-routine files, the role's discovery file) gets the owner profile 
 memory/ in the checkout (paths.checkout, else the profile's directory), before any render note; inside the
 closing fence when the brief ends in one (a fenced routine prompt). A memory lint problem fails closed. The
 size-budget render (normalize_paths) leaves memory out: its files have their own limits.
+Budget headroom (#1056): after a successful render, stderr gets one line per role brief with its path-normalized
+bytes against [size_budget] (the bootstrap measure) and its delivered bytes (core memory and render notes
+included), and a WARNING inside BUDGET_BAND of the budget or over it. Output paths and exit codes are unchanged.
 Fails closed: every problem (an unknown placeholder, a missing mapping, an unsupported capability) prints as
 `file:line: reason`; exit 1 and write nothing if any, else 0.
 Placeholder map: scripts/README.md (Renderer).
@@ -52,6 +55,7 @@ crew_memory = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(crew_memory)
 
 ROLES = crew_config.ROLE_REGISTRY
+BUDGET_BAND = 0.05  # warn when a role brief is within 5% of its size_budget (#1056)
 # Install-time placeholder -> resolved profile keys (docs/profile.md "Replaces"); several keys must agree.
 MAPPED = {
     "control-item": ["repo.control_item"], "runtime-id": ["runtime.name", "runtime.instance"],
@@ -410,22 +414,8 @@ def memory_root(project, values):
     return os.path.abspath(os.path.join(base, os.path.expanduser(path))) if path else base
 
 
-def main(argv=None, normalize_paths=False):
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--project", required=True)
-    ap.add_argument("--org-profile")
-    ap.add_argument("--inputs", default=os.path.join(os.path.dirname(HERE), "templates"))
-    ap.add_argument("--out", required=True)
-    ap.add_argument("--diff-paths", help="file of repo-relative diff paths, including both rename paths")
-    args = ap.parse_args(argv)
-    paths = None
-    if args.diff_paths:
-        try:
-            with open(args.diff_paths, encoding="utf-8") as f:
-                paths = f.read().splitlines()
-        except (OSError, UnicodeDecodeError) as e:
-            print("%s:1: cannot read diff paths (%s)" % (args.diff_paths, e))
-            return 1
+def render(args, paths, normalize_paths):
+    """Render every job in memory: (values, dst -> text, problems); main writes files only when problems is empty."""
     values, problems = resolve(args.project, args.org_profile, paths)
     jobs, overlay = [], None
     if values is not None:
@@ -500,6 +490,49 @@ def main(argv=None, normalize_paths=False):
                 except (OSError, UnicodeDecodeError) as e:
                     problems.append("%s:1: cannot read runtime.options.notes.render.%s file (%s)" % (note, note_role, e))
         rendered[dst] = "".join(out)
+    briefs = {os.path.splitext(dst)[0].split("/", 1)[1] for _, dst, _ in jobs if dst.count("/") == 1}
+    for note_role in crew_config.NOTE_ROLES if values is not None else []:
+        if values.get("runtime.options.notes.render." + note_role) and note_role not in briefs:
+            problems.append("%s:1: runtime.options.notes.render.%s: runtime %s renders no %s brief (note dropped)"
+                            % (args.project, note_role, values["runtime.name"], note_role))
+    return values, rendered, problems
+
+
+def budget_report(args, paths, values, delivered):
+    """Print each role brief's size_budget headroom to stderr; never changes the exit code."""
+    _, budgeted, problems = render(args, paths, normalize_paths=True)
+    for dst in [] if problems else sorted(budgeted):
+        role = os.path.splitext(os.path.basename(dst))[0].split("-")[0]
+        if not dst.endswith(".md") or role not in ROLES:
+            continue
+        size, budget = len(budgeted[dst].encode("utf-8")), values["size_budget." + role]
+        print("crew-render: budget %s %d/%d bytes (%d%%), delivered %d bytes" % (
+            dst, size, budget, 100 * size // budget, len(delivered[dst].encode("utf-8"))), file=sys.stderr)
+        if size > budget:
+            print("crew-render: WARNING %s is %d bytes over the %s size_budget" % (dst, size - budget, role),
+                  file=sys.stderr)
+        elif size >= budget * (1 - BUDGET_BAND):
+            print("crew-render: WARNING %s is within %d%% of the %s size_budget (%d bytes left)" % (
+                dst, round(BUDGET_BAND * 100), role, budget - size), file=sys.stderr)
+
+
+def main(argv=None, normalize_paths=False):
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--project", required=True)
+    ap.add_argument("--org-profile")
+    ap.add_argument("--inputs", default=os.path.join(os.path.dirname(HERE), "templates"))
+    ap.add_argument("--out", required=True)
+    ap.add_argument("--diff-paths", help="file of repo-relative diff paths, including both rename paths")
+    args = ap.parse_args(argv)
+    paths = None
+    if args.diff_paths:
+        try:
+            with open(args.diff_paths, encoding="utf-8") as f:
+                paths = f.read().splitlines()
+        except (OSError, UnicodeDecodeError) as e:
+            print("%s:1: cannot read diff paths (%s)" % (args.diff_paths, e))
+            return 1
+    values, rendered, problems = render(args, paths, normalize_paths)
     for p in problems:
         print(p)
     if problems:
@@ -512,6 +545,8 @@ def main(argv=None, normalize_paths=False):
             f.write(text)
         print(path)
     print("crew-render: OK (%d files)" % len(rendered), file=sys.stderr)
+    if not normalize_paths:
+        budget_report(args, paths, values, rendered)
     return 0
 
 

@@ -7,9 +7,8 @@ description: Synthesizer merge-train procedure (build, land and red-train handli
 
 Trigger: two or more ready PRs under the land rules.
 
-- [merge-train-land-start.md](../../merge-train-land-start.md) and
-  [merge-train-land.md](../../merge-train-land.md): land steps. Pre-check,
-  build and red handling stay in each runtime template: on tmux a builder
-  builds, waits and bisects every train; the session synthesizer does it
-  itself. The pause and train-route lines that name a wake or run stay there
-  too.
+Merge trains are tmux-only: every `mdstack train` action refuses a session
+profile, so the session synthesizer lands each ready PR alone (#1041). The
+whole procedure, pre-check, build, land and red handling, lives in the
+[tmux synthesizer template](../../../../runtimes/tmux/synthesizer.md); no
+fragment carries it.
