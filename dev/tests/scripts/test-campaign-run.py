@@ -431,17 +431,19 @@ class A19LedgerTest(unittest.TestCase):
         self.assertIn("FAIL cursor TRANSIENT: oracle but the adapter lacks it", p.stdout)
 
     def test_live_ledger_names_every_binding_with_its_link(self):
-        """A missing live binding, or a block without its environment fields, fails (#1439)."""
+        """A missing live binding, a block without its environment fields or a fail without its finding fails (#1439)."""
         with open(os.path.join(self.A19, "ledger.json")) as fh:
             d = json.load(fh)
         del d["live"]["codex/tmux"]
         d["live"]["grok-bot/mirror-watch"]["block"].pop("account")
+        d["live"]["claude-code/tmux"].pop("finding")
         with tempfile.TemporaryDirectory() as tmp:
             with open(os.path.join(tmp, "ledger.json"), "w") as fh:
                 json.dump(d, fh)
             p = self.replay(os.path.join(tmp, "ledger.json"))
         self.assertEqual(p.returncode, 1)
         self.assertIn("FAIL live bindings:", p.stdout)
+        self.assertIn("FAIL live claude-code/tmux: a fail needs its filed finding", p.stdout)
         self.assertIn("FAIL live grok-bot/mirror-watch: a block names installation, version, account and sandbox",
                       p.stdout)
 

@@ -802,44 +802,43 @@
  "live": {
   "spec": "docs/campaign-harness.md#a19",
   "claude-code/herdr": {
-   "block": {
-    "installation": "ok: claude on PATH; launch reached the foreground, then exited (E1)",
-    "version": "2.1.310 (Claude Code), herdr 0.7.5 (E1)",
-    "account": "not reached: the wrapper exits before any login",
-    "sandbox": "the builder session runs inside a seatbelt sandbox (META_3PAI_SANDBOX_RUNTIME=seatbelt) and the claude wrapper's sandbox-exec cannot nest: exit 71 outside the session's own checkout (E2); the local herdr server was started inside a sandboxed session too (E3); rerun smoke.py from an unsandboxed owner shell"
+   "fail": "ready: no ready line (run missing); the run exits 71 under the shared herdr server's inherited seatbelt sandbox, from an owner shell too",
+   "finding": "https://github.com/mw-ding/mdstack/issues/1469",
+   "source": "4832403f19d78a9438d5572d166adbc9f1d82cef",
+   "versions": {
+    "claude": "2.1.310 (Claude Code)",
+    "herdr": "herdr 0.7.5"
    },
-   "source": "8fd928ef0378776f4875a406645ad3e87e7994db",
-   "link": "https://github.com/mw-ding/mdstack/issues/1439#issuecomment-6730811730"
+   "link": "https://github.com/mw-ding/mdstack/pull/1461#issuecomment-6731071995"
   },
   "claude-code/tmux": {
-   "block": {
-    "installation": "ok: claude on PATH; launch reached the foreground, then exited (E1)",
-    "version": "2.1.310 (Claude Code), tmux 3.5a (E1)",
-    "account": "not reached: the wrapper exits before any login",
-    "sandbox": "the builder session runs inside a seatbelt sandbox (META_3PAI_SANDBOX_RUNTIME=seatbelt) and the claude wrapper's sandbox-exec cannot nest: exit 71 outside the session's own checkout (E2); rerun smoke.py from an unsandboxed owner shell"
+   "fail": "ready: no ready line (run ambiguous); Claude Code's folder-trust dialog is on screen for the smoke's fresh git-init worktree",
+   "finding": "https://github.com/mw-ding/mdstack/issues/1470",
+   "source": "4832403f19d78a9438d5572d166adbc9f1d82cef",
+   "versions": {
+    "claude": "2.1.310 (Claude Code)",
+    "tmux": "tmux 3.5a"
    },
-   "source": "8fd928ef0378776f4875a406645ad3e87e7994db",
-   "link": "https://github.com/mw-ding/mdstack/issues/1439#issuecomment-6730811730"
+   "link": "https://github.com/mw-ding/mdstack/pull/1461#issuecomment-6731071995"
   },
   "codex/herdr": {
-   "block": {
-    "installation": "ok: codex on PATH; launch reached the foreground, then exited (E1)",
-    "version": "codex-cli 0.166.0, herdr 0.7.5 (E1)",
-    "account": "not reached: the wrapper exits before any login",
-    "sandbox": "the builder session runs inside a seatbelt sandbox (META_3PAI_SANDBOX_RUNTIME=seatbelt) and the codex wrapper's sandbox-exec cannot nest: exit 71 outside the session's own checkout (E2); the local herdr server was started inside a sandboxed session too (E3); rerun smoke.py from an unsandboxed owner shell"
+   "fail": "ready: no ready line (run missing); the run exits 71 under the shared herdr server's inherited seatbelt sandbox, from an owner shell too",
+   "finding": "https://github.com/mw-ding/mdstack/issues/1469",
+   "source": "4832403f19d78a9438d5572d166adbc9f1d82cef",
+   "versions": {
+    "codex": "codex-cli 0.166.0",
+    "herdr": "herdr 0.7.5"
    },
-   "source": "8fd928ef0378776f4875a406645ad3e87e7994db",
-   "link": "https://github.com/mw-ding/mdstack/issues/1439#issuecomment-6730811730"
+   "link": "https://github.com/mw-ding/mdstack/pull/1461#issuecomment-6731071995"
   },
   "codex/tmux": {
-   "block": {
-    "installation": "ok: codex on PATH; launch reached the foreground, then exited (E1)",
-    "version": "codex-cli 0.166.0, tmux 3.5a (E1)",
-    "account": "not reached: the wrapper exits before any login",
-    "sandbox": "the builder session runs inside a seatbelt sandbox (META_3PAI_SANDBOX_RUNTIME=seatbelt) and the codex wrapper's sandbox-exec cannot nest: exit 71 outside the session's own checkout (E2); rerun smoke.py from an unsandboxed owner shell"
+   "evidence": "owner-shell run: launch, ready, doorbell, ack, probe alive and stop ok",
+   "source": "4832403f19d78a9438d5572d166adbc9f1d82cef",
+   "versions": {
+    "codex": "codex-cli 0.166.0",
+    "tmux": "tmux 3.5a"
    },
-   "source": "8fd928ef0378776f4875a406645ad3e87e7994db",
-   "link": "https://github.com/mw-ding/mdstack/issues/1439#issuecomment-6730811730"
+   "link": "https://github.com/mw-ding/mdstack/pull/1461#issuecomment-6731071995"
   },
   "cursor/herdr": {
    "block": {
@@ -897,24 +896,23 @@
    "spec": "docs/runtimes/harness-adapters.md#opencode-opencode"
   },
   "pi/herdr": {
-   "block": {
-    "installation": "ok: pi on PATH; launch reached the foreground, then exited (E1)",
-    "version": "1.5.0, herdr 0.7.5 (E1)",
-    "account": "not reached: the wrapper exits before any login",
-    "sandbox": "the builder session runs inside a seatbelt sandbox (META_3PAI_SANDBOX_RUNTIME=seatbelt) and the pi wrapper's sandbox-exec cannot nest: exit 71 outside the session's own checkout (E2); the local herdr server was started inside a sandboxed session too (E3); rerun smoke.py from an unsandboxed owner shell"
+   "fail": "ready: no ready line (run missing); the run exits 71 under the shared herdr server's inherited seatbelt sandbox, from an owner shell too",
+   "finding": "https://github.com/mw-ding/mdstack/issues/1469",
+   "source": "4832403f19d78a9438d5572d166adbc9f1d82cef",
+   "versions": {
+    "pi": "1.5.0",
+    "herdr": "herdr 0.7.5"
    },
-   "source": "8fd928ef0378776f4875a406645ad3e87e7994db",
-   "link": "https://github.com/mw-ding/mdstack/issues/1439#issuecomment-6730811730"
+   "link": "https://github.com/mw-ding/mdstack/pull/1461#issuecomment-6731071995"
   },
   "pi/tmux": {
-   "block": {
-    "installation": "ok: pi on PATH; launch reached the foreground, then exited (E1)",
-    "version": "1.5.0, tmux 3.5a (E1)",
-    "account": "not reached: the wrapper exits before any login",
-    "sandbox": "the builder session runs inside a seatbelt sandbox (META_3PAI_SANDBOX_RUNTIME=seatbelt) and the pi wrapper's sandbox-exec cannot nest: exit 71 outside the session's own checkout (E2); rerun smoke.py from an unsandboxed owner shell"
+   "evidence": "owner-shell run: launch, ready, doorbell, ack, probe alive and stop ok",
+   "source": "4832403f19d78a9438d5572d166adbc9f1d82cef",
+   "versions": {
+    "pi": "1.5.0",
+    "tmux": "tmux 3.5a"
    },
-   "source": "8fd928ef0378776f4875a406645ad3e87e7994db",
-   "link": "https://github.com/mw-ding/mdstack/issues/1439#issuecomment-6730811730"
+   "link": "https://github.com/mw-ding/mdstack/pull/1461#issuecomment-6731071995"
   }
  }
 }

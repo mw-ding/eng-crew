@@ -363,6 +363,8 @@ The ledger's `live` section names every harness and backend binding, plus
 each runtime's mirror and watch. Each entry is one of:
 
 - `evidence`: the source SHA, the versions and a link to the smoke capture;
+- `fail`: the same for a run that did not finish, plus the finding filed for
+  it, so a failure is never recorded as a gap or a block;
 - `block`: the installation, version, account and sandbox facts, with a
   link to the capture that shows them;
 - `unsupported`: a quote from the adapter's spec section.
