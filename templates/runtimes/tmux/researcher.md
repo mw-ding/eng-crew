@@ -22,8 +22,8 @@ the internet, bypass OS code-signing or quarantine, or use a mirror registry.
 
 When the Item is `triage sweep`, follow [Triage sweep](#triage-sweep) instead
 of Scope and Output. When it is `docs pass`, follow [Docs pass](#docs-pass)
-instead. Reflection: reports and pending threshold cards only
-(`<mdstack>/docs/self-improve.md`).
+instead. Reflection: follow
+`<mdstack>/templates/policy/researcher/skills/protocol-reflection/SKILL.md`.
 
 ## Scope
 

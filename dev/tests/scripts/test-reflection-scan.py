@@ -6,13 +6,15 @@ selection of issues opened, closed or only corrected in the window whatever thei
 fix chain (#1474/#1475/#1482), one per site for a card naming several (#1398, #1483), and one per class and site
 however many cards report it; confirmed, reported and superseded evidence kept apart; lessons and findings read at
 the named SHA, with an older linked lesson kept as context; missing inputs listed and null, never zero; triage's
-open-only clusters unchanged; a compact, deterministic JSON index (#1518). Run in CI.
+open-only clusters unchanged; a compact, deterministic JSON index (#1518); and the protocol-reflection report
+fixture citing exactly this index's incidents, with marker counts and proposal fields that match (#1519). Run in CI.
 """
 import contextlib
 import importlib.util
 import io
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -255,6 +257,46 @@ class Contract(unittest.TestCase):
             code, out, _ = run(*WINDOW, "--forge", FORGE, "--out", path)
             with open(path) as f:
                 self.assertEqual((code, f.read()), (0, out))
+
+
+class ReportFixture(unittest.TestCase):
+    """fixtures/reflection/report-close-fixture.md is the protocol-reflection report for this window (#1519)."""
+
+    def setUp(self):
+        with open(os.path.join(FIX, "report-close-fixture.md"), encoding="utf-8") as f:
+            self.text = f.read()
+        self.marker = dict(re.findall(r"(\w+)=(\S+)", re.search(r"<!-- crew:v1 (.*) -->", self.text).group(1)))
+        with Store() as s:
+            self.index = scan("--forge", FORGE, "--decisions", os.path.join(FIX, "decisions.json"),
+                              "--observations", os.path.join(FIX, "observations.jsonl"), "--root", s.root, "--sha", s.sha)
+
+    def test_marker_counts_match_the_report(self):
+        heads = re.findall(r"^### \d+\. (rp-\S+) \((new|existing #\d+|regression of #\d+)\)$", self.text, re.M)
+        cited = set(re.findall(r"\bri-[\w-]+?-\d+\b", self.text))
+        self.assertEqual((self.marker["role"], self.marker["pass"], self.marker["window"]),
+                         ("researcher", "reflection", "close-fixture"))
+        self.assertEqual(int(self.marker["proposals"]), len(heads))
+        self.assertEqual(int(self.marker["new"]), sum(kind == "new" for _, kind in heads))
+        self.assertLessEqual(int(self.marker["new"]), 3)
+        self.assertEqual(int(self.marker["incidents"]), len(cited))
+        self.assertTrue(self.text.rstrip().splitlines()[-1].startswith("\u2014 \U0001f52c Riley (Researcher) \u00b7 "))
+
+    def test_every_index_incident_is_cited_and_nothing_else(self):
+        want = {"ri-" + i["id"].split(":", 1)[1].split("~")[0].replace("/", "-").replace("#", "-")
+                for i in self.index["incidents"]}
+        self.assertEqual(set(re.findall(r"\bri-[\w-]+?-\d+\b", self.text)), want)
+
+    def test_window_and_proposal_fields(self):
+        since, until = self.index["window"]["since"], self.index["window"]["until"]
+        self.assertIn("Window: %s to %s." % (since, until), self.text)
+        for block in self.text.split("\n## Skipped")[0].split("\n### ")[1:]:
+            fields = re.findall(r"^- ([A-Z][\w ]+?)(?: \(\d+\))?:", block, re.M)
+            self.assertEqual(fields, ["Targets", "Layer", "Incidents", "Impact", "Rank", "Existing work",
+                                      "Recommended default"], block[:60])
+            for path in re.findall(r"`([\w./-]+\.\w+)`", block.split("\n- Layer:")[0]):
+                self.assertTrue(os.path.isfile(os.path.join(SCRIPTS, "..", path)), path)
+        for section in ("## Digest", "## Proposals", "## Skipped", "## Gaps"):
+            self.assertIn("\n%s\n" % section, self.text)
 
 
 if __name__ == "__main__":
