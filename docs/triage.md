@@ -79,6 +79,7 @@ placement only.
 | Start (Q6, Q7) | Shadow mode first; auto-apply turns on at 8 of 10 owner spot-checks accepted as is | Auto-apply from day one: no measured precision | [Shadow mode and calibration](#shadow-mode-and-calibration) |
 | Feedback (Q6) | Owner replies become decisions with reasons; repeated rejections become findings rows; accuracy, override and reopen rates are measured against an eval set from this backlog | Unmeasured heuristics: the next pass is no better | [Feedback](#feedback) |
 | Scope of a sweep | Unplaced issues and owner replies to triage's own proposals only; skip log issues, placed or already-recorded issues, and pull requests | Every open item: re-triages what the coordinator already filed and placed | [Skip rules](#skip-rules) |
+| Related issues (#1298) | Clusters from deterministic keys first, then model-added members with reasons; members stay separate issues and get a `cluster:<slug>` label in `apply` | Consolidate them: loses distinct units of work. Model-only grouping: not reproducible | [Clusters](#clusters) |
 | Card format | Recommended, never required: an intake-card issue template; blank issues stay allowed | A required template: rejects useful reports from humans and other crews | [Inputs](#inputs) |
 
 ## Inputs
@@ -167,6 +168,51 @@ between rules, between a rule and a decision record, or a low-confidence
 model answer becomes a proposal or a `needs-owner` record, never an applied
 change.
 
+## Clusters
+
+Duplicates and similar items describe one problem. A cluster groups issues
+that are **related but distinct**: the same failure class, component or
+root cause, where each member stays its own unit of work (#1298). Each sweep
+runs [`scripts/triage-clusters.py`](../scripts/README.md#triage-clusters)
+over the open issues after the per-item records:
+
+1. **Keys first.** Each open issue's deterministic keys: the Failure class
+   slug, the Source issue, its `Depends on #n` targets (the open target
+   carries the key too) and the first two segments of each named path. A key
+   two or more issues share is a candidate. Candidates run in that order,
+   then the ones the last sweep recorded, then by size; each issue joins at
+   most one cluster. The same issues give the same clusters, and every
+   member cites the keys that placed it.
+2. **Model second.** The model may add an issue to a cluster with a one-line
+   reason, and set a cluster's summary, band, milestone or tracking issue.
+   These carry over to later sweeps while the cluster stands.
+3. **Stable slug.** The slug comes from the placing key alone, for example
+   `class-scheduler-stall` or `depends-mw-ding-mdstack-1266`, so new members
+   never rename a cluster.
+
+**Cluster record.** One per cluster: slug, members with their keys or
+reasons, summary, suggested band (the highest member band unless the model
+sets one) and suggested milestone (the milestone every member shares, the
+model's suggestion, or `backlog`). The sweep posts it on the day's log
+issue when the cluster is new or changed, with a `pass=triage-cluster`
+line ([protocol §4](protocol.md#4-marker-conventions)). `triage/clusters.json`
+in the state directory keeps the last result for the next sweep.
+
+**Applying it.** Clustering never closes, merges or consolidates anything;
+[similar items](#learning-lookup) keep their consolidation rule.
+
+- In `apply` mode, each member gets the `cluster:<slug>` label and one
+  comment linking the cluster record; a member that leaves loses the label.
+  In `shadow` mode the record lists the labels instead.
+- A cluster **tracking issue**, or moving the **whole cluster into a
+  milestone**, is a proposal on the cluster record.
+- The [noise cap](#owner-loop) counts one cluster proposal as one, whatever
+  its size. An open cluster proposal costs nothing at later sweeps.
+
+**Reporting.** The day's log lists each cluster with its size, band and the
+members new since the last sweep, and
+[`triage-metrics.py report`](#feedback) counts clusters.
+
 ## Outcomes
 
 | Outcome | Effect | Autonomy |
@@ -181,6 +227,7 @@ change.
 | Create or reorder milestones | — | Propose |
 | Close with reason (`overtaken: implemented`, `overtaken: changed`, `consolidated into #<n>`) | — | Propose |
 | Consolidate similar issues | Survivor named; what moves into it listed | Propose |
+| Cluster related issues | Cluster record; `cluster:<slug>` label on each member | Auto-apply the label; a tracking issue or whole-cluster milestone move is proposed |
 | Route to the owning crew or repo | Per [Knowledge routing](self-improve.md#knowledge-routing) | Propose |
 | Route-out to an external tool's tracker | Outward-facing | Propose |
 | Sensitive or spec item | — | Propose |
@@ -190,7 +237,7 @@ change.
 
 - **Auto-apply** only low-risk, reversible changes: type, priority and scope
   labels; the default item flavor record; labelling and linking exact
-  duplicates; placement in the backlog or the next milestone; a P0 joining
+  duplicates; `cluster:<slug>` labels; placement in the backlog or the next milestone; a P0 joining
   the active milestone.
 - **Propose** everything else: the active milestone (except P0), milestone
   creation or order, every close (in every mode, `apply` included),
@@ -299,7 +346,8 @@ Nothing is sent to the owner: no digest message, no mention, no chat.
   or by [owner feedback](#owner-feedback). The next sweep records the answer
   as a decision record, keeping a rejection's reason.
 - **Noise cap:** at most 10 new proposals per day across repos, highest band
-  and score first. The rest are logged as `skipped: cap` and wait.
+  and score first; a [cluster](#clusters) proposal counts as one. The rest
+  are logged as `skipped: cap` and wait.
 - **Cooldowns:** a rejected proposal is not re-proposed until its
   reason-specific cooldown ends, from the rules file (for example 30 days for
   a rejected duplicate), unless new evidence arrives on the item.
@@ -381,8 +429,9 @@ The 2026-11-05 recalibration ran by hand with this method (owner about
   owner answered, with that answer.
 - **Metrics:** time to triage (opened to first record), owner override rate
   (rejects and adjusts), reopen rate of closed-as-proposed items, proposals
-  per day, skipped by cap, tokens per sweep, and owner feedback on applied
-  records, which also counts in accuracy and the override rate.
+  per day, skipped by cap, tokens per sweep, owner feedback on applied
+  records, which also counts in accuracy and the override rate, and cluster
+  counts.
 - **Eval set.** A frozen sample of owner-confirmed records from this backlog,
   re-scored whenever the rules file or the sweep brief changes.
 

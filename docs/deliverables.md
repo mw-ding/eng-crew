@@ -192,6 +192,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `scripts/required-docs.txt` | Internal | n/a | Guards and tests: required docs and sections, run by CI |
 | `scripts/run-tests.py` | Internal | n/a | Guards and tests: parallel test runner, run by CI, not installed |
 | `scripts/step-summary.py` | Deliverable | all | Role helpers: builder and coordinator helpers |
+| `scripts/triage-clusters.py` | Deliverable | all | Role helper: triage clusters of related open issues with stable slugs and cap-counted proposals ([#1298](https://github.com/mw-ding/mdstack/issues/1298)) |
 | `scripts/triage-metrics.py` | Deliverable | all | Role helper: triage shadow-mode spot check, precision bar, metrics and eval set ([#750](https://github.com/mw-ding/eng-crew/issues/750)) |
 | `scripts/worktree-purge.py` | Internal | n/a | Guards and tests: one-off crew-host worktree purge, dry-run first, not installed ([#1161](https://github.com/mw-ding/eng-crew/issues/1161)) |
 | `templates/README.md` | Deliverable | all | Templates: evidence adapters, product README seed, cards and step lines |

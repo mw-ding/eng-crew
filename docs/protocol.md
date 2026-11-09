@@ -734,12 +734,18 @@ owner comment.
 Each sweep's one comment on the day's `Triage log YYYY-MM-DD` issue ends with
 `<!-- crew:v1 role=researcher pass=triage-log sweep=<sweep-id> applied=<n> proposed=<n> skipped=<n> tokens=<n> -->`
 (`tokens` is the session's count or `unknown`);
-the `proposed=` sum over a day's log is the noise-cap count (10 per day). Both
-are notes, never a verdict, gate input or permission. **Triage labels**, set
+the `proposed=` sum over a day's log is the noise-cap count (10 per day), where
+a [cluster](triage.md#clusters) proposal counts once. Each cluster record, one
+comment on the day's log issue, ends with
+`<!-- crew:v1 role=researcher pass=triage-cluster cluster=<slug> size=<n> new=<n> band=<P0|P1|P2|P3> proposed=<0|1> sweep=<sweep-id> -->`
+(`new` counts members since the last sweep; `proposed` is 1 when the record
+makes a new tracking-issue or milestone proposal). All three are notes, never
+a verdict, gate input or permission. **Triage labels**, set
 only by the sweep and never state tags: `triage:proposed` (a proposal awaits
 the owner), `triage:duplicate` (an exact duplicate, linked), `triage:card-extracted`
 (the sweep posted the card fields), `triage:log` (a daily log issue, skipped
-by every sweep) and the priority bands `P0`–`P3`.
+by every sweep), `cluster:<slug>` (a cluster member, `apply` mode only) and the
+priority bands `P0`–`P3`.
 
 The researcher's **docs-pass record** (`pass=docs-pass`) ends each
 `[<ResearcherBot>/docs-pass] <owner>/<repo> @ <sha7>` comment a
