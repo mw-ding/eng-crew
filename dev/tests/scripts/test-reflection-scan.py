@@ -56,15 +56,22 @@ def states(incident):
 
 
 class Store:
-    """A throwaway git repo holding the lesson and findings fixtures at one commit."""
+    """A throwaway git repo holding the lesson and findings fixtures at one commit.
+
+    `lessons=False` leaves `docs/lessons/` out; `extra` adds lesson files by name."""
+
+    def __init__(self, lessons=True, extra=None):
+        self.lessons, self.extra = lessons, extra or {}
 
     def __enter__(self):
         self.root = tempfile.mkdtemp()
         os.makedirs(os.path.join(self.root, "docs", "findings"))
-        shutil.copytree(os.path.join(FIX, "lessons"), os.path.join(self.root, "docs", "lessons"))
         shutil.copy(os.path.join(FIX, "buffer.md"), os.path.join(self.root, "docs", "findings", "buffer.md"))
-        with open(os.path.join(self.root, "docs", "lessons", "README.md"), "w") as f:
-            f.write("# Lessons log\n\n- **Date:** YYYY-MM-DD\n")
+        if self.lessons:
+            shutil.copytree(os.path.join(FIX, "lessons"), os.path.join(self.root, "docs", "lessons"))
+            for name, text in dict(self.extra, **{"README.md": "# Lessons log\n\n- **Date:** YYYY-MM-DD\n"}).items():
+                with open(os.path.join(self.root, "docs", "lessons", name), "w") as f:
+                    f.write(text)
         git = ["git", "-C", self.root, "-c", "user.name=t", "-c", "user.email=t@example.invalid"]
         subprocess.run(git[:3] + ["init", "-q"], check=True)
         subprocess.run(git + ["add", "."], check=True)
@@ -167,6 +174,23 @@ class Stores(unittest.TestCase):
         self.assertEqual((finding["state"], finding["incidents"]), ("reported", [
             "incident:" + R + "1467~stale-changes-label", "incident:" + R + "1472~stale-changes-label"]))
         self.assertEqual(index["missing"], ["decisions: not provided", "observations: not provided"])
+
+    def test_older_lesson_naming_a_selected_item_without_a_card_is_context(self):
+        with open(os.path.join(FIX, "lessons", "2026-10-20-unrelated.md")) as f:
+            text = f.read().replace("#12", "#1514")
+        with Store(extra={"2026-10-21-selected-pr.md": text}) as s:
+            index = scan("--forge", FORGE, "--root", s.root, "--sha", s.sha)
+        self.assertEqual(index["items"], {R + "1514": ["opened", "closed"]})
+        [kept] = [e for e in index["lessons"] if e["path"].endswith("2026-10-21-selected-pr.md")]
+        self.assertEqual((kept["context"], kept["incidents"], kept["items"]), (True, [], [R + "1514"]))
+
+    def test_missing_lessons_store_at_a_valid_sha_is_missing_not_zero(self):
+        with Store(lessons=False) as s:
+            index = scan("--forge", FORGE, "--root", s.root, "--sha", s.sha)
+        self.assertIsNone(index["lessons"])
+        self.assertIsNone(index["inputs"]["lessons"])
+        self.assertIn("lessons: unreadable at %s" % s.sha, index["missing"])
+        self.assertEqual(index["inputs"]["findings"], 1)
 
     def test_decisions_and_observations_in_window_link_incidents(self):
         index = scan("--forge", FORGE, "--decisions", os.path.join(FIX, "decisions.json"),

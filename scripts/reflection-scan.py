@@ -10,7 +10,8 @@ git only reads objects. It writes nothing but stdout and --out, and prints evide
 
 Selection: every issue or pull request opened, closed or corrected (a signed `[<Bot>/<kind>] correction` comment)
 in [--since, --until), whatever its state, milestone or labels; `triage:log` issues are skipped. Lessons and
-findings entries dated in the window are selected; older ones that name a selected incident stay as `context`.
+findings entries dated in the window are selected; older ones that name a selected incident or item stay as
+`context`. A missing `docs/lessons/` at the SHA is missing, not an empty store.
 
 Incidents: a card (an item with a Failure class) and its fix chain (a `[<Bot>/triage] ... accepted -> #n` comment, a
 `Closes #n` in a body, a `(#n)` in a title) are one incident. A card's sites are its Source and the refs its Summary
@@ -222,8 +223,13 @@ def scan(a):
         for k in i["keys"]:
             keyed.setdefault(k, []).append(i["id"])
 
+    free = {r: why[r] for r in sorted(why, key=order) if r not in placed}
+
     def linked(refs_):
         return sorted(set().union(*(owner.get(r, set()) for r in refs_)))
+
+    def touched(refs_):
+        return sorted((r for r in set(refs_) if r in free), key=order)
 
     stores = {}
     for name, paths in (("lessons", None), ("findings", ["docs/findings/buffer.md"])):
@@ -233,6 +239,7 @@ def scan(a):
             continue
         try:
             if paths is None:
+                git(a.root, "cat-file", "-e", "%s:docs/lessons" % a.sha)
                 paths = [p for p in git(a.root, "ls-tree", "--name-only", a.sha, "docs/lessons/").split()
                          if p.endswith(".md") and not p.endswith("README.md")]
             rows = [e for p in paths for e in entries(git(a.root, "show", "%s:%s" % (a.sha, p)), p, repo)]
@@ -241,9 +248,8 @@ def scan(a):
             stores[name] = None
             continue
         for e in rows:
-            e["incidents"] = linked(e["refs"])
-            e["context"] = not inside(e["date"])
-        stores[name] = [e for e in rows if not e["context"] or e["incidents"]]
+            e.update(incidents=linked(e["refs"]), items=touched(e["refs"]), context=not inside(e["date"]))
+        stores[name] = [e for e in rows if not e["context"] or e["incidents"] or e["items"]]
 
     decisions = None
     if not a.decisions:
@@ -255,8 +261,9 @@ def scan(a):
         for i in load(a.decisions):
             for c in i.get("comments") or []:
                 rs = refs(c.get("body"), repo)
-                if inside(c.get("createdAt")) or linked(rs):
+                if inside(c.get("createdAt")) or linked(rs) or touched(rs):
                     decisions.append({"url": c.get("url"), "at": c.get("createdAt"), "incidents": linked(rs),
+                                      "items": touched(rs),
                                       "line": (c.get("body") or "").split("\n")[0][:160]})
     observations = None
     if not a.observations:
@@ -266,14 +273,15 @@ def scan(a):
     else:
         with open(a.observations, encoding="utf-8") as f:
             rows = [json.loads(line) for line in f if line.strip()]
-        observations = [{**o, "incidents": linked(refs(o.get("ref"), repo))} for o in rows if inside(o.get("at"))]
+        observations = [{**o, "incidents": linked(refs(o.get("ref"), repo)), "items": touched(refs(o.get("ref"), repo))}
+                        for o in rows if inside(o.get("at"))]
 
     for name in ("lessons", "findings"):
         inputs[name] = None if stores[name] is None else len(stores[name])
     inputs["decisions"] = None if decisions is None else len(decisions)
     inputs["observations"] = None if observations is None else len(observations)
     return {"window": {"since": a.since, "until": a.until}, "sha": a.sha, "inputs": inputs, "missing": missing,
-            "incidents": incidents, "items": {r: why[r] for r in sorted(why, key=order) if r not in placed},
+            "incidents": incidents, "items": free,
             "keys": keyed, "lessons": stores["lessons"], "findings": stores["findings"],
             "decisions": decisions, "observations": observations}
 
