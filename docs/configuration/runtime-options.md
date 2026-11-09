@@ -86,7 +86,8 @@ appended verbatim to that role's rendered brief under `## Render note: <path>`.
 Relative paths resolve from the project file. They are part of the render,
 so they count toward [`size_budget`](../profile.md#size_budget) and
 `check-skill-drift.py --project` covers them. A missing file fails the
-render. Launch-time notes are unchanged. `mdstack spawn` handles worker
+render, and so does a note for a role the selected runtime renders no brief
+for (such as `builder-lead` under `session`), naming the key and the runtime. Launch-time notes are unchanged. `mdstack spawn` handles worker
 notes; `mdstack up` handles coordinator notes. The note text is included verbatim,
 without placeholder substitution. For example:
 
@@ -115,7 +116,8 @@ brief renders the land options as for `tmux`:
 | `session_backend` | string: `native` or `cli` | `"native"` | `<session-backend>`: `native` dispatches workers as harness subagents with task handles; `cli` as external harness CLI runs with a recorded PID and start time |
 | `builders` | integer | `5` | `<builder-cap>`: concurrent builder runs |
 | `reviewers` | integer | `2` | `<reviewer-cap>`: concurrent reviewer passes |
-| `merge_grant`, `merge_grant_scope`, `lone_pr_land`, `train_min`, `train_window`, `train_local_checks`, `mirror_deferral`, `mirror`, `hold_label_blocks` | as in [`tmux` options](#tmux-options) | as in `tmux` | the same placeholders in the session builder, reviewer and synthesizer briefs |
+| `researchers` | `0` only | none | nothing: the binding has no researcher, so `0` keeps a migrated `tmux` profile's no-researcher statement as a no-op; any other value is refused, and `triage.enabled = true` is refused as for `tmux` |
+| `merge_grant`, `merge_grant_scope`, `lone_pr_land`, `train_min`, `train_window`, `train_local_checks`, `mirror_deferral`, `mirror`, `hold_label_blocks` | as in [`tmux` options](#tmux-options) | as in `tmux` | the same placeholders in the session builder, reviewer and synthesizer briefs; session lands have no merge train, so the `train_*` options have no effect ([binding](../runtimes/session.md#selector-options-and-briefs)) |
 | `notes` | table | `{}` | only its `render` subtable applies: render-time notes, as for `tmux`; no launcher reads standing notes |
 
 ## `merge_grant_scope`

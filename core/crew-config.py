@@ -128,7 +128,8 @@ RUNTIME_OPTIONS = {"grok-bot": {"max_active_milestones": (int, 1)},
                                         "slack_webhook_env": (str, None), "slack_digest_interval": (int, 3600)},
                    # Hosted or hand-started coordinator with native-subagent or CLI workers (docs/runtimes/session.md, #914).
                    "session": {"max_active_milestones": (int, 1), "session_backend": (str, "native"), "builders": (int, 5),
-                               "reviewers": (int, 2), "merge_grant": (str, "none"), "merge_grant_scope": ("list[str]", None),
+                               "reviewers": (int, 2), "researchers": (int, None), "merge_grant": (str, "none"),
+                               "merge_grant_scope": ("list[str]", None),
                                "lone_pr_land": (str, "train"), "train_min": (int, 2), "train_window": (int, 600),
                                "train_local_checks": (bool, False), "mirror_deferral": (str, "none"),
                                "mirror": (str, "live-copy"), "hold_label_blocks": (bool, True), "notes": (dict, {})}}
@@ -335,8 +336,10 @@ def validate_hosts(profile, top, err):
         hosts[name] = dict(caps, primary=h.get("primary", False), forge=forge,
                            roles=h.get("roles", list(PLACED_PASSES)) if forge else [])
     rt = profile.get("runtime")
-    if "hosts" in top and isinstance(rt, dict) and rt.get("name") not in (None, "tmux"):
-        err("hosts", "a host inventory needs runtime tmux, got %r" % rt.get("name"))
+    if "hosts" in top and isinstance(rt, dict) and rt.get("name") not in (None, "tmux", "session"):
+        err("hosts", "a host inventory needs runtime tmux or session, got %r" % rt.get("name"))
+    if "placement" in top and isinstance(rt, dict) and rt.get("name") == "session":  # host check only (#1122)
+        err("placement", "placement needs runtime tmux, got 'session'")
     primaries = [n for n, h in hosts.items() if h["primary"]]
     if "hosts" in top and len(primaries) != 1:
         err("hosts", "expected exactly one host with primary = true, got %d" % len(primaries))
@@ -845,6 +848,9 @@ def validate(profile, err, backends=BACKENDS, pack_dir=None, item=None):
                                  ("stuck_after", 1), ("land_poll_interval", 1), ("land_timeout", 1), ("host_scan_interval", 1)):
                 if key in opts and opts[key] < minimum:
                     err("runtime.options." + key, "must be >= %d, got %d" % (minimum, opts[key]))
+            if rt["name"] == "session" and opts.get("researchers", 0) > 0:  # no researcher binding; 0 says so (#1057)
+                err("runtime.options.researchers", "the session runtime has no researcher; only 0 (no researcher) "
+                    "is accepted, got %d" % opts["researchers"])
             if opts.get("land_timeout", 3600) < opts.get("land_poll_interval", 60):
                 err("runtime.options.land_timeout", "must be >= land_poll_interval (%d), got %d"
                     % (opts.get("land_poll_interval", 60), opts.get("land_timeout", 3600)))

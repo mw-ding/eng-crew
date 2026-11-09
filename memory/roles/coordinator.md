@@ -21,3 +21,13 @@ One line per entry, each citing where it was decided.
 - Post a signed `pass=flavor` record on every issue you file, before
   dispatch; without one the builder and reviewer fall back to `thorough`
   (#1430, #1432).
+- A session-loss fix must hold with the crew on the owner's default tmux
+  server; a private socket is not the fix. Fix the root cause so worker and
+  test tmux calls cannot reach a server they do not own (#985 c6731966111,
+  #1474, #1475).
+- An AC that needs an unbuilt feature moves to the issue that builds it, with
+  a lab-proof AC there; do not spend review rounds on it (#1472 steer).
+- A real-engine proof cannot run in a builder session (codex exits 71 under
+  the seatbelt, #1465): the builder puts one copyable owner-shell command, run
+  outside tmux, in the PR up front, so one owner run closes the AC (#1478,
+  #1442).

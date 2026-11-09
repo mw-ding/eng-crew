@@ -5,7 +5,7 @@
 > - **Current rules:** [protocol](../protocol.md), [runtime contract](README.md#contract)
 > - **Built:** [Run parameters for hosted dispatch](#run-parameters-for-hosted-dispatch) via `mdstack brief` (#647); the [selector, options and briefs](#selector-options-and-briefs) (#914)
 > - **Design only:** everything in [Implementation follow-ups](#implementation-follow-ups)
-> - **Last checked:** 2026-11-05 at `3a973fa`
+> - **Last checked:** 2026-11-09 at `1db3f1d`
 
 `runtime.name = "session"` runs one interactive coordinator session,
 with short-lived workers as native subagents or external harness CLI runs
@@ -31,8 +31,23 @@ land-policy options. `crew-render` writes four briefs from
 synthesizer worker briefs. Each worker brief carries the tmux role's
 contract for one pass per run and ends where the coordinator appends the
 `mdstack brief` run block (below); workers set their own `CREW_*` paths, since
-no runtime sets them. Async land stays tmux-only, and the binding has no
-researcher brief.
+no runtime sets them. The binding has no researcher brief:
+`researchers = 0` validates as a no-op, so a profile migrated from tmux keeps
+it, and any other value is refused.
+
+Session lands are sync and alone (#1041). `land.mode = "async"` is
+tmux-only: the validator refuses it on a session profile, and
+`mdstack land request|resume|done` resolve only tmux profiles. Merge trains
+are tmux-only too, since every `mdstack train` action refuses a session
+profile: the synthesizer brief lands each ready PR alone, one per run, and
+`train_min`, `train_window` and `train_local_checks` have no effect.
+
+A session profile may carry a `[hosts]` inventory, without `[placement]`.
+`mdstack host check` and `mdstack host prepare` then run as for tmux: the
+primary gets `mdstack doctor`'s session rows, the engine login rows and the
+project mirror row, with load 0 since session workers hold no tmux windows;
+any other host gets the same remote rows as under tmux (#1122). Other host
+and runtime commands (`hosts`, `layout`, `upgrade`) stay tmux-only.
 
 With `repo.control_item` set, a GitHub issue or a tracker-native item, the
 coordinator brief carries the ownership guard and the handoff steps. Without
@@ -49,7 +64,7 @@ briefs omit their ownership line.
 | Independence | The coordinator schedules and combines outputs; separate workers review and validate. Validation never receives the review. Reviewer identity and engine diversity remain subject to the existing rules and recorded waivers. |
 | Dispatch | Re-read ownership and live item/head, check markers and claims, then pass a brief pointer and refs. A native subagent must enter its assigned unique worktree before changing files. |
 | Concurrency | Profile caps remain ceilings; dispatch only as many independent workers as the harness can track. No worker shares the coordinator checkout. |
-| Landing | The synthesizer remains the landing role, including land-rule selection and merge trains. The coordinator dispatches it; one repo lock covers the final gate through the merge post. |
+| Landing | The synthesizer remains the landing role and selects the land rule; it lands each ready PR alone, with no merge train or async land (above). The coordinator dispatches it; one repo lock covers the final gate through the merge post. |
 | Persistence | Claims, run identities, inbox refs, status, summaries and unlanded worktrees live on disk; evidence and markers live on GitHub. Transcript memory is not recovery state. |
 
 ## Harness adapters and session backends

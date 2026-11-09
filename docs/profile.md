@@ -556,7 +556,10 @@ named by its overlay network name only, never by an address, user, port or
 credential (spec R1). Keep these tables in the host-local project
 `config.toml` or the org layer, never in mdstack. They replace no template
 placeholder; `validate` checks them, and `mdstack spawn` places role runs
-from them ([placement](runtimes/multi-device.md#placement), #207).
+from them ([placement](runtimes/multi-device.md#placement), #207). A
+`runtime.name = "session"` profile may also carry `[hosts]` so
+`mdstack host check` and `host prepare` report on its hosts (#1122); it takes
+no `[placement]`, since only tmux spawn places runs.
 
 ```toml
 [hosts.host-a]

@@ -8,7 +8,9 @@ launcher in the root's bin/ (missing or stale) and where PATH resolves its name 
 recorded install source and the running/installed/minimum versions for [tools] in the profile, and the runtime
 handoff rows (docs/handoff.md): control item set and readable, `runtime.instance` set and the current owning
 runtime. On grok-bot a triage row reports that triage.enabled installs no Grok timer (warn) and never claims one.
-Read-only by default. --fix creates the missing state layout and repairs GitHub prerequisites through crew-repo.py.
+With no github backend and no github [install] source, gh, its logins and the GitHub repo checks are skipped and a gh row
+says why (#1123). Read-only by default. --fix creates the missing state layout and repairs GitHub prerequisites through
+crew-repo.py.
 --dry-run prints planned repairs without any writes, including local state. --milestone confirms an M number. It never
 changes auth or a harness config. Human-only fixes are listed together at the end as the steps only a
 person can take. Exit 1 on any fail, else 0. Any runtime; tmux and the adapter checks are checked for tmux only.
@@ -51,6 +53,15 @@ def load(path, reader):
             return reader(f)
     except FileNotFoundError:
         return {}
+
+
+def forge(values):
+    """True when the install needs gh (#1123): a concern bound to the github backend, or the github release source.
+    The optional release concern counts only with a [release] table, the one case that uses it (#910)."""
+    bound = {k.split(".")[1] for k, v in values.items() if v == "github" and re.fullmatch(r"backends\.[\w-]+\.name", k)}
+    if not any(k.startswith("release.") for k in values):
+        bound.discard("release")
+    return values.get("install.source", "github") == "github" or bool(bound)
 
 
 def logins(values):
@@ -309,9 +320,12 @@ def run(args):
     tmux = values["runtime.name"] == "tmux"
     backend = values.get("runtime.options.session_backend", "tmux")  # its adapter names the CLI to look for
     rows = [("ok" if sys.version_info >= (3, 11) else "fail", "python", sys.version.split()[0], "install Python 3.11+")]
+    github = forge(values)
     rows += [("ok", t, shutil.which(t), "") if shutil.which(t) else ("fail", t, "not on PATH", "install " + t)
-             for t in ["git", "gh"] + ([sessions.ADAPTERS[backend].EXECUTABLE] if tmux else [])]
-    rows += logins(values) + engines(values)
+             for t in ["git"] + (["gh"] if github else []) + ([sessions.ADAPTERS[backend].EXECUTABLE] if tmux else [])]
+    if not github:
+        rows.append(("ok", "gh", "not checked: no github backend or release source", ""))
+    rows += (logins(values) if github else []) + engines(values)
     used = [r[1].removeprefix("engine ") for r in rows if r[1].startswith("engine ")]
     for engine in harnesses.LAUNCHABLE if tmux else []:  # each adapter's host and coordinator preflight
         if engine in used and hasattr(harnesses.ADAPTERS[engine], "host_checks"):
@@ -328,7 +342,7 @@ def run(args):
     bad = placeholder_paths(args, values, ("state_dir", "worktree_root"))
     rows += [("fail", "paths", b, "") for b in bad] if bad else in_checkout(values) or state_dir(
         values, args.fix and not args.dry_run)
-    if not bad:
+    if not bad and github:
         rows += repo_fixers.checks(values, args.fix, args.dry_run, args.milestone)
     rows += checkout_repo(values, args.project) + install(values)
     rows += handoff(values) + triage(values) + version(values) + launcher(values) + pack(values) + install_source(values)
