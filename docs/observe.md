@@ -119,6 +119,10 @@ the owner can watch live without adding anything to another role's context
 - `mdstack attach <window>` attaches to the window read-only (`--rw` to type).
   `mdstack attach builders` opens a temporary tiled view of the builder band that
   is torn down on detach and never changes the mdstack layout.
+- A run on a role host works the same way through its host's verbs
+  ([multi-device observability](runtimes/multi-device.md#observability)):
+  attach over `ssh -t`, a `capture` pane per remote builder in the builders
+  view, and the `logs` tail without `-f`.
 
 Both are for the owner's terminal only. Pane scrollback is never streamed or
 pasted into another agent, a PR or an inbox; roles still read the promoted

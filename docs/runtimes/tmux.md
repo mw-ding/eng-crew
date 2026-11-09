@@ -209,7 +209,7 @@ the primary.
 |---|---|---|
 | Primary | The coordinator, the synthesizer, `mdstack poll`, the watcher, claims, the land lock, and every role run while M20 lasts | The table above, unchanged |
 | Forge-less runner host (`forge = false`) | `mdstack runner` jobs only: `check-repo`, named tests and offline evidence captures, run at a seeded head. Never a role session, model call or forge access | Unchanged. No wake, status line, inbox, claim or lock lives on the host. A role run on the primary starts the job and gets its result back by reference under `$CREW_STATE/runner/`. Unreachable or refused falls back to a local run ([Failure and fallback](multi-device.md#forge-less-hosts-remote-test-runner)). Added by the [runbook](multi-device.md#runbook-add-a-runner-host) |
-| Role host | Builder and reviewer runs, placed by `mdstack spawn` ([#345](https://github.com/mw-ding/eng-crew/issues/345)) | The [contract across hosts](multi-device.md#runtime-contract-across-hosts), with its C1 and C9 gaps. The [run lifecycle](multi-device.md#remote-run-lifecycle) and [wakes and messages](multi-device.md#remote-wakes-and-messages) are built; partition handling and attach are not (#347, #348) |
+| Role host | Builder and reviewer runs, placed by `mdstack spawn` ([#345](https://github.com/mw-ding/eng-crew/issues/345)) | The [contract across hosts](multi-device.md#runtime-contract-across-hosts), with its C1 and C9 gaps. The [run lifecycle](multi-device.md#remote-run-lifecycle) and [attach and logs](multi-device.md#observability) and [wakes and messages](multi-device.md#remote-wakes-and-messages) are built; partition handling is not (#347) |
 
 ## Q1. Wake
 
@@ -402,7 +402,8 @@ sweeper*: kept as a backstop shape, too slow as the detector.
 4. Create the window in the background, so focus stays on `ash`:
    `tmux new-window -d -t crew-<owner>-<repo>:<index> -n <name> -c <worktree>
    -e CREW_ROLE=... -e CREW_ID=... -e CREW_STATUS=... -e CREW_INBOX=...
-   -e CREW_BRIEF=... -e CREW_IDENTITY=... '<launch>'`.
+   -e CREW_BRIEF=... -e CREW_IDENTITY=... -e TMUX=/dev/null/mdstack-worker,0,0
+   '<launch>'`. The last `-e` is the worker guard below.
 5. `<launch>` derives `GH_TOKEN` ([Q5](#q5-identities)) and starts the
    harness interactively with the profile's permission flags
    ([mdstack spawn](#mdstack-spawn)) and a short pointer only, for example
@@ -417,6 +418,28 @@ sweeper*: kept as a backstop shape, too slow as the detector.
 7. Write the run record and the claim. The run brief is the rendered role
    brief plus the `## This run` block from `mdstack brief`'s helper, the same
    block every runtime uses ([hosted dispatch](session.md#run-parameters-for-hosted-dispatch)).
+
+Worker guard (#1475): every role window the tmux adapter opens
+(`mdstack spawn`, `restart` and `lead ensure`) or reloads in place
+(`mdstack upgrade`) gets `TMUX=/dev/null/mdstack-worker,0,0`, a socket no
+server can listen on; the coordinator's window 0 keeps the crew's. A bare
+`tmux kill-server`, `kill-session` or `kill-window` from the agent's shell
+follows `$TMUX` ahead of `TMUX_TMPDIR`, so it fails with `Not a directory`
+instead of ending the crew's server, even with the host tmux first on `PATH`.
+This closes the mechanism behind the session loss in
+[#1474](https://github.com/mw-ding/mdstack/issues/1474), the same one
+[#817](https://github.com/mw-ding/mdstack/issues/817) found (also
+[#1155](https://github.com/mw-ding/mdstack/issues/1155)). It needs no
+dedicated or private crew socket: the crew stays on the owner's default
+server (#1327). Crew commands
+(`mdstack send`, `acked`, `status`, `kill`, the leads' spawn and kill) are
+unaffected: the adapter always names the server with `-S` or `-L` and never
+follows `$TMUX` (#818). A call that names the crew's socket, or unsets `TMUX`
+and lands on a default-server crew, still reaches it, so the builder, reviewer
+and researcher briefs carry the rule: destructive calls name
+`-S <sandbox-socket>` with `TMUX` and `TMUX_PANE` unset, or go through
+`scripts/campaign-sandbox.py teardown`. `dev/tests/environments/test-worker-tmux-guard.py`
+runs the bare calls from such a window against a throwaway crew server.
 
 `mdstack kill <window>`: stop the pane's processes, `tmux kill-window`, then remove only that run's
 worktree, build output, run record, inbox, status file and claim, and only

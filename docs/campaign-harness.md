@@ -657,9 +657,27 @@ python3 environments/terminal/remote/lab/crew-lab-scenarios.py "$SANDBOX/state/m
   pull and a fresh primary module, the mirror holds every line once and in
   order, and a `send` through the host returns its ack through the mirror.
   Reconcile waits for #347.
+  file is unchanged. Remote role runs and their reconcile wait for #345 and
+  #347.
+- **Attach (#348).** A run is planted as the runner account in the
+  runner's tmux session, since `spawn` needs a forge (#345 proves it on
+  fakes). Over real SSH, `capture` shows its pane and `logs` its step
+  summary tail. A client on a pty attaches through the `restrict,pty` key
+  line, read-only, so typed keys never reach the pane, and detaches with
+  exit 0. Attach without a TTY and `version` with one are refused.
 - **Report.** Each scenario prints `PASS` or `FAIL`, and
   `state/lab/scenarios.json` keeps what it saw. Exit 1 on any `FAIL`, 2 on
   a refusal.
+- **Evidence.** Each run writes `state/lab/runs/<started>.json` and a
+  Markdown copy with `crew-lab-evidence.py` (M20.1 lab G, #1361). They
+  record lab C, each host's container, network, port, host key and
+  activated bundle and source SHA, the image digest, the staged bundle
+  hashes, the client bundle, the transport, every injected event with its
+  Docker control, and a timeline. The record is `simulated` and never
+  `real_device`: the loopback SSH path and each injection are labelled
+  simulated, and the sample checks and the partition's claim and identity
+  are labelled stubs. A scenario `--only` left out is `skipped` with
+  `evidence: false`, so it supplies no evidence for #207 or #345–#348.
 
 ### Level c: owner-run devices and second environment
 

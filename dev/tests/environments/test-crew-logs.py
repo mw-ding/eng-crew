@@ -1,7 +1,7 @@
 """Tests for mdstack logs, moved from test-crew.py; fixtures in crew_testlib.py (stdlib only).
 
-Covers: tails only the newest summary, `-f` execs `tail`, no run or summary refused. Run in
-CI.
+Covers: tails only the newest summary, `-f` execs `tail`, no run or summary refused, and a run
+on a role host through its host's `logs` verb (#348). Run in CI.
 """
 import json
 import os
@@ -58,6 +58,34 @@ class Logs(ObserveBase):
         r = self.crew("logs", "ben-7", "--project", self.project)
         self.assertEqual(r.returncode, 1)
         self.assertIn("no step summary yet", r.stdout)
+
+
+class LogsRemote(ObserveBase):  # #348: the step summary tail from the run's role host, never raw logs
+    def logs(self, *args):
+        return self.crew("logs", "ben-12", *args, "--project", self.project)
+
+    def test_logs_tail_from_the_host(self):
+        rel = "wt/12-abcdef0-builder-build/.crew/runs/issue-12/build/summary.md"
+        self.remote_run("ben-12", logs=dict(result="ok", path=rel, lines=["- build ok", "- tests fail"]))
+        r = self.logs("-n", "2")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(r.stdout, "==> host-b:%s <==\n- build ok\n- tests fail\n" % rel)
+        (call,) = self.ssh_calls()
+        self.assertEqual((call["request"]["verb"], call["request"]["window"], call["request"]["lines"]),
+                         ("logs", "ben-12", 2))
+
+    def test_logs_remote_refusals(self):
+        self.remote_run("ben-12", logs=dict(result="ok", path=None, lines=[]))
+        r = self.logs()
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("no step summary yet under /home/crew/.mdstack/wt/12-abcdef0-builder-build/.crew/runs on host-b",
+                      r.stdout)
+        r = self.logs("-f")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("logs -f is not supported for a run on host-b", r.stdout)
+        self.remote_run("ben-12", logs=dict(result="refused", reason="lines must be 1 to 500"))
+        r = self.logs("-n", "900")
+        self.assertEqual((r.returncode, r.stdout), (1, "crew: host-b refused: lines must be 1 to 500\n"))
 
 
 if __name__ == "__main__":

@@ -35,6 +35,9 @@ Never download or install a binary from the internet, bypass OS code-signing or
 quarantine, or use an alternate or mirror package registry. If a CI tool is
 missing or its registry fails, skip that one local check, say so in the PR
 evidence, and leave it to CI.
+Destructive tmux calls take the sandbox `-S` socket with `TMUX`/`TMUX_PANE`
+unset, or `campaign-sandbox.py teardown`; `TMUX_TMPDIR` alone isolates
+nothing. Run tests via `scripts/run-tests.py`, not `python3 test-*.py`.
 
 Build pass:
 

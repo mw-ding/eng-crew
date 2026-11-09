@@ -8,7 +8,8 @@ primary's client is that staged bundle, verified and extracted under lab/toolkit
 both ends run one version. macOS ssh reads ~/.ssh/config from the account's home, never HOME, so lab/bin/ssh adds
 `-F lab/home/.ssh/config` to `ssh -G` only; each call still runs the client's own `-F none` argv. The sample repo
 (branch `lab` of the sandbox repo) has check-repo and dev/tests/lab/test-lab.py, which can go red or sleep.
-Every scenario prints PASS or FAIL; lab/scenarios.json keeps what it saw. Exit 1 on any FAIL, 2 on a refusal.
+Every scenario prints PASS or FAIL; lab/scenarios.json keeps what it saw, and crew-lab-evidence.py writes the run's
+evidence record under lab/runs/ (#1361). Exit 1 on any FAIL, 2 on a refusal.
   exact-head  a job at HEAD stores its result and matches the same commands run locally; the host job sees none of
               the decoy GH_TOKEN, GITHUB_TOKEN, SSH_AUTH_SOCK or CREW_* the client carries
   red         a red remote test is a red run, not a fallback, and is red locally too
@@ -23,6 +24,10 @@ Every scenario prints PASS or FAIL; lab/scenarios.json keeps what it saw. Exit 1
               while it is down, or the lost job refused), the host never reports that job done, and a fresh job passes
   partition   a role host behind a network disconnect is unreachable over SSH; placement queues a role run that
               needs that host and never places it elsewhere, and the item's claim file is unchanged
+  attach      a run planted as crew in the runner's session (spawn needs a forge, #345): over real SSH `capture`
+              shows its pane and `logs` its step summary tail; a client on a pty attaches read-only (typed keys
+              never reach the pane) and detaches with exit 0; attach without a TTY and another verb with one are
+              refused (#348)
   status-pull a run on the host keeps writing status lines through a network disconnect: the toolkit's offset pull
               (crew.d/_remote.py, #346) is unreachable while it holds, and after reconnect, a repeated pull and a
               fresh primary module the mirror holds every line once, in order; an `mdstack send` through the host is
@@ -32,15 +37,19 @@ runner and recreate prove their own outage as above.
 """
 import argparse
 import base64
+import fcntl
 import hashlib
 import importlib.machinery
 import importlib.util
 import json
 import os
 import re
+import select
 import shutil
+import struct
 import subprocess
 import sys
+import termios
 import time
 from pathlib import Path
 
@@ -69,6 +78,7 @@ def module(name, path):
 
 
 labd = module("crew_lab_docker", os.path.join(HERE, "crew-lab-docker.py"))
+labe = module("crew_lab_evidence", os.path.join(HERE, "crew-lab-evidence.py"))
 
 
 class Lab:
@@ -78,6 +88,7 @@ class Lab:
         self.d, self.repo = labd.lab_dir(self.m), os.path.dirname(self.m["profile"]["path"])
         self.conf = os.path.join(self.d, "home", ".ssh", "config")
         self.project = "campaign__" + self.m["repo"].split("/", 1)[1]
+        self.client_sha = None
 
     def refusals(self):
         lab = self.m.get("lab") or {}
@@ -93,6 +104,7 @@ class Lab:
         sha, _ = install.verify(toolkit + "-stage", tag, toolkit)
         if sha not in self.m["lab"]["stage"].values():
             raise ValueError("bundle %s is not the one the lab hosts activated" % sha)
+        self.client_sha = sha
         self.remote = module("lab_remote", os.path.join(toolkit, "environments/terminal/remote/crew-remote.py"))
         self.mdstack = module("lab_mdstack", os.path.join(toolkit, "cli", "mdstack"))
         os.makedirs(os.path.join(self.d, "bin"), exist_ok=True)
@@ -205,7 +217,10 @@ class Lab:
 
 class Seen:
     def __init__(self):
-        self.failures, self.obs = [], {}
+        self.failures, self.obs, self.events = [], {}, []
+
+    def event(self, control, phase):
+        self.events.append(labe.event(control, phase))
 
     def check(self, ok, failure):
         if not ok:
@@ -226,6 +241,7 @@ def exits(lines):
 
 def injected(lab, s, name, inject, lift, during=None):
     """Apply an injection, prove it breaks the SSH path, run `during`, lift it and prove the path answers again."""
+    s.event(name, "inject")
     inject()
     try:
         reply = lab.call("version")
@@ -234,6 +250,7 @@ def injected(lab, s, name, inject, lift, during=None):
         out = during() if during else None
     finally:
         lift()
+        s.event(name, "lift")
     for _ in range(30):
         if lab.up():
             break
@@ -328,6 +345,7 @@ def runner(lab, s):
     else:
         return s.check(False, "the runner was never up before the kill")
     before = lab.pids()
+    s.event("runner", "inject")
     lab.docker("exec", lab.cid(), "kill", str(before["runner"]))
     outage = s.obs["runner_version"] = lab.call("version")
     s.check(outage.get("result") == "ok" and lab.pids()["sshd"] == before["sshd"],
@@ -340,6 +358,7 @@ def runner(lab, s):
                 and health[-1] == "up":
             break
         time.sleep(1)
+    s.event("runner", "restarted")
     s.obs["pids"], s.obs["beat"] = [before, after], beat
     s.check(after["runner"] not in (None, before["runner"]) and after["sshd"] == before["sshd"],
             "the runner was not restarted alone")
@@ -355,7 +374,9 @@ def recreate(lab, s):
     head, before = lab.commit(sleep=20), lab.jobs()
     client = lab.client(head, wait=False)
     job = s.obs["job"] = lab.started(before)
+    s.event("recreate", "inject")
     lab.recreate()
+    s.event("recreate", "lift")
     out = s.obs["client"] = client.communicate()[0].splitlines() + ["exit %d" % client.returncode]
     host = lab.m["lab"]["hosts"][lab.host]
     s.obs["identity"] = [old, dict(container=host["container"], host_key=host["host_key"], port=host["port"],
@@ -386,6 +407,84 @@ def partition(lab, s):
     s.check(s.obs["placed"] == dict(result="queue", reason="%s: unreachable" % lab.host),
             "placement did not queue the role run behind the partition: %s" % s.obs["placed"])
     s.check(hashlib.sha256(claim.read_bytes()).hexdigest() == before, "the claim file changed")
+
+
+PLANT = """set -e
+wt=$HOME/.mdstack/wt/lab-attach; mkdir -p "$wt/.crew/runs/issue-1/build" "$HOME/.mdstack/state/%(project)s/runs"
+printf '# Run summary\\n- build ok\\n- tests ok\\n' > "$wt/.crew/runs/issue-1/build/summary.md"
+printf '{"window": "ben-1", "primary": "primary", "worktree": "%%s"}' "$wt" > "$HOME/.mdstack/state/%(project)s/runs/ben-1.json"
+tmux new-window -d -t crew-host: -n %(project)s/ben-1 "echo lab-attach-pane; exec tail -f /dev/null"
+"""
+
+
+def on_pty(argv, until, keys=b"", timeout=30):
+    """Run argv on a fresh 40x120 xterm-256color pty, as a terminal would (the host's tmux client needs TERM); once
+    `until` shows, type keys then C-b d. (exit code, everything it printed)."""
+    primary, secondary = os.openpty()
+    fcntl.ioctl(secondary, termios.TIOCSWINSZ, struct.pack("HHHH", 40, 120, 0, 0))
+    p = subprocess.Popen(argv, stdin=secondary, stdout=secondary, stderr=secondary, start_new_session=True,
+                         env=dict(os.environ, TERM="xterm-256color"))
+    os.close(secondary)
+    out, sent, deadline = b"", False, time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            if select.select([primary], [], [], 0.5)[0]:
+                chunk = os.read(primary, 65536)
+                if not chunk:
+                    break
+                out += chunk
+            elif p.poll() is not None:
+                break
+            if not sent and until in out:
+                sent = True
+                os.write(primary, keys)
+                time.sleep(1)
+                os.write(primary, b"\x02d")
+        except OSError:  # the client exited and its pty closed (EIO)
+            break
+    if p.poll() is None:
+        p.kill()
+    code = p.wait()
+    os.close(primary)
+    return code, out.decode(errors="replace")
+
+
+def attach(lab, s):
+    for _ in range(120):
+        if lab.call("version").get("runner") == "up":
+            break
+        time.sleep(1)
+    else:
+        return s.check(False, "the runner was never up")
+    lab.docker("exec", "-u", "crew", lab.cid(), "sh", "-c", PLANT % dict(project=lab.project))
+    scope = dict(project=lab.project, window="ben-1", primary="primary")
+    try:
+        cap = s.obs["capture"] = lab.call("capture", **scope)
+        s.check(cap.get("result") == "ok" and "lab-attach-pane" in cap.get("text", ""), "capture: %s" % cap)
+        logs = s.obs["logs"] = lab.call("logs", lines=2, **scope)
+        s.check(logs == dict(result="ok", path="wt/lab-attach/.crew/runs/issue-1/build/summary.md",
+                             lines=["- build ok", "- tests ok"]), "logs: %s" % logs)
+        client = [sys.executable, "-c", "import importlib.util as u, json, sys; s = u.spec_from_file_location('r', "
+                  "sys.argv[1]); m = u.module_from_spec(s); s.loader.exec_module(m); "
+                  "sys.exit(m.attach(sys.argv[2], config=sys.argv[3], **json.loads(sys.argv[4])))",
+                  lab.remote.__file__, lab.host, lab.conf, json.dumps(dict(scope, root=ROOT))]
+        code, out = on_pty(client, b"lab-attach-pane", keys=b"lab-typed-keys")
+        s.obs["attach"] = dict(exit=code, tail=out[-400:])
+        s.check(code == 0 and "lab-attach-pane" in out, "the pty attach did not show the pane and detach cleanly")
+        after = s.obs["capture_after"] = lab.call("capture", **scope).get("text", "")
+        s.check("lab-attach-pane" in after and "lab-typed-keys" not in after, "a read-only attach reached the pane")
+        r = subprocess.run(client, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=60)
+        s.obs["no_tty"] = dict(exit=r.returncode, stdout=r.stdout.strip())
+        s.check(r.returncode == 1 and '"attach needs a TTY"' in r.stdout, "attach without a TTY was not refused")
+        payload = lab.remote.base64.urlsafe_b64encode(json.dumps(dict(
+            verb="version", version=lab.remote.version())).encode()).decode()
+        argv = lab.remote.ssh_argv(lab.host, lab.conf)
+        argv = ["-tt" if a == "-T" else a for a in argv[:-1]] + ["crew-host " + payload]
+        r = subprocess.run(argv, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=60)
+        s.obs["tty_version"] = dict(exit=r.returncode, stdout=r.stdout.strip())
+        s.check(r.returncode == 1 and '"only attach takes a TTY"' in r.stdout, "a verb other than attach took a TTY")
+    finally:
+        s.obs["kill"] = lab.call("kill", refs=["refs/heads/lab"], discard=True, **scope)
 
 
 STUB = """import select, sys
@@ -472,7 +571,7 @@ def status_pull(lab, s):
 
 
 SCENARIOS = dict((f.__name__.replace("_", "-"), f) for f in (
-    exact_head, red, idempotent, stale, disconnect, pause, runner, recreate, partition, status_pull))
+    exact_head, red, idempotent, stale, disconnect, pause, runner, recreate, partition, attach, status_pull))
 
 
 def main(argv=None):
@@ -492,21 +591,26 @@ def main(argv=None):
     if problems:
         print("\n".join("refused: " + p for p in problems))
         return 2
-    report = {}
+    report, timeline, started = {}, [], labe.now()
     for name, scenario in SCENARIOS.items():
         if a.only and name not in a.only:
             continue
         s, start = Seen(), time.monotonic()
+        timeline.append(dict(t=labe.now(), scenario=name, event=name, phase="start"))
         try:
             scenario(lab, s)
         except (OSError, ValueError, KeyError, TypeError, RuntimeError, SystemExit, subprocess.CalledProcessError) as e:
             s.failures.append("%s: %s" % (type(e).__name__, e))
         report[name] = dict(passed=not s.failures, failures=s.failures, seconds=round(time.monotonic() - start),
                             **s.obs)
+        timeline += [dict(e, scenario=name) for e in s.events]
+        timeline.append(dict(t=labe.now(), scenario=name, event=name, phase="pass" if not s.failures else "fail"))
         print("%s %s (%ds)%s" % ("PASS" if not s.failures else "FAIL", name, report[name]["seconds"],
                                  "".join("\n  " + f for f in s.failures)), flush=True)
     labd.save(a.manifest, lab.m)
     Path(lab.d, "scenarios.json").write_text(json.dumps(report, indent=2, default=str) + "\n")
+    print("evidence: " + labe.write(lab.d, labe.record(lab.m, a.host, lab.client_sha, started, timeline, report,
+                                                       list(SCENARIOS))))
     return 0 if all(r["passed"] for r in report.values()) else 1
 
 

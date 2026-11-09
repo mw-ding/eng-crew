@@ -1,7 +1,8 @@
-"""Remote run lifecycle on the primary (docs/runtimes/multi-device.md#remote-call-and-runner, #345): spawn, probe and
-kill a role run on its placed host through the hardened call (crew-remote.py). A run record with `remote` set ran
-on its `host`; every call carries the project, the host's root and this primary's name, and retries with the same
-request id while the transport fails, at most 3 calls in a row, so a retried spawn never opens a second window.
+"""Remote runs on the primary (docs/runtimes/multi-device.md#remote-call-and-runner): spawn, probe and kill a role
+run on its placed host through the hardened call (crew-remote.py, #345), and attach, capture and logs (#348). A run
+record with `remote` set ran on its `host`; every call carries the project, the host's root and this primary's name,
+and retries with the same request id while the transport fails, at most 3 calls in a row, so a retried spawn never
+opens a second window.
 Remote wakes and messages (#346): `pull` copies new status lines into the primary's status/<window>.status mirror and
 `send` delivers an `mdstack send` message through the host.
 """
@@ -24,11 +25,16 @@ def host_of(rec):
     return rec.get("host") if rec.get("remote") else None
 
 
-def call(values, host, verb, attempts=3, **fields):
+def scope(values, host):
+    """The fields every call carries: the project, this primary's name and the host's root."""
     primary = next((k.split(".")[1] for k, v in values.items() if k.startswith("hosts.") and k.endswith(".primary")
                     and v), None)
-    fields.update(project=values["repo.owner"] + "__" + values["repo.name"], primary=primary,
-                  root=values.get("hosts.%s.root" % host, "~/.mdstack"))
+    return dict(project=values["repo.owner"] + "__" + values["repo.name"], primary=primary,
+                root=values.get("hosts.%s.root" % host, "~/.mdstack"))
+
+
+def call(values, host, verb, attempts=3, **fields):
+    fields.update(scope(values, host))
     for _ in range(attempts):
         reply = REMOTE.call(host, verb, **fields)
         if reply["result"] != "unreachable":
@@ -68,6 +74,19 @@ def kill(values, name, rec, discard=False, keep=False):
     prs = set(re.findall(r"PR #(\d+)", rec["item"])) | {str(n) for n in (rec.get("pr"), rec.get("args", {}).get("pr")) if n}
     refs = ["refs/heads/" + values["repo.default_branch"]] + ["refs/pull/%s/head" % n for n in sorted(prs)]
     return call(values, rec["host"], "kill", window=name, refs=refs, discard=discard, keep=keep)
+
+
+def attach(values, name, rec, rw=False):
+    """This terminal on the run's pane on its host (`ssh -t` to the attach verb); the ssh exit code, 255 unreachable."""
+    return REMOTE.attach(rec["host"], window=name, rw=rw, **scope(values, rec["host"]))
+
+
+def capture(values, name, rec):
+    return call(values, rec["host"], "capture", window=name)
+
+
+def logs(values, name, rec, lines):
+    return call(values, rec["host"], "logs", window=name, lines=lines)
 
 
 @contextlib.contextmanager

@@ -9,6 +9,7 @@ RANK = 0
 CAPABILITIES = {"reload", "dead-keeps-pid", "icon"}  # its doorbell is the core's cursor-checked composer nudge (mdstack send)
 SOCKET = None  # the session name, set by crew_shared.profile; names the dedicated server `-L SOCKET` (#818)
 DEDICATED = False  # runtime.options.tmux_server = "dedicated": the crew's own `-L SOCKET` server (#818, opt-in #1327)
+WORKER_TMUX = "/dev/null/mdstack-worker,0,0"  # a role window's $TMUX: no server can listen under a non-directory (#1475)
 _server = {}
 
 
@@ -111,8 +112,10 @@ def kill_session(name):
 
 
 def new_window(name, index, window, cwd, env, command):
-    """Background window (focus stays on the coordinator); env holds names, paths and logins only, never tokens."""
-    flags = [x for k, v in env.items() for x in ("-e", "%s=%s" % (k, v))]
+    """Background window (focus stays on the coordinator); env holds names, paths and logins only, never tokens. Its
+    $TMUX is WORKER_TMUX, so a bare `tmux kill-server` from the agent's shell misses the crew's server (#1475, #817);
+    crew commands never follow $TMUX (server())."""
+    flags = [x for k, v in dict(env, TMUX=WORKER_TMUX).items() for x in ("-e", "%s=%s" % (k, v))]
     r = tmux("new-window", "-d", "-t", "=%s:%d" % (name, index), "-n", window, "-c", cwd, *flags, command)
     if r.returncode:
         raise RuntimeError("tmux new-window failed: " + r.stderr.strip())
@@ -168,9 +171,10 @@ def hold(name, index):
 
 
 def respawn(name, index, cwd, env, command):
-    """Restart a held window in place with a new command and environment, then drop the hold."""
+    """Restart a held window in place with a new command and environment, then drop the hold. A role window keeps its
+    WORKER_TMUX guard (#1475); window 0, the coordinator, keeps the crew's $TMUX."""
     target = "=%s:%d" % (name, index)
-    flags = [x for k, v in env.items() for x in ("-e", "%s=%s" % (k, v))]
+    flags = [x for k, v in (dict(env, TMUX=WORKER_TMUX) if index else env).items() for x in ("-e", "%s=%s" % (k, v))]
     result = tmux("respawn-window", "-k", "-t", target, "-c", cwd, *flags, command)
     if result.returncode:
         raise RuntimeError("reload failed: " + result.stderr.strip())
