@@ -8,7 +8,8 @@ primary's client is that staged bundle, verified and extracted under lab/toolkit
 both ends run one version. macOS ssh reads ~/.ssh/config from the account's home, never HOME, so lab/bin/ssh adds
 `-F lab/home/.ssh/config` to `ssh -G` only; each call still runs the client's own `-F none` argv. The sample repo
 (branch `lab` of the sandbox repo) has check-repo and dev/tests/lab/test-lab.py, which can go red or sleep.
-Every scenario prints PASS or FAIL; lab/scenarios.json keeps what it saw. Exit 1 on any FAIL, 2 on a refusal.
+Every scenario prints PASS or FAIL; lab/scenarios.json keeps what it saw, and crew-lab-evidence.py writes the run's
+evidence record under lab/runs/ (#1361). Exit 1 on any FAIL, 2 on a refusal.
   exact-head  a job at HEAD stores its result and matches the same commands run locally; the host job sees none of
               the decoy GH_TOKEN, GITHUB_TOKEN, SSH_AUTH_SOCK or CREW_* the client carries
   red         a red remote test is a red run, not a fallback, and is red locally too
@@ -64,6 +65,7 @@ def module(name, path):
 
 
 labd = module("crew_lab_docker", os.path.join(HERE, "crew-lab-docker.py"))
+labe = module("crew_lab_evidence", os.path.join(HERE, "crew-lab-evidence.py"))
 
 
 class Lab:
@@ -73,6 +75,7 @@ class Lab:
         self.d, self.repo = labd.lab_dir(self.m), os.path.dirname(self.m["profile"]["path"])
         self.conf = os.path.join(self.d, "home", ".ssh", "config")
         self.project = "campaign__" + self.m["repo"].split("/", 1)[1]
+        self.client_sha = None
 
     def refusals(self):
         lab = self.m.get("lab") or {}
@@ -88,6 +91,7 @@ class Lab:
         sha, _ = install.verify(toolkit + "-stage", tag, toolkit)
         if sha not in self.m["lab"]["stage"].values():
             raise ValueError("bundle %s is not the one the lab hosts activated" % sha)
+        self.client_sha = sha
         self.remote = module("lab_remote", os.path.join(toolkit, "environments/terminal/remote/crew-remote.py"))
         self.mdstack = module("lab_mdstack", os.path.join(toolkit, "cli", "mdstack"))
         os.makedirs(os.path.join(self.d, "bin"), exist_ok=True)
@@ -200,7 +204,10 @@ class Lab:
 
 class Seen:
     def __init__(self):
-        self.failures, self.obs = [], {}
+        self.failures, self.obs, self.events = [], {}, []
+
+    def event(self, control, phase):
+        self.events.append(labe.event(control, phase))
 
     def check(self, ok, failure):
         if not ok:
@@ -221,6 +228,7 @@ def exits(lines):
 
 def injected(lab, s, name, inject, lift, during=None):
     """Apply an injection, prove it breaks the SSH path, run `during`, lift it and prove the path answers again."""
+    s.event(name, "inject")
     inject()
     try:
         reply = lab.call("version")
@@ -229,6 +237,7 @@ def injected(lab, s, name, inject, lift, during=None):
         out = during() if during else None
     finally:
         lift()
+        s.event(name, "lift")
     for _ in range(30):
         if lab.up():
             break
@@ -323,6 +332,7 @@ def runner(lab, s):
     else:
         return s.check(False, "the runner was never up before the kill")
     before = lab.pids()
+    s.event("runner", "inject")
     lab.docker("exec", lab.cid(), "kill", str(before["runner"]))
     outage = s.obs["runner_version"] = lab.call("version")
     s.check(outage.get("result") == "ok" and lab.pids()["sshd"] == before["sshd"],
@@ -335,6 +345,7 @@ def runner(lab, s):
                 and health[-1] == "up":
             break
         time.sleep(1)
+    s.event("runner", "restarted")
     s.obs["pids"], s.obs["beat"] = [before, after], beat
     s.check(after["runner"] not in (None, before["runner"]) and after["sshd"] == before["sshd"],
             "the runner was not restarted alone")
@@ -350,7 +361,9 @@ def recreate(lab, s):
     head, before = lab.commit(sleep=20), lab.jobs()
     client = lab.client(head, wait=False)
     job = s.obs["job"] = lab.started(before)
+    s.event("recreate", "inject")
     lab.recreate()
+    s.event("recreate", "lift")
     out = s.obs["client"] = client.communicate()[0].splitlines() + ["exit %d" % client.returncode]
     host = lab.m["lab"]["hosts"][lab.host]
     s.obs["identity"] = [old, dict(container=host["container"], host_key=host["host_key"], port=host["port"],
@@ -404,21 +417,26 @@ def main(argv=None):
     if problems:
         print("\n".join("refused: " + p for p in problems))
         return 2
-    report = {}
+    report, timeline, started = {}, [], labe.now()
     for name, scenario in SCENARIOS.items():
         if a.only and name not in a.only:
             continue
         s, start = Seen(), time.monotonic()
+        timeline.append(dict(t=labe.now(), scenario=name, event=name, phase="start"))
         try:
             scenario(lab, s)
         except (OSError, ValueError, KeyError, TypeError, RuntimeError, SystemExit, subprocess.CalledProcessError) as e:
             s.failures.append("%s: %s" % (type(e).__name__, e))
         report[name] = dict(passed=not s.failures, failures=s.failures, seconds=round(time.monotonic() - start),
                             **s.obs)
+        timeline += [dict(e, scenario=name) for e in s.events]
+        timeline.append(dict(t=labe.now(), scenario=name, event=name, phase="pass" if not s.failures else "fail"))
         print("%s %s (%ds)%s" % ("PASS" if not s.failures else "FAIL", name, report[name]["seconds"],
                                  "".join("\n  " + f for f in s.failures)), flush=True)
     labd.save(a.manifest, lab.m)
     Path(lab.d, "scenarios.json").write_text(json.dumps(report, indent=2, default=str) + "\n")
+    print("evidence: " + labe.write(lab.d, labe.record(lab.m, a.host, lab.client_sha, started, timeline, report,
+                                                       list(SCENARIOS))))
     return 0 if all(r["passed"] for r in report.values()) else 1
 
 

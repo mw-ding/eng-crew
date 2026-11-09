@@ -655,6 +655,16 @@ python3 environments/terminal/remote/lab/crew-lab-scenarios.py "$SANDBOX/state/m
 - **Report.** Each scenario prints `PASS` or `FAIL`, and
   `state/lab/scenarios.json` keeps what it saw. Exit 1 on any `FAIL`, 2 on
   a refusal.
+- **Evidence.** Each run writes `state/lab/runs/<started>.json` and a
+  Markdown copy with `crew-lab-evidence.py` (M20.1 lab G, #1361). They
+  record lab C, each host's container, network, port, host key and
+  activated bundle and source SHA, the image digest, the staged bundle
+  hashes, the client bundle, the transport, every injected event with its
+  Docker control, and a timeline. The record is `simulated` and never
+  `real_device`: the loopback SSH path and each injection are labelled
+  simulated, and the sample checks and the partition's claim and identity
+  are labelled stubs. A scenario `--only` left out is `skipped` with
+  `evidence: false`, so it supplies no evidence for #207 or #345–#348.
 
 ### Level c: owner-run devices and second environment
 

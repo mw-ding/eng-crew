@@ -239,6 +239,27 @@ class ReportTest(Base):
         report = json.loads(Path(self.state, "lab", "scenarios.json").read_text())
         self.assertEqual({k: v["passed"] for k, v in report.items()}, dict(good=True, bad=False, crash=False))
         self.assertEqual(report["good"]["seen"], 1)
+        path = out.getvalue().split("evidence: ", 1)[1].strip()
+        evidence = json.loads(Path(path).read_text())
+        self.assertEqual({k: v["status"] for k, v in evidence["scenarios"].items()},
+                         dict(good="pass", bad="fail", crash="fail"))
+        self.assertEqual([(e["scenario"], e["phase"]) for e in evidence["timeline"]],
+                         [("good", "start"), ("good", "pass"), ("bad", "start"), ("bad", "fail"), ("crash", "start"),
+                          ("crash", "fail")])
+
+    def test_only_marks_the_others_skipped_and_records_their_injections_nowhere(self):
+        def injects(lab, s):
+            s.event("pause", "inject")
+            s.event("pause", "lift")
+        os.makedirs(os.path.join(self.state, "lab"))
+        out = io.StringIO()
+        with mock.patch.object(sc, "SCENARIOS", dict(pause=injects, other=injects)), \
+                mock.patch.object(sc.Lab, "prepare"), redirect_stdout(out):
+            self.assertEqual(sc.main([self.manifest, "--stage", self.stage, "--only", "pause"]), 0)
+        evidence = json.loads(Path(out.getvalue().split("evidence: ", 1)[1].strip()).read_text())
+        self.assertEqual(evidence["scenarios"]["other"], dict(status="skipped", evidence=False))
+        self.assertEqual([(e["scenario"], e["event"], e["phase"]) for e in evidence["events"]],
+                         [("pause", "pause", "inject"), ("pause", "pause", "lift")])
 
 
 if __name__ == "__main__":
