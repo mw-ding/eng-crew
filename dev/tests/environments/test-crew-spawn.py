@@ -847,7 +847,7 @@ class RemoteRun(KillLandedBase):  # #345: spawn, kill, restart, down and status 
         self.assertEqual((rec["host"], rec["remote"], rec["index"], rec["worktree"], rec["pane_id"]),
                          ("host-b", True, None, self.wt, "%1"))
         self.assertEqual([c for c in self.windows() if c[3].startswith("=crew-acme-widgets:")], [])  # none on the primary
-        self.assertEqual(self.host_windows(), {"0": "runner", "1": "ben-7"})
+        self.assertEqual(self.host_windows(), {"0": "runner", "1": "acme__widgets/ben-7"})
         self.assertTrue(os.path.exists(os.path.join(self.state, "claims", "builder-issue7")))
         with open(os.path.join(self.root, "state", "acme__widgets", "runs", "ben-7.brief.md")) as f:
             self.assertIn("- Worktree: %s" % self.wt, f.read())
@@ -895,6 +895,23 @@ class RemoteRun(KillLandedBase):  # #345: spawn, kill, restart, down and status 
         self.assertFalse(os.path.exists(self.wt))
         self.assertFalse(os.path.exists(os.path.join(self.state, "runs", "ben-7.json")))
 
+    def test_down_stops_remote_runs_without_the_primary_session(self):  # review r1 P2: runs outlive that session
+        self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
+        with open(self.state_file) as f:
+            tmux = json.load(f)
+        del tmux["crew-acme-widgets"]
+        with open(self.state_file, "w") as f:
+            json.dump(tmux, f)
+        r = self.crew("down", "--project", self.project, "--preserve")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.host_windows(), {"0": "runner"})  # stopped, work kept
+        self.assertTrue(os.path.isdir(self.wt))
+        r = self.crew("down", "--project", self.project)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("crew-acme-widgets not running; its remote runs stopped", r.stdout)
+        self.assertFalse(os.path.exists(self.wt))
+        self.assertFalse(os.path.exists(os.path.join(self.state, "runs", "ben-7.json")))
+
     def test_restart_in_place_with_unlanded_work_else_fresh(self):
         self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
         r = self.crew("restart", "ben-7", "--project", self.project)
@@ -907,7 +924,7 @@ class RemoteRun(KillLandedBase):  # #345: spawn, kill, restart, down and status 
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn("restarted ben-7 on host-b in its worktree %s, keeping unlanded work:\n  uncommitted: ?? wip.txt"
                       % self.wt, r.stdout)
-        self.assertEqual((self.record("ben-7")["restarts"], self.host_windows()), (1, {"0": "runner", "1": "ben-7"}))
+        self.assertEqual((self.record("ben-7")["restarts"], self.host_windows()), (1, {"0": "runner", "1": "acme__widgets/ben-7"}))
         self.assertTrue(os.path.exists(os.path.join(self.wt, "wip.txt")))
         rec = self.record("ben-7")
         rec.pop("restarts")

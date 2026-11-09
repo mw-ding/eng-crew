@@ -31,7 +31,7 @@ jobs/<job_id>/wt/ at head runs the closed command set in the background with a s
 jobs/<job_id>/result.json; a retried job_id returns the first job; jobs past JOB_RETENTION are removed) and `result`
 (`running`, or the result with capped log tails); `spawn` (needs the runner: fetch the run's ref into the mirror
 without moving its refs, refuse unless it is the given sha, add the detached worktree wt/<name>, write the brief and
-the PR's review files under state/<owner>__<repo>/, start the harness in a window of the runner's session and keep
+the PR's review files under state/<owner>__<repo>/, start the harness in the runner session's window <owner>__<repo>/<window> and keep
 the run record with its pane identity and the primary that spawned it; `relaunch` restarts a kept run in its own
 worktree), `probe` (C5 liveness on this host's clock) and `kill` (stop the window, then remove the worktree and run
 files unless it holds unlanded work, which is kept and listed; `discard` removes it anyway, `keep` only stops).
@@ -550,8 +550,13 @@ def run_record(request, root):
     return state, path, rec
 
 
-def find_window(name):
-    return next((i for i, n in tmux().list_windows(SESSION) if n == name), None)
+def window_name(request):
+    """The run's window in the shared runner session, named <owner>__<repo>/<window> so projects never collide."""
+    return "%s/%s" % (request["project"], request["window"])
+
+
+def find_window(request):
+    return next((i for i, n in tmux().list_windows(SESSION) if n == window_name(request)), None)
 
 
 def start_time(pid):
@@ -598,7 +603,7 @@ def spawn_verb(request, root):
     if not all(isinstance(request.get(k), str) and WORD.fullmatch(request[k]) for k in ("role", "model", "effort", "identity")) \
             or not isinstance(request.get("brief"), str):
         return dict(result="refused", reason="spawn needs role, model, effort, identity and brief")
-    window, index = request["window"], find_window(request["window"])
+    window, index = request["window"], find_window(request)
     if request.get("relaunch"):
         if rec is None:
             return dict(result="refused", reason="no run %s to relaunch" % window)
@@ -645,7 +650,7 @@ def spawn_verb(request, root):
     save(path, rec)  # before the window, so a failed launch still leaves a run kill can remove
     argv = adapter.role_argv(rec["model"], rec["effort"], wt, state, adapter.PERMISSION[rec["permission_mode"]])
     index = max(i for i, _ in tmux().list_windows(SESSION)) + 1
-    tmux().new_window(SESSION, index, window, wt, env, LAUNCH % (shlex.join(argv), POINTER))
+    tmux().new_window(SESSION, index, window_name(request), wt, env, LAUNCH % (shlex.join(argv), POINTER))
     pane = tmux().pane(SESSION, index) or {}
     rec.update(pane_id=pane.get("id"), pane_pid=pane.get("pid"), pane_start=start_time(pane.get("pid")))
     save(path, rec)
@@ -657,7 +662,7 @@ def probe_verb(request, root):
     found = run_record(request, root)
     if isinstance(found, str):
         return dict(result="refused", reason="probe " + found)
-    rec, index = found[2], find_window(request["window"])
+    rec, index = found[2], find_window(request)
     p = tmux().pane(SESSION, index) if rec and index is not None else None
     liveness = ("missing" if rec is None or index is None else "ambiguous" if p is None else "missing"
                 if (p["id"], p["pid"]) != (rec["pane_id"], rec["pane_pid"]) else "dead" if p["dead"] == "1" else
@@ -692,13 +697,15 @@ def kill_verb(request, root):
     refs = request.get("refs")
     if not isinstance(refs, list) or not refs or not all(isinstance(r, str) and REF.fullmatch(r) for r in refs):
         return dict(result="refused", reason="kill needs refs, the default branch first")
-    index = find_window(request["window"])
+    if rec is None:  # spawn keeps the record before the window, so no record means no run of this project here
+        return dict(result="ok", unlanded=[], removed=False)
+    index = find_window(request)
     if index is not None:
         pgid = stop((tmux().pane(SESSION, index) or {}).get("pid"))
         if pgid:
             return dict(result="failed", error="process group %d survived SIGKILL" % pgid)
         tmux().kill_window(SESSION, index)
-    if rec is None or request.get("keep"):
+    if request.get("keep"):
         return dict(result="ok", unlanded=[], removed=False)
     wt = rec["worktree"]
     try:

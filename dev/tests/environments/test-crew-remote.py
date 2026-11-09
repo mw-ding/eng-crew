@@ -907,9 +907,9 @@ class RunLifecycle(Mirror):
     def test_spawn_starts_in_the_runner_session_once(self):
         reply = self.spawn("spawn-1")
         self.assertEqual((reply["result"], reply["worktree"], reply["pane_pid"]), ("ok", self.wt, str(self.pid)))
-        self.assertEqual(self.windows(), {"0": "runner", "1": "ben-7"})
+        self.assertEqual(self.windows(), {"0": "runner", "1": "acme__widgets/ben-7"})
         self.assertEqual(self.spawn("spawn-1"), reply)  # a retried request id never opens a second window
-        self.assertEqual(self.windows(), {"0": "runner", "1": "ben-7"})
+        self.assertEqual(self.windows(), {"0": "runner", "1": "acme__widgets/ben-7"})
         self.assertEqual(self.spawn()["reason"], "run ben-7 exists")
         self.assertEqual(subprocess.run(["git", "-C", self.wt, "rev-parse", "HEAD"], capture_output=True, text=True)
                          .stdout.strip(), self.sha)
@@ -969,7 +969,7 @@ class RunLifecycle(Mirror):
         self.pane()
         reply = self.spawn(relaunch=True, brief="# Brief 2\n")  # restart in place: same worktree, fresh brief
         self.assertEqual((reply["result"], reply["worktree"]), ("ok", self.wt))
-        self.assertEqual(self.windows(), {"0": "runner", "1": "ben-7"})
+        self.assertEqual(self.windows(), {"0": "runner", "1": "acme__widgets/ben-7"})
         self.assertTrue(os.path.exists(os.path.join(self.wt, "a.txt")))
         self.assertEqual(self.kill(keep=True), dict(result="ok", unlanded=[], removed=False))
         self.assertTrue(os.path.isdir(self.wt))
@@ -990,6 +990,14 @@ class RunLifecycle(Mirror):
         self.assertEqual(self.kill(), dict(result="ok", unlanded=[], removed=True))
         self.assertFalse(os.path.exists(self.wt))
         self.assertEqual(self.kill(refs=["main"])["reason"], "kill needs refs, the default branch first")
+
+    def test_kill_never_touches_another_projects_run(self):  # review r1 P1: one runner session, many projects
+        self.spawn()
+        self.assertEqual(self.kill(project="other__project", primary="host-c"),
+                         dict(result="ok", unlanded=[], removed=False))
+        self.assertEqual(self.windows(), {"0": "runner", "1": "acme__widgets/ben-7"})
+        self.assertEqual(self.probe()["liveness"], "alive")
+        self.assertEqual(self.probe(project="other__project")["liveness"], "missing")
 
 
 class Runner(Base):

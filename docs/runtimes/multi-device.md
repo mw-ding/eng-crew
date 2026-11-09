@@ -306,13 +306,14 @@ evidence.
 
 | Command | On the primary | On the host |
 |---|---|---|
-| `mdstack spawn` placed on a role host | Renders the brief as for a local run, its Worktree line naming the host's path, and keeps the run record (`remote`, `host`), claim and brief copy. A validate pass sends the PR's retained `-review.md` files at that head | `spawn` needs the runner up. It fetches the run's ref into the mirror without moving any mirror ref and refuses unless it is the given head (no stale base), adds the detached worktree `wt/<n>-<sha7>-<role>-<pass>`, writes the brief and review files under `state/<owner>__<repo>/`, then starts the engine's harness in a window of the runner's tmux session, with the argv built on the host from checked fields. The run record there keeps the pane identity and the spawning primary |
+| `mdstack spawn` placed on a role host | Renders the brief as for a local run, its Worktree line naming the host's path, and keeps the run record (`remote`, `host`), claim and brief copy. A validate pass sends the PR's retained `-review.md` files at that head | `spawn` needs the runner up. It fetches the run's ref into the mirror without moving any mirror ref and refuses unless it is the given head (no stale base), adds the detached worktree `wt/<n>-<sha7>-<role>-<pass>`, writes the brief and review files under `state/<owner>__<repo>/`, then starts the engine's harness in a window of the runner's tmux session named `<owner>__<repo>/<window>`, so projects sharing a host never collide, with the argv built on the host from checked fields. The run record there keeps the pane identity and the spawning primary |
 | `mdstack kill` | Posts a `--discard` reason first, as for a local run, then removes its own record, claim and brief copy | `kill` stops the window, then runs the unlanded-work check (uncommitted paths, and commits on none of the default branch, the worktree's branch on origin or the run's PR heads). Unlanded work keeps the worktree and lists it; only `discard` removes it anyway |
 | `mdstack restart` | Asks the host's `probe` (`unreachable` refuses, as `ambiguous` does) | `kill` without discard: unlanded work relaunches in its own worktree (`spawn` with `relaunch`, the brief sent again); a clean worktree is removed, and the primary spawns again, so placement re-runs |
-| `mdstack down` | Stops every remote run through `kill`; `--preserve` sends `keep` (stop only) | A run the host cannot stop or clear (unlanded work, unreachable) keeps its records, and `down` exits 1 naming it |
+| `mdstack down` | Stops every remote run through `kill`, even when the primary's session is gone; `--preserve` sends `keep` (stop only) | A run the host cannot stop or clear (unlanded work, unreachable) keeps its records, and `down` exits 1 naming it |
 
 A run on another primary is refused by `spawn`, `probe` and `kill` (one
-primary per run). A run on a role host counts toward its role's pool cap,
+primary per run), and `kill` touches no window without its project's run
+record. A run on a role host counts toward its role's pool cap,
 reads `ambiguous` to the local probe (never restarted from here) and shows
 its host's probe in `mdstack status`. Not yet built, so a remote run still
 lacks them: status lines, wakes and `mdstack send` (#346), so the watcher
