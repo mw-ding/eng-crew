@@ -23,10 +23,15 @@ Every scenario prints PASS or FAIL; lab/scenarios.json keeps what it saw. Exit 1
               while it is down, or the lost job refused), the host never reports that job done, and a fresh job passes
   partition   a role host behind a network disconnect is unreachable over SSH; placement queues a role run that
               needs that host and never places it elsewhere, and the item's claim file is unchanged
+  status-pull a run on the host keeps writing status lines through a network disconnect: the toolkit's offset pull
+              (crew.d/_remote.py, #346) is unreachable while it holds, and after reconnect, a repeated pull and a
+              fresh primary module the mirror holds every line once, in order; an `mdstack send` through the host is
+              typed into the run's window and its ack returns through the mirror
 Each disconnect and pause is confirmed by a `version` call that fails while it holds and answers once it is lifted;
 runner and recreate prove their own outage as above.
 """
 import argparse
+import base64
 import hashlib
 import importlib.machinery
 import importlib.util
@@ -383,8 +388,85 @@ def partition(lab, s):
     s.check(hashlib.sha256(claim.read_bytes()).hexdigest() == before, "the claim file changed")
 
 
+STUB = """import select, sys
+n = 0
+while True:
+    n += 1
+    with open(sys.argv[1], "a") as f:
+        f.write("step: %d\\n" % n)
+    if select.select([sys.stdin], [], [], 0.5)[0]:
+        line = sys.stdin.readline().strip()
+        if line.startswith("inbox: "):
+            with open(sys.argv[1], "a") as f:
+                f.write("ack: %s\\n" % line[7:])
+"""
+
+
+def status_pull(lab, s):
+    """A stub role run in the runner's session writes `step: <n>` every half second and acks each typed nudge; the
+    primary's mirror is pulled through the toolkit's own _remote.pull and send, over the real hardened call."""
+    window, d = "lab-pull", Path(lab.d, "pull-state")
+    shutil.rmtree(d, ignore_errors=True)
+    state = "~/.mdstack/state/%s" % lab.project
+    status = "%s/status/%s.status" % (state, window)
+    rec = dict(window=window, primary="primary", worktree="/nonexistent", engine="claude-code", role="builder")
+    lab.docker("exec", "-u", "crew", lab.cid(), "sh", "-c", "mkdir -p %s/runs %s/status && echo %s | base64 -d > "
+               "~/.mdstack/lab-stub.py && echo %s | base64 -d > %s/runs/%s.json && rm -f %s && tmux -S "
+               "/tmp/tmux-$(id -u)/default new-window -d -t crew-host -n %s/%s python3 ~/.mdstack/lab-stub.py %s" % (
+                   state, state, base64.b64encode(STUB.encode()).decode(), base64.b64encode(json.dumps(rec).encode())
+                   .decode(), state, window, status, lab.project, window, status))
+    run = module("lab_remote_run", os.path.join(lab.d, "toolkit", "environments/terminal/crew.d/_remote.py"))
+    owner, name = lab.project.split("__", 1)
+    values = {"repo.owner": owner, "repo.name": name, "hosts.primary.primary": True, "hosts.%s.root" % lab.host: ROOT}
+    mirror = d / "status" / (window + ".status")
+    host = lambda: lab.docker("exec", "-u", "crew", lab.cid(), "sh", "-c", "cat %s" % status)
+
+    def steps():
+        lines = mirror.read_text().splitlines() if mirror.exists() else []
+        return [int(x.split()[1]) for x in lines if x.startswith("step: ")]
+
+    try:
+        time.sleep(2)
+        first = s.obs["first"] = run.pull(values, str(d), lab.host, [window])
+        s.check(first["result"] == "ok" and len(steps()) >= 2, "the first pull brought no lines: %s" % first)
+
+        def held():
+            before = mirror.read_bytes()
+            s.obs["held"] = run.pull(values, str(d), lab.host, [window])
+            time.sleep(3)  # the run keeps writing on the host while the link is down
+            s.obs["host_while_held"] = len(host().splitlines())
+            s.check(s.obs["held"]["result"] == "unreachable" and mirror.read_bytes() == before,
+                    "a pull behind the disconnect was not unreachable or changed the mirror: %s" % s.obs["held"])
+        net = lab.m["lab"]["hosts"][lab.host]["network"]
+        injected(lab, s, "disconnect", lambda: lab.docker("network", "disconnect", net, lab.cid()),
+                 lambda: lab.docker("network", "connect", "--alias", lab.host, net, lab.cid()), held)
+        run.pull(values, str(d), lab.host, [window])
+        run.pull(values, str(d), lab.host, [window])  # a repeated pull adds only what is new
+        fresh = module("lab_remote_run_2", os.path.join(lab.d, "toolkit", "environments/terminal/crew.d/_remote.py"))
+        fresh.pull(values, str(d), lab.host, [window])  # a restarted primary resumes from the mirror alone
+        got = s.obs["steps"] = steps()
+        s.check(got == list(range(1, len(got) + 1)) and len(got) >= s.obs["host_while_held"],
+                "the mirror lost or doubled a line across the disconnect: %s" % got)
+        s.check(host().encode().startswith(mirror.read_bytes().rstrip(b"\n")), "the mirror is not the host file's prefix")
+        msg = dict(id=time.strftime("%Y%m%dT%H%M%SZ", time.gmtime()) + "-" + os.urandom(3).hex(), kind="review",
+                   refs=["#1"], ts=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), **{"from": "lab"})
+        sent = s.obs["send"] = run.send(values, window, dict(rec, host=lab.host), msg)
+        s.check(sent == dict(result="ok", nudge=None), "send through the host failed: %s" % sent)
+        for _ in range(20):
+            run.pull(values, str(d), lab.host, [window])
+            if ("ack: %s" % msg["id"]) in mirror.read_text().splitlines():
+                break
+            time.sleep(0.5)
+        else:
+            s.check(False, "the ack for %s never returned through the mirror" % msg["id"])
+        s.obs["acked"] = msg["id"]
+    finally:
+        labd.docker(lab.m, "exec", "-u", "crew", lab.cid(), "sh", "-c", "tmux -S /tmp/tmux-$(id -u)/default kill-window "
+                    "-t crew-host:%s/%s; rm -f %s %s/runs/%s.json" % (lab.project, window, status, state, window), check=False)
+
+
 SCENARIOS = dict((f.__name__.replace("_", "-"), f) for f in (
-    exact_head, red, idempotent, stale, disconnect, pause, runner, recreate, partition))
+    exact_head, red, idempotent, stale, disconnect, pause, runner, recreate, partition, status_pull))
 
 
 def main(argv=None):
