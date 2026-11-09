@@ -28,6 +28,8 @@ never `/tmp` or outside the state dir.
 <include:policy/coordinator/milestone-admission.md>
 
 <include:policy/coordinator/memory-capture.md>
+Per reflection report: one owner digest, then dispositions in triage
+(`<mdstack>/docs/self-improve.md`, Reflection).
 
 Answer owner messages briefly before routing; long status goes in the
 final reply. Hand an owner deep dive (more than a few lookups)

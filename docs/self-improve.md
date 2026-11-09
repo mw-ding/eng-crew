@@ -269,6 +269,84 @@ and edits no skill. The coordinator then reviews the drafts, drops duplicates,
 fills Proposed fix, confirms or promotes Scope, and files the keepers as
 mdstack issues. Nothing about this step is automatic beyond the printout.
 
+## Reflection
+
+Intake handles one failure at a time. Reflection reads the window's
+learnings together and proposes protocol, brief or policy changes
+(#1403). This section is the contract. The evidence scan, the report
+procedure, the worker mode, the schedule, threshold cards, the coordinator
+handoff and effect measurement are #1403's later build issues, and until
+they land nothing runs a reflection.
+
+**Windows.** Two kinds, each with a stable window ID:
+
+- `week-<YYYY>-W<ww>`: the last full ISO week before the run, Monday 00:00
+  to Sunday 24:00 UTC.
+- `close-<milestone>`: from the milestone's creation to its close.
+
+Overlapping windows coalesce into one report that names both IDs. Evidence
+selection counts items opened, closed or corrected in the window whether or
+not they are placed, unlike the triage queue's
+[skip rules](triage.md#skip-rules); linked older lessons are context.
+
+**Stable IDs.**
+
+- **Incident** `ri-<owner>-<repo>-<n>`: `<n>` is the incident's earliest
+  source item. Several cards, PRs or comments about one incident share the
+  ID and count once. Each incident is `confirmed`, `reported` or
+  `superseded` (a later correction replaced its cause), never merged across
+  those states.
+- **Proposal** `rp-<class>-<target>`: the failure class slug and the slug of
+  the main target file's path, for example `rp-ci-red-docs-protocol-md`.
+  The same class and target in a later report reuse the ID, so cooldowns and
+  links follow it.
+
+**Report.** One signed report per run, on the tracker's reflection log
+issue. It lists at most **3 new proposals**, ranked by confirmed incident
+count, then by measured impact. Each proposal gives its ID, exact target
+files, correction layer
+([correction hierarchy](lessons/README.md#correction-hierarchy)), incident
+IDs with links and states, measured impact or `unknown`, the reason for its
+rank, and a recommended default. A proposal whose ID is already open gets the
+new evidence and is not new. The report also lists what it could not read:
+a missing input is a gap, never zero. New proposals count against triage's
+[noise cap](triage.md#owner-loop) of 10 per day; they do not add to it.
+
+**Cooldown.** A rejected proposal keeps a reason from the triage reasons and
+is not re-proposed until that reason's cooldown ends, as triage applies it,
+unless a new confirmed incident arrives after the rejection.
+
+**Completion note.** The report ends with a `pass=reflection` line
+([protocol §4](protocol.md#4-marker-conventions)). A quiet window still
+posts a report, with `proposals=0`. The line records that the window's run
+finished; it is a note, never a verdict, gate input or permission.
+
+**Threshold crossing.** A findings row at the
+[batch threshold](findings/README.md#when-to-batch) (count 3), or 3 or more distinct
+incidents of one class in the window, makes the researcher file a
+deduplicated intake card with Decision `pending`, or append the evidence to
+the existing card or issue. That clarifies #1403's component 3: a threshold
+files a **pending** card, never an accepted one. Recurrence, age or count
+never implies acceptance.
+
+**Authority.**
+
+- **Researcher** may post reflection reports and pending threshold cards,
+  and nothing else. It never accepts, closes, labels for readiness, places in
+  a milestone, or edits the findings buffer, lessons, memory, profile or any
+  skill, protocol or template.
+- **Coordinator** owns acceptance, disposition and the owner digest: **one
+  digest per report**, the top three proposals with links and the recommended
+  default. It records each accept, reject or correction on the tracker in its
+  triage window. An accepted proposal follows [Accept or close](#accept-or-close)
+  and becomes a normal builder issue. A protocol, template, gate, spec or
+  profile-default change needs the owner's per-change merge-ok. An
+  unanswered proposal never auto-applies.
+- **Unchanged:** holds, grants, merge gates and §7, the owner's ownership of
+  the profile, and [memory capture](memory.md#capture), which stays its own
+  step at milestone close. A memory, profile or pack finding routes to its
+  owner per [Knowledge routing](#knowledge-routing).
+
 ## Risks
 
 Called out, not all solved in v1.
