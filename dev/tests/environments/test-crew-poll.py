@@ -443,7 +443,32 @@ class Poll(Base):
             calls = [json.loads(line) for line in f]
         self.assertTrue(all(c[:2] in (["pr", "list"], ["issue", "list"], ["pr", "view"]) for c in calls), calls)
         self.assertIn(["pr", "view", "171", "-R", "acme/widgets", "--json",
-                       "number,state,headRefOid,labels,statusCheckRollup,reviews"], calls)
+                       "number,state,headRefOid,labels,statusCheckRollup,reviews,mergeable"], calls)
+
+    def test_ready_samples_written_on_change_with_the_polling_bound(self):  # #1524
+        def poll(labels, mergeable, state="OPEN"):
+            pr = dict(fixture("pr-171-merged.json"), state=state, mergeable=mergeable,
+                      labels=[{"name": x} for x in labels])
+            for name, value in (("prs", [pr] if state == "OPEN" else []), ("pr-171", pr), ("issues", [])):
+                with open(os.path.join(self.gh_dir, name + ".json"), "w") as f:
+                    json.dump(value, f)
+            r = self.crew("poll", "--once", "--project", self.project)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
+        poll(["crew:in-review", "crew:hold"], "MERGEABLE")
+        poll(["crew:in-review", "crew:hold"], "MERGEABLE")  # unchanged: no second sample
+        poll(["crew:in-review"], "CONFLICTING")
+        poll(["crew:in-review"], "MERGEABLE")
+        poll(["crew:approved"], "MERGEABLE", state="MERGED")
+        with open(os.path.join(self.state, "metrics", "observations.jsonl")) as f:
+            obs = [json.loads(line) for line in f]
+        self.assertEqual([(o["state"], o["hold"], o["mergeable"], o["ready"]) for o in obs],
+                         [("OPEN", True, "MERGEABLE", False), ("OPEN", False, "CONFLICTING", False),
+                          ("OPEN", False, "MERGEABLE", True), ("MERGED", False, "MERGEABLE", False)])
+        self.assertEqual({(o["source"], o["key"], o["ci"], o["verdict"]) for o in obs},
+                         {("poll", "pr#171@" + HEAD, "passed", "pass")})
+        self.assertIsNone(obs[0]["prev_ts"])
+        self.assertTrue(all(o["prev_ts"] and o["prev_ts"] <= o["ts"] for o in obs[1:]))
 
     def test_triage_scan_off_unless_enabled(self):  # #747: T2 adds the [triage] profile
         self.serve("prs-none.json")

@@ -1186,7 +1186,7 @@ source of [Q1](#q1-wake) and the decision function of [C2](#runtime-contract).
 It needs no model and makes read-only `gh` calls only, with the logged-in
 identity:
 
-- `gh pr list --state open --json number,state,headRefOid,labels,statusCheckRollup,reviews`;
+- `gh pr list --state open --json number,state,headRefOid,labels,statusCheckRollup,reviews,mergeable`;
   a PR counts as a crew PR when it has a `crew:*` label. A tracked PR missing
   from that list is read with `gh pr view <n>` for its merged or closed state.
 - `gh issue list --state open --label crew:ready --json number,labels,assignees`.
@@ -1546,7 +1546,13 @@ clone without `info/attributes`, never a worktree merge. A conflict, a
 changed verified patch (`content-different`) or `no-verified-base` blocks
 it; route that PR to merge-up before it joins a train. It also blocks a
 PR still at the head an open collapsed train dropped (step 6) while that
-train's survivor is open. Mirror deployment freshness, evidence
+train's survivor is open. Gate `release-cut` (#1433) blocks a release cut
+(its diff adds a new version heading to the CHANGELOG) whose head does not
+contain the fetched default branch: update-branch it so `release.yml`
+`validate` re-runs on current `main`; the direct land never takes a stale
+cut. While a cut is open, gate `state-permission` (and `train land`) holds
+every other PR that adds a fragment under `changes/unreleased/` until the
+cut lands. An unreadable open-PR list or `CHANGELOG.md` patch blocks both. Mirror deployment freshness, evidence
 agreement or reasoned N/A, grant scope, engine attribution, linkage and
 runtime/inbox gates explicitly require manual verification. Filter blockers
 before building and resolve manual gates with the synthesizer's §7 check.

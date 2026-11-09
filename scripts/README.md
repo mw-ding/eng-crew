@@ -631,6 +631,7 @@ replaced from resolved profile keys (the "Replaces" columns of
 | `<state-dir>`, `<worktree-root>`, `<toolchain-bin>` | `paths.state_dir`, `paths.worktree_root`, `paths.toolchain_bin` |
 | `<timezone>` | `runtime.timezone` |
 | `<mdstack>`, `<merge-grant>`, `<hold-label-blocks>` | `paths.mdstack`, `runtime.options.merge_grant`, `runtime.options.hold_label_blocks` (a boolean renders as `true` / `false`) |
+| `<release-delegation>` | `runtime.options.release_delegation` (`none` when absent) |
 | `<merge-grant-scope>`, `<spec-paths>` | `runtime.options.merge_grant_scope`, `spec.paths`, rendered as JSON arrays; absent keys render the defaults `["approved"]` and `["docs/specs/**"]` |
 | `<fallback-engine>` | `engines.fallback_engine` |
 | `<tested-update>` | `strategy.update_from_base` from the change backend's pack manifest (`merge` when undeclared), as the synthesizer's update wording |
@@ -680,7 +681,9 @@ each written path and exits 0.
 - **Other release PRs:** PRs touching the workflow or release scripts
   validate and build on a simulated cut; they never tag or publish.
 - **Approval:** the owner gives per-PR `pass=steer cmd=merge-ok sha=<head>`
-  on the cut PR at its head; the standing grant never covers a cut PR. Before
+  on the cut PR at its head, or the coordinator's there citing a recorded
+  [release delegation](../docs/release.md#release-delegation); the standing
+  merge grant never covers a cut PR. Before
   tagging, the publish job verifies the marker on the merged cut PR and that
   the push actor matches the repository variable `RELEASE_OWNER`.
 - **Dispatch fallback** on `main` with `version` (`X.Y.Z`, no `v`) and
