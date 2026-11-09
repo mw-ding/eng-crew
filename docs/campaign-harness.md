@@ -345,8 +345,32 @@ rows. Each entry is one of:
 Refusal and ambiguous cases, and the Grok Bot runtime gaps (C1, C2, C3 and
 C5 accepted under #150), carry the same spec link. Every anchor, quote and
 test is checked, and each test file runs once. A gap is never counted as
-conformant. Installed CLIs and live Grok mirror or watch proof stay outside
-A19, because they need their own environment.
+conformant.
+
+Installed CLIs and live Grok mirror or watch proof need their own
+environment, so A19's scripted steps do not run them (#1439).
+`a19/smoke.py` runs once per installed harness and session backend
+binding, from an operator shell, never from CI. It drives one disposable
+run through the runtime's own code: launch, a `ready` line, the `mdstack
+send` doorbell, the inbox `ack:`, the C5 probe and the pane stop. tmux uses
+a dedicated server named for the run. herdr uses its local server and
+closes only the run's own workspace. Each JSON line pins the source SHA,
+both adapter files' sha256 and the harness and backend versions.
+A binding that is not installed, has no interactive launch or is skipped by
+policy (`--skip`) is reported as blocked.
+
+The ledger's `live` section names every harness and backend binding, plus
+each runtime's mirror and watch. Each entry is one of:
+
+- `evidence`: the source SHA, the versions and a link to the smoke capture;
+- `fail`: the same for a run that did not finish, plus the finding filed for
+  it, so a failure is never recorded as a gap or a block;
+- `block`: the installation, version, account and sandbox facts, with a
+  link to the capture that shows them;
+- `unsupported`: a quote from the adapter's spec section.
+
+A documented gap stays a gap even when its binding passes the smoke. Docker
+cannot supply live Grok mirror or watch proof.
 
 ### A20
 
@@ -437,7 +461,8 @@ A31 (from #804) puts a scenario `gh` (`state/m31/bin/gh`) first on `PATH`
 for `metrics-refresh.py` only, answering from a two-repo history in
 `state/m31/history.json`. The metrics-gate hold, waiver and intake
 acceptance are the coordinator's judgement, so steps play them as labels
-and records.
+and records. The report from actual campaign records is
+`scripts/campaign-report.py` ([metrics README](metrics/README.md#campaign-history-report)).
 
 ## Cleanup checks
 
@@ -640,3 +665,65 @@ Level c reuses
 scenario IDs and manifest. Record each host's capability, OS, runtime, bundle
 and profile fingerprints in the run issue. Loopback counts as simulated. A
 real-device criterion stays open until the owner records the run.
+
+### Attended owner-channel and sleep run
+
+`scripts/campaign-attended.py` (#1463, part of #804) runs A26 around an
+actual sleep of the owner's Mac, with one real sandbox Slack delivery. It
+splits A26 at its first `resume-*` step. Before the sleep it runs the
+handled head and the forge moving while paused. It then sends one `ask`
+through `mdstack notify` under a sandbox away record, starts builder #3 as
+existing work, and snapshots the claims, worktrees and tmux windows. After
+the wake it checks the snapshot is unchanged and takes the receipt code. It
+then runs the resume steps: the missed head, red CI and one overdue sweep,
+each caught up exactly once. The result holds the before-sleep and
+after-resume timestamps, the sleep length and each owner unblock.
+
+Rehearsal first, by the crew at any time, with no owner step:
+
+```sh
+python3 scripts/campaign-sandbox.py setup --root /tmp/att-r1 --run-id att-r1 \
+  --production config.toml --source . --release "$RELEASE" \
+  --sentinel "$OUTSIDE_FILE" --scenario A26
+python3 scripts/campaign-attended.py /tmp/att-r1/state/manifest.json \
+  --scenarios dev/tests/scripts/fixtures/campaign \
+  --out /tmp/att-r1/state/attended.json --dry-run
+python3 scripts/campaign-sandbox.py teardown /tmp/att-r1/state/manifest.json
+```
+
+Keep the root short: the tmux socket path must fit the OS limit. A dry run
+posts to a loopback webhook and never sleeps. It prints and records
+`rehearsal` and `evidence: false`, so it never counts as #804 evidence.
+
+The owner's part, at a time agreed on #804 with no other lab journey
+running on the Mac:
+
+1. Before: create a Slack incoming webhook on a sandbox channel the live
+   crew does not use. In the owner's own terminal, not a crew pane, run
+   `export CAMPAIGN_WEBHOOK=<url>`. Never paste the URL into the tracker, a
+   file or a crew window. The driver refuses a URL that is not https or that
+   equals the live crew's own webhook.
+2. Start: run the setup and driver commands above, without `--dry-run`,
+   in that terminal.
+3. Sleep: when the driver prints `owner: sleep this machine now`, choose
+   Apple menu > Sleep, or close the lid. Stay asleep for at least `--gap`
+   (default 60 s); 10 minutes is better. While asleep, read the receipt
+   code from the Slack message on another device.
+4. Wake: log in. The driver sees the wall-clock jump and asks for the code.
+   Type it.
+5. After: the crew posts the result's summary inline on #804, runs
+   teardown and records the sentinel and retained-work checks.
+
+Physical test boundary. The run proves:
+
+- a real OS sleep of one Mac with every sandbox process suspended;
+- the channel accepted the message and the owner read it on a device;
+- the missed state and the overdue sweep catch up once after the wake;
+- the claims, worktrees and windows survive the sleep.
+
+It does not prove a forge that moves during the sleep: the forge is local,
+and A26 moves it just before the sleep. Nor does it prove overdue time from
+the sleep itself (A26 backdates the triage slot), delivery while asleep,
+network or power loss, a second device or real GitHub (level b). The sandbox
+uses its own profile and session. The live crew's profile is read only to
+refuse its webhook; its channels and webhook are never used or changed.
