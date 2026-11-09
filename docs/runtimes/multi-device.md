@@ -630,6 +630,28 @@ run's key as the only `authorized_keys` line, forced and `restrict`. No
 login, token, SSH agent or home is copied in. Container setup and teardown
 is lab item C.
 
+**Lab base.** `LAB_BASE` comes from `base.Dockerfile` beside it (#1430):
+official `debian:bookworm-slim` pinned by its `linux/arm64` manifest
+digest, plus only `python3` (3.11), git, tmux, `openssh-server` and
+procps, with the package's host keys deleted. Its pinned ref, the
+`name@sha256:<64 hex>` the owner's Docker Desktop holds, is recorded in
+`environments/terminal/remote/lab/base.ref`. Rebuild and re-pin from the
+repo root, then commit `base.ref` (apt packages are not pinned, so each
+rebuild gets a new digest):
+
+```sh
+docker build -f environments/terminal/remote/lab/base.Dockerfile \
+  -t mdstack-lab-base:bookworm environments/terminal/remote/lab
+docker image inspect --format '{{index .RepoDigests 0}}' \
+  mdstack-lab-base:bookworm > environments/terminal/remote/lab/base.ref
+DOCKER_BUILDKIT=0 docker build -f environments/terminal/remote/lab/Dockerfile \
+  --build-arg LAB_BASE="$(cat environments/terminal/remote/lab/base.ref)" .
+```
+
+The lab image build uses the classic builder: BuildKit resolves a
+digest-pinned `FROM` against the registry and fails on this local-only
+image, which is never pushed.
+
 | Issue | Acceptance criteria | Lab | Real device |
 |---|---|---|---|
 | Host OS adapters | Each operation in the [adapter table](#host-os-adapters) on its OS; a mismatch fails check 5 | C: `linux` supervised; V: `macos` launchd | A systemd user unit with lingering needs a systemd host or VM |
