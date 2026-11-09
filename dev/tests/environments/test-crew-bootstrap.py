@@ -1,7 +1,7 @@
 """Offline bootstrap tests on a fake host and extracted bundle, including dry-run, confirmation, failures,
 tmux record/idempotency, Grok Bot deployment, protected targets, clone version selection and url/mirror/git release
 sources (no gh release call, local HTTP server, local bare git repository, refused bundles keep the previous
-install). Run in CI.
+install), and a GitHub-free pack installing with no gh on PATH while a GitHub-bound one still fails (#1123). Run in CI.
 Use --evidence or --fetch-evidence for deterministic install/verify/delete CLI transcripts, with paths scrubbed.
 Use --self-test-evidence for post-apply success, failure and opt-in smoke evidence on a fake host.
 Use --size-budget-evidence for deterministic size-budget success/failure and cleanup evidence.
@@ -851,6 +851,32 @@ class ReleaseSources(Bootstrap):
                            capture_output=True, text=True, env=self.env)
         self.assertIn("install source     mirror %s; bundle sha256 %s" % (self.mirror, sha), r.stdout)
         self.assertFalse(self.gh_log.exists())
+
+    def test_github_free_pack_bootstraps_without_gh(self):  # #1123 AC1
+        destination, _ = self.mirror_release()
+        os.remove(Path(self.bindir) / "gh")
+        pack = Path(self.tmp) / "pack"
+        write_pack(pack, pin="v2.2.0")
+        self.project_path.write_text(self.project_path.read_text() +
+                                     'pack = "%s"\n' % os.path.relpath(pack, self.project_path.parent))
+        self.source("mirror", self.mirror)
+        r = self.bootstrap("--version", "v2.2.0", "--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("gh                 not checked: no github backend or release source", r.stdout)
+        self.assertNotIn("gh acme-bot", r.stdout)
+        self_test = json.loads(self.manifest.read_text())["self_test"]
+        self.assertEqual((self_test["size_budget"], self_test["doctor"]), ("ok", "ok"))
+        self.assertNotIn("fail", self_test.values())
+        self.assertEqual((Path(self.state) / "mdstack").resolve(), destination.resolve())
+
+    def test_github_bound_install_without_gh_fails_preflight(self):  # #1123 AC2
+        self.mirror_release()
+        os.remove(Path(self.bindir) / "gh")
+        self.source("mirror", self.mirror)
+        r = self.bootstrap("--version", "v2.2.0", "--yes")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("fail  gh                 not on PATH", r.stdout)
+        self.assertFalse(self.manifest.exists())
 
     def test_url_fetch_from_local_http_server_with_pin(self):
         destination, sha = self.mirror_release()

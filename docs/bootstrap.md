@@ -215,7 +215,7 @@ anything; exit 0 only with no `fail`. `--fix` runs the fixer where one exists.
 |---|---|---|---|---|
 | 1 | Python | all | `python3` older than 3.11 | Install Python 3.11+ |
 | 2 | Bundle | all | `VERSION` missing; files differ from `SHA256SUMS` at fetch | Download again ([Q2](#q2-source-and-version-pin)) |
-| 3 | `gh` identities | all | `gh auth status` lacks a login the profile names, or `gh api user` fails for it | `human`: `gh auth login` as that account; never `gh auth switch` |
+| 3 | `gh` identities | A `github` backend or release source | `gh` is not on `PATH`; `gh auth status` lacks a login the profile names, or `gh api user` fails for it. With neither (#1123), rows 3 to 5 and 16 to 19 are skipped and one `ok gh` row says `not checked` | `human`: `gh auth login` as that account; never `gh auth switch` |
 | 4 | Token scopes | all | `repo` missing; `project` missing on the identity that runs Project operations ([token scopes](runbook-new-repo.md#token-scopes)) | `human`: the account owner runs `gh auth refresh -h github.com -s project`, or Project operations move to an identity that has it |
 | 5 | Repo access | all | The author cannot push; a separate reviewer lacks write | `--fix` sends the invitation; `human`: the reviewer accepts |
 | 6 | Engines | all | An engine in `engines.coordinator` or a tier `order` has no working CLI (`--version` fails) | Install it, or drop it from the order |
@@ -517,8 +517,11 @@ Under a non-`github` source, `--version` makes no `gh` call and no
 latest-release query. The doctor `version` row reports the installed tag
 with `latest not checked (source <kind>)`. Doctor rows 3 to 5 and 16 to 19
 and the [repo setup](#q6-repo-side-setup) still use the profile's GitHub
-calls. A fully GitHub-free install also needs those routed through backends:
-that is a separate item, not part of B1 to B5.
+calls while any concern binds the `github` backend (`release` counts only
+with a `[release]` table). When none does, doctor skips them and the `gh`
+check, so a pack on its own backends installs from a staged release with no
+`gh` on `PATH` (#1123). Routing those checks through a pack's backends is a
+separate item.
 
 ### Host toolkit
 
