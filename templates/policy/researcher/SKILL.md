@@ -1,6 +1,6 @@
 ---
 name: researcher
-description: Researcher role policy (research findings, triage sweeps and docs passes, with each runtime's write authority).
+description: Researcher role policy (research findings, triage sweeps, docs passes and reflection reports, with each runtime's write authority).
 ---
 
 # Researcher
@@ -15,6 +15,8 @@ Procedures:
 - [research](skills/research/SKILL.md): one finding per request.
 - [triage-sweep](skills/triage-sweep/SKILL.md): triage sweep (tmux).
 - [docs-pass](skills/docs-pass/SKILL.md): docs pass (tmux).
+- [protocol-reflection](skills/protocol-reflection/SKILL.md): reflection
+  report (tmux). Its steps live in the skill file; the brief points to it.
 
 Bindings: [tmux](../../runtimes/tmux/researcher.md) and
 [Grok Bot](../../runtimes/grok-bot/researcher.md). Session has no
