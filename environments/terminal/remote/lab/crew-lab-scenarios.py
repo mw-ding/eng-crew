@@ -22,8 +22,11 @@ evidence record under lab/runs/ (#1361). Exit 1 on any FAIL, 2 on a refusal.
               heartbeat and `version` reports it up (never seen by the timeout is a FAIL); then a job passes
   recreate    container recreated mid-job (new ID, host key and port): the client falls back locally (unreachable
               while it is down, or the lost job refused), the host never reports that job done, and a fresh job passes
-  partition   a role host behind a network disconnect is unreachable over SSH; placement queues a role run that
-              needs that host and never places it elsewhere, and the item's claim file is unchanged
+  partition   a builder placed on the host by the real `mdstack spawn` (#347): behind a network disconnect the
+              watcher's pulls make it unreachable (one escalate wake), its claim is unchanged, restart is refused
+              and spawning the item again queues it, never placed elsewhere; after reconnect,
+              reconcile finds the same pane alive with every missed line; an owner's abandon behind a second
+              disconnect writes a tombstone, and on return the run is stopped there with its unlanded file kept
   attach      a run planted as crew in the runner's session (spawn needs a forge, #345): over real SSH `capture`
               shows its pane and `logs` its step summary tail; a client on a pty attaches read-only (typed keys
               never reach the pane) and detaches with exit 0; attach without a TTY and another verb with one are
@@ -79,6 +82,7 @@ def module(name, path):
 
 labd = module("crew_lab_docker", os.path.join(HERE, "crew-lab-docker.py"))
 labe = module("crew_lab_evidence", os.path.join(HERE, "crew-lab-evidence.py"))
+campaign = module("campaign_run", os.path.join(SCRIPTS, "campaign-run.py"))
 
 
 class Lab:
@@ -390,23 +394,135 @@ def recreate(lab, s):
     s.check(out[-1] == "exit 0" and not any("ran locally" in x for x in out), "no fresh job passed after recreate")
 
 
+HOST_GH = """#!/bin/sh
+case "$1 $2" in "auth status") echo "  Logged in to github.com account lab-bot (lab stub)";; "auth token") echo lab-stub;; *) exit 1;; esac
+"""
+HOST_CLAUDE = """#!/bin/sh
+[ "$1" = auth ] && exit 0
+echo wip > wip.txt
+n=0
+while :; do n=$((n + 1)); echo "step: $n" >> "$CREW_STATUS"; sleep 0.5; done
+"""
+
+
 def partition(lab, s):
-    claim = Path(lab.m["roots"]["state_dir"], lab.project, "claims", "builder-issue1")
-    claim.parent.mkdir(parents=True, exist_ok=True)
-    claim.write_text("item: issue #1\nhost: %s\nheartbeat: lab\n" % lab.host)
-    before, net = hashlib.sha256(claim.read_bytes()).hexdigest(), lab.m["lab"]["hosts"][lab.host]["network"]
+    """A builder run placed on the role host by the real `mdstack spawn` (placement, then the host's spawn verb), the
+    primary's sandbox session and fake forge from campaign-sandbox.py, a stub engine and `gh` on the host. Behind a
+    network disconnect the watcher's pulls (crew.d/watch.py pull_hosts, called as each host scan does) make it
+    unreachable: one escalate wake, the claim unchanged, restart refused, a second spawn of the item queued, the
+    host's pane never replaced. After reconnect, reconcile finds it alive with every missed line. Then the owner
+    abandons it behind a second disconnect: a tombstone, and reconcile stops it on return, keeping its unlanded file."""
+    for _ in range(120):
+        if lab.call("version").get("runner") == "up":
+            break
+        time.sleep(1)
+    else:
+        return s.check(False, "the runner was never up")
+    st, net = lab.m["roots"]["state_dir"], lab.m["lab"]["hosts"][lab.host]["network"]
+    env = dict(campaign.scenario_env(lab.m, 0, os.environ), TMUX_TMPDIR=os.path.join(st, "tmux"))  # the sandbox's
+    os.makedirs(env["CAMPAIGN_GH_DIR"], exist_ok=True)  # fake forge, engine stubs and pinned tmux socket
     args = argparse.Namespace(project=lab.m["profile"]["path"], org_profile=os.path.join(lab.d, "org-role.toml"))
 
-    def placed():
-        values, session, state = lab.mdstack.profile(args)
-        return lab.mdstack.placement.place(dict(role="builder", paths=[], order=[["claude-code", "opus"]], host=None,
-                                                **{"pass": "build"}), values, lab.mdstack.host_facts(
-            args, values, session, state))
-    s.obs["placed"] = injected(lab, s, "disconnect", lambda: lab.docker("network", "disconnect", net, lab.cid()),
-                               lambda: lab.docker("network", "connect", "--alias", lab.host, net, lab.cid()), placed)
-    s.check(s.obs["placed"] == dict(result="queue", reason="%s: unreachable" % lab.host),
-            "placement did not queue the role run behind the partition: %s" % s.obs["placed"])
-    s.check(hashlib.sha256(claim.read_bytes()).hexdigest() == before, "the claim file changed")
+    def crew(*argv):
+        r = subprocess.run([sys.executable, os.path.join(lab.d, "toolkit", "cli", "mdstack"), *argv, "--project",
+                            args.project, "--org-profile", args.org_profile], env=env, cwd=lab.repo,
+                           stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=600)
+        return r.returncode, r.stdout.strip()
+
+    for name, text in dict(gh=HOST_GH, claude=HOST_CLAUDE).items():  # the image's root writes the stubs, never a login
+        lab.docker("exec", lab.cid(), "sh", "-c", "echo %s | base64 -d > /usr/local/bin/%s && chmod 755 /usr/local/bin/%s"
+                   % (base64.b64encode(text.encode()).decode(), name, name))
+    bundle = os.path.join(lab.d, "main.bundle")
+    lab.git("bundle", "create", bundle, "main")
+    s.obs["seed"] = lab.call("seed", project=lab.project, branch="main",
+                             bundle=base64.b64encode(Path(bundle).read_bytes()).decode())
+    lab.docker("exec", "-u", "crew", lab.cid(), "sh", "-c", "cd ~/.mdstack/mirrors/%s.git && git remote add origin "
+               "\"$PWD\"" % lab.project)  # spawn fetches from origin; this host has no forge, so the mirror is its own
+    values, session, state = lab.mdstack.profile(args)
+    watch, seen, path = lab.mdstack.commands()["watch"], {}, os.path.join(state, "wake", "watch-state.json")
+
+    def scan():
+        """One host scan of the watcher, its state saved where `mdstack status` reads it."""
+        wakes = watch.pull_hosts(values, state, seen, time.time(), 0)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        Path(path).write_text(json.dumps(seen))
+        return wakes
+
+    def panes():
+        out = lab.docker("exec", "-u", "crew", lab.cid(), "sh", "-c", "tmux -S /tmp/tmux-$(id -u)/default list-panes "
+                         "-s -t crew-host -F '#{window_name} #{pane_pid}'")
+        return [line.split()[1] for line in out.splitlines() if line.split()[0] == "%s/ben-1" % lab.project]
+
+    def steps():
+        mirror = Path(state, "status", "ben-1.status")
+        return [int(x.split()[1]) for x in mirror.read_text().splitlines() if x.startswith("step: ")] \
+            if mirror.exists() else []
+
+    try:
+        s.obs["up"] = crew("up")
+        s.obs["spawn"] = crew("spawn", "builder", "--issue", "1")
+        s.check(s.obs["spawn"][0] == 0 and "started ben-1 (on %s" % lab.host in s.obs["spawn"][1],
+                "mdstack spawn did not place ben-1 on %s: %s" % (lab.host, s.obs["spawn"]))
+        rec = json.loads(Path(state, "runs", "ben-1.json").read_text())
+        claim, pane = Path(rec["claim"]), panes()
+        before = hashlib.sha256(claim.read_bytes()).hexdigest()
+        s.obs["placed"] = {k: rec.get(k) for k in ("host", "placement", "remote", "worktree", "pane_pid")}
+        time.sleep(2)
+        scan()
+        s.check(len(steps()) >= 2 and pane == [str(rec["pane_pid"])], "the placed run wrote no status lines or has "
+                "no pane: %s %s" % (steps(), pane))
+
+        def held():
+            wakes = [w for _ in range(3) for w in scan()]
+            s.obs["outage_wakes"] = wakes
+            s.check([(w["reason"], w["action"]) for w in wakes] == [("unreachable", "escalate")],
+                    "3 failed scans did not give one unreachable escalate wake: %s" % wakes)
+            s.obs["status"] = crew("status")
+            s.check(re.search(r"ben-1 .* unreachable since \S+Z", s.obs["status"][1]) is not None,
+                    "status did not read unreachable since: %s" % s.obs["status"][1])
+            s.obs["restart"] = crew("restart", "ben-1")
+            s.check(s.obs["restart"] == (1, "crew: refusing restart: ben-1 is unreachable; only dead or missing runs "
+                                            "restart"), "restart was not refused: %s" % (s.obs["restart"],))
+            s.obs["respawn"] = crew("spawn", "builder", "--issue", "1")  # placement re-runs: queued, never elsewhere
+            s.check(s.obs["respawn"][0] == 0 and s.obs["respawn"][1].startswith(
+                "queued: builder build issue #1 (no host: %s: unreachable" % lab.host) and panes() == pane,
+                "a second run of the item was placed: %s" % (s.obs["respawn"],))
+            s.obs["outage_scan"] = [w for _ in range(2) for w in scan()]
+            s.check(s.obs["outage_scan"] == [], "the outage woke again or restarted: %s" % s.obs["outage_scan"])
+            s.obs["held_steps"] = len(steps())
+        injected(lab, s, "disconnect", lambda: lab.docker("network", "disconnect", net, lab.cid()),
+                 lambda: lab.docker("network", "connect", "--alias", lab.host, net, lab.cid()), held)
+        wakes = s.obs["reconcile"] = scan()
+        s.check([w["reason"] for w in wakes] == ["reconcile"] and "ben-1 alive" in wakes[0]["event"],
+                "reconcile did not find ben-1 alive: %s" % wakes)
+        got = s.obs["steps"] = steps()
+        s.check(got == list(range(1, len(got) + 1)) and len(got) > s.obs["held_steps"],
+                "the missed lines were not pulled once, in order: %s" % got)
+        s.obs["pane"] = [pane, panes()]
+        s.check(panes() == pane and json.loads(Path(state, "runs", "ben-1.json").read_text())["pane_pid"] ==
+                rec["pane_pid"], "ben-1 was respawned: %s" % s.obs["pane"])
+        s.check(hashlib.sha256(claim.read_bytes()).hexdigest() == before, "the claim file changed")
+
+        def abandoned():
+            s.obs["abandon_wakes"] = [w for _ in range(3) for w in scan()]
+            s.obs["kill"] = crew("kill", "ben-1", "--discard", "--reason", "lab: the owner abandons %s" % lab.host)
+            s.check(s.obs["kill"][0] == 0 and "tombstone written" in s.obs["kill"][1], "abandon: %s" % (s.obs["kill"],))
+            s.check(Path(state, "tombstones", "ben-1.json").exists() and not Path(state, "runs", "ben-1.json").exists()
+                    and not claim.exists(), "abandon left the run record or claim, or wrote no tombstone")
+            s.obs["posted"] = [x for x in Path(env["CAMPAIGN_GH_LOG"]).read_text().splitlines()
+                               if x.startswith("issue comment 1 ")]
+            s.check(len(s.obs["posted"]) == 1, "the abandon reason was not posted on issue 1")
+            s.check(panes() == pane, "the unreachable run was touched")
+        injected(lab, s, "disconnect", lambda: lab.docker("network", "disconnect", net, lab.cid()),
+                 lambda: lab.docker("network", "connect", "--alias", lab.host, net, lab.cid()), abandoned)
+        wakes = s.obs["tombstone_reconcile"] = scan()
+        s.check([w["event"] for w in wakes] == ["%s: tombstoned ben-1 stopped; worktree kept, unlanded: uncommitted: ?? "
+                                                "wip.txt" % lab.host], "reconcile did not stop the tombstoned run: %s" % wakes)
+        s.obs["after"] = [panes(), lab.docker("exec", "-u", "crew", lab.cid(), "ls", rec["worktree"]).split()]
+        s.check(s.obs["after"][0] == [] and "wip.txt" in s.obs["after"][1],
+                "the tombstoned run still runs or lost its worktree: %s" % s.obs["after"])
+    finally:
+        s.obs["down"] = crew("down")
 
 
 PLANT = """set -e
