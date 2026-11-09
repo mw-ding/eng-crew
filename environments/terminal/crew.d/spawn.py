@@ -19,8 +19,8 @@ from crew_shared import (
     profile, queue_lock, role_notes, ROLES, runs, show_icon, tmux, wait_harness, window_env, open_trains, synthesizer_work)
 
 
-def pick_engine(values, tier, avoid=None, role=None):
-    """First interactive engine in the role's override order, else the tier's (#597); a reviewer avoids every actual
+def engine_order(values, tier, avoid=None, role=None):
+    """Interactive engines in the role's override order, else the tier's (#597); a reviewer avoids every actual
     builder engine of the PR (roles.md Reviewer engine selection)."""
     key = "engines.roles.%s.order" % role if "engines.roles.%s.order" % role in values else "engines.%s.order" % tier
     order = [e.split("/", 1) for e in values[key]]
@@ -28,6 +28,11 @@ def pick_engine(values, tier, avoid=None, role=None):
     if not order:
         raise RuntimeError("crew: no %s engine in %s differs from the builder's %s" %
                            ("/".join(ENGINE_CMD), key, sorted(avoid or ())))
+    return order
+
+
+def pick_engine(values, tier, avoid=None, role=None):
+    order = engine_order(values, tier, avoid, role)
     return order[0][0], order[0][1], values["engines.%s.effort" % tier]
 
 
