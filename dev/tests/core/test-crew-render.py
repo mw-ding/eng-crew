@@ -1047,6 +1047,23 @@ class SessionRuntime(unittest.TestCase):
         self.assertEqual(sh(release), 0)
         self.assertEqual(sh(acquire), 0)
 
+    def test_synthesizer_lands_alone_without_tmux_only_commands(self):
+        """#1041: `mdstack train`, `land` and `land-lock` refuse a session profile, so the brief runs none of them."""
+        base = self.base
+        for opts in ("", 'lone_pr_land = "direct", '):
+            with self.subTest(opts=opts):
+                self.base = base.replace("builders = 2", opts + "builders = 2")
+                synth = self.render()["runtime/synthesizer.md"]
+                flat = " ".join(synth.split())
+                self.assertEqual(re.findall(r"\$CREW_BIN (?:train|land|land-lock)\b", synth), [])
+                self.assertEqual([m for m in re.findall(r"mdstack (?:train|land|land-lock)\b[^.]*", flat)
+                                  if "refuses" not in m and "never run it" not in m], [])
+                self.assertNotIn("Merge train (mdstack train)", synth)
+                for rule in ("session lands have no merge train", "Land each ready PR alone through step 3, one per run",
+                             "`Land rule: alone, direct`",
+                             "If express resolves (`core/crew-config.py class-flavor --express`)"):
+                    self.assertIn(rule, flat)
+
 
 if __name__ == "__main__":
     unittest.main()
