@@ -125,14 +125,17 @@ def custom_problems(cfg, custom, where):
 
 def floor_problems(cfg, data, where, custom=None):
     """A pack layer may tighten, never loosen: floor controls, merge grants and a flavor below the core default.
-    custom is every custom flavor the pack defines across its layers; a pack selects only a preset or one of those."""
+    custom is every custom flavor the pack defines across its layers; a pack selects only a preset or one of those.
+    Floor controls live in the flavor table and runtime.options, so a key elsewhere named like one (backends.ci) is not
+    a floor control (#1325)."""
     out = []
 
     def scan(value, path):
         if isinstance(value, dict):
             for key, child in value.items():
                 sub = path + "." + key if path else key
-                if key in cfg.FLAVOR_FLOOR and not (key == "hold_label_blocks" and child is True):
+                if key in cfg.FLAVOR_FLOOR and (path.split(".")[0] == "flavor" or path == "runtime.options") \
+                        and not (key == "hold_label_blocks" and child is True):
                     number, rule = cfg.FLAVOR_FLOOR[key]
                     out.append("%s:%s: floor F%d: %s; a pack may tighten rules, never loosen a core floor" % (
                         where, sub, number, rule))
