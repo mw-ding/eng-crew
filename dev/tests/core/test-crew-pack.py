@@ -3,6 +3,7 @@ actions/ conformance kit, against the fixture pack dev/tests/core/fixtures/packs
 import contextlib
 import importlib.util
 import io
+import json
 import os
 import re
 import shutil
@@ -15,6 +16,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(HERE)))
 CREW = os.path.join(ROOT, "cli", "mdstack")
 FIXTURE = os.path.join(HERE, "fixtures", "packs", "example")
+FAKE_VCS = os.path.join(HERE, "fixtures", "vcs", "fake-vcs.py")
 
 
 def load(name, path):
@@ -233,6 +235,31 @@ class CommitPin(PackCase):
         self.assertEqual(pk.commit(self.pack), head.strip())
         self.write("profile.toml", "")
         with self.assertRaisesRegex(ValueError, "uncommitted changes"):
+            pk.commit(self.pack)
+
+    def test_declared_vcs_pins_a_non_git_checkout(self):
+        """#1326: a pack in another version control tool's working copy declares its clean check and commit read."""
+        with open(os.path.join(self.pack, "pack.toml"), "a") as f:
+            f.write("\n[vcs]\nclean = %s\ncommit = %s\n" % (json.dumps([sys.executable, FAKE_VCS, "status"]),
+                                                             json.dumps([sys.executable, FAKE_VCS, "rev"])))
+        self.assertEqual(self.loaded()[1], [])
+        with self.assertRaisesRegex(ValueError, "is not a .* checkout"):
+            pk.commit(self.pack)
+        subprocess.run([sys.executable, FAKE_VCS, "commit"], cwd=self.pack, check=True)
+        with open(os.path.join(self.pack, ".fakevcs", "state.json")) as f:
+            rev = json.load(f)["rev"]
+        self.assertEqual(pk.commit(self.pack), rev)
+        self.write("profile.toml", "")
+        with self.assertRaisesRegex(ValueError, "uncommitted changes"):
+            pk.commit(self.pack)
+
+    def test_malformed_vcs_table_is_refused(self):
+        with open(os.path.join(self.pack, "pack.toml"), "a") as f:
+            f.write('\n[vcs]\nclean = "hg status"\n')
+        problems = self.loaded()[1]
+        self.assertTrue(any("vcs.clean: expected list of strings" in p for p in problems), problems)
+        self.assertTrue(any("vcs.commit: missing required key" in p for p in problems), problems)
+        with self.assertRaisesRegex(ValueError, r"\[vcs\] needs clean and commit commands"):
             pk.commit(self.pack)
 
 
