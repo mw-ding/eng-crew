@@ -2,6 +2,9 @@
 
 Usage: mdstack down --project FILE [--org-profile FILE] [--preserve]
 
+Runs on a role host (#345) stop through the host's kill, which keeps unlanded work there; one the host cannot stop
+(unlanded work, or the host unreachable) keeps its record, and down exits 1 naming it.
+
 --preserve is the maintenance stop before a migration (#1178): it stops the armed watcher (SIGTERM; refuses if it
 outlives the grace) and every pane's processes, but keeps each run's worktree, record, claim, inbox and status file.
 """
@@ -9,7 +12,7 @@ import fcntl
 import os
 import signal
 import time
-from crew_shared import commands, kill_run, profile, stop_pane, tmux
+from crew_shared import commands, kill_run, profile, remote_run, runs, stop_pane, tmux
 
 WATCHER_GRACE = 5.0
 
@@ -68,14 +71,18 @@ def run(args):
     if getattr(args, "keep_work", False):  # Offboarding stops writers before checking and archiving their work.
         held = [name for index, name in sorted(tmux.list_windows(session), reverse=True)
                 if index != 0 and stop_pane(session, index)]
+        held += [name for name, rec in runs(state) if remote_run.host_of(rec) and
+                 remote_run.kill(values, name, rec, keep=True)["result"] != "ok"]
         if held:
-            print("crew: refusing down: pane processes survived in %s" % ", ".join(held))
+            print("crew: refusing down: pane processes survived, or their host did not answer, in %s" % ", ".join(held))
             return 1
     else:
         held = [name for index, name in sorted(tmux.list_windows(session), reverse=True)  # coordinator last
                 if index != 0 and kill_run(values, session, state, name)]
+        held += [name for name, rec in list(runs(state)) if remote_run.host_of(rec) and kill_run(values, session, state, name)]
     if held:
-        print("crew: refusing down: unlanded work in %s; land it or mdstack kill --discard --reason" % ", ".join(held))
+        print("crew: refusing down: unlanded work or an unreachable host in %s; land it or mdstack kill --discard "
+              "--reason" % ", ".join(held))
         return 1
     pgid = stop_pane(session, 0)
     if pgid:

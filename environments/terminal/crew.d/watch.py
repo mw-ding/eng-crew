@@ -21,6 +21,7 @@ every `--interval` scan, and the next due time survives a re-arm; an exit-75 lin
 until that reset, at most an hour, so watchers sharing one GitHub login stop spending its quota (#1300).
 When `cli/mdstack`, `crew.d/*.py` or a `crew-*.py` module change on disk, the watcher re-execs itself before it queues or
 routes that scan's wakes, so new code resolves any new profile keys (#702).
+A run on a role host gets no liveness wake from this primary's tmux; its wakes arrive with remote pulls (#346).
 Once another runtime owns the repo (ownership `lost`, after a handoff's ack) the watcher refuses to arm (prompt stop).
 With `[triage] enabled`, each scan runs the triage sweep timer, which costs no model turn and queues no wake
 (docs/triage.md#triggers-and-cadence, #748); a newly closed milestone makes a sweep due at once (#374).
@@ -45,7 +46,7 @@ import signal
 import subprocess
 import sys
 import time
-from crew_shared import checkout, commands, CREW_BIN, dialog, ownership_module, ENGINE_CMD, foreground_matches, finished, gateway_error, HERE, heartbeat, idle_builder, probe, proc, profile, queue_lock, remember_pr, ROOT, runs, TRANSIENT, tmux, transient_lines
+from crew_shared import checkout, commands, CREW_BIN, dialog, ownership_module, ENGINE_CMD, foreground_matches, finished, gateway_error, HERE, heartbeat, idle_builder, probe, proc, profile, queue_lock, remember_pr, remote_run, ROOT, runs, TRANSIENT, tmux, transient_lines
 
 # Fields route adds to a record it leaves queued; a kept record still matches its candidate and wakes window 0 (#814).
 ROUTE_NOTES = ("at", "route_error", "consumer", "dependents")
@@ -136,7 +137,7 @@ def scan(state, session, now, stale, seen, idle_ttl=1800, stuck_after=1800, idle
         except FileNotFoundError:
             continue  # reaped between listing and stat (#591)
         last, beat = heartbeat(state, name)
-        if beat is None:
+        if beat is None or remote_run.host_of(rec):  # a role host's run wakes by its pulled status lines (#346)
             continue
         cls = probe(session, name, rec, windows)
         if cls in ("alive", "ambiguous") and rec.get("harness") in TRANSIENT:
