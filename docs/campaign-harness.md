@@ -652,6 +652,12 @@ python3 environments/terminal/remote/lab/crew-lab-scenarios.py "$SANDBOX/state/m
   run that needs it rather than placing it elsewhere, and the item's claim
   file is unchanged. Remote role runs and their reconcile wait for #345 and
   #347.
+- **Attach (#348).** A run is planted as the runner account in the
+  runner's tmux session, since `spawn` needs a forge (#345 proves it on
+  fakes). Over real SSH, `capture` shows its pane and `logs` its step
+  summary tail. A client on a pty attaches through the `restrict,pty` key
+  line, read-only, so typed keys never reach the pane, and detaches with
+  exit 0. Attach without a TTY and `version` with one are refused.
 - **Report.** Each scenario prints `PASS` or `FAIL`, and
   `state/lab/scenarios.json` keeps what it saw. Exit 1 on any `FAIL`, 2 on
   a refusal.

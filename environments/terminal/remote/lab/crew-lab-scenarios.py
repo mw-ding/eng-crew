@@ -24,19 +24,27 @@ evidence record under lab/runs/ (#1361). Exit 1 on any FAIL, 2 on a refusal.
               while it is down, or the lost job refused), the host never reports that job done, and a fresh job passes
   partition   a role host behind a network disconnect is unreachable over SSH; placement queues a role run that
               needs that host and never places it elsewhere, and the item's claim file is unchanged
+  attach      a run planted as crew in the runner's session (spawn needs a forge, #345): over real SSH `capture`
+              shows its pane and `logs` its step summary tail; a client on a pty attaches read-only (typed keys
+              never reach the pane) and detaches with exit 0; attach without a TTY and another verb with one are
+              refused (#348)
 Each disconnect and pause is confirmed by a `version` call that fails while it holds and answers once it is lifted;
 runner and recreate prove their own outage as above.
 """
 import argparse
+import fcntl
 import hashlib
 import importlib.machinery
 import importlib.util
 import json
 import os
 import re
+import select
 import shutil
+import struct
 import subprocess
 import sys
+import termios
 import time
 from pathlib import Path
 
@@ -396,8 +404,84 @@ def partition(lab, s):
     s.check(hashlib.sha256(claim.read_bytes()).hexdigest() == before, "the claim file changed")
 
 
+PLANT = """set -e
+wt=$HOME/.mdstack/wt/lab-attach; mkdir -p "$wt/.crew/runs/issue-1/build" "$HOME/.mdstack/state/%(project)s/runs"
+printf '# Run summary\\n- build ok\\n- tests ok\\n' > "$wt/.crew/runs/issue-1/build/summary.md"
+printf '{"window": "ben-1", "primary": "primary", "worktree": "%%s"}' "$wt" > "$HOME/.mdstack/state/%(project)s/runs/ben-1.json"
+tmux new-window -d -t crew-host: -n %(project)s/ben-1 "echo lab-attach-pane; exec tail -f /dev/null"
+"""
+
+
+def on_pty(argv, until, keys=b"", timeout=30):
+    """Run argv on a fresh 40x120 pty; once `until` shows, type keys then C-b d. (exit code, everything it printed)."""
+    primary, secondary = os.openpty()
+    fcntl.ioctl(secondary, termios.TIOCSWINSZ, struct.pack("HHHH", 40, 120, 0, 0))
+    p = subprocess.Popen(argv, stdin=secondary, stdout=secondary, stderr=secondary, start_new_session=True)
+    os.close(secondary)
+    out, sent, deadline = b"", False, time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            if select.select([primary], [], [], 0.5)[0]:
+                chunk = os.read(primary, 65536)
+                if not chunk:
+                    break
+                out += chunk
+            elif p.poll() is not None:
+                break
+            if not sent and until in out:
+                sent = True
+                os.write(primary, keys)
+                time.sleep(1)
+                os.write(primary, b"\x02d")
+        except OSError:  # the client exited and its pty closed (EIO)
+            break
+    if p.poll() is None:
+        p.kill()
+    code = p.wait()
+    os.close(primary)
+    return code, out.decode(errors="replace")
+
+
+def attach(lab, s):
+    for _ in range(120):
+        if lab.call("version").get("runner") == "up":
+            break
+        time.sleep(1)
+    else:
+        return s.check(False, "the runner was never up")
+    lab.docker("exec", "-u", "crew", lab.cid(), "sh", "-c", PLANT % dict(project=lab.project))
+    scope = dict(project=lab.project, window="ben-1", primary="primary")
+    try:
+        cap = s.obs["capture"] = lab.call("capture", **scope)
+        s.check(cap.get("result") == "ok" and "lab-attach-pane" in cap.get("text", ""), "capture: %s" % cap)
+        logs = s.obs["logs"] = lab.call("logs", lines=2, **scope)
+        s.check(logs == dict(result="ok", path="wt/lab-attach/.crew/runs/issue-1/build/summary.md",
+                             lines=["- build ok", "- tests ok"]), "logs: %s" % logs)
+        client = [sys.executable, "-c", "import importlib.util as u, json, sys; s = u.spec_from_file_location('r', "
+                  "sys.argv[1]); m = u.module_from_spec(s); s.loader.exec_module(m); "
+                  "sys.exit(m.attach(sys.argv[2], config=sys.argv[3], **json.loads(sys.argv[4])))",
+                  lab.remote.__file__, lab.host, lab.conf, json.dumps(dict(scope, root=ROOT))]
+        code, out = on_pty(client, b"lab-attach-pane", keys=b"lab-typed-keys")
+        s.obs["attach"] = dict(exit=code, tail=out[-400:])
+        s.check(code == 0 and "lab-attach-pane" in out, "the pty attach did not show the pane and detach cleanly")
+        after = s.obs["capture_after"] = lab.call("capture", **scope).get("text", "")
+        s.check("lab-attach-pane" in after and "lab-typed-keys" not in after, "a read-only attach reached the pane")
+        r = subprocess.run(client, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=60)
+        s.obs["no_tty"] = dict(exit=r.returncode, stdout=r.stdout.strip())
+        s.check(r.returncode == 1 and '"attach needs a TTY"' in r.stdout, "attach without a TTY was not refused")
+        payload = lab.remote.base64.urlsafe_b64encode(json.dumps(dict(
+            verb="version", version=lab.remote.version())).encode()).decode()
+        argv = lab.remote.ssh_argv(lab.host, lab.conf)
+        argv = ["-tt" if a == "-T" else a for a in argv[:-1]] + ["crew-host " + payload]
+        r = subprocess.run(argv, stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=60)
+        s.obs["tty_version"] = dict(exit=r.returncode, stdout=r.stdout.strip())
+        s.check(r.returncode == 1 and '"only attach takes a TTY"' in r.stdout, "a verb other than attach took a TTY")
+    finally:
+        s.obs["kill"] = lab.call("kill", refs=["refs/heads/lab"], discard=True, **scope)
+
+
 SCENARIOS = dict((f.__name__.replace("_", "-"), f) for f in (
-    exact_head, red, idempotent, stale, disconnect, pause, runner, recreate, partition))
+    exact_head, red, idempotent, stale, disconnect, pause, runner, recreate, partition, attach))
 
 
 def main(argv=None):
