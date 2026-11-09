@@ -938,5 +938,66 @@ class RemoteRun(KillLandedBase):  # #345: spawn, kill, restart, down and status 
         self.assertEqual((self.record("ben-7")["restarts"], self.record("ben-7")["host"]), (1, "host-b"))
 
 
+    def host_status(self, text):
+        path = os.path.join(self.root, "state", "acme__widgets", "status", "ben-7.status")
+        with open(path, "a") as f:
+            f.write(text)
+        with open(path, "rb") as f:
+            return f.read()
+
+    def mirror(self):
+        with open(os.path.join(self.state, "status", "ben-7.status"), "rb") as f:
+            return f.read()
+
+    def watch(self):
+        r = subprocess.run([sys.executable, CREW, "watch", "--project", self.project, "--interval", "0.05",
+                            "--no-nudge"], capture_output=True, text=True, env=self.env, timeout=60)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        with open(os.path.join(self.state, "wake", "queue.jsonl")) as f:
+            return [w["line"] for w in map(json.loads, f) if w["reason"] == "status"]
+
+    def test_watch_pulls_remote_status_lines_once_across_a_drop_and_a_restart(self):  # #346 C1, C4
+        self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
+        self.host_status("step: 1\nblocked: #7 hold\n")
+        self.assertEqual(self.watch(), ["step: 1", "blocked: #7 hold"])
+        open(self.down_flag, "w").close()  # the host drops off while its run keeps writing
+        host = self.host_status("step: 2\nblocked: #7 again\n")
+        r = self.crew("acked", "ben-7", "20261108T120000Z-abc123", "--project", self.project)
+        self.assertEqual(r.returncode, 3, r.stdout + r.stderr)
+        self.assertEqual(self.mirror(), b"step: 1\nblocked: #7 hold\n")  # an unreachable pull changes nothing
+        os.remove(self.down_flag)
+        os.remove(os.path.join(self.state, "wake", "queue.jsonl"))
+        self.assertEqual(self.watch(), ["step: 2", "blocked: #7 again"])  # a new watcher: no lost or doubled line
+        self.assertEqual(self.mirror(), host)
+        os.remove(os.path.join(self.state, "status", "ben-7.status"))  # the mirror is a cache: rebuilt from 0
+        os.remove(os.path.join(self.state, "wake", "queue.jsonl"))
+        host = self.host_status("blocked: #7 third\n")
+        self.assertEqual(self.watch(), ["blocked: #7 third"])
+        self.assertEqual(self.mirror(), host)
+        os.remove(os.path.join(self.root, "state", "acme__widgets", "status", "ben-7.status"))
+        self.crew("acked", "ben-7", "20261108T120000Z-abc123", "--project", self.project)  # pulls an absent host file
+        self.assertEqual(self.mirror(), host)  # what was mirrored stays
+
+    def test_send_delivers_through_the_host_and_its_ack_returns_through_the_mirror(self):  # #346 C3
+        self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
+        r = self.crew("send", "ben-7", "review", "#9", "--project", self.project)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        msg_id = r.stdout.split()[2]
+        self.assertIn("crew: sent %s to ben-7 on host-b" % msg_id, r.stdout)
+        with open(os.path.join(self.root, "state", "acme__widgets", "inbox", "ben-7.jsonl")) as f:
+            self.assertEqual([(m["id"], m["refs"]) for m in map(json.loads, f)], [(msg_id, ["#9"])])
+        self.assertFalse(os.path.exists(os.path.join(self.state, "inbox", "ben-7.jsonl")))
+        r = self.crew("acked", "ben-7", msg_id, "--project", self.project)
+        self.assertEqual(r.returncode, 3, r.stdout + r.stderr)
+        self.host_status("ack: %s\n" % msg_id)
+        r = self.crew("acked", "ben-7", msg_id, "--wait", "5", "--project", self.project)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn(b"ack: " + msg_id.encode(), self.mirror())
+        open(self.down_flag, "w").close()
+        r = self.crew("send", "ben-7", "review", "#9", "--project", self.project)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("on host-b failed: unreachable: ", r.stdout)
+        self.assertIn("not delivered; probe the run", r.stdout)
+
 if __name__ == "__main__":
     unittest.main()

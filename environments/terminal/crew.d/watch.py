@@ -21,7 +21,9 @@ every `--interval` scan, and the next due time survives a re-arm; an exit-75 lin
 until that reset, at most an hour, so watchers sharing one GitHub login stop spending its quota (#1300).
 When `cli/mdstack`, `crew.d/*.py` or a `crew-*.py` module change on disk, the watcher re-execs itself before it queues or
 routes that scan's wakes, so new code resolves any new profile keys (#702).
-A run on a role host gets no liveness wake from this primary's tmux; its wakes arrive with remote pulls (#346).
+A run on a role host gets no liveness wake from this primary's tmux; every `runtime.options.host_scan_interval`
+(default 15 s) one `pull` per role host with runs copies their new status lines into the primary's status mirrors,
+which wake as local lines do; the host's answer is kept under `pulls` in watch-state.json (#346).
 Once another runtime owns the repo (ownership `lost`, after a handoff's ack) the watcher refuses to arm (prompt stop).
 With `[triage] enabled`, each scan runs the triage sweep timer, which costs no model turn and queues no wake
 (docs/triage.md#triggers-and-cadence, #748); a newly closed milestone makes a sweep due at once (#374).
@@ -92,6 +94,20 @@ def run_identity(rec):
     return [rec.get(k) for k in ("start", "pane_id", "pane_pid", "pane_start", "worktree")]
 
 
+def pull_hosts(values, state, seen, now):
+    """One `pull` per role host with runs; each host's last result, time and run probes under seen["pulls"]."""
+    hosts = {}
+    for name, rec in runs(state):
+        if remote_run.host_of(rec):
+            hosts.setdefault(rec["host"], []).append(name)
+    pulls = seen.setdefault("pulls", {})
+    for host, names in sorted(hosts.items()):
+        reply = remote_run.pull(values, state, host, names)
+        pulls[host] = dict(at=now, result=reply["result"], liveness={n: w.get("liveness") for n, w in (
+            reply.get("windows") or {}).items()}, **({} if reply["result"] == "ok" else {
+                "error": reply.get("reason") or reply.get("error")}))
+
+
 def scan(state, session, now, stale, seen, idle_ttl=1800, stuck_after=1800, idle_stall=1800):
     """Wake records: new status lines, runs dead, missing or silent past stale, owner asks past their deadline and
     finishing work deferred past stuck_after; each fires once per key. A working run whose pane printed nothing for
@@ -107,6 +123,8 @@ def scan(state, session, now, stale, seen, idle_ttl=1800, stuck_after=1800, idle
         identities[name] = identity
         previous_pr = rec.get("pr")
         status = os.path.join(state, "status", name + ".status")
+        if remote_run.host_of(rec) and not os.path.exists(status):
+            continue  # a role host's mirror not pulled yet, or removed until the next pull rebuilds it: offsets kept
         size, off = os.path.getsize(status) if os.path.exists(status) else 0, seen["offsets"].get(name, 0)
         digests = seen.setdefault("digests", {})
         if size and (size != off or changed):
@@ -516,6 +534,9 @@ def run(args):
                     found += [{"reason": "poll", "event": line} for line in out.splitlines() if line.strip()]
             # after the sources: the timer reads the queue this scan's mdstack poll wrote, not a pre-pause one (#1098)
             triage_tick(values, state, time.time(), args.project, args.org_profile)
+            if time.time() >= seen.get("pulls_next", 0):  # role hosts' status lines into their mirrors (#346)
+                seen["pulls_next"] = time.time() + values["runtime.options.host_scan_interval"]
+                pull_hosts(values, state, seen, time.time())
             trial = json.loads(json.dumps(seen))  # committed only once its wakes are queued
             wakes = scan(state, session, time.time(), args.stale, trial, values["runtime.options.idle_builder_ttl"],
                          values["runtime.options.stuck_after"], args.idle_stall) + found

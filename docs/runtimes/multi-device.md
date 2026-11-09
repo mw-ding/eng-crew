@@ -3,8 +3,8 @@
 > - **Status:** partly built
 > - **Applies to:** a tmux primary plus forge-less runner hosts
 > - **Current rules:** [tmux binding](tmux.md), [protocol](../protocol.md)
-> - **Built:** host inventory, `mdstack host check`, `mdstack hosts`, `mdstack host prepare`, the remote call and runner, [Forge-less hosts](#forge-less-hosts-remote-test-runner) and its [runbook](#runbook-add-a-runner-host), the [role-host runbook](#runbook-add-or-remove-a-role-host), the [host OS adapter](#host-os-adapters) dispatch and the `macos` and `linux` adapters, [placement](#placement) in `mdstack spawn`, the [remote run lifecycle](#remote-run-lifecycle) (`spawn`, `kill`, `restart`, `down`), [remote attach and logs](#observability), proved on fakes (#204–#208, #345, #348, #349, #726–#729, #1358, #1359, #1363)
-> - **Design only:** remote wakes and messages and partition handling (#346, #347) and the two-host dry run (#209), all open
+> - **Built:** host inventory, `mdstack host check`, `mdstack hosts`, `mdstack host prepare`, the remote call and runner, [Forge-less hosts](#forge-less-hosts-remote-test-runner) and its [runbook](#runbook-add-a-runner-host), the [role-host runbook](#runbook-add-or-remove-a-role-host), the [host OS adapter](#host-os-adapters) dispatch and the `macos` and `linux` adapters, [placement](#placement) in `mdstack spawn`, the [remote run lifecycle](#remote-run-lifecycle) (`spawn`, `kill`, `restart`, `down`), [remote attach and logs](#observability), [remote wakes and messages](#remote-wakes-and-messages) (`pull`, `send`, `host_scan_interval`), proved on fakes, and the pull through a disconnect on lab C (#204–#208, #345, #346, #348, #349, #726–#729, #1358, #1359, #1363)
+> - **Design only:** partition handling (#347) and the two-host dry run (#209), both open
 > - **Last checked:** 2026-11-08 at `e73ade4`
 
 How one coordinator runs role sessions on several hosts (laptops, a
@@ -269,7 +269,8 @@ and the runner runs `crew-remote.py --root <root> runner` as the account's
 service. The runner makes the default tmux socket's directory itself: tmux
 does not make it for a socket named by path, and still exits 0. Built verbs: `version`, `check`, `prepare`, `seed`, `job`,
 `result`, `spawn`, `probe` and `kill` ([remote run lifecycle](#remote-run-lifecycle)), and
-`attach`, `capture` and `logs` ([observability](#observability)).
+`attach`, `capture` and `logs` ([observability](#observability)), and `pull` and
+`send` ([remote wakes and messages](#remote-wakes-and-messages)).
 `version` reports the host's version and whether the runner is `up` (a
 fresh heartbeat and its tmux session) or `down`. Every other verb in the set
 is refused as not built until its issue lands.
@@ -317,13 +318,30 @@ A run on another primary is refused by `spawn`, `probe` and `kill` (one
 primary per run), and `kill` touches no window without its project's run
 record. A run on a role host counts toward its role's pool cap,
 reads `ambiguous` to the local probe (never restarted from here) and shows
-its host's probe in `mdstack status`. Not yet built, so a remote run still
-lacks them: status lines, wakes and `mdstack send` (#346), so the watcher
-skips its liveness; `unreachable` handling and reconcile (#347). Attach and
-logs are built ([observability](#observability), #348). The window gets no `CREW_PROJECT` there, so the brief's
-`mdstack ownership` and `action heartbeat` steps wait for #346. Worktrees
+its host's probe in `mdstack status`. Its status lines, wakes and
+`mdstack send` are [below](#remote-wakes-and-messages); the watcher still
+queues no liveness wake for it. Attach and logs are built
+([observability](#observability), #348). Not yet built: `unreachable`
+handling and reconcile (#347). The window gets no `CREW_PROJECT` there, so
+the brief's `mdstack ownership` and `action heartbeat` steps do not run
+there yet (a follow-up). Worktrees
 come from a `--mirror` clone, so they have no `refs/remotes/origin/*`; spawn
 turns `remote.origin.mirror` off so a run can push a refspec.
+
+### Remote wakes and messages
+
+Built in #346 (`pull` and `send` in `crew-remote.py`, `pull` and `send` in
+`crew.d/_remote.py`), proved on fakes and, for the pull through a network
+disconnect and a send's ack, on lab C (the `status-pull`
+[lab scenario](../campaign-harness.md#lab-runner-scenarios)).
+
+| Piece | Behaviour |
+|---|---|
+| `pull` (host, read-only) | For each named run of the calling primary, the complete status lines past the primary's offset (at most 256 KiB a call; the rest on the next pull), the file's size and the run's probe. The primary sends its mirror's size as the offset and the mirror's SHA-256; a digest that is not the host file's prefix (a rewritten, shorter or torn file) answers from offset 0 |
+| Status mirror (primary) | `status/<window>.status` is a byte copy of the host's file. Its own size is the offset, so an interrupted, repeated or concurrent pull and a primary restart neither lose nor double a line; a pull answered from 0 replaces the mirror, a removed mirror is rebuilt, and an empty or missing host file leaves it as it is. `status/.pull.lock` serializes pulls, so the watcher and `mdstack acked` never append the same lines twice |
+| `mdstack watch` | Every `host_scan_interval` (default 15 s), one `pull` per role host with runs, before the scan; pulled lines wake as local status lines do. A missing mirror keeps the scan's offsets until the next pull rebuilds it. Each host's last result, time and run probes are kept under `pulls` in `wake/watch-state.json`. One attempt per scan: the next scan is the retry |
+| `mdstack send` | A run on a role host gets the refs-only message through `send`, retried with its request id while unreachable: the host appends it to its `inbox/<window>.jsonl` and types the fixed nudge into the run's window, confirming the submit as on the primary (no key into a dialog; Enter retried only). An unreachable host fails after the bounded call (exit 1), never queued; a nudge not submitted exits 4 |
+| `mdstack acked`, `send --wait-ack` | Pull the run's status lines into the mirror before each check, then read `ack: <msg-id>` from the mirror |
 
 ### Host OS adapters
 
@@ -388,7 +406,7 @@ unchanged. Gaps use the [gap format](README.md#gap-declaration).
 
 | Capability | Across hosts | Gap |
 |---|---|---|
-| C1 Wake on event | Every `host_scan_interval` the watcher makes one `pull` per role host with a run: new status lines since the stored offsets (in `wake/watch-state.json`), plus probe results. It appends the lines to the primary's `status/<window>.status` mirror and wakes as for a local line. `mdstack poll` stays on the primary | C1 wake on event: partial, compensated by offset-based pulls that resume losslessly and the §6 step 3 sweep after a host returns; residual risk: wakes from an unreachable host wait until it returns or the owner abandons its runs, and remote wakes lag by up to one scan interval |
+| C1 Wake on event | Every `host_scan_interval` the watcher makes one `pull` per role host with a run: new status lines since each mirror's offset (its size, checked by a prefix digest), plus probe results kept in `wake/watch-state.json`. It appends the lines to the primary's `status/<window>.status` mirror and wakes as for a local line. `mdstack poll` stays on the primary | C1 wake on event: partial, compensated by offset-based pulls that resume losslessly and the §6 step 3 sweep after a host returns; residual risk: wakes from an unreachable host wait until it returns or the owner abandons its runs, and remote wakes lag by up to one scan interval |
 | C2 One consumer per event | Unchanged: one `mdstack poll` on the primary decides every consumer; role hosts never read GitHub events. Runs there still fetch, push and post to GitHub themselves | None |
 | C3 Messages by reference, proof of delivery | `mdstack send` calls `send`: the host appends the refs to its `inbox/<window>.jsonl` and types the fixed nudge locally. Proof is still `ack: <msg-id>`, read from the mirrored status file. An unreachable host makes `mdstack send` fail after the bounded timeout (exit 1), never queue silently; the coordinator then probes | None |
 | C4 Status protocol | Runs append to the host's status file; the mirror on the primary is a cache rebuilt by pulling from offset 0. The coordinator reads only primary files | None |
@@ -641,8 +659,8 @@ Extends the [runner-host runbook](#runbook-add-a-runner-host) to a
 [role host](#terms): one with its own forge access (N5) that takes builder
 and reviewer runs (20.12 from [#1281](https://github.com/mw-ding/mdstack/issues/1281),
 [#1363](https://github.com/mw-ding/mdstack/issues/1363)). Every step is the
-owner's. Placement, the remote run lifecycle and attach are built
-(#207, #345, #348); remote wakes and partition handling (#346, #347) are
+owner's. Placement, the remote run lifecycle, attach and remote wakes and
+messages are built (#207, #345, #346, #348); partition handling (#347) is
 not.
 
 **Add a role host.** Runner-host steps 1 (overlay), 3 (crew key) and 5

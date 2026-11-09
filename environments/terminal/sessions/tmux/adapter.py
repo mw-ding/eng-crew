@@ -25,6 +25,9 @@ def server():
     under a private TMUX_TMPDIR a test cannot reach the caller's server."""
     key = (SOCKET, DEDICATED)
     if key not in _server:
+        # tmux makes its socket directory only when it resolves the default itself; a fresh host (no tmux run yet,
+        # as a role host's runner) would otherwise fail every -S call (#346)
+        os.makedirs(os.path.dirname(default_socket()), mode=0o700, exist_ok=True)
         default = ["-S", default_socket()]
         dedicated = ["-L", SOCKET] if SOCKET else default
         own, other = (dedicated, default) if DEDICATED else (default, dedicated)

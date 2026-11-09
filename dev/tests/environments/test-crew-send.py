@@ -13,11 +13,10 @@ import importlib.machinery
 import importlib.util
 import json
 import os
-import textwrap
 import unittest
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # dev/tests/: crew_testlib
-from crew_testlib import CREW, FAKE_TMUX_PANES, screen, SendBase, STUCK, WORKING
+from crew_testlib import CREW, FAKE_COMPOSER, FAKE_TMUX_PANES, screen, SendBase, STUCK, WORKING
 
 
 class Send(SendBase):
@@ -150,46 +149,6 @@ class Composer(unittest.TestCase):
         self.assertEqual(self.mod.stale_nudges(screen, None), [])  # tmux could not answer
         self.assertIsNone(self.mod.composer_draft(screen, (0, 3)))  # no composer at the cursor
         self.assertEqual(self.mod.stale_nudges("\n".join(CODEX_STACKED[:8]), (0, 7)), [])
-
-
-# A tmux wrapper with a composer model in $FAKE_COMPOSER: `-l` text joins the draft's last line, C-u clears a line
-# and then joins it to the one above (as in Codex and Claude Code), Enter takes the next of `enters` (the last one
-# repeats): `submit` moves the draft into the transcript, `newline` adds a line. Every other call goes to the base fake.
-FAKE_COMPOSER = textwrap.dedent("""\
-    #!/usr/bin/env python3
-    import json, os, sys
-    full = sys.argv[1:]
-    args = full[2:] if full[:1] in (["-L"], ["-S"]) else full  # the crew's server (#818) goes on to the base fake
-    c = json.load(open(os.environ["FAKE_COMPOSER"]))
-    def rows(draft):
-        return ["› " + draft[0]] + ["  " + line for line in draft[1:]]
-    if args[0] in ("capture-pane", "display-message") and (args[0] == "capture-pane" or "#{cursor_x}" in args[-1]):
-        with open(os.environ["FAKE_TMUX_LOG"], "a") as f:
-            f.write(json.dumps(args) + "\\n")
-        screen = c["history"] + [""] + (rows(c["draft"]) if c["draft"] else ["› Ask Codex to do anything"])
-        x = 2 + len(c["draft"][-1]) if c["draft"] else 2
-        print("\\n".join([r.rstrip() for r in screen] + c.get("below", ["", "  ? for shortcuts"]))
-              if args[0] == "capture-pane" else "%d %d" % (x, len(screen) - 1))
-        sys.exit(0)
-    if args[0] == "send-keys":
-        draft = c["draft"]
-        if "-l" in args:
-            c["draft"] = draft[:-1] + [(draft[-1] if draft else "") + args[-1]]
-        for key in args[args.index("-t") + 2:] if "-l" not in args else []:
-            if key == "C-u" and c.get("clears", True) and draft:
-                draft[-1:] = [""] if draft[-1] else []
-            elif key == "Enter":
-                if "below_on_enter" in c:  # a prompt the Enter brings up under the composer
-                    c["below"] = c.pop("below_on_enter")
-                mode = c["enters"].pop(0) if len(c["enters"]) > 1 else c["enters"][0]
-                if mode == "submit" and draft:
-                    c["history"], c["draft"] = c["history"] + rows(draft), []
-                elif mode == "newline":
-                    c["draft"] = (draft or [""]) + [""]
-            draft = c["draft"]
-        json.dump(c, open(os.environ["FAKE_COMPOSER"], "w"))
-    os.execv(os.path.join(os.path.dirname(sys.argv[0]), "tmux-base"), ["tmux"] + full)
-    """)
 
 
 class VerifiedNudge(SendBase):

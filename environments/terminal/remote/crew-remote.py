@@ -37,13 +37,17 @@ worktree), `probe` (C5 liveness on this host's clock) and `kill` (stop the windo
 files unless it holds unlanded work, which is kept and listed; `discard` removes it anyway, `keep` only stops),
 `attach` (the caller's TTY on the run's pane, read-only unless `rw`; the only verb that takes a TTY, with its request
 base64url-encoded in the SSH command `crew-host <payload>` since stdin is the TTY; the key line is `restrict,pty`),
-`capture` (the pane's screen) and `logs` (the tail of the run's newest step summary, never raw logs).
+`capture` (the pane's screen) and `logs` (the tail of the run's newest step summary, never raw logs), and
+`pull` (read-only: each named run's complete status lines past the primary's offset, from 0 when the primary's
+prefix digest does not match, with the run's probe) and `send` (append a refs-only message to the run's inbox and
+type the nudge `inbox: <id>` once, Enter retried only, no key into a dialog), #346.
 Run verbs on a run from another primary are refused. A retried request id returns its first reply. The runner keeps the host's crew tmux session
 alive, so runs outlive the SSH session, and writes runner.json under root as its heartbeat.
 """
 import argparse
 import base64
 import glob
+import hashlib
 import importlib.util
 import json
 import os
@@ -86,6 +90,11 @@ REF = re.compile(r"refs/(heads|pull)/[A-Za-z0-9._/-]+")
 VERDICT = re.compile(r"pr\d+-[0-9a-f]{7}-r\d+-[a-z]+\.md")  # verdicts/pr<n>-<sha7>-r<k>-<pass>.md
 POINTER = "Read your brief at $CREW_BRIEF and follow it."  # crew_shared.POINTER and LAUNCH, built here from checked fields
 LAUNCH = 'export GH_TOKEN="$(gh auth token --user "$CREW_IDENTITY")"; exec %s "%s"'
+PULL_MAX = 1 << 18  # bytes of status lines one pull returns per window; the next pull resumes from there
+MSG_ID = re.compile(r"\d{8}T\d{6}Z-[0-9a-f]{6}")  # an `mdstack send` message id, as send.py makes it
+KIND = re.compile(r"[a-z][a-z0-9-]{0,31}")  # send.py's KIND and REF: refs only, never a diff or a log
+MSG_REF = re.compile(r"#\d+|[0-9a-f]{40}|https://[^\s]+|[\w.~/-]+")
+MAX_REF, MAX_LINE, ENTERS = 200, 1024, 3
 KEEP = {"hostname", "user", "port", "identityfile", "identitiesonly", "certificatefile", "identityagent",
         "userknownhostsfile", "globalknownhostsfile", "hostkeyalias"}  # auth and host keys; never env, forwards, proxies
 
@@ -669,8 +678,8 @@ def probe_verb(request, root):
     rec, index = found[2], find_window(request)
     p = tmux().pane(SESSION, index) if rec and index is not None else None
     liveness = ("missing" if rec is None or index is None else "ambiguous" if p is None else "missing"
-                if (p["id"], p["pid"]) != (rec["pane_id"], rec["pane_pid"]) else "dead" if p["dead"] == "1" else
-                "missing" if start_time(p["pid"]) != rec["pane_start"] else "alive")
+                if (p["id"], p["pid"]) != (rec.get("pane_id"), rec.get("pane_pid")) else "dead" if p["dead"] == "1" else
+                "missing" if start_time(p["pid"]) != rec.get("pane_start") else "alive")  # spawn saves before the pane
     return dict(result="ok", liveness=liveness)
 
 
@@ -730,6 +739,102 @@ def kill_verb(request, root):
     return dict(result="ok", unlanded=[], removed=True)
 
 
+def pull_verb(request, root):
+    """New complete status lines of each named run since the primary's offset (multi-device C1, C4), read-only. The
+    primary sends {window: {offset, digest}}, its mirror's size and SHA-256; a digest that is not this file's prefix
+    (a rewritten or shorter file) answers from offset 0. Each reply carries offset, base64 data ending on a newline
+    (at most PULL_MAX bytes), the file's size and the run's probe."""
+    windows = request.get("windows")
+    if not isinstance(windows, dict) or not windows:
+        return dict(result="refused", reason="pull needs windows {name: {offset, digest}}")
+    out = {}
+    for window, at in windows.items():
+        found = run_record(dict(request, window=window), root)
+        if isinstance(found, str):
+            return dict(result="refused", reason="pull " + found)
+        if not isinstance(at, dict) or not isinstance(at.get("offset"), int) or at["offset"] < 0 or \
+                not isinstance(at.get("digest"), str):
+            return dict(result="refused", reason="pull needs an offset and digest for " + window)
+        status = os.path.join(found[0], "status", window + ".status")
+        data = b""
+        if os.path.exists(status):
+            with open(status, "rb") as f:
+                data = f.read()
+        offset = at["offset"]
+        if offset > len(data) or hashlib.sha256(data[:offset]).hexdigest() != at["digest"]:
+            offset = 0
+        chunk = data[offset:offset + PULL_MAX]
+        chunk = chunk[:chunk.rfind(b"\n") + 1]  # complete lines only; a line being written waits for the next pull
+        out[window] = dict(offset=offset, data=base64.b64encode(chunk).decode(), size=len(data),
+                           liveness=probe_verb(dict(request, window=window), root)["liveness"])
+    return dict(result="ok", windows=out)
+
+
+def composer_draft(screen, at):
+    """The composer rows from the prompt-glyph row down to the cursor row at (column, row), glyph and indent stripped;
+    None when the cursor is not in a composer (send.py's composer_draft, #308: later rows are indented two spaces, so
+    an Enter swallowed as a newline still reads as the draft)."""
+    rows = screen.split("\n")
+    if not at or at[1] >= len(rows):
+        return None
+    glyphs = "".join(getattr(a, "COMPOSER", "") for a in load_harnesses().ADAPTERS.values())
+    glyph = re.compile(r"[%s]\s?" % re.escape(glyphs)) if glyphs else None
+    for top in range(at[1], -1, -1):
+        if glyph and glyph.match(rows[top]):
+            return [glyph.sub("", rows[top], 1).strip()] + [r.strip() for r in rows[top + 1:at[1] + 1]]
+        if rows[top].strip() and not rows[top].startswith("  "):
+            return None
+    return None
+
+
+def on_dialog(screen, engine):
+    """A blocking prompt or fatal API error of the run's harness on screen, as crew_shared.dialog reads it (#315)."""
+    a = load_harnesses().ADAPTERS.get(engine)
+    lines = [line.strip().lstrip(getattr(a, "COMPOSER", "") + "> ") for line in screen.splitlines() if line.strip()]
+    fatal = getattr(a, "FATAL", None)
+    return bool(fatal) and any(re.match(fatal, line) for line in lines) or bool(lines) and any(
+        re.match(foot, lines[-1]) and any(re.match(head, line) for line in lines) for head, foot in getattr(a, "PROMPTS", []))
+
+
+def send_verb(request, root):
+    """mdstack send on this host (multi-device C3): append the refs-only message to the run's inbox, then type the fixed
+    nudge `inbox: <id>` into its window once, retrying Enter only while it stays in the composer. A dialog on screen
+    gets no key. Reply `nudge`: None when submitted, else why not; the message stays in the inbox either way."""
+    found = run_record(request, root)
+    if isinstance(found, str):
+        return dict(result="refused", reason="send " + found)
+    state, _, rec = found
+    msg = request.get("message")
+    if not isinstance(msg, dict) or set(msg) != {"id", "kind", "refs", "from", "ts"} or not isinstance(msg["id"], str) \
+            or not MSG_ID.fullmatch(msg["id"]) or not isinstance(msg["kind"], str) or not KIND.fullmatch(msg["kind"]) \
+            or not isinstance(msg["refs"], list) or not msg["refs"] or not all(
+                isinstance(r, str) and len(r) <= MAX_REF and MSG_REF.fullmatch(r) for r in msg["refs"]) or not all(
+                isinstance(msg[k], str) and WORD.fullmatch(msg[k]) for k in ("from", "ts")):
+        return dict(result="refused", reason="send needs a refs-only message {id, kind, refs, from, ts}")
+    line = json.dumps(msg) + "\n"
+    index = find_window(request)
+    if rec is None or index is None:
+        return dict(result="refused", reason="no window %s on this host" % request["window"])
+    if len(line.encode()) > MAX_LINE:
+        return dict(result="refused", reason="message over %d bytes" % MAX_LINE)
+    os.makedirs(os.path.join(state, "inbox"), exist_ok=True)
+    with open(os.path.join(state, "inbox", request["window"] + ".jsonl"), "a", encoding="utf-8") as f:
+        f.write(line)
+    text, t = "inbox: " + msg["id"], tmux()
+    if on_dialog(t.capture(SESSION, index), rec["engine"]):
+        return dict(result="ok", nudge="dialog: a prompt is on its screen; nothing typed")
+    t.send_keys(SESSION, index, text)
+    for retry in range(ENTERS + 1):
+        time.sleep(0.5)
+        if text not in (composer_draft(t.capture(SESSION, index), t.cursor(SESSION, index)) or []):
+            return dict(result="ok", nudge=None)
+        if retry < ENTERS:
+            if on_dialog(t.capture(SESSION, index), rec["engine"]):
+                return dict(result="ok", nudge="dialog: a prompt came up after the nudge was typed; Enter not retried")
+            t.press(SESSION, index, "Enter")
+    return dict(result="ok", nudge="`%s` is still in its composer after %d Enter retries" % (text, ENTERS))
+
+
 def run_window(request, root, verb):
     """(run record, window index) of a live run of this project and primary, or a refusal reply."""
     found = run_record(request, root)
@@ -779,7 +884,7 @@ def logs_verb(request, root):
 
 HANDLERS = {"version": version_verb, "check": check_verb, "prepare": prepare, "seed": seed, "job": job,
             "result": result, "spawn": spawn_verb, "probe": probe_verb, "kill": kill_verb, "attach": attach_verb,
-            "capture": capture_verb, "logs": logs_verb}
+            "capture": capture_verb, "logs": logs_verb, "pull": pull_verb, "send": send_verb}
 
 
 def confined(root, path):

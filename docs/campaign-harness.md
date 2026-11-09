@@ -650,6 +650,13 @@ python3 environments/terminal/remote/lab/crew-lab-scenarios.py "$SANDBOX/state/m
   reports the lost job done, and a fresh job passes. `partition` disconnects
   a role host: over real SSH it is `unreachable`, placement queues a role
   run that needs it rather than placing it elsewhere, and the item's claim
+  file is unchanged. `status-pull` (#346) starts a stub role run in the
+  runner's session that writes a status line every half second and acks
+  each typed nudge. The toolkit's own offset pull is `unreachable` behind a
+  `disconnect` while the run keeps writing; after reconnect, a repeated
+  pull and a fresh primary module, the mirror holds every line once and in
+  order, and a `send` through the host returns its ack through the mirror.
+  Reconcile waits for #347.
   file is unchanged. Remote role runs and their reconcile wait for #345 and
   #347.
 - **Attach (#348).** A run is planted as the runner account in the
