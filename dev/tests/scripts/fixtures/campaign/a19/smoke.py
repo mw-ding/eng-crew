@@ -81,6 +81,8 @@ def smoke(engine, adapter, backend, mod, rec):
         mod.new_session(session, name, wt, env, 'exec %s "%s"' % (shlex.join(argv), shared.POINTER))
         shared.wait_harness(session, 0, name, adapter.EXECUTABLE, 60)
         run = dict(shared.identity(session, 0), index=0, harness=adapter.EXECUTABLE)
+        if not run["pane_id"]:
+            raise RuntimeError("launch: the run exited before its identity was read")
         steps["launch"] = "ok: %s pid %s" % (run["pane_id"], run["pane_pid"])
         said = lambda word: os.path.exists(status) and word in open(status).read().split()  # noqa: E731
         ready = wait(lambda: said("ready") or not mod.has_session(session), 300) and said("ready")
