@@ -678,6 +678,13 @@ python3 environments/terminal/remote/lab/crew-lab-scenarios.py "$SANDBOX/state/m
   simulated, and the sample checks and the partition's claim and identity
   are labelled stubs. A scenario `--only` left out is `skipped` with
   `evidence: false`, so it supplies no evidence for #207 or #345–#348.
+- **Opt-in CI.** The `lab` job in `.github/workflows/ci.yml` (M20.1 lab H,
+  #1362) runs on a PR labelled `lab`, from its next push, on an ARM64 runner.
+  It pulls `LAB_BASE`, a repo variable naming the owner-approved base image
+  pinned by digest, builds the lab image, and runs setup, every scenario and
+  teardown, keeping `state/lab` as the `lab-evidence` artifact. With no
+  `LAB_BASE`, Docker or ARM64 it records `lab: skipped (<why>); no lab
+  evidence` and passes. It is no required check; the other jobs still run.
 
 ### Level c: owner-run devices and second environment
 
