@@ -9,6 +9,9 @@ build to a builder worker through the builder lead; that worker runs `build --tr
 synthesizer keeps landing. `close` also ends a delegated train that never got a record.
 `build` and `bisect` refuse before any clone, branch or PR when the change backend declares
 strategy.update_from_base = "rebase".
+Membership is decided before the push (#1425): drops leaving one member under lone_pr_land = "direct" close the
+train unpushed (`path=direct`, collapsed-to-direct) for the synthesizer's direct land, and `check`'s `train-merge`
+gate runs the build's drop checks per PR on the default branch with merge-tree.
 
 Usage: mdstack train build PR... [--after N] [--no-wait] [--local] | build --train N | delegate PR... [--after N] | check PR...
        | wait N | land N PR [--mirror-deferred] | close N | route N | bisect N
@@ -23,6 +26,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from crew_shared import (checkout, commands, coordinator_window, fetch, GATEWAY, gateway_error, git, load, NAMES, ownership, profile,
                          require_ownership, runs)
@@ -343,12 +347,20 @@ def train_build(args, values, state, repo, slug):
                                    "verified_base": verified_base, "verified_head": verified_head, "updated_base": before,
                                    "approval": "selfgate" if lane else "verdict"})
         rec["sha"] = git(wt, "rev-parse", "HEAD")
+        rec["path"] = "train" if rec["members"] else "none"
+        # Membership is decided before the push (#1425): drops that leave one member on the default branch under
+        # lone_pr_land = "direct" close the train unpushed; the synthesizer lands that PR directly (land rules).
+        if (len(rec["members"]) == 1 and rec["dropped"] and not args.after and not getattr(args, "no_collapse", False)
+                and values.get("runtime.options.lone_pr_land", "train") == "direct"):
+            rec.update(path="direct", closed=True, path_reason="collapsed-to-direct: train %d dropped %s" % (
+                n, ", ".join("#%d (%s)" % (d["pr"], d["reason"]) for d in rec["dropped"])))
         skip_local = not (args.local or values.get("runtime.options.train_local_checks", False))
-        failed, tail = train_local_checks(wt) if rec["members"] and not skip_local else ("none", [])
+        train = rec["path"] == "train"
+        failed, tail = train_local_checks(wt) if train and not skip_local else ("none", [])
         rec["local"] = "pass" if failed is None else "none" if failed == "none" else "fail " + failed
-        if rec["members"] and skip_local:
+        if train and skip_local:
             rec["local"] = "skipped"
-        if rec["members"] and failed in (None, "none"):
+        if train and failed in (None, "none"):
             if not require_ownership(values, "write"):
                 return 1
             git(wt, "push", "-q", "origin", "HEAD:refs/heads/" + rec["branch"])
@@ -390,10 +402,13 @@ def train_build(args, values, state, repo, slug):
         print("deferred pr=%d reason=%s" % (d["pr"], d["reason"]))
     for link in rec["ci_links"]:
         print("ci-link %s" % link)
+    if rec["path"] == "direct":
+        train_route(args, values, state, repo, slug, rec)  # closed unpushed: its drops route to merge-up now
+        print("direct pr=%d head=%s reason=%s" % (rec["members"][0]["pr"], rec["members"][0]["head"], rec["path_reason"]))
     print("train n=%d branch=%s base=%s sha=%s pr=%s local=%s ci=%s" % (
         n, rec["branch"], base, rec["sha"], rec["pr"] or "none", rec["local"].replace(" ", ":"), rec["ci"]))
     print(train_report(rec))
-    return 0 if rec["ci"] in ("pass", "pending") else 1
+    return 0 if rec["ci"] in ("pass", "pending") or rec["path"] == "direct" else 1
 
 
 def train_bisect(args, values, state, repo, slug):
@@ -408,7 +423,7 @@ def train_bisect(args, values, state, repo, slug):
     result = rec["bisect"] = {"trains": [], "culprits": [], "remaining": None}
     heads = {m["pr"]: m["head"] for m in rec["members"]}
     options = argparse.Namespace(**vars(args))
-    options.after, options.no_wait, options.train = None, False, None
+    options.after, options.no_wait, options.train, options.no_collapse = None, False, None, True  # diagnostic trains
 
     def build(prs, diagnostic=True):
         if any(fetch(repo, "pull/%d/head" % pr) != heads[pr] for pr in prs):
@@ -488,9 +503,36 @@ def train_predecessor(args, values, state, repo, slug, rec):
     return None, expected
 
 
+def train_premerge(clone, base, head, verified_base, verified_head):
+    """Survey-time pre-filter (#1425): train build's per-member drop checks for one PR on base, without a worktree
+    merge (merge-tree in a clone without info/attributes); the drop reason, or None when it would stay a member."""
+    if not verified_base and verified_head != head:
+        return "no-verified-base"
+    tree = subprocess.run(["git", "-C", clone, "-c", "core.attributesFile=" + os.devnull, "merge-tree", "--write-tree",
+                           "--no-messages", base, head], capture_output=True, text=True)
+    if tree.returncode:
+        return "conflict"
+    if verified_base and not commands()["content"].identical(clone, verified_base, verified_head, base,
+                                                             tree.stdout.split()[0]):
+        return "content-different"
+    return None
+
+
 def train_check(args, values, state, repo, slug):
     """Read-only, conservative pre-check. Manual gates remain explicit; land always re-checks §7."""
-    poll, blocked = commands()["poll"], False
+    poll = commands()["poll"]
+    clone = tempfile.mkdtemp(prefix="train-check-")
+    try:
+        git(repo, "clone", "-q", "--shared", "--bare", repo, clone)
+        with contextlib.suppress(FileNotFoundError):
+            os.remove(os.path.join(clone, "info", "attributes"))
+        return train_check_prs(args, values, state, repo, slug, poll, clone)
+    finally:
+        shutil.rmtree(clone, ignore_errors=True)
+
+
+def train_check_prs(args, values, state, repo, slug, poll, clone):
+    blocked, base = False, fetch(repo, values["repo.default_branch"])
     for pr in args.items:
         view = poll.gh_json("pr", "view", str(pr), "-R", slug, "--json", poll.PR_FIELDS +
                             ",commits,comments,mergeable,body,files,isDraft,baseRefName,closingIssuesReferences")
@@ -595,6 +637,16 @@ def train_check(args, values, state, repo, slug):
         results["linkage"] = ("manual", "verify Closes linkage or protocol exemption")
         results["runtime"] = ("manual", "verify runtime gates and synthesizer inbox holds")
         results["tested-base"] = ("manual", "train supplies tested-base evidence at serial land")
+        try:
+            fetch(repo, "pull/%d/head" % pr)
+            for ref in (verified_base, verified_head):
+                if ref:
+                    fetch(repo, ref)
+            drop = train_premerge(clone, base, head, verified_base, verified_head)
+        except RuntimeError as e:
+            drop = "unreadable: %s" % e
+        results["train-merge"] = ("pass", "merges onto %s with the verified patch" % base[:7]) if not drop else (
+            "blocked", "%s on %s: route to merge-up before training" % (drop, base[:7]))
         for gate, (status, reason) in results.items():
             print("gate pr=%d sha=%s name=%s status=%s reason=%s" % (pr, head, gate, status, json.dumps(reason)))
             blocked |= status == "blocked"
@@ -639,12 +691,14 @@ def train_merge_record(values, rec, i, m, merge, permission, mirror_deferral="no
 
 
 def train_report(rec):
-    return "train-report n=%d members=%s landed=%s dropped=%s stop=%s" % (
+    path = rec.get("path", "train")
+    return "train-report n=%d members=%s landed=%s dropped=%s stop=%s path=%s" % (
         rec["n"], ",".join(str(m["pr"]) for m in rec["members"]) or "none",
         ",".join(str(m["pr"]) for m in rec.get("landed", [])) or "none",
         ",".join("%s:%s" % (d["pr"], d["reason"]) for d in rec["dropped"]) or "none",
         re.sub(r"\s+", ":", rec.get("stopped", {}).get("reason", "ci=" + rec["ci"] if rec["ci"] not in ("pass", "none") else
-                                             rec["local"] if rec["local"].startswith("fail") else "none")))
+                                             rec["local"] if rec["local"].startswith("fail") else "none")),
+        {"direct": "direct:collapsed-to-direct", "none": "none:no-member"}.get(path, path))
 
 
 def train_transient(reason):

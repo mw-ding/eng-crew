@@ -61,6 +61,8 @@ Recorded urgency takes precedence over batching below; an open stop still blocks
   no open rereview or hold, sensitive merge-ok, mirror and `MERGEABLE`.
   Record `Tested-with-default-branch waiver: lone_pr_land=direct, exactly one ready PR`
   and `Land rule: alone, direct` in the merge post, then perform step 4.
+  A train whose drops left one member (`path=direct`, `collapsed-to-direct`)
+  lands this way; its merge post also copies the record's `path_reason`.
 - With `lone_pr_land = "direct"`, two or more ready PRs use a merge train,
   regardless of `train_min`. With `lone_pr_land = "train"`, use the rules below.
 - An urgent ready PR (a release blocker, a security fix or an owner
