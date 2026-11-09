@@ -1,7 +1,7 @@
 ---
 type: fixed
 issue: 1433
-pr: TBD
+pr: 1511
 date: 2026-11-09
 box-skill: deferred to #140 (profile mirror_deferral)
 ---
