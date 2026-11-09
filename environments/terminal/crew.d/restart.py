@@ -1,5 +1,7 @@
 """`mdstack restart` restarts a dead or missing run once (a builder even after `done:`, as its PR's fix pass; `done:` is
-terminal only for reviewer and synthesizer runs), in its own worktree when it holds unlanded work.
+terminal only for reviewer and synthesizer runs), in its own worktree when it holds unlanded work. A run on a role
+host (#345) is probed, checked and relaunched there; a clean one is removed there and spawned again, so placement
+runs again.
 
 Usage: mdstack restart WINDOW --project FILE [--org-profile FILE]
 """
@@ -9,8 +11,8 @@ import re
 import shlex
 import time
 from crew_shared import (
-    BANDS, finished, harness, heartbeat, identity, kill_run, LAUNCH, main, POINTER, probe, profile, runs, show_icon,
-    tmux, unlanded, wait_harness, window_env)
+    BANDS, finished, harness, heartbeat, identity, kill_run, LAUNCH, main, POINTER, probe, profile, remote_run, runs,
+    show_icon, tmux, unlanded, wait_harness, window_env)
 
 
 def relaunch(values, session, state, name, rec, items, timeout, project):
@@ -46,6 +48,22 @@ def relaunch(values, session, state, name, rec, items, timeout, project):
     return 0
 
 
+def relaunch_remote(values, state, name, rec, items):
+    """Restart a run on its role host in its own worktree, which holds unlanded work; the brief travels again."""
+    reply = remote_run.spawn(values, state, name, rec, os.path.join(state, "runs", name + ".brief.md"))
+    if reply["result"] != "ok":
+        print("crew: refusing restart on %s: %s: %s; worktree, claim and run record kept" % (
+            rec["host"], reply["result"], reply.get("reason") or reply.get("error")))
+        return 1
+    rec.update({k: reply[k] for k in ("pane_id", "pane_pid", "pane_start")}, restarts=1,
+               start=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
+    with open(os.path.join(state, "runs", name + ".json"), "w") as f:
+        json.dump(rec, f, indent=2)
+    print("crew: restarted %s on %s in its worktree %s, keeping unlanded work:\n  %s" % (
+        name, rec["host"], rec["worktree"], "\n  ".join(items)))
+    return 0
+
+
 def register(sub):
     p = sub.add_parser("restart")
     p.add_argument("window")
@@ -61,7 +79,9 @@ def run(args):
     if rec is None:
         print("crew: no run %s" % args.window)
         return 1
-    cls = probe(session, args.window, rec, dict((n, i) for i, n in tmux.list_windows(session)))
+    host = remote_run.host_of(rec)
+    cls = remote_run.probe(values, args.window, rec) if host else \
+        probe(session, args.window, rec, dict((n, i) for i, n in tmux.list_windows(session)))
     last = heartbeat(state, args.window)[0]
     problem = ("%s is %s; only dead or missing runs restart" % (args.window, cls) if cls not in ("dead", "missing")
                else "%s finished (%s); use mdstack kill" % (args.window, last) if finished(rec, last)
@@ -75,14 +95,23 @@ def run(args):
     if done:  # its PR is open: restart as that PR's fix pass, never a second build pass (#234 N2)
         a = {**a, "pr": int(done.group(1)), "pass": "fix"}
         rec.update({"args": a, "pass": "fix", "item": "issue #%s, PR #%d" % (a["issue"], a["pr"])})
-    try:
-        items = unlanded(values, rec, wt) if wt and os.path.isdir(wt) else []
-    except RuntimeError as e:
-        items = ["unchecked: %s" % e]
+    if host:  # the host stops the run, then removes the worktree only when it is clean
+        reply = remote_run.kill(values, args.window, rec)
+        if reply["result"] != "ok":
+            print("crew: refusing restart on %s: %s: %s" % (host, reply["result"], reply.get("reason") or reply.get("error")))
+            return 1
+        items = reply["unlanded"]
+    else:
+        try:
+            items = unlanded(values, rec, wt) if wt and os.path.isdir(wt) else []
+        except RuntimeError as e:
+            items = ["unchecked: %s" % e]
     if items:  # never delete unlanded work (#172): relaunch in the same worktree and claim instead
         if done:
             with open(os.path.join(state, "runs", args.window + ".brief.md"), "a", encoding="utf-8") as f:
                 f.write("- Restarted after done: as Pass fix, Item %s\n" % rec["item"])
+        if host:
+            return relaunch_remote(values, state, args.window, rec, items)
         return relaunch(values, session, state, args.window, rec, items, args.timeout, args.project)
     if kill_run(values, session, state, args.window):
         return 1

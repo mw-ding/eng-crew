@@ -10,7 +10,9 @@ train N (#1391); its Item names the delegation record.
 With a [hosts] inventory, placement (_placement.py, docs/runtimes/multi-device.md#placement, #207) picks the host and
 engine from the profile and live host facts, queues with one reason per host, or refuses; the run record keeps host,
 placement and rejections. --host H --reason TEXT overrides the host and posts the reason on the item first; a failed
-post spawns nothing. A host other than the primary refuses until remote run lifecycle (#345) lands.
+post spawns nothing. On a role host (#345, _remote.py) the host fetches the head into its mirror, adds the worktree and
+starts the harness in its runner's session; the brief (its Worktree line names the host's path) and the PR's review
+files travel in the call, and the run record (`remote`), claim and brief copy stay on the primary.
 
 Usage: mdstack spawn ROLE --issue N | --pr N | --sweep | --docs-pass | --train N [--pass PASS] [--round K] [--tier T] [--host H --reason TEXT] --project FILE [--org-profile FILE]
 """
@@ -22,7 +24,8 @@ import shlex
 import time
 from crew_shared import (
     BANDS, brief_src, checkout, commands, ENGINE_CMD, fetch, git, harness, identity, kill_run, LAUNCH, NAMES, over_cap, PASSES, POINTER,
-    load, profile, queue_lock, role_notes, ROLES, runs, show_icon, tmux, wait_harness, window_env, open_trains, synthesizer_work)
+    load, profile, queue_lock, remote_run, role_notes, ROLES, runs, show_icon, tmux, wait_harness, window_env, open_trains,
+    synthesizer_work)
 
 placement = load("crew_placement", "environments/terminal/crew.d/_placement.py")
 
@@ -232,10 +235,10 @@ def run(args):
     if placed["result"] == "queue":
         return enqueue(state, args, pass_, placed["reason"])
     primary = next((h for h in placement.inventory(values) if placement.setting(values, h, "primary", False)), None)
-    if placed["result"] == "refuse" or placed["host"] != primary:
-        print("crew: refusing spawn: placement: " + (placed["reason"] if placed["result"] == "refuse" else
-              "%s placed on %s; remote run lifecycle is #345" % (name, placed["host"])))
+    if placed["result"] == "refuse":
+        print("crew: refusing spawn: placement: " + placed["reason"])
         return 1
+    remote = placed["host"] if placed["host"] != primary else None
     engine, model, effort = placed["engine"], placed["model"], values["engines.%s.effort" % args.tier]
     if override and not post_override(values, args, name, placed["host"], reason):
         print("crew: refusing spawn: override reason not posted on the item")
@@ -262,13 +265,17 @@ def run(args):
     if milestones:
         item += "; milestone close: " + ", ".join("%s milestone %d (%s)" % (m["repo"], m["number"], m["title"])
                                                   for m in milestones)
-    wt = os.path.join(os.path.abspath(values["paths.worktree_root"]), "%s-%s-%s-%s%s" % (
-        args.pr or args.issue or ("train%d" % train if train else "docs" if docs_pass else instance or "sweep"), sha[:7], role, "r%d-" % args.round if data["lifetime"] == "pass" else "", pass_))
-    rec = {"index": free[0], "role": role, "item": item, "pass": pass_, "repo": repo, "worktree": None, "claim": claim,
+    wt_name = "%s-%s-%s-%s%s" % (
+        args.pr or args.issue or ("train%d" % train if train else "docs" if docs_pass else instance or "sweep"), sha[:7], role, "r%d-" % args.round if data["lifetime"] == "pass" else "", pass_)
+    wt = os.path.join(placement.setting(values, remote, "root", "~/.mdstack"), "wt", wt_name) if remote else \
+        os.path.join(os.path.abspath(values["paths.worktree_root"]), wt_name)
+    rec = {"index": None if remote else free[0], "role": role, "item": item, "pass": pass_, "repo": repo, "worktree": None, "claim": claim,
            "engine": engine, "model": model, "effort": effort, "harness": ENGINE_CMD[engine], "head": sha,
            "host": placed["host"], "placement": placed["placement"], "rejections": placed["rejections"]}
     if override:
         rec["override_reason"] = reason
+    if remote:  # its window and worktree are on the host; the run record, claim and brief copy stay here
+        rec["remote"] = True
     if role == "reviewer":  # the brief's verdict file, removed by mdstack kill
         rec["verdict"] = os.path.join(state, "verdicts", "pr%d-%s-r%d-%s.md" % (args.pr, sha[:7], args.round, pass_))
 
@@ -279,15 +286,16 @@ def run(args):
     save()
     try:
         real, top = os.path.realpath(wt), os.path.realpath(repo)
-        if real == top or real.startswith(top + os.sep):
+        if not remote and (real == top or real.startswith(top + os.sep)):
             raise RuntimeError("crew: refusing spawn: %s is inside the primary checkout %s" % (wt, repo))
-        if os.path.lexists(wt):
+        if not remote and os.path.lexists(wt):
             raise RuntimeError("crew: refusing spawn: %s exists" % wt)
-        os.makedirs(os.path.dirname(wt), exist_ok=True)
-        git(repo, "worktree", "add", "-q", "--detach", wt, sha)
-        rec["worktree"] = wt
-        save()
-        exclude_crew(wt)
+        if not remote:
+            os.makedirs(os.path.dirname(wt), exist_ok=True)
+            git(repo, "worktree", "add", "-q", "--detach", wt, sha)
+            rec["worktree"] = wt
+            save()
+            exclude_crew(wt)
         brief = os.path.join(state, "runs", name + ".brief.md")
         with open(src, encoding="utf-8") as f, open(brief, "w", encoding="utf-8") as out:
             out.write(f.read() + commands()["brief"].run_block([
@@ -313,16 +321,26 @@ def run(args):
         with open(brief, "a", encoding="utf-8") as out:
             out.write(notes)
         argv = harness(engine, model, effort, wt, state, values["runtime.options.permission_mode"], values)
-        tmux.new_window(session, free[0], name, wt, window_env(values, state, role, name, brief, args.project),
-                        LAUNCH % (shlex.join(argv), prompt))
-        show_icon(values, session, free[0], role)
-        wait_harness(session, free[0], name, ENGINE_CMD[engine], args.timeout)
+        if remote:  # the launch policy above still refuses here; the host builds the argv from the same fields
+            rec["worktree"] = wt
+            save()
+            reply = remote_run.spawn(values, state, name, rec, brief, wt_name, "refs/pull/%d/head" % args.pr
+                                    if args.pr else "refs/heads/" + values["repo.default_branch"])
+            if reply["result"] != "ok":
+                raise RuntimeError("crew: refusing spawn on %s: %s: %s" % (remote, reply["result"], reply.get(
+                    "reason") or reply.get("error")))
+            rec.update({k: reply[k] for k in ("worktree", "pane_id", "pane_pid", "pane_start")})
+        else:
+            tmux.new_window(session, free[0], name, wt, window_env(values, state, role, name, brief, args.project),
+                            LAUNCH % (shlex.join(argv), prompt))
+            show_icon(values, session, free[0], role)
+            wait_harness(session, free[0], name, ENGINE_CMD[engine], args.timeout)
     except (RuntimeError, OSError) as e:
         kill_run(values, session, state, name)
         print(e)
         return 1
     rec["start"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-    rec.update(identity(session, free[0]), args=dict({"issue": args.issue, "pr": args.pr, "pass": pass_,
+    rec.update({} if remote else identity(session, free[0]), args=dict({"issue": args.issue, "pr": args.pr, "pass": pass_,
                                                       "round": args.round, "tier": args.tier}, **({"sweep": True} if sweep else {"docs_pass": True} if docs_pass else
                                                                                {"train": train} if train else {})))
     save()
@@ -330,5 +348,6 @@ def run(args):
         commands()["schedule"].release(state, role, ["#%d" % n for n in (args.issue, args.pr) if n])
     if milestones:
         commands()["poll"].triage_take(state, milestones)
-    print("crew: started %s (window %d, %s %s %s) in %s" % (name, free[0], engine, model, effort, wt))
+    print("crew: started %s (%s, %s %s %s) in %s" % (name, "on " + remote if remote else "window %d" % free[0], engine,
+                                                    model, effort, rec["worktree"]))
     return 0

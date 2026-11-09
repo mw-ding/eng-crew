@@ -116,7 +116,7 @@ class Entrypoint(Base):
             (self.request("logs", log_path="link/outside"), "path outside root"),
             (self.request("logs", path=["a"]), "path outside root"),
             (self.request("spawn"), "needs a request id"), (self.request("spawn", request_id="../x"), "needs a request id"),
-            (self.request("probe", path="wt/run", root=self.root), "verb probe not built"),
+            (self.request("pull", path="wt/run", root=self.root), "verb pull not built"),
         ]
         for request, reason in cases:
             with self.subTest(request=request):
@@ -196,7 +196,7 @@ class Client(Base):
                                                                 os=remote.UNAMES.get(platform.system(), platform.system().lower())))
         subprocess.run([sys.executable, SCRIPT, "--root", self.root, "runner", "--once"], check=True)
         self.assertEqual(remote.call("host-b", "version")["runner"], "up")
-        self.assertIn("not built", remote.call("host-b", "spawn")["reason"])
+        self.assertIn("not built", remote.call("host-b", "logs")["reason"])
         self.assertIn("path outside root", remote.call("host-b", "logs", path="../x")["reason"])
 
 
@@ -865,6 +865,139 @@ class RealSshConfig(Base):
                      "userknownhostsfile %s/known_hosts" % self.tmp, "stricthostkeychecking true", "batchmode yes",
                      "forwardagent no", "forwardx11 no", "clearallforwardings yes"):
             self.assertIn(line, lines)
+
+
+class RunLifecycle(Mirror):
+    """#345: spawn, probe and kill a role run in the runner's session; the worktree guards hold on the host."""
+    def setUp(self):
+        super().setUp()
+        self.assertEqual(remote.call("host-b", "prepare", project="acme__widgets", root=self.root)["result"], "ok")
+        remote.runner(self.root, once=True)
+        self.pane()
+        self.sha = self.head(self.origin)
+        self.wt = os.path.join(self.root, "wt", "7-%s-builder-build" % self.sha[:7])
+        self.state = os.path.join(self.root, "state", "acme__widgets")
+
+    def pane(self):
+        """A live pane process whose group stop() can end: orphaned, so init reaps it."""
+        out = subprocess.run(["sh", "-c", "sleep 60 >/dev/null 2>&1 & echo $!"], capture_output=True, text=True,
+                             start_new_session=True).stdout.strip()
+        self.pid = int(out)
+        os.environ["FAKE_TMUX_PANE"] = "%%1 %d 0 0 /dev/ttys001 claude" % self.pid
+        self.addCleanup(lambda pid=self.pid: subprocess.run(["kill", "-9", str(pid)], capture_output=True))
+
+    def spawn(self, request_id=None, **fields):
+        request = dict(project="acme__widgets", window="ben-7", primary="host-a", role="builder",
+                       engine="claude-code", model="opus", effort="high", permission_mode="bypass",
+                       identity="acme-bot", brief="# Brief\n", worktree_path="wt/" + os.path.basename(self.wt),
+                       sha=self.sha, ref="refs/heads/main", verdicts={"pr9-%s-r1-review.md" % self.sha[:7]: "review\n"})
+        return remote.call("host-b", "spawn", request_id=request_id, **dict(request, **fields))
+
+    def kill(self, **fields):
+        return remote.call("host-b", "kill", **dict(dict(project="acme__widgets", window="ben-7", primary="host-a",
+                                                         refs=["refs/heads/main"]), **fields))
+
+    def probe(self, **fields):
+        return remote.call("host-b", "probe", **dict(dict(project="acme__widgets", window="ben-7", primary="host-a"),
+                                                     **fields))
+
+    def windows(self):
+        return self.load(os.environ["FAKE_TMUX_STATE"])["crew-host"]
+
+    def test_spawn_starts_in_the_runner_session_once(self):
+        reply = self.spawn("spawn-1")
+        self.assertEqual((reply["result"], reply["worktree"], reply["pane_pid"]), ("ok", self.wt, str(self.pid)))
+        self.assertEqual(self.windows(), {"0": "runner", "1": "acme__widgets/ben-7"})
+        self.assertEqual(self.spawn("spawn-1"), reply)  # a retried request id never opens a second window
+        self.assertEqual(self.windows(), {"0": "runner", "1": "acme__widgets/ben-7"})
+        self.assertEqual(self.spawn()["reason"], "run ben-7 exists")
+        self.assertEqual(subprocess.run(["git", "-C", self.wt, "rev-parse", "HEAD"], capture_output=True, text=True)
+                         .stdout.strip(), self.sha)
+        with open(os.path.join(self.state, "runs", "ben-7.brief.md")) as f:
+            self.assertEqual(f.read(), "# Brief\n")
+        with open(os.path.join(self.state, "verdicts", "pr9-%s-r1-review.md" % self.sha[:7])) as f:
+            self.assertEqual(f.read(), "review\n")
+        with open(os.environ["FAKE_TMUX_LOG"]) as f:
+            (launch,) = [json.loads(line) for line in f if '"new-window"' in line]
+        env = dict(a.split("=", 1) for a in launch if a.startswith("CREW_"))
+        self.assertEqual((env["CREW_ID"], env["CREW_STATE"], env["CREW_IDENTITY"]), ("ben-7", self.state, "acme-bot"))
+        self.assertTrue(launch[-1].startswith('export GH_TOKEN="$(gh auth token --user "$CREW_IDENTITY")"; exec claude '))
+        rec = self.load(os.path.join(self.state, "runs", "ben-7.json"))
+        self.assertEqual((rec["primary"], rec["worktree"], rec["pane_id"]), ("host-a", self.wt, "%1"))
+
+    def test_spawn_refusals_start_nothing(self):
+        for fields, reason in ((dict(sha="0" * 40), "stale spawn: refs/heads/main is not " + "0" * 40),
+                               (dict(engine="nope"), "engine or permission_mode not launchable on this host"),
+                               (dict(permission_mode="ask"), "engine or permission_mode not launchable on this host"),
+                               (dict(worktree_path="mirrors/x"), "spawn needs worktree_path=wt/<name>, sha, ref and verdicts"),
+                               (dict(ref="--upload-pack=x"), "spawn needs worktree_path=wt/<name>, sha, ref and verdicts"),
+                               (dict(verdicts={"../x.md": ""}), "spawn needs worktree_path=wt/<name>, sha, ref and verdicts"),
+                               (dict(model="a b"), "spawn needs role, model, effort, identity and brief"),
+                               (dict(relaunch=True), "no run ben-7 to relaunch")):
+            self.assertEqual(self.spawn(**fields), dict(result="refused", reason=reason))
+        self.assertEqual(self.spawn(worktree_path="../x")["reason"], "path outside root")
+        os.remove(os.path.join(self.root, "runner.json"))
+        self.assertEqual(self.spawn()["reason"], "runner down")
+        self.assertEqual(self.windows(), {"0": "runner"})
+        self.assertFalse(os.path.exists(self.wt))
+
+    def test_probe_classes(self):
+        self.assertEqual(self.probe()["liveness"], "missing")
+        self.spawn()
+        self.assertEqual(self.probe()["liveness"], "alive")
+        self.assertEqual(self.probe(primary="host-c")["reason"], "probe run ben-7 belongs to primary host-a")
+        tmux = self.load(os.environ["FAKE_TMUX_STATE"])
+        tmux["_panes"]["crew-host:1"] = "%%1 %d 1 0 /dev/ttys001 claude" % self.pid
+        with open(os.environ["FAKE_TMUX_STATE"], "w") as f:
+            json.dump(tmux, f)
+        self.assertEqual(self.probe()["liveness"], "dead")
+        tmux["_panes"]["crew-host:1"] = "%%2 %d 0 0 /dev/ttys001 claude" % self.pid
+        with open(os.environ["FAKE_TMUX_STATE"], "w") as f:
+            json.dump(tmux, f)
+        self.assertEqual(self.probe()["liveness"], "missing")  # same name, another run
+
+    def test_kill_keeps_unlanded_work_then_discards_on_request(self):
+        self.spawn()
+        with open(os.path.join(self.wt, "a.txt"), "w") as f:
+            f.write("x\n")
+        self.assertEqual(self.kill(primary="host-c")["reason"], "kill run ben-7 belongs to primary host-a")
+        reply = self.kill()
+        self.assertEqual(reply, dict(result="ok", unlanded=["uncommitted: ?? a.txt"], removed=False))
+        self.assertEqual(self.windows(), {"0": "runner"})  # the window stops either way
+        self.assertTrue(os.path.isdir(self.wt))
+        self.assertTrue(os.path.exists(os.path.join(self.state, "runs", "ben-7.json")))
+        self.pane()
+        reply = self.spawn(relaunch=True, brief="# Brief 2\n")  # restart in place: same worktree, fresh brief
+        self.assertEqual((reply["result"], reply["worktree"]), ("ok", self.wt))
+        self.assertEqual(self.windows(), {"0": "runner", "1": "acme__widgets/ben-7"})
+        self.assertTrue(os.path.exists(os.path.join(self.wt, "a.txt")))
+        self.assertEqual(self.kill(keep=True), dict(result="ok", unlanded=[], removed=False))
+        self.assertTrue(os.path.isdir(self.wt))
+        self.assertEqual(self.kill(discard=True), dict(result="ok", unlanded=[], removed=True))
+        self.assertFalse(os.path.exists(self.wt))
+        self.assertEqual(os.listdir(os.path.join(self.state, "runs")), [])
+        self.assertEqual(self.kill(), dict(result="ok", unlanded=[], removed=False))  # already gone
+
+    def test_kill_removes_landed_work_and_lists_unpushed_commits(self):
+        self.spawn()
+        subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@example.invalid", "-C", self.wt, "commit",
+                        "-q", "--allow-empty", "-m", "local"], check=True)
+        reply = self.kill()
+        self.assertEqual(len(reply["unlanded"]), 1)
+        self.assertTrue(reply["unlanded"][0].startswith("commit: ") and reply["unlanded"][0].endswith(" local"))
+        subprocess.run(["git", "-C", self.wt, "push", "-q", "origin", "HEAD:refs/heads/main"], check=True,
+                       capture_output=True)
+        self.assertEqual(self.kill(), dict(result="ok", unlanded=[], removed=True))
+        self.assertFalse(os.path.exists(self.wt))
+        self.assertEqual(self.kill(refs=["main"])["reason"], "kill needs refs, the default branch first")
+
+    def test_kill_never_touches_another_projects_run(self):  # review r1 P1: one runner session, many projects
+        self.spawn()
+        self.assertEqual(self.kill(project="other__project", primary="host-c"),
+                         dict(result="ok", unlanded=[], removed=False))
+        self.assertEqual(self.windows(), {"0": "runner", "1": "acme__widgets/ben-7"})
+        self.assertEqual(self.probe()["liveness"], "alive")
+        self.assertEqual(self.probe(project="other__project")["liveness"], "missing")
 
 
 class Runner(Base):
