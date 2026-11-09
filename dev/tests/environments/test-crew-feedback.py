@@ -101,6 +101,11 @@ class Feedback(Base):
         long = self.feedback(FAKE_GH_LIST="x" * 300)
         self.assertEqual(long.returncode, 1)
         self.assertIn("unreadable answer: %s...\n" % ("x" * 120), long.stdout)
+        token = "ghp_" + "A" * 36  # synthetic; spans the 120-character cut, so it must be redacted before the cut
+        cut = self.feedback(FAKE_GH_LIST="x" * 109 + " " + token, GH_TOKEN=token)
+        self.assertEqual(cut.returncode, 1)
+        self.assertIn("unreadable answer: %s <redacted>\n" % ("x" * 109), cut.stdout)
+        self.assertNotIn("ghp_", cut.stdout)
         empty = self.feedback(FAKE_GH_LIST="")
         self.assertIn("cannot list open cards in acme/mdstack: unreadable answer: empty", empty.stdout)
         self.assertFalse(os.path.exists(self.db))
