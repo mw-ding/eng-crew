@@ -5,7 +5,10 @@ harness adapter-module table rows and the session backend Operations and Capabil
 exactly. Each adapter x row entry is `oracle` (the row's names present; tests replay it), `default` (absent; the spec's
 default applies and tests prove it), `gap` (a quote from its spec section, or an undocumented `finding`) or
 `unsupported` (absent; a quote from its spec section). Refusal and ambiguous `cases` and runtime gaps carry the same
-spec link. Every spec anchor and test must exist; the tests run once per file. Exit 0 only when all of it holds."""
+spec link. `live` holds one entry per harness x backend binding and per runtime's mirror/watch: `evidence` (the source
+SHA, versions and an https `link` to the smoke capture), a `block` naming at least installation, version, account and
+sandbox, with its `link`, or `unsupported` with a quote. Every spec anchor and test must exist; the tests run once per
+file. Exit 0 only when all of it holds."""
 import ast
 import importlib.util
 import json
@@ -103,6 +106,24 @@ for case in ledger["cases"]:
     statuses.append(check(where, {"oracle": True, **case}, True, case["spec"]) and case["kind"])
 for runtime, gaps in ledger["runtimes"].items():
     statuses += [check("%s %s" % (runtime, cap), entry, False, gaps["spec"]) for cap, entry in gaps.items() if cap != "spec"]
+live = {k: v for k, v in ledger.get("live", {}).items() if k != "spec"}
+bindings = sorted(["%s/%s" % (h, b) for h in ledger["harness"]["adapters"] for b in ledger["backend"]["adapters"]] +
+                  ["%s/mirror-watch" % r for r in ledger["runtimes"]])
+if sorted(live) != bindings:
+    errors.append("live bindings: ledger %s, shipped %s" % (sorted(live), bindings))
+for binding, entry in sorted(live.items()):
+    kind = next((k for k in ("evidence", "block", "unsupported") if k in entry), None)
+    if kind == "unsupported":
+        statuses.append(check("live " + binding, entry, False, entry.get("spec", "")))
+        continue
+    if kind is None or not str(entry.get("link", "")).startswith("https://"):
+        errors.append("live %s: needs evidence or a block, with an https link to its capture" % binding)
+    if kind == "evidence" and not (re.fullmatch(r"[0-9a-f]{40}", entry.get("source", "")) and entry.get("versions")):
+        errors.append("live %s: evidence needs the source SHA and the versions" % binding)
+    if kind == "block" and not {"account", "installation", "sandbox", "version"} <= set(entry["block"]):
+        errors.append("live %s: a block names installation, version, account and sandbox" % binding)
+    statuses.append("live-" + str(kind))
+    print("%-44s %-11s %s" % ("live " + binding, str(kind).upper(), entry.get("link", "")))
 
 by_file = {}
 for t in tests:
@@ -121,7 +142,8 @@ for path, ids in sorted(by_file.items()) if run_tests else []:
     print("replay %s: %d test(s), exit %d" % (path, len(ids), r.returncode))
     if r.returncode:
         errors.append("replay %s failed:\n%s" % (path, r.stderr[-2000:]))
-counts = {s: statuses.count(s) for s in ("oracle", "default", "gap", "unsupported", "refusal", "ambiguous")}
+counts = {s: statuses.count(s) for s in ("oracle", "default", "gap", "unsupported", "refusal", "ambiguous",
+                                         "live-evidence", "live-block")}
 print("A19: %d harness x %d rows, %d backends x %d rows; %s; tests %s" % (
     len(ledger["harness"]["adapters"]), len(harness), len(ledger["backend"]["adapters"]), len(backend),
     ", ".join("%s %d" % kv for kv in counts.items()), "%d replayed" % ran if run_tests else "not run"))
