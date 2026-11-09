@@ -185,7 +185,6 @@ Merge train (tmux doc, mdstack train):
   the coordinator early. This snapshot never replaces the land-time check.
   A blocked `train-merge` gate (conflict or changed patch on main) goes to
   its builder for a merge-up first, as an alone-land conflict does.
-  Blocked `release-cut` (#1433): update-branch the cut; never land it direct.
 - Delegate: a builder builds every train. Run
   `$CREW_BIN train delegate <pr>... --project "$CREW_PROJECT"` in
   `Depends on` then approval order, only ready candidates. It reserves
