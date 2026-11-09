@@ -326,8 +326,10 @@ def validate_hosts(profile, top, err):
         hosts[name] = dict(caps, primary=h.get("primary", False), forge=forge,
                            roles=h.get("roles", list(PLACED_PASSES)) if forge else [])
     rt = profile.get("runtime")
-    if "hosts" in top and isinstance(rt, dict) and rt.get("name") not in (None, "tmux"):
-        err("hosts", "a host inventory needs runtime tmux, got %r" % rt.get("name"))
+    if "hosts" in top and isinstance(rt, dict) and rt.get("name") not in (None, "tmux", "session"):
+        err("hosts", "a host inventory needs runtime tmux or session, got %r" % rt.get("name"))
+    if "placement" in top and isinstance(rt, dict) and rt.get("name") == "session":  # host check only (#1122)
+        err("placement", "placement needs runtime tmux, got 'session'")
     primaries = [n for n, h in hosts.items() if h["primary"]]
     if "hosts" in top and len(primaries) != 1:
         err("hosts", "expected exactly one host with primary = true, got %d" % len(primaries))

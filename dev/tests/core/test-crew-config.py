@@ -1964,9 +1964,13 @@ class HostInventoryTest(unittest.TestCase):
                          + runner.replace('os = "linux"', 'os = "linux", devices = ["ios-simulator"]'),
                          "crew.toml:placement.rules[0].needs: no host taking role reviewer meets these needs")
 
-    def test_hosts_need_tmux(self):
+    def test_hosts_need_tmux_or_session(self):
         grok = VALID.replace('name = "tmux"\noptions = { builders = 3 }', 'name = "grok-bot"')
-        self.assertFails(grok + HOSTS, "crew.toml:hosts: a host inventory needs runtime tmux, got 'grok-bot'")
+        self.assertFails(grok + HOSTS, "crew.toml:hosts: a host inventory needs runtime tmux or session, got 'grok-bot'")
+        session = VALID.replace('name = "tmux"\noptions = { builders = 3 }', 'name = "session"')
+        self.assertFails(session + HOSTS, "crew.toml:placement: placement needs runtime tmux, got 'session'")
+        code, lines = validate(session + HOSTS.split("[placement]")[0])
+        self.assertEqual(code, 0, lines)
 
     def test_resolve_merges_hosts_across_layers(self):
         org = HOSTS.split("[placement]")[0]

@@ -42,6 +42,13 @@ are tmux-only too, since every `mdstack train` action refuses a session
 profile: the synthesizer brief lands each ready PR alone, one per run, and
 `train_min`, `train_window` and `train_local_checks` have no effect.
 
+A session profile may carry a `[hosts]` inventory, without `[placement]`.
+`mdstack host check` and `mdstack host prepare` then run as for tmux: the
+primary gets `mdstack doctor`'s session rows, the engine login rows and the
+project mirror row, with load 0 since session workers hold no tmux windows;
+any other host gets the same remote rows as under tmux (#1122). Other host
+and runtime commands (`hosts`, `layout`, `upgrade`) stay tmux-only.
+
 With `repo.control_item` set, a GitHub issue or a tracker-native item, the
 coordinator brief carries the ownership guard and the handoff steps. Without
 one, `mdstack ownership` always permits, so the render drops that inert text:
