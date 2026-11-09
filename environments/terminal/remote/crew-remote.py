@@ -674,8 +674,8 @@ def probe_verb(request, root):
     rec, index = found[2], find_window(request)
     p = tmux().pane(SESSION, index) if rec and index is not None else None
     liveness = ("missing" if rec is None or index is None else "ambiguous" if p is None else "missing"
-                if (p["id"], p["pid"]) != (rec["pane_id"], rec["pane_pid"]) else "dead" if p["dead"] == "1" else
-                "missing" if start_time(p["pid"]) != rec["pane_start"] else "alive")
+                if (p["id"], p["pid"]) != (rec.get("pane_id"), rec.get("pane_pid")) else "dead" if p["dead"] == "1" else
+                "missing" if start_time(p["pid"]) != rec.get("pane_start") else "alive")  # spawn saves before the pane
     return dict(result="ok", liveness=liveness)
 
 
