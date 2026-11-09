@@ -6,6 +6,7 @@ No network or real host: a fake `ssh` on PATH either replies from the environmen
 locally (a simulated host), and a fake `tmux` holds the runner's session.
 """
 import base64
+import hashlib
 import importlib.util
 import io
 import json
@@ -116,7 +117,7 @@ class Entrypoint(Base):
             (self.request("logs", log_path="link/outside"), "path outside root"),
             (self.request("logs", path=["a"]), "path outside root"),
             (self.request("spawn"), "needs a request id"), (self.request("spawn", request_id="../x"), "needs a request id"),
-            (self.request("pull", path="wt/run", root=self.root), "verb pull not built"),
+            (self.request("capture", path="wt/run", root=self.root), "verb capture not built"),
         ]
         for request, reason in cases:
             with self.subTest(request=request):
@@ -998,6 +999,63 @@ class RunLifecycle(Mirror):
         self.assertEqual(self.windows(), {"0": "runner", "1": "acme__widgets/ben-7"})
         self.assertEqual(self.probe()["liveness"], "alive")
         self.assertEqual(self.probe(project="other__project")["liveness"], "missing")
+
+
+class PullSend(RunLifecycle):
+    """#346: pull returns status lines by offset with a prefix digest; send appends the inbox line and nudges once."""
+    def status(self, text, mode="a"):
+        with open(os.path.join(self.state, "status", "ben-7.status"), mode) as f:
+            f.write(text)
+
+    def pull(self, data=b"", **fields):
+        at = dict(offset=len(data), digest=hashlib.sha256(data).hexdigest())
+        return remote.call("host-b", "pull", **dict(dict(project="acme__widgets", windows={"ben-7": at},
+                                                         primary="host-a"), **fields))
+
+    def chunk(self, reply):
+        got = reply["windows"]["ben-7"]
+        return got["offset"], base64.b64decode(got["data"])
+
+    def test_pull_by_offset_resumes_and_resets_on_a_rewritten_file(self):
+        self.spawn()
+        self.status("ack: a\nstep: half")  # a line still being written waits for the next pull
+        reply = self.pull()
+        self.assertEqual((self.chunk(reply), reply["windows"]["ben-7"]["liveness"]), ((0, b"ack: a\n"), "alive"))
+        self.assertEqual(self.chunk(self.pull(b"ack: a\n")), (7, b""))  # a repeated pull adds nothing
+        self.status(" done\nstep: 2\n")
+        self.assertEqual(self.chunk(self.pull(b"ack: a\n")), (7, b"step: half done\nstep: 2\n"))
+        self.assertEqual(self.chunk(self.pull(b"ack: X\n")), (0, b"ack: a\nstep: half done\nstep: 2\n"))  # torn mirror
+        self.status("new run\n", "w")  # a shorter, rewritten file: from 0
+        self.assertEqual(self.chunk(self.pull(b"ack: a\nstep: half done\n")), (0, b"new run\n"))
+        self.assertEqual(self.pull(primary="host-c")["reason"], "pull run ben-7 belongs to primary host-a")
+        self.assertEqual(self.pull(windows={"ben-7": {"offset": -1, "digest": ""}})["reason"],
+                         "pull needs an offset and digest for ben-7")
+        gone = self.pull(windows={"ben-8": {"offset": 0, "digest": hashlib.sha256(b"").hexdigest()}})
+        self.assertEqual(gone["windows"]["ben-8"], dict(offset=0, data="", size=0, liveness="missing"))
+
+    def send(self, request_id=None, **fields):
+        msg = dict(id="20261108T120000Z-abc123", kind="fix", refs=["#9", "a" * 40], **{"from": "ash"},
+                   ts="2026-11-08T12:00:00Z")
+        return remote.call("host-b", "send", request_id=request_id, **dict(dict(
+            project="acme__widgets", window="ben-7", primary="host-a", message=msg), **fields))
+
+    def test_send_appends_the_inbox_line_and_types_the_nudge_once(self):
+        self.assertEqual(self.send()["reason"], "no window ben-7 on this host")
+        self.spawn()
+        self.assertEqual(self.send("send-1"), dict(result="ok", nudge=None))
+        self.assertEqual(self.send("send-1"), dict(result="ok", nudge=None))  # a retried request id acts once
+        with open(os.path.join(self.state, "inbox", "ben-7.jsonl")) as f:
+            (line,) = [json.loads(x) for x in f]
+        self.assertEqual((line["id"], line["refs"]), ("20261108T120000Z-abc123", ["#9", "a" * 40]))
+        with open(os.environ["FAKE_TMUX_LOG"]) as f:
+            typed = [json.loads(x) for x in f if '"send-keys"' in x]
+        self.assertEqual(typed[0], ["send-keys", "-t", "=crew-host:1", "-l", "inbox: 20261108T120000Z-abc123"])
+        self.assertEqual(typed[1:], [["send-keys", "-t", "=crew-host:1", "Enter"]])
+        for message in (dict(id="x"), dict(id="20261108T120000Z-abc123", kind="fix", refs=["--- a/x"], ts="t",
+                                           **{"from": "ash"})):
+            self.assertEqual(self.send(message=message)["reason"],
+                             "send needs a refs-only message {id, kind, refs, from, ts}")
+        self.assertEqual(self.send(primary="host-c")["reason"], "send run ben-7 belongs to primary host-a")
 
 
 class Runner(Base):
