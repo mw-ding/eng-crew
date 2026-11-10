@@ -227,6 +227,23 @@ and the host installs that release under `toolkit/`; `--prune` removes the
 toolkit versions no project on the host pins
 ([host toolkit](../bootstrap.md#host-toolkit)).
 
+### Command checkout
+
+A host whose project checkout is made by its own VCS's clone command (no git
+mirror, no bundle), such as a virtual-filesystem checkout of a large
+monorepo, sets `hosts.<name>.checkout = "command"`
+([profile](../profile.md)). The command is declared on the host, never sent
+over SSH: `<root>/checkout/<owner>__<repo>.json` holds
+`{"argv": [...], "path": "..."}`, `path` relative to `root` or absolute.
+`mdstack host prepare` then sends `prepare` with `checkout=command`, forge-less
+or not; the host runs `argv` with no shell, from `root`, and requires a zero
+exit and `path` to exist, else `fail prepare checkout`. It records
+`state/<owner>__<repo>/checkout.json` and makes the worktree and state
+directories and the toolkit install as for a mirror. `mdstack host check`
+then requires a `project checkout` row in place of `project mirror`: `ok`
+once the command has run and its declared path exists. Run worktrees and
+runner jobs on such a host still need a mirror (follow-up).
+
 `mdstack hosts [--project <config.toml>]` prints one row per host: name,
 primary, OS and arch, devices, engines, roles, ready projects, reachability
 (`reachable`, or `unreachable` since a time) and load (this crew's runs
@@ -237,6 +254,7 @@ Host-side layout under `root`:
 | Path | Holds |
 |---|---|
 | `mirrors/<owner>__<repo>.git` | Project mirror |
+| `checkout/<owner>__<repo>.json` | A [command checkout](#command-checkout)'s declared `argv` and `path`, written by the host's operator |
 | `wt/<n>-<sha7>-<role>-<pass>/` | Run worktrees ([C6](README.md#c6-isolation)) |
 | `state/<owner>__<repo>/` | `status/`, `inbox/` and `verdicts/` of the runs on this host, their run identity and brief, and the runner's request results |
 | `requests/<request-id>.json` | The first reply to each mutating call, replayed on a retry |
