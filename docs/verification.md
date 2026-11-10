@@ -43,13 +43,45 @@ Evidence is **N/A**, with a stated reason, for:
 
 - **Docs-only PRs** and PRs with no behaviour change (comments, renames, a
   moved file, a test-only change that does not alter shipped behaviour). The
-  reason is "no observable behaviour changes".
+  reason is "no observable behaviour changes". A new or changed guard is
+  not exempt: it still needs its
+  [negative control](protocol.md#3-evidence-requirements).
 - A shape the PR does not touch, even if the repo has that shape.
 - A change that cannot be exercised at runtime, such as a CI config edit that
   only runs after merge. Say what was checked instead (a dry run, a lint).
 
 An unreasoned N/A is missing evidence. The verifier may reject an N/A it
 thinks is wrong, as with any criterion.
+
+## Claim scope
+
+These rules bound what a capture proves. They apply to every shape, to the
+builder's claims and to the validator's own.
+
+- **Observation strength (#423).** A claim cannot be stronger than the
+  capture behind it. One read proves only that read: a `grep` that finds
+  nothing on the first page of a paginated list proves absence on that page,
+  not in the list. Partial or truncated output proves only the lines kept.
+  "Verified", "none" and "absent" name the read they rest on (command, scope
+  and head); a wider claim needs a wider read, such as `--paginate` or the
+  full log. Review checks both the evidence and the scope claimed for it.
+  A claim wider than its capture is `disagrees`.
+- **Schema and code equivalence (#424).** When a change adds or changes a
+  validator, and a schema or parser in front of it accepts more than one form
+  of the same value, the evidence includes equivalence cases where they apply:
+  an integral float (`1.0` for `1`), a trailing newline and surrounding
+  whitespace. Normalize the value once, before any semantic check, so the
+  schema and the code agree. For example, a schema accepts the string
+  `"main\n"` and the code compares it to `"main"`, so a protected-branch check
+  is bypassed. Corrected, the value is stripped once at load and the case is
+  refused with the same exit as `"main"`.
+- **Shipped entry point (#373).** A change to a fail-closed tool (a guard,
+  gate, validator or checker that refuses bad input) proves the refusal
+  through the entry point callers run: the shipped script, wrapper or CLI
+  command. Show one accepted and one rejected input; the rejected one exits
+  nonzero. A function-return assertion alone does not show the shipped tool
+  fails closed. A [named test command](#q2-validator-reproduction) counts only
+  if it runs that entry point as a process and asserts its exit code.
 
 ## Duties
 
@@ -68,6 +100,15 @@ thinks is wrong, as with any criterion.
   For list delete with cascade, show the child items are gone too.
 - Evidence added after the PR opens follows the late-evidence and rereview
   rules in [protocol §3](protocol.md#3-evidence-requirements).
+- For each new or changed guard (a test, sweep, pattern or check meant to
+  fail on a bad state), record the negative control required by
+  [protocol §3](protocol.md#3-evidence-requirements): the guard failing on a
+  mutated line or the nearest wrong input, then passing once restored, as the
+  adapter's [fail-then-pass pair](../templates/evidence/cli-exit-stdout.md#negative-control).
+  With no guard added or changed, state N/A with that reason.
+- Apply the [claim scope](#claim-scope) rules: name the read behind each
+  claim, add equivalence cases for a changed validator, and prove a changed
+  fail-closed tool through its shipped entry point.
 - Never put secrets, tokens or private data in evidence. Scrub before posting.
 
 ### Reviewer-validator
@@ -105,7 +146,17 @@ thinks is wrong, as with any criterion.
   verdict is `REQUEST_CHANGES`. For an app with no delete endpoint, the
   validator checks the stated no-delete claim. Docs-only and non-CRUD PRs
   are not held to it.
+- The validator replays each negative control: it runs the mutated pair
+  and sees the guard fail, then the restored pair and sees it pass. Under
+  `evidence = typed`, a new or changed guard without a control, or a control
+  whose mutated run passes, is `disagrees`. Under `inline`, a missing control
+  is a soft 🟡 finding unless an acceptance criterion claims the guard
+  catches the bad state.
 - An N/A is checked for its reason. A wrong N/A is a finding.
+- The validator checks each claim against the [claim scope](#claim-scope)
+  rules: a claim wider than its read, a changed validator without its
+  equivalence cases, or a fail-closed tool proved only by a function return
+  is `disagrees`. Its own `agrees` is bounded the same way.
 - List what was not independently reproduced.
 
 ### Synthesizer

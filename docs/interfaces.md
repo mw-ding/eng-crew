@@ -25,7 +25,7 @@ The runtime side (wake, one consumer, liveness, serial land) is the
 |---|---|---|
 | Open, linked to an item | The new change names its tracker item; landing closes it unless it is an umbrella | I5 |
 | Push | Adds commits to the change branch; never rewrites shared history (under a declared [`rebase` update](#rebase-update-from-base): uploads a new head, every earlier head stays readable) | I3 |
-| Read head | Returns the full 40-character head revision | I3 |
+| Read head | Returns the full 40-character head revision: the published one, never a local commit or an unpublished draft. It is the change's [authoritative revision](protocol.md#6-duties-on-wake-all-roles) | I3 |
 | Read diff paths | Lists the paths changed at head, for path-derived gates | I3 |
 | Read diff (`read-diff`) | Returns the unified diff at head against its merge base, without rename folding, for a role with no checkout to run [content rules](profile.md#content-rules-879) on | I3 |
 | Update from base | Merges the base into the change (never a rebase), making a new head; a backend that declares a [`rebase` update](#rebase-update-from-base) rebases onto the base and uploads instead | I3 |

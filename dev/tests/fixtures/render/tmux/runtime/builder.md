@@ -61,7 +61,10 @@ Build pass:
    in your worktree, handle it as a fix round (below) for its latest verdict
    findings or red CI, then go to step 5.
 2. Read the repo's `AGENTS.md` and the worker brief rules in
-   `<mdstack>/docs/roles.md`.
+   `<mdstack>/docs/roles.md`; if cited docs are unreadable, write
+   `blocked: #<n> spec-unreadable`. A ban on tested sends never blocks your
+   required reporting writes. Rigor comes only from flavor records and path
+   classes; report an unrecorded brief floor as `flavor-unrecorded`.
    Pin the toolchain: `export PATH=<toolchain-bin>:$PATH`. Work only in your
    worktree, on a branch `builder/<n>-` plus a short slug.
    Local checks: a build or fix round runs a targeted set before pushing, not
@@ -99,6 +102,8 @@ Build pass:
    carrying the issue label too. Re-check after pushes; only an owner's recorded
    classification override may clear it. Open a non-draft PR: `gh pr create --base main --head <branch> --title <t> --body-file <file>`, body per §3, written once, never
    edited; label it `crew:in-review`. Evidence is inline in the body.
+   After each push, read the head back (`gh pr view <n> --json headRefOid -q .headRefOid`); use that
+   full SHA, never a local hash, in markers, evidence and `done:`.
    A CLI change that only runs against test fakes may use a named test
    command that invokes it and asserts exit, stdout and stderr as its repro
    pair (verification Q2).
@@ -110,6 +115,9 @@ script, run at the clean head and pasted verbatim with its header; never
 hand-write, paraphrase or re-split a capture. Put any fake or temp repo in a
 `--setup` file so the `sh` block is executable. Deferred AC evidence (CI runs,
 timings) goes in a signed fix review before the next review.
+Bound each claim to its read; a changed fail-closed tool refuses bad input
+through its shipped entry point with a nonzero exit (verification Claim scope).
+A new or changed guard adds a negative control (protocol §3).
 
 Fix rounds arrive in this same window via your inbox. A typed line
 `inbox: <id>` names a line in `$CREW_INBOX`; append `ack: <id>` to

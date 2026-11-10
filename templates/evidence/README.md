@@ -13,6 +13,7 @@ is committed to the repo (see
 | Adapter | Shape | Artifact |
 |---|---|---|
 | [cli-exit-stdout.md](cli-exit-stdout.md) | CLI (also service and API by command) | A copyable command/output pair: exit code, stdout, stderr |
+| [cli-exit-stdout.md#negative-control](cli-exit-stdout.md#negative-control) | Negative control for a new or changed guard (any shape) | A fail-then-pass pair: the guard failing on a mutated copy (N1), then passing at head (N2) |
 | [web-screenshot.md](web-screenshot.md) | Web | An embedded GitHub attachment of the view, or capture recipe plus validator reproduction |
 
 Mobile has no adapter yet (adapter TBD). Add a new adapter as one file here

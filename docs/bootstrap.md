@@ -550,6 +550,14 @@ without a record, or with any mismatch, is moved aside and installed again;
 it is never ready in between. The project's remote entrypoint runs from the
 pinned toolkit.
 
+Readable spec (#375): a run dispatched to a host cites framework docs at
+that host's pinned copy, `toolkit/mdstack-<v>/docs/` under `root`, never a
+path only the primary can read. Without a toolkit (no `[install]`), the
+dispatch pastes pinned excerpts of the cited sections, naming the framework
+version they come from. The worker reads the cited text before its pass and
+reports `blocked: <ref> spec-unreadable` when it is missing
+([worker brief rules](roles.md#worker-brief-template)).
+
 [Host readiness](runtimes/multi-device.md#host-readiness) row 2 then fails
 when the pinned toolkit is missing, its record differs from the primary's
 pin, or a file hash differs: `mdstack host check` adds a required `toolkit`

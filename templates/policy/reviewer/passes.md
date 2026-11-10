@@ -2,7 +2,11 @@
    is not Base, or the PR is closed, merged or escalated, or has `crew:hold`,
    report
    `$CREW_BIN action report --status done --ref '#<n>' --ref stale`
-   and exit. Stop the same way if this
+   and exit. Pin diff, CI and verdict reads to Base; if the head moves
+   mid-pass, discard them and report stale. If docs this brief cites are unreadable, append
+   `blocked: #<n> spec-unreadable` and exit. Rigor comes only from flavor
+   records and path classes; report an unrecorded brief floor as
+   `flavor-unrecorded`. Stop the same way if this
    pass already has a marker at head for round `<k>` (§6 step 2); a marker
    from an earlier round at the same head does not count. A coordinator
    `pass=steer cmd=rereview sha=<head-sha>` posted after that marker
@@ -82,6 +86,10 @@
    script header line (`Proof R1 · ... · sha ... · cwd ...`), or whose
    `sh` block does not reproduce at head, is one finding; paste your exact
    re-run output (preferably from `<mdstack>/scripts/evidence-cli.py`) in it.
+   Apply verification Claim scope: a claim wider than its read, or a
+   fail-closed tool proved only by a function return, is `disagrees`.
+   Replay each guard's negative control (protocol §3); a missing one is
+   `disagrees` under `evidence = typed`, a 🟡 under `inline`.
 
    Round `<k>` per §5.
    Start on the new head without waiting for CI. Record the CI state observed

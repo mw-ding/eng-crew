@@ -53,8 +53,42 @@ an API (`curl` request with status/body). Protocol:
    the body or commit evidence. Without a code push, late evidence needs the
    coordinator's rereview steer.
 5. One pair per claimed behaviour, including success and failure cases.
+   For a changed fail-closed tool, run the shipped entry point (script,
+   wrapper or CLI command) with an accepted and a rejected input; the
+   rejected pair shows a nonzero `exit:`
+   ([claim scope](../../docs/verification.md#claim-scope)).
    Apply the [size limits](../../docs/verification.md#q3-size-limits): truncate
    long output with an omission note and CI-log link or a re-run label.
+
+## Negative control
+
+A new or changed guard (a test, sweep, pattern or check meant to fail on a
+bad state) gets a fail-then-pass pair
+([protocol §3](../../docs/protocol.md#3-evidence-requirements)):
+
+1. **N1, mutated.** In a throwaway copy of the head, undo or mutate the line
+   the guard protects, or feed it the nearest wrong input, then run the guard.
+   Put the copy and the mutation in a `--setup` file so the `sh` block
+   recreates them, and make the mutation fail loudly if it changes nothing:
+
+   ```sh
+   # n1-setup.sh
+   tmp=$(mktemp -d) && git archive HEAD | tar -x -C "$tmp" && cd "$tmp" &&
+   python3 -c 'import pathlib; p = pathlib.Path("scripts/x.py"); s = p.read_text(); assert s.count("GOOD") == 1; p.write_text(s.replace("GOOD", "BAD"))'
+   ```
+
+   ```sh
+   python3 <mdstack>/scripts/evidence-cli.py --label N1 --setup n1-setup.sh -- <guard argv...>
+   ```
+
+   The `text` block shows the guard failing: a nonzero `exit:` and the
+   failure line naming the bad state.
+2. **N2, restored.** Run the same guard argv at the clean head with
+   `--label N2`; it exits 0.
+
+Label the pair `shape: negative control, N1/N2` and name the guard and the
+mutation in one line above it. The verifier replays both blocks. A mutated
+run that passes, or a mutation that misses the guarded line, is `disagrees`.
 
 ## Verifier: re-run and compare
 

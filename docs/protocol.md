@@ -180,7 +180,10 @@ Commands and the per-command fix limit come from
    self-review changes the diff, rerun affected checks before handoff.
 6. **Evidence.** Confirm required typed proof collected during testing is
    embedded inline in the change body or signed fix / ci-fix reviews. Record
-   a reasoned N/A for docs-only or other exempt shapes.
+   a reasoned N/A for docs-only or other exempt shapes. Check each claim
+   against the [claim scope](verification.md#claim-scope) rules: a claim no
+   wider than its read, equivalence cases for a changed validator, and a
+   changed fail-closed tool refusing through its shipped entry point.
 7. **Handoff.** Commit the final tested state and open the non-draft change with
    the per-step results and precheck marker below. After a fix or merge-up,
    refresh the results for the new head in the signed fix or merge-up note;
@@ -502,6 +505,23 @@ last. Plus:
   Docs-only and no-behaviour changes stay N/A with a reason. Non-CRUD behaviour
   shapes keep their existing shape-specific rules; this rule only adds
   create+progress+delete where such mutations are in scope.
+
+- **Guard negative control (#1604).** A change that adds or changes a guard
+  (a test, sweep, pattern or check whose job is to fail on a bad state)
+  records a negative control for each new or changed guard: undo or mutate
+  the guarded line, or feed the nearest wrong input, show the actual guard
+  fail, then restore and show it pass. It goes inline in the change body or
+  a signed builder fix / ci-fix note, as the
+  [fail-then-pass pair](../templates/evidence/cli-exit-stdout.md#negative-control)
+  of the CLI adapter. A test-only change that adds or changes a guard is not
+  exempt as "no behaviour change". Under effective `evidence = typed` the
+  control is required: missing, it is missing required evidence
+  (`disagrees`, `verdict=changes`). Under `inline` it is a soft 🟡 finding,
+  unless an acceptance criterion claims the guard catches the bad state,
+  which then needs the control as its supporting excerpt. A change that adds
+  or changes no guard states N/A with a reason; nothing else changes for it.
+  Updating a golden or expected-output fixture in step with the output it
+  pins is not a changed guard.
 
 - **Deploy secret sync.** New deploy milestones must include an AC in the
   milestone/tracker-item ACs: before the first gated production deploy,
@@ -922,6 +942,22 @@ flags it as `builder-silent` and messages `<BuilderBot>`, which checks worker
 liveness, restarts the work in a fresh unique worktree and may take over a
 silent claim despite the 2h rule in step 2. The sweeper's nudge cap and
 escalation (§5) apply. Reviewer-validator workers are not covered here.
+
+**Authoritative revision (#377, #376).** The backend's read head
+(`change.read-head`, [interfaces](interfaces.md#change)) is a change's one
+authoritative revision.
+
+- **Writers.** After each publish or push, the builder reads the head back
+  from the backend and puts that full SHA in markers, evidence headers,
+  `done:` lines and handoffs. A local hash is never relabelled as the tested
+  revision. If the backend head differs from the local commit (the backend
+  rewrote the commit on upload, or the push did not land), proof captured at
+  the local commit does not describe that head: recapture at the backend head.
+- **Readers.** Each review, validate, gate or land pass reads the head once
+  at its start and pins its diff, CI, verdict, merge-ok and evidence reads to
+  that SHA. A local revision or a newer unpublished draft is never the head.
+  If the published head changes during the pass, its observations are void:
+  stop, as in step 1, and the next pass starts at the new head.
 
 **Coordinator triage window.** The coordinator owns triage and runs a window
 at least once per awake half-day (the user's awake hours in PT). Every open
