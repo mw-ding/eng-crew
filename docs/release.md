@@ -183,7 +183,8 @@ the GitHub binding of each term is in the table above.
 The owner may record a standing go for cuts once instead of a chat reply per
 cut ([#1435](https://github.com/mw-ding/mdstack/issues/1435)). The profile
 key `runtime.options.release_delegation`
-([runtime options](configuration/runtime-options.md#tmux-options)) holds the
+([runtime options](configuration/runtime-options.md#tmux-options), on `tmux`
+and `session`) holds the
 owner's recorded words and a `https://` link to the record; the default
 `none` keeps a per-cut owner merge-ok. It takes effect only when an owner
 account sets it in the owner's profile or team file; a pack is refused, and
