@@ -17,13 +17,13 @@ from crew_testlib import HEAD, LivenessBase
 
 
 class Restart(LivenessBase):
-    def coordinator(self, *args, pane=""):
+    def coordinator(self, *args, project=None):
         with open(self.state_file) as f:
             state = json.load(f)
         state.setdefault("_panes", {})["crew-acme-widgets:0"] = "claude"
         with open(self.state_file, "w") as f:
             json.dump(state, f)
-        r = self.crew("restart", "ash", "--project", self.project, "--timeout", "1", *args, TMUX_PANE=pane)
+        r = self.crew("restart", "ash", "--project", project or self.project, "--timeout", "1", *args)
         return r, [c for c in self.calls() if c[0] == "respawn-window"]
 
     def test_restart_relaunches_the_coordinator_in_place(self):  # #1544
@@ -47,9 +47,20 @@ class Restart(LivenessBase):
         self.assertTrue(call[-1].startswith('export GH_TOKEN="$(gh auth token --user "$CREW_IDENTITY")"; exec claude '))
 
     def test_coordinator_relaunch_refusals(self):  # #1544
-        r, calls = self.coordinator("--resume", "x", pane="%0")
+        self.set_pane(0, pid=str(os.getpid()))  # the caller's parent: it runs beneath window 0's pane
+        r, calls = self.coordinator("--resume", "x")
         self.assertEqual((r.returncode, calls), (1, []))
         self.assertIn("refusing coordinator relaunch: run it from the owner's terminal, not window 0", r.stdout)
+        self.set_pane(0)
+        team = os.path.join(self.project_dir, "ext.toml")
+        with open(team, "w") as f:
+            f.write('[team]\npersonas = { builder = "Ben" }\naccounts = { all = "acme-bot", reviewer = "acme-reviewer" }\n'
+                    '[team.runtime]\nname = "tmux"\n[team.identities]\nowners = ["acme-owner"]\n'
+                    '[team.paths]\nstate_dir = "%s"\nworktree_root = "%s/wt"\ntoolchain_bin = "/opt/node/bin"\n'
+                    '[repos.widgets]\nrepo = "acme/widgets"\n' % ((os.path.join(self.tmp, "state"),) * 2))
+        r, calls = self.coordinator("--resume", "x", project=team + "#widgets")
+        self.assertEqual((r.returncode, calls), (1, []))
+        self.assertIn("refusing coordinator relaunch: a team coordinator is not relaunched here", r.stdout)
         r, calls = self.coordinator("--resume", "bad id")
         self.assertEqual((r.returncode, calls), (1, []))
         self.assertIn("--resume expects fresh, ask or a session id", r.stdout)

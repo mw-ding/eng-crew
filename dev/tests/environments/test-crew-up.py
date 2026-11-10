@@ -149,7 +149,7 @@ class Up(Base):
 
     def test_up_refuses_a_sandbox_over_the_checkout_git(self):  # #1544
         subprocess.run(["git", "init", "-q", self.project_dir], check=True)
-        git = os.path.join(self.project_dir, ".git")
+        git = os.path.realpath(os.path.join(self.project_dir, ".git"))  # git reports the resolved path
         os.chmod(git, 0o500)
         self.addCleanup(os.chmod, git, 0o755)
         self.env.pop("CREW_SANDBOX_ENV", None)

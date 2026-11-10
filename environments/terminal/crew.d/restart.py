@@ -6,7 +6,7 @@ restarts with the same run ID, log issue, input SHA and window.
 
 On the coordinator's window (window 0) it relaunches the live coordinator in place instead (#1544): the current
 sandbox_env and CREW_* environment, resuming --resume ID (else launch.resume). It refuses while the land lock is held,
-or when run from window 0 itself, which the stop would kill first.
+when run from window 0 itself (beneath its pane process), which the stop would kill first, and for a team reference.
 
 Usage: mdstack restart WINDOW --project FILE [--org-profile FILE] [--resume ID]
 """
@@ -14,6 +14,7 @@ import json
 import os
 import re
 import shlex
+import subprocess
 import time
 from crew_shared import (
     BANDS, brief_src, commands, coordinator_harness, coordinator_window, CREW_BIN, crew_render, ENGINE_CMD, finished,
@@ -21,15 +22,30 @@ from crew_shared import (
     show_icon, stop_pane, tmux, unlanded, wait_harness, window_alias, window_env)
 
 
+def runs_under(pid):
+    """Whether this process runs beneath pid (its parent or an ancestor), on ps's pid/ppid table: a pane id alone
+    would match another tmux server's pane."""
+    out = subprocess.run(["ps", "-axo", "pid=,ppid=,stat=,comm="], capture_output=True, text=True).stdout
+    parents = {row[0]: row[1] for row in (line.split(None, 3) for line in out.splitlines()) if len(row) >= 2}
+    node, seen = str(os.getppid()), set()
+    while node and node not in seen:
+        if node == str(pid):
+            return True
+        seen.add(node)
+        node = parents.get(node)
+    return False
+
+
 def relaunch_coordinator(values, session, state, args):
     """Respawn window 0 in place with the current sandbox_env and CREW_* environment, resuming its conversation."""
     engine, resume = values["engines.coordinator"], args.resume or values.get("runtime.options.launch.resume", "fresh")
     pane = tmux.pane(session, 0)
-    problem = ("--resume expects fresh, ask or a session id" if resume not in ("fresh", "ask") and
+    problem = ("a team coordinator is not relaunched here" if "#" in args.project
+               else "--resume expects fresh, ask or a session id" if resume not in ("fresh", "ask") and
                not crew_render.crew_config.LAUNCH_SESSION_ID.fullmatch(resume)
                else "the land lock is held" if commands()["land-lock"].held(state)
                else "%s is not running" % session if not pane
-               else "run it from the owner's terminal, not window 0" if pane["id"] == os.environ.get("TMUX_PANE")
+               else "run it from the owner's terminal, not window 0" if runs_under(pane["pid"])
                else "%s cannot resume" % engine if resume != "fresh" and engine not in harnesses.RESUMABLE
                else "%s has no in-place reload" % tmux.name if "reload" not in tmux.CAPABILITIES else None)
     if problem:

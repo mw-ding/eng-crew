@@ -563,7 +563,7 @@ class Sandbox(DoctorBase):
         os.remove(os.path.join(self.bindir, "git"))
         os.symlink(shutil.which("git", path=os.environ["PATH"]), os.path.join(self.bindir, "git"))
         subprocess.run(["git", "init", "-q", self.project_dir], check=True)
-        git = os.path.join(self.project_dir, ".git")
+        git = os.path.realpath(os.path.join(self.project_dir, ".git"))  # git reports the resolved path
         self.env.pop("CREW_SANDBOX_ENV", None)
         self.assertEqual(self.rows(self.doctor())["sandbox"], "ok")
         os.chmod(git, 0o500)
@@ -576,6 +576,25 @@ class Sandbox(DoctorBase):
         self.env["CREW_SANDBOX_ENV"] = "CREW_TEST_SANDBOX=" + git
         self.assertEqual(self.rows(self.doctor())["sandbox"], "ok")
         self.assertFalse([n for n in os.listdir(git) if n.startswith("mdstack-probe-")])
+
+    def test_linked_worktree_checkout_probes_the_common_dir(self):
+        os.remove(os.path.join(self.bindir, "git"))
+        os.symlink(shutil.which("git", path=os.environ["PATH"]), os.path.join(self.bindir, "git"))
+        main = os.path.join(self.tmp, "main")
+        subprocess.run(["git", "init", "-q", main], check=True)
+        subprocess.run(["git", "-C", main, "-c", "user.name=t", "-c", "user.email=t", "commit", "-q", "--allow-empty",
+                        "-m", "base"], check=True)
+        linked = os.path.join(self.tmp, "linked")
+        subprocess.run(["git", "-C", main, "worktree", "add", "-q", linked], check=True)
+        with open(self.project, "a") as f:
+            f.write('checkout = "%s"\n' % linked)
+        common = os.path.realpath(os.path.join(main, ".git"))
+        os.chmod(common, 0o500)
+        self.addCleanup(os.chmod, common, 0o755)
+        self.env.pop("CREW_SANDBOX_ENV", None)
+        r = self.doctor()
+        self.assertEqual(self.rows(r)["sandbox"], "fail", r.stdout)
+        self.assertIn("no writable root over %s" % common, self.detail(r, "sandbox"))
 
     def test_adapter_declared_roots(self):
         loader = importlib.machinery.SourceFileLoader("crew_cli", CREW)

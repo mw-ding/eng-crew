@@ -92,13 +92,16 @@ def engines(values):
 
 
 def sandbox(values, project):
-    """A launcher that sandboxes sessions with no writable root over the checkout's .git fails, unless
+    """A launcher that sandboxes sessions with no writable root over the checkout's git directory (its common dir, for a
+    linked worktree whose .git is a file) fails, unless
     runtime.options.sandbox_env or CREW_SANDBOX_ENV is set (#1544). Two signals: a create-and-remove probe in that .git
     is denied to this process (it runs inside such a session), or a used engine's adapter declares
     sandbox_roots(values), the writable roots its launcher grants a session by default (None: no sandbox)."""
     if sandbox_env(values):
         return [("ok", "sandbox", "sandbox_env set", "")]
-    git = os.path.join(checkout(values, project), ".git")
+    repo = checkout(values, project)
+    code, out = sh("git", "-C", repo, "rev-parse", "--path-format=absolute", "--git-common-dir")
+    git = out.strip() if code == 0 and os.path.isdir(out.strip()) else os.path.join(repo, ".git")  # a linked worktree
     used = {values["engines.coordinator"], values.get("engines.fallback_engine")} | {
         e.split("/")[0] for k, order in values.items() if re.fullmatch(r"engines\.(roles\.)?\w+\.order", k) for e in order}
     found = []

@@ -2062,8 +2062,9 @@ the live coordinator in place (#1544): it stops window 0's process group and
 respawns the pane with the current `sandbox_env` and `CREW_*` environment
 (as `mdstack up` sets them), resuming `--resume <id>` (`fresh`, `ask` or an
 id; default `launch.resume`). It refuses while the land lock is held, when
-run from window 0 itself (the stop would kill it first: run it from the
-owner's terminal), and for an engine that cannot resume. Use it after
+run from window 0 itself (beneath its pane process; the stop would kill it
+first: run it from the owner's terminal), for a team reference
+(`--project <team>.toml#<repo>`) and for an engine that cannot resume. Use it after
 setting `runtime.options.sandbox_env` on a crew that started without it.
 
 Restarts a run once: it refuses unless the run probes `dead` or `missing`,
@@ -2119,9 +2120,10 @@ writes `install.json` and the link); once `install.json` exists, a
 missing `paths.mdstack` fails (#1323).
 
 The `sandbox` row (tmux only, #1544) fails when a launcher sandboxes
-sessions and no writable root covers the checkout's `.git`, unless
+sessions and no writable root covers the checkout's git directory (the
+common directory for a linked worktree, whose `.git` is a file), unless
 `runtime.options.sandbox_env` or `CREW_SANDBOX_ENV` is set. It detects that
-two ways: a create-and-remove probe in that `.git` is denied to doctor's own
+two ways: a create-and-remove probe in that directory is denied to doctor's own
 process (it runs inside such a session), or a used engine's harness adapter
 declares `sandbox_roots(values)`, the writable roots its launcher grants a
 session by default, none of which covers `.git`. The fix: set
