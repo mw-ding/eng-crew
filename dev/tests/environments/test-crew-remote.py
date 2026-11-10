@@ -1018,6 +1018,21 @@ class RunLifecycle(RunBase):
         self.assertEqual(self.kill(discard=True)["removed"], True)
         self.assertIsNone(claims.holder(self.wt))
 
+    def test_setup_failure_after_worktree_leaves_a_run_kill_releases(self):  # #391 review r1 R1
+        fake_git = os.path.join(self.bin, "git")
+        with open(fake_git, "w") as f:
+            f.write("#!/usr/bin/env python3\nimport os, shutil, sys\n"
+                    "if sys.argv[-2:] == ['--git-path', 'info/exclude']:\n sys.exit('injected exclude lookup failure')\n"
+                    "os.execv(%r, ['git'] + sys.argv[1:])\n" % shutil.which("git"))
+        os.chmod(fake_git, 0o755)
+        self.assertEqual(self.spawn(), dict(result="failed", error="Failed: injected exclude lookup failure"))
+        os.remove(fake_git)
+        claims = remote.copy_claim()
+        self.assertEqual(claims.holder(self.wt)["run"], "ben-7")
+        self.assertEqual(self.kill(), dict(result="ok", unlanded=[], removed=True))
+        self.assertIsNone(claims.holder(self.wt))
+        self.assertFalse(os.path.exists(self.wt))
+
     def test_kill_never_touches_another_projects_run(self):  # review r1 P1: one runner session, many projects
         self.spawn()
         self.assertEqual(self.kill(project="other__project", primary="host-c"),

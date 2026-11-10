@@ -716,14 +716,15 @@ def spawn_verb(request, root):
         if reply:
             copy_claim().release(wt, state, window)
             return reply
-        with open(os.path.join(wt, sh("worktree", "git", "-C", wt, "rev-parse", "--git-path", "info/exclude").strip()), "a") as f:
-            f.write("\n.crew/\n")  # step summaries never count as unlanded
         for d in ("runs", "status", "inbox", "verdicts"):
             os.makedirs(os.path.join(state, d), exist_ok=True)
+        rec = dict(window=window, primary=request["primary"], worktree=wt, copy_claim=wt)
+        save(path, rec)  # before any further setup: a failure from here leaves a run kill removes and releases
+        with open(os.path.join(wt, sh("worktree", "git", "-C", wt, "rev-parse", "--git-path", "info/exclude").strip()), "a") as f:
+            f.write("\n.crew/\n")  # step summaries never count as unlanded
         for name, text in verdicts.items():
             with open(os.path.join(state, "verdicts", name), "w", encoding="utf-8") as f:
                 f.write(text)
-        rec = dict(window=window, primary=request["primary"], worktree=wt, copy_claim=wt)
     rec.update({k: request[k] for k in ("role", "engine", "model", "effort", "permission_mode", "identity")})
     brief = os.path.join(state, "runs", window + ".brief.md")
     with open(brief, "w", encoding="utf-8") as f:
