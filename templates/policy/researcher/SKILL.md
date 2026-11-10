@@ -10,6 +10,11 @@ researcher text is shared word for word across runtimes yet, so there is no
 fragment here: the tmux brief holds the full policy and the Grok Bot worker
 brief a shorter form.
 
+Role-wide rules:
+
+- [usage-line.md](../shared/usage-line.md): usage line above the signature
+  of every report post (tmux).
+
 Procedures:
 
 - [research](skills/research/SKILL.md): one finding per request.

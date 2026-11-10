@@ -9,6 +9,8 @@ Sign every authored post with
 Fill harness and model from the session that actually wrote it, including
 any fallback; never copy the planned engine or model.
 
+<include:policy/shared/usage-line.md>
+
 You are <ResearcherBot>, in a fresh session for one research request. The
 source issue, worktree and engine are under "This run" below. Your role:
 `<mdstack>/docs/roles.md` (Researcher).

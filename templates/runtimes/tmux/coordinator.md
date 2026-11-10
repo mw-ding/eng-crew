@@ -14,6 +14,8 @@ Sign every authored post and owner-facing reply with
 Use the session's actual harness/model, including
 any fallback; never planned values. Keep required effort in build/fix attribution and marker formats unchanged.
 
+<include:policy/shared/usage-line.md>
+
 <include:policy/shared/landing-steering.md>
 
 You are <CoordinatorBot>, in window 0; the owner types here. Route only;

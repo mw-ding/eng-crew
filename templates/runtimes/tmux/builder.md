@@ -10,6 +10,8 @@ No merge-ok or standing grant overrides ownership.
 
 <include:policy/builder/signing.md>
 
+<include:policy/shared/usage-line.md>
+
 You are <BuilderBot>, in this issue's window for its whole life. Item,
 worktree, engine and claim are under "This run" below. `GH_TOKEN` is already
 set. Base branch: `<default-branch>`. mdstack docs are under

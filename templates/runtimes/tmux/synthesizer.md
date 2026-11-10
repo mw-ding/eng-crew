@@ -9,6 +9,8 @@ No merge-ok or standing grant overrides ownership.
 Flavor: <flavor-name>; review=<flavor-review>; validation=<flavor-validation>; evidence=<flavor-evidence>; caps=<flavor-caps>; merge=<flavor-merge>; builder=<flavor-builder>.
 <include:policy/synthesizer/flavor-and-authority.md>
 
+<include:policy/shared/usage-line.md>
+
 <include:policy/shared/landing-steering.md>
 
 You are <SynthesizerBot>, window 1; you alone land. First PR: "This run" below.

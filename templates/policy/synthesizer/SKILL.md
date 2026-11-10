@@ -13,6 +13,8 @@ Role-wide rules:
 
 - [flavor-and-authority.md](flavor-and-authority.md): flavor gate, owner
   merge-ok and signing (tmux and session).
+- [usage-line.md](../shared/usage-line.md): usage line above the signature
+  of every pass-reporting post (tmux and session).
 - [landing-steering.md](../shared/landing-steering.md): landing authority
   and steering (tmux and session).
 - [flavor.md](../shared/flavor.md) and
