@@ -1051,10 +1051,13 @@ class RoleRuntime(unittest.TestCase):
         self.assertEqual(got, upstream)
 
     def test_missing_template_fails_closed(self):
-        code, out, _ = self.render('{ researcher = "session" }')
+        code, out, _ = self.render('{ builder = "grok-bot" }')
         self.assertEqual(code, 1)
-        self.assertRegex(out, r"templates/runtimes/session/researcher\.md:1: missing mapping: no session template "
-                              r"for role researcher\n")
+        self.assertRegex(out, r"templates/runtimes/grok-bot/builder\.md:1: missing mapping: no grok-bot template "
+                              r"for role builder\n")
+        code, out, _ = self.render('{ researcher = "session" }')  # #1404: the session brief is sweep-only
+        self.assertEqual(code, 1)
+        self.assertIn("role_runtime.researcher: the session researcher brief runs only the triage sweep", out)
         code, out, _ = self.render('{ coordinator = "tmux" }')
         self.assertEqual(code, 1)
         self.assertIn("role_runtime.coordinator: unknown value 'tmux'", out)
@@ -1082,7 +1085,8 @@ class SessionRuntime(unittest.TestCase):
 
     def test_full_brief_set_within_budget(self):
         got = self.render(normalize=True)
-        self.assertEqual(sorted(got), ["runtime/%s.md" % r for r in ("builder", "coordinator", "reviewer", "synthesizer")])
+        self.assertEqual(sorted(got), ["runtime/%s.md" % r for r in ("builder", "coordinator", "researcher", "reviewer",
+                                                                     "synthesizer")])
         for rel, text in got.items():
             with self.subTest(brief=rel):
                 self.assertLessEqual(len(text.encode("utf-8")), 16384)
@@ -1111,8 +1115,12 @@ class SessionRuntime(unittest.TestCase):
         self.assertIn("admit at most `1` builder runs and `3` reviewer passes; an active recorded non-quiet away "
                       "entry uses the full caps.", coordinator)
 
-    def test_researchers_zero_renders_the_same_briefs(self):  # #1057: a no-op, the binding has no researcher
+    def test_researchers_zero_drops_only_the_sweep_brief(self):  # #1057; #1404: the session triage sweep brief
         upstream = self.render()
+        sweep = " ".join(upstream.pop("runtime/researcher.md").split())
+        for rule in ("This binding runs only the triage sweep", "## Triage sweep", "pass=triage-log",
+                     "$CREW_BIN poll --triage-only"):
+            self.assertIn(rule, sweep)
         self.base = self.base.replace("reviewers = 1 }", "reviewers = 1, researchers = 0 }")
         self.assertIn("researchers = 0", self.base)
         self.assertEqual(self.render(), upstream)
@@ -1135,7 +1143,7 @@ class SessionRuntime(unittest.TestCase):
         self.assertEqual(code, 1, out)
         self.assertEqual(out.splitlines(), [
             "%s:1: runtime.options.notes.render.%s: runtime session renders no %s brief (note dropped)" % (project, r, r)
-            for r in ("researcher", "builder-lead")])
+            for r in ("builder-lead",)])
         code, out, _ = render('builder = ["note.md"], builder-lead = []')
         self.assertEqual(code, 0, out)
         self.assertTrue(tree(out.splitlines()[0].rsplit("/runtime/", 1)[0])["runtime/builder.md"]

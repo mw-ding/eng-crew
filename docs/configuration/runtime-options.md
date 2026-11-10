@@ -121,7 +121,7 @@ brief renders the land options as for `tmux`:
 | `reviewers` | integer | `2` | `<reviewer-cap>`: concurrent reviewer passes |
 | `present_builders` | integer, at least 1, at most `builders` | resolved `builders` | `<present-builder-cap>`: owner-present builder limit, as in `tmux`; a value above `builders` is refused (#1053) |
 | `present_reviewers` | integer, at least 1, at most `reviewers` | resolved `reviewers` | `<present-reviewer-cap>`: owner-present reviewer limit, as in `tmux`; a value above `reviewers` is refused |
-| `researchers` | `0` only | none | nothing: the binding has no researcher, so `0` keeps a migrated `tmux` profile's no-researcher statement as a no-op; any other value is refused, and `triage.enabled = true` is refused as for `tmux` |
+| `researchers` | nonnegative integer | none | nothing rendered: concurrent [triage sweep](../runtimes/session.md#triage-sweep-routine) runs, the binding's only researcher pass (#1404). `0` writes no researcher brief, and `triage.enabled = true` is refused as for `tmux` |
 | `merge_grant`, `merge_grant_scope`, `lone_pr_land`, `train_min`, `train_window`, `train_local_checks`, `mirror_deferral`, `mirror`, `hold_label_blocks` | as in [`tmux` options](#tmux-options) | as in `tmux` | the same placeholders in the session builder, reviewer and synthesizer briefs; session lands have no merge train, so the `train_*` options have no effect ([binding](../runtimes/session.md#selector-options-and-briefs)) |
 | `release_delegation` | as in [`tmux` options](#tmux-options) | `"none"` | `<release-delegation>` in the session coordinator brief, as in the `tmux` one (#1542); set only by an owner account, a pack is refused ([release delegation](../release.md#release-delegation)) |
 | `notes` | table | `{}` | its `render` subtable holds render-time notes, as for `tmux`; `mdstack up` appends the `coordinator` list to the coordinator brief (#1548); no launcher reads worker notes |
@@ -140,7 +140,8 @@ runtime (its registry `templates` entry) and renders
 with the profile's values and the usual placeholder checks. Every other brief
 renders unchanged, and a profile without the key, or with an empty table,
 renders byte-identically. A value equal to `runtime.name` or an unknown role is
-refused; a role with no template for the selected runtime, or a runtime
+refused, as is `researcher = "session"`, since the session researcher brief
+runs only the triage sweep (#1404); a role with no template for the selected runtime, or a runtime
 with no `<role>.md`, fails the render. A role with a cap of 0 renders nothing,
 as before. Only the render changes: the launcher, poller and worker dispatch
 follow `runtime.name`, so the swapped brief must suit the runtime that starts

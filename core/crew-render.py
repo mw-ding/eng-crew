@@ -442,6 +442,8 @@ def render(args, paths, normalize_paths):
         idle = [r for r in OPTIONAL_ROLES if values.get(ROLES[r]["cap_key"]) == 0]
         unused = {os.path.relpath(t, "templates")
                   for r in idle for t in ROLES[r]["templates"].get(values["runtime.name"], [])}
+        if values["runtime.name"] == "session":  # unregistered binding: an idle role's <role>.md brief (#1404)
+            unused |= {os.path.join(rt, r + ".md") for r in idle}
         moved = []  # runtime.options.role_runtime: the role's own template swapped for <runtime>/<role>.md (#1055)
         for r in ROLES:
             other = values.get("runtime.options.role_runtime." + r)
