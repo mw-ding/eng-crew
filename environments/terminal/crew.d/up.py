@@ -2,7 +2,8 @@
 in window 0, launched by its harness adapter (docs/runtimes/harness-adapters.md). When the profile can use an engine
 whose adapter declares a host check, refuse before rendering on a failed one: for Codex, a host hooks.json or inline
 config.toml hook that lacks stored trust. Never write Codex config. Also refuse when paths.checkout is a clone of another
-repo, or tmux briefs would cite docs under a missing paths.mdstack (#1323).
+repo, tmux briefs would cite docs under a missing paths.mdstack (#1323), or a launcher sandboxes sessions with no
+writable root over the checkout's .git and neither runtime.options.sandbox_env nor CREW_SANDBOX_ENV is set (#1544).
 
 `runtime.options.launch` picks the topology: coordinator tmux|none, roles tmux|hosted|none, resume fresh|ask|<id>;
 `--resume` overrides launch.resume. A session profile (`runtime.name = "session"`, #1548) gets the coordinator only, in
@@ -119,6 +120,8 @@ def up_role(args):
                                              "no lifecycle with the manual wake (docs/roles-registry.md#lifecycle)"))
         return 2
     values, _, state = profile(args)
+    if not install_ok(values, args.project):
+        return 1
     running = instances(state, args.role)
     if len(running) >= life["max"]:
         print("crew: refusing up %s: at its lifecycle max %d (%s)" % (args.role, life["max"], ", ".join(running)))
@@ -232,9 +235,11 @@ def host_ok(values):
 
 
 def install_ok(values, project):
-    """Refuse before any write when paths.checkout is a clone of another repo (doctor's checkout row), or tmux briefs
-    would cite docs under a missing paths.mdstack (#1323)."""
-    for status, check, detail, hint in commands()["doctor"].checkout_repo(values, project):
+    """Refuse before any write when paths.checkout is a clone of another repo (doctor's checkout row), tmux briefs
+    would cite docs under a missing paths.mdstack (#1323), or a session sandbox leaves the checkout's .git unwritable
+    with no sandbox_env (doctor's sandbox row, #1544)."""
+    doctor = commands()["doctor"]
+    for status, check, detail, hint in doctor.checkout_repo(values, project) + doctor.sandbox(values, project):
         if status == "fail":
             print("crew: refusing to start: %s: %s; %s" % (check, detail, hint))
             return False
