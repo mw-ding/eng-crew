@@ -748,13 +748,19 @@ def validate(profile, err, backends=BACKENDS, pack_dir=None, item=None):
     if "triage" in top:  # always-on triage sweep (docs/triage.md, #748)
         tri = check_table(err, "triage", top["triage"], {"enabled": (bool, False), "interval_hours": (int, 6),
                                                         "repos": ("list[str]", None), "rules": (str, None),
-                                                        "mode": (str, "shadow")})
+                                                        "mode": (str, "shadow"), "trackers": ("list[str]", None)})
         check_choice(err, "triage.mode", tri.get("mode"), TRIAGE_MODES)
         if tri.get("interval_hours", 6) < 1:
             err("triage.interval_hours", "must be >= 1, got %d" % tri["interval_hours"])
         for i, repo in enumerate(tri.get("repos", [])):
             if not TRACKER_REPO.fullmatch(repo):
                 err("triage.repos[%d]" % i, "expected owner/name, got %r" % repo)
+        for i, tracker in enumerate(tri.get("trackers", [])):  # a non-GitHub tracker's list-items <tracker> (#1404)
+            if not re.fullmatch(r"\S+", tracker):
+                err("triage.trackers[%d]" % i, "expected a nonempty tracker id without spaces, got %r" % tracker)
+        if "trackers" in tri and isinstance(top.get("backends"), dict) and \
+                (top["backends"].get("tracker") or {}).get("name") == "github":
+            err("triage.trackers", "needs a non-GitHub tracker backend; name GitHub repositories in triage.repos")
         if "rules" in tri and not tri["rules"].strip():
             err("triage.rules", "expected a nonempty file path")
     if "reflection" in top:  # scheduled protocol reflection (docs/self-improve.md#reflection, #1521)
@@ -862,9 +868,6 @@ def validate(profile, err, backends=BACKENDS, pack_dir=None, item=None):
                     full = opts.get(key, RUNTIME_OPTIONS["session"][key][1])
                     if opts.get("present_" + key, full) > full:
                         err("runtime.options.present_" + key, "must be <= %s (%d), got %d" % (key, full, opts["present_" + key]))
-            if rt["name"] == "session" and opts.get("researchers", 0) > 0:  # no researcher binding; 0 says so (#1057)
-                err("runtime.options.researchers", "the session runtime has no researcher; only 0 (no researcher) "
-                    "is accepted, got %d" % opts["researchers"])
             if opts.get("land_timeout", 3600) < opts.get("land_poll_interval", 60):
                 err("runtime.options.land_timeout", "must be >= land_poll_interval (%d), got %d"
                     % (opts.get("land_poll_interval", 60), opts.get("land_timeout", 3600)))
