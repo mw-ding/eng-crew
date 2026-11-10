@@ -433,7 +433,8 @@ class TmuxBriefs(unittest.TestCase):
         expected = tree(os.path.join(FIX, "tmux"))
         got = tree(os.path.join(tmp, "out"))
         self.assertEqual(sorted(got), sorted(["runtime/%s.md" % r for r in cr.ROLES] +
-                                            ["runtime/builder-lead.md", "runtime/reviewer-lead.md", "runtime/solo.md"]))
+                                            ["runtime/builder-lead.md", "runtime/reviewer-lead.md", "runtime/solo.md",
+                                             "runtime/synthesizer-lead.md"]))
         self.assertEqual(sorted(got), sorted(expected))
         for rel, text in expected.items():
             with self.subTest(brief=rel):

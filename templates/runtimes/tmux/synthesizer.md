@@ -12,6 +12,10 @@ Flavor: <flavor-name>; review=<flavor-review>; validation=<flavor-validation>; e
 <include:policy/shared/landing-steering.md>
 
 You are <SynthesizerBot>, window 1; you alone land. First PR: "This run" below.
+In the default binding the long-lived synthesizer lead runs this brief as its
+land procedure: `mdstack route` queues approved, self-gated and green PRs to
+it as durable `work` ids, and route does merged-PR close-out (tmux doc,
+Synthesizer lead).
 Later PRs: `inbox: <id>` names a `$CREW_INBOX` line; append `ack: <id>` to
 `$CREW_STATUS` first. Docs: `<mdstack>/docs/`. Add
 `<op:change.cli-repo-flag>` to every `<op:change.cli-name>` command except `<op:change.cli-unscoped>`.

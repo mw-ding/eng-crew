@@ -89,8 +89,8 @@ On every wake (watcher, owner, start), run
   A CI fix after an approval gets the light re-check in §6 at its new head,
   with the approval's round number; hand it to the reviewer lead as `recheck`.
 - `merge-up` (one default-branch merge atop `previous_head`, whose latest
-  verdict, or express selfgate, passed): send the updated head and previous verified head to the
-  synthesizer for §7 verdict portability, including a later CI-green wake.
+  verdict, or express selfgate, passed): route hands the updated head and previous verified head to the
+  synthesizer lead for §7 verdict portability, including a later CI-green wake.
   No new reviewer session for identical content. A conflicting or differing
   patch goes to the builder via `change.update-from-base`, then existing
   review/validate passes perform delta re-review and issue a new head-pinned
@@ -129,17 +129,19 @@ On every wake (watcher, owner, start), run
   once across both notifications.
 - `review-approved`, `selfgate-passed`, or `ci-passed` with an approval at head
   (express: a selfgate pass; an express fallback `new-head` also re-records
-  the item flavor):
-  `$CREW_BIN send WINDOW land '#<n>' <head-sha> --project "$CREW_PROJECT"`
-  to the synthesizer window, or, when its window is gone,
-  `$CREW_BIN spawn synthesizer --pr <n> --project "$CREW_PROJECT"`.
-  CI green alone never spawns review or supplies approval; the synthesizer
+  the item flavor), and approved `merge-up`: route hands them to the
+  synthesizer lead (window 1) as durable `work`; it owns the land queue,
+  trains and merge-commit CI watch. Never spawn, kill or send `land` to a
+  synthesizer here. Recovery only:
+  `$CREW_BIN lead handoff synthesizer land '#<n>' <head-sha> --wait-ack 30 --project "$CREW_PROJECT"`.
+  A blocked lead is an owner ask: arrange repair, then
+  `$CREW_BIN lead ensure synthesizer --project "$CREW_PROJECT"`.
+  CI green alone never spawns review or supplies approval; the lead
   still checks every §7 gate, including CI green at head.
 - `pr-merged` / `pr-closed`: hand off builder cleanup with
   `$CREW_BIN lead handoff builder terminal '#<n>' --wait-ack 30 --project "$CREW_PROJECT"`.
-  Hand reviewer cleanup to its lead (durable terminal event);
-  use `$CREW_BIN kill WINDOW --project "$CREW_PROJECT"` for synthesizer windows; for a direct land, keep the synthesizer alive until its
-  merge-commit CI check reports green or `blocked: main red after #<n> <run-url>`.
+  Hand reviewer cleanup to its lead (durable terminal event). Route runs
+  the close-out below; the synthesizer lead stays up.
   Its lead releases reviewer slots; `mdstack kill` never auto-dequeues a pool
   with a lead.
   Keep `verdicts/pr<n>-<sha7>-r<k>-review.md` after reviewer cleanup.
@@ -172,22 +174,15 @@ On every wake (watcher, owner, start), run
   window: NEVER type into that window (no `tmux send-keys`, no `--rw`
   attach). If its launch options should have prevented the prompt,
   hand builder/reviewer dialog refs to the owning lead; never manage those
-  windows here. For synthesizer,
-  `$CREW_BIN kill WINDOW --project "$CREW_PROJECT"` and respawn it
-  once with its spawn command above; otherwise, or if it comes
-  back, ask the owner (Owner asks) with the window name and a
+  windows here. A synthesizer lead dialog is an owner ask: ask the owner (Owner asks) with the window name and a
   runnable `<mdstack>/cli/mdstack attach WINDOW --rw --project PATH` for
   that window, with PATH replaced by the absolute path in `$CREW_PROJECT`.
 
 Delivery is proven only by `ack:` (`$CREW_BIN acked WINDOW <id> --project "$CREW_PROJECT"`);
 with no ack in time, re-nudge once, then check liveness and restart only a `dead` or `missing`
-window through its owning lead when it is a builder or reviewer. A window whose nudge `mdstack send` could not submit (exit 4; a `dialog:` reason follows the
+window through its owning lead. A window whose nudge `mdstack send` could not submit (exit 4; a `dialog:` reason follows the
 dialog rule above), or that still has no ack after the re-nudge, is `ambiguous` even when it probes
-`alive`: never restart it, and take it to the owner as for a dialog. One exception: the synthesizer
-window holds no worktree work, so once per PR, and only while `<state-dir>/<owner>__<repo>/locks/merge.pid`
-does not exist (no land in flight), run `$CREW_BIN kill WINDOW --project "$CREW_PROJECT"`, then
-`$CREW_BIN spawn synthesizer --pr <n> --project "$CREW_PROJECT"`. The kill drops its inbox: re-send each
-other pending `land`. If the new window fails the nudge or the ack too, ask the owner. Beyond a band cap,
+`alive`: never restart it, and take it to the owner as for a dialog. Beyond a band cap,
 queue the spawn.
 
 Messages carry refs (issue/PR, full SHA, link, path), never payloads.

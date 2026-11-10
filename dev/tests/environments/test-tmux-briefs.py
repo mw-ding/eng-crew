@@ -214,7 +214,8 @@ class CurrentBriefs(unittest.TestCase):
     def test_rendered_briefs_pass(self):
         briefs, grant = render()
         self.assertEqual(sorted(briefs), ["builder-lead.md", "builder.md", "coordinator.md", "researcher.md",
-                                         "reviewer-lead.md", "reviewer.md", "solo.md", "synthesizer.md"])
+                                         "reviewer-lead.md", "reviewer.md", "solo.md", "synthesizer-lead.md",
+                                         "synthesizer.md"])
         problems = [p for n, t in briefs.items() for p in lint(n, t, grant)]
         self.assertEqual(problems, [])
 
@@ -315,13 +316,13 @@ class CurrentBriefs(unittest.TestCase):
             self.assertNotIn(gone, text)
 
     def test_coordinator_failed_nudge_rule(self):
-        """#312: a failed nudge or a missed ack is `ambiguous`; only the synthesizer window gets one respawn."""
+        """#312: a failed nudge or a missed ack is `ambiguous`; #1569: the synthesizer lead gets no respawn exception."""
         text = " ".join(render()[0]["coordinator.md"].split())
         rule = text[text.index("A window whose nudge"):text.index("Beyond a band cap")]
-        for want in ("exit 4", "no ack after the re-nudge", "is `ambiguous`", "never restart it", "One exception: the "
-                     "synthesizer window", "once per PR", "locks/merge.pid", "$CREW_BIN kill WINDOW",
-                     "$CREW_BIN spawn synthesizer --pr <n>", "re-send each other pending `land`", "ask the owner"):
+        for want in ("exit 4", "no ack after the re-nudge", "is `ambiguous`", "never restart it", "take it to the owner"):
             self.assertIn(want, rule)
+        for gone in ("One exception", "spawn synthesizer", "kill WINDOW"):
+            self.assertNotIn(gone, text)
         for other in ("builder", "reviewer", "ben", "vera"):
             self.assertNotIn(other, rule.lower())
 
