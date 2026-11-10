@@ -1,4 +1,6 @@
 """Claude Code harness adapter (docs/runtimes/harness-adapters.md#claude-code-claude-code)."""
+import datetime
+import glob
 import json
 import os
 import re
@@ -141,3 +143,36 @@ def install_targets(project, state, pointer, check):
     settings = json.loads(path.read_text()) if path.exists() else {}
     targets[path] = json.dumps(stop_hook_settings(settings, str(state)), indent=2) + "\n"
     return targets
+
+
+def usage(directory, start):
+    """Token totals since start (epoch seconds) from the Claude Code transcripts for directory, subagent logs included:
+    {input, cached, output, model}, or None with no transcript entry. Input counts fresh, cache-write and cache-read
+    tokens; cached is the cache reads. A streamed message logged on several lines counts once (#1557)."""
+    base = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")
+    folder = os.path.join(base, "projects", re.sub(r"[^A-Za-z0-9]", "-", os.path.realpath(directory)))
+    seen, total = set(), None
+    for path in sorted(glob.glob(os.path.join(glob.escape(folder), "**", "*.jsonl"), recursive=True)):
+        if os.path.getmtime(path) < start:
+            continue
+        with open(path, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                try:
+                    rec = json.loads(line)
+                    msg = rec["message"]
+                    u = msg["usage"]
+                    when = datetime.datetime.fromisoformat(rec["timestamp"].replace("Z", "+00:00")).timestamp()
+                except (ValueError, TypeError, KeyError, AttributeError):
+                    continue
+                key = (msg.get("id"), rec.get("requestId")) if msg.get("id") else rec.get("uuid")
+                if when < start or key in seen:
+                    continue
+                seen.add(key)
+                total = total or {"input": 0, "cached": 0, "output": 0, "model": None}
+                cached = u.get("cache_read_input_tokens") or 0
+                total["input"] += (u.get("input_tokens") or 0) + (u.get("cache_creation_input_tokens") or 0) + cached
+                total["cached"] += cached
+                total["output"] += u.get("output_tokens") or 0
+                if msg.get("model") and not msg["model"].startswith("<"):
+                    total["model"] = msg["model"]
+    return total

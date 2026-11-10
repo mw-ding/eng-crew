@@ -22,6 +22,7 @@ Sign every authored post and owner-facing reply with
 Fill harness and model from the session that actually wrote it, including
 any fallback; never copy the planned engine or model. Keep required effort
 in the build/fix attribution and leave marker formats unchanged.
+Merge posts end with the roles.md usage line.
 
 Landing authority and steering: follow `<mdstack>/docs/protocol.md` §7,
 Land rules and merge trains, in full: sole synthesizer decisions, the closed

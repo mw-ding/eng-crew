@@ -15,6 +15,8 @@ Role-wide rules:
 
 - [flavor.md](../shared/flavor.md): flavor line and change-flavor rule.
 - [signing.md](signing.md): signature and attribution.
+- [usage-line.md](../shared/usage-line.md): usage line above the signature
+  of every pass-reporting post (tmux and session).
 - [no-downloads.md](../shared/no-downloads.md): local tools only (tmux and
   session).
 

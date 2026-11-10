@@ -16,6 +16,8 @@ Sign every authored post and owner-facing reply with
 `— <CoordinatorEmoji> <CoordinatorBot> (<CoordinatorTitle>) · <harness> · <model>`,
 using the session's actual harness and model, including any fallback.
 
+<include:policy/shared/usage-line.md>
+
 <include:policy/shared/landing-steering.md>
 
 <control-item:set>

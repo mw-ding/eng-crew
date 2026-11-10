@@ -611,7 +611,8 @@ needs = { devices = ["ios-simulator"] }
 
 | Key | Type | Default | Meaning |
 |---|---|---|---|
-| `hosts.<name>` | table; `<name>` is a DNS label (`[a-z0-9-]`, 1–63 characters) | none | The host's overlay network name, also its SSH destination |
+| `hosts.<name>` | table; `<name>` is a DNS label (`[a-z0-9-]`, 1–63 characters) | none | The host's overlay network name, also its SSH destination unless `address` is set |
+| `hosts.<name>.address` | string: a dotted DNS name (`[a-z0-9-]` labels; no IP literal, `user@` or `:port`) | the label | The SSH destination in place of the label, for a host reached by its fully qualified name; the label stays the inventory key |
 | `hosts.<name>.primary` | boolean | `false` | Exactly one host is `true`; it runs the coordinator and synthesizer |
 | `hosts.<name>.capabilities.os` | string: `linux` or `macos` | *required* | The host's OS |
 | `hosts.<name>.capabilities.arch` | string: `x86_64` or `arm64` | *required* | The host's architecture |

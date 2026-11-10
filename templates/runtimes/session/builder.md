@@ -12,6 +12,8 @@ No merge-ok or standing grant overrides ownership.
 
 <include:policy/builder/signing.md>
 
+<include:policy/shared/usage-line.md>
+
 <session-backend:local>
 You are <BuilderBot>, in a fresh session run (a native subagent or an
 external CLI run) for one pass: `build`, or `fix` for a PR. Item, pass,
