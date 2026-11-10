@@ -865,7 +865,7 @@ job root and the optional remote URL.
 ### mdstack spawn
 
 ```sh
-cli/mdstack spawn <role> --issue <n> | --pr <n> | --sweep | --docs-pass [--pass <pass>] [--round <k>] [--tier <tier>] [--project <config.toml>]
+cli/mdstack spawn <role> --issue <n> | --pr <n> | --sweep | --docs-pass | --reflection <window> [--log <n>] [--input-sha <sha>] [--run-id <id>] [--pass <pass>] [--round <k>] [--tier <tier>] [--project <config.toml>]
 ```
 
 `mdstack spawn` (#132) follows [Spawn and kill](#spawn-and-kill) steps 2 to 7;
@@ -885,7 +885,17 @@ step 1, the band cap queue, is under [mdstack dequeue](#mdstack-dequeue) (#136):
   `docs-<sha7>-researcher-research/`); its Item names each `[docs] repos`
   scan, `<state-dir>/<owner>__<repo>/docs/scan.json`. It shares the
   `researchers` cap and queue, and refuses before any claim, queue entry or
-  window unless `[docs] enabled` is true (#1026). It refuses when the session is not
+  window unless `[docs] enabled` is true (#1026). `researcher --reflection
+  <window>` is a [reflection](../self-improve.md#reflection) run with no
+  item (window `riley-reflection`, claim `researcher-reflection`, worktree
+  `reflection-<sha7>-researcher-research/` at the input SHA). Its run ID
+  (default minted at the request), log issue, input SHA (default the
+  default branch head at the request) and window are fixed when requested
+  and kept through the queue, dequeue and restart; restart refuses once the
+  log holds a report covering the window, and `route` relays the
+  `done: reflection` report URL and reaps only that window's run. It shares
+  the `researchers` cap and refuses with `--issue`, `--pr`, `--sweep`,
+  `--docs-pass` or `--train` (#1520). It refuses when the session is not
   reachable (the socket check), the window name is taken, the band is full,
   the claim exists or `mdstack up` has not rendered the role brief.
 - Worktree: a detached checkout of a fresh `git fetch` of

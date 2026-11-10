@@ -1,7 +1,8 @@
 """`mdstack restart` restarts a dead or missing run once (a builder even after `done:`, as its PR's fix pass; `done:` is
 terminal only for reviewer and synthesizer runs), in its own worktree when it holds unlanded work. A run on a role
 host (#345) is probed, checked and relaunched there; a clean one is removed there and spawned again, so placement
-runs again.
+runs again. A reflection run first rechecks its window's posted report and, when one is there, refuses (#1520); else it
+restarts with the same run ID, log issue, input SHA and window.
 
 Usage: mdstack restart WINDOW --project FILE [--org-profile FILE]
 """
@@ -11,7 +12,7 @@ import re
 import shlex
 import time
 from crew_shared import (
-    BANDS, finished, harness, heartbeat, identity, kill_run, LAUNCH, main, POINTER, probe, profile, remote_run, runs,
+    BANDS, commands, finished, harness, heartbeat, identity, kill_run, LAUNCH, main, POINTER, probe, profile, remote_run, runs,
     show_icon, tmux, unlanded, wait_harness, window_env)
 
 
@@ -64,6 +65,21 @@ def relaunch_remote(values, state, name, rec, items):
     return 0
 
 
+def reflection_posted(values, r):
+    """The URL of a posted report covering the reflection run's window on its log issue (or the open reflection:log
+    issues when none was given), else None: a restart writes nothing over a finished report (#1520)."""
+    route, repo = commands()["route"], "%s/%s" % (values["repo.owner"], values["repo.name"])
+    logs = [r["log"]] if r.get("log") else [i["number"] for i in route.gh(
+        "issue", "list", "-R", repo, "--label", "reflection:log", "--state", "open", "--json", "number")]
+    want = set(r["window"].split("+"))
+    for n in logs:
+        for c in route.gh("issue", "view", str(n), "-R", repo, "--json", "comments")["comments"]:
+            if any(m.get("role") == "researcher" and m.get("pass") == "reflection" and
+                   want <= set(m.get("window", "").split("+")) for m in route.markers(c["body"])):
+                return c["url"]
+    return None
+
+
 def register(sub):
     p = sub.add_parser("restart")
     p.add_argument("window")
@@ -91,6 +107,16 @@ def run(args):
         print("crew: refusing restart: " + (problem or "%s has no spawn arguments" % args.window))
         return 1
     wt, a = rec.get("worktree"), rec["args"]
+    if a.get("reflection"):
+        try:
+            url = reflection_posted(values, a["reflection"])
+        except RuntimeError as e:
+            print("crew: refusing restart: cannot recheck reflection %s's report: %s" % (a["reflection"]["window"], e))
+            return 1
+        if url:
+            print("crew: refusing restart: reflection %s already posted at %s; use mdstack kill" % (
+                a["reflection"]["window"], url))
+            return 1
     done = rec["role"] == "builder" and re.match(r"done: #\d+ #(\d+)\b", last)
     if done:  # its PR is open: restart as that PR's fix pass, never a second build pass (#234 N2)
         a = {**a, "pr": int(done.group(1)), "pass": "fix"}
@@ -119,6 +145,9 @@ def run(args):
     argv = ["spawn", rec["role"], *mode, "--round", str(a["round"]), "--tier", a["tier"],
             "--project", args.project] + (["--org-profile", args.org_profile] if args.org_profile else [])
     argv += (["--issue", str(a["issue"])] if a["issue"] else []) + (["--pr", str(a["pr"])] if a["pr"] else [])
+    r = a.get("reflection")
+    argv += ["--reflection", r["window"], "--run-id", r["run"], "--input-sha", r["sha"]] + (
+        ["--log", str(r["log"])] if r["log"] else []) if r else []
     code = main(argv + ["--timeout", str(args.timeout)])
     for name, new in runs(state):
         if new.get("args") == a:
