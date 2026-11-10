@@ -614,6 +614,10 @@ each repo.
    naming another repo than `[repo]`, or when `paths.mdstack` is set but
    missing, so the briefs would cite missing docs; run `mdstack bootstrap`
    (#1323).
+   Also refuses, exit 1 and before rendering, on a failed
+   [doctor `sandbox` row](#mdstack-doctor): a launcher sandboxes sessions,
+   no writable root covers the checkout's `.git` and no `sandbox_env` is set
+   (#1544).
    Renders the briefs with `crew-render.py` into
    `<state-dir>/<owner>__<repo>/render/`, printing the renderer's output
    only when it fails. `--inputs` defaults to
@@ -2050,7 +2054,17 @@ liveness and the last status line. Liveness is the C5 probe
 
 ```sh
 cli/mdstack restart <window> [--project <config.toml>]
+cli/mdstack restart <coordinator-window> [--project <config.toml>] [--resume <id>]
 ```
+
+On the coordinator's window (window 0, or its bare name `ash`) it relaunches
+the live coordinator in place (#1544): it stops window 0's process group and
+respawns the pane with the current `sandbox_env` and `CREW_*` environment
+(as `mdstack up` sets them), resuming `--resume <id>` (`fresh`, `ask` or an
+id; default `launch.resume`). It refuses while the land lock is held, when
+run from window 0 itself (the stop would kill it first: run it from the
+owner's terminal), and for an engine that cannot resume. Use it after
+setting `runtime.options.sandbox_env` on a crew that started without it.
 
 Restarts a run once: it refuses unless the run probes `dead` or `missing`,
 refuses a run whose last status line is `failed:`, or `done:` for a
@@ -2103,6 +2117,17 @@ another repo than `[repo]` and warns when it has none. The `install` and
 `mdstack link` rows warn before bootstrap (which runs doctor before it
 writes `install.json` and the link); once `install.json` exists, a
 missing `paths.mdstack` fails (#1323).
+
+The `sandbox` row (tmux only, #1544) fails when a launcher sandboxes
+sessions and no writable root covers the checkout's `.git`, unless
+`runtime.options.sandbox_env` or `CREW_SANDBOX_ENV` is set. It detects that
+two ways: a create-and-remove probe in that `.git` is denied to doctor's own
+process (it runs inside such a session), or a used engine's harness adapter
+declares `sandbox_roots(values)`, the writable roots its launcher grants a
+session by default, none of which covers `.git`. The fix: set
+`runtime.options.sandbox_env = "<NAME>=<checkout>/.git"` with the
+launcher's writable-roots variable, which the org pack names. `mdstack up`
+and `mdstack up <role>` refuse on the same check before starting any window.
 
 ## Role leads (proposed, #521)
 

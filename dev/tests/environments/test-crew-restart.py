@@ -4,8 +4,10 @@ Covers: only when dead or missing and only once (fresh worktree when clean, rela
 keeping unlanded work), a finished run refused, a builder after `done:` restarts as its PR's fix
 pass (fresh or in place), an in-place relaunch accepts a Claude Code pane whose command reads as
 its version (#286), a dead train worker respawns with --train and keeps the pending train record (#1391), a dead
-reflection run rechecks its posted report and refuses, else respawns with the same request (#1520). Run in CI.
+reflection run rechecks its posted report and refuses, else respawns with the same request (#1520), and the coordinator's window relaunches in place with the current
+sandbox_env and --resume, refused while the land lock is held or from window 0 itself (#1544). Run in CI.
 """
+import fcntl
 import json
 import os
 import unittest
@@ -15,6 +17,48 @@ from crew_testlib import HEAD, LivenessBase
 
 
 class Restart(LivenessBase):
+    def coordinator(self, *args, pane=""):
+        with open(self.state_file) as f:
+            state = json.load(f)
+        state.setdefault("_panes", {})["crew-acme-widgets:0"] = "claude"
+        with open(self.state_file, "w") as f:
+            json.dump(state, f)
+        r = self.crew("restart", "ash", "--project", self.project, "--timeout", "1", *args, TMUX_PANE=pane)
+        return r, [c for c in self.calls() if c[0] == "respawn-window"]
+
+    def test_restart_relaunches_the_coordinator_in_place(self):  # #1544
+        with open(self.project) as f:
+            text = f.read()
+        with open(self.project, "w") as f:
+            f.write(text.replace('name = "tmux"', 'name = "tmux"\noptions = { sandbox_env = "CREW_TEST_SANDBOX=profile" }'))
+        self.env.pop("CREW_SANDBOX_ENV", None)
+        r, calls = self.coordinator("--resume", "d3af8514-565a")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("crew: relaunched ash in place (window 0, resume d3af8514-565a)", r.stdout)
+        [call] = calls
+        self.assertEqual(call[:5], ["respawn-window", "-k", "-t", "=crew-acme-widgets:0", "-c"])
+        self.assertEqual(call[5], self.project_dir)
+        env = dict(call[i + 1].split("=", 1) for i, a in enumerate(call) if a == "-e")
+        self.assertEqual({k: env[k] for k in ("CREW_TEST_SANDBOX", "CREW_SANDBOX_ENV", "CREW_ROLE", "CREW_PROJECT")},
+                         {"CREW_TEST_SANDBOX": "profile", "CREW_SANDBOX_ENV": "CREW_TEST_SANDBOX=profile",
+                          "CREW_ROLE": "coordinator", "CREW_PROJECT": self.project})
+        self.assertNotIn("TMUX", env)  # window 0 keeps the crew's $TMUX
+        self.assertIn(" --resume d3af8514-565a \"Read your brief at $CREW_BRIEF and follow it.\"", call[-1])
+        self.assertTrue(call[-1].startswith('export GH_TOKEN="$(gh auth token --user "$CREW_IDENTITY")"; exec claude '))
+
+    def test_coordinator_relaunch_refusals(self):  # #1544
+        r, calls = self.coordinator("--resume", "x", pane="%0")
+        self.assertEqual((r.returncode, calls), (1, []))
+        self.assertIn("refusing coordinator relaunch: run it from the owner's terminal, not window 0", r.stdout)
+        r, calls = self.coordinator("--resume", "bad id")
+        self.assertEqual((r.returncode, calls), (1, []))
+        self.assertIn("--resume expects fresh, ask or a session id", r.stdout)
+        with open(os.path.join(self.state, "locks", "merge.lock"), "a") as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)
+            r, calls = self.coordinator("--resume", "x")
+        self.assertEqual((r.returncode, calls), (1, []))
+        self.assertIn("refusing coordinator relaunch: the land lock is held", r.stdout)
+
     def test_restart_passes_profile_sandbox_env_fresh_and_in_place(self):
         with open(self.project) as f:
             text = f.read()
