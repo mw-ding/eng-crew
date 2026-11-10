@@ -18,6 +18,7 @@ import json
 import os
 import re
 import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -1629,6 +1630,27 @@ class AsyncLandTest(unittest.TestCase):
             code, lines = validate(text)
             self.assertEqual(code, 1, lines)
             self.assertIn(expected, lines)
+
+    def test_stack_land_validator_cli_exit_codes(self):
+        """#1605 review: the shipped `core/crew-config.py validate` process exits 0 on an accepted stack-land manifest
+        and nonzero, naming the key, on each rejected one."""
+        stack = GITHUB_MANIFEST.replace('land = "supported"\n', 'land = "supported"\nland-stack = "supported"\n'
+                                        'stack-status = "supported"\n', 1)
+        cases = ((stack + '\n[land]\nstack = true\nstack_tests_against_tip = true\n', 0, "crew-config: OK"),
+                 (GITHUB_MANIFEST + '\n[land]\nstack = true\n', 1, "land.stack: needs change.land-stack"),
+                 (stack.replace('stack-status = "supported"', 'stack-status = "unsupported"') + '\n[land]\nstack = true\n',
+                  1, "land.stack: needs change.stack-status"),
+                 (stack + '\n[land]\nstack_tests_against_tip = true\n', 1,
+                  "land.stack_tests_against_tip: only valid with stack = true"))
+        with tempfile.TemporaryDirectory() as d:
+            for text, code, expected in cases:
+                path = os.path.join(d, "manifest.toml")
+                with open(path, "w") as f:
+                    f.write(text)
+                r = subprocess.run([sys.executable, os.path.join(ROOT, "core", "crew-config.py"), "validate", path],
+                                   capture_output=True, text=True)
+                self.assertEqual(r.returncode, code, r.stdout + r.stderr)
+                self.assertIn(expected, r.stdout)
 
     def test_manifest_stack_land(self):
         """#1605: land.stack admits the atomic stack-land operation and its readback; the validator checks both."""

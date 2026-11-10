@@ -884,7 +884,6 @@ class PackOverlay(unittest.TestCase):
         flat = " ".join(synth.split())
         for rule in ("Stack land (`land.stack`, protocol §7): when two or more ready PRs form one linear",
                      "for every member at that member's own live head",
-                     "If any member fails, refuse the whole stack: request nothing",
                      'run `$CREW_BIN land stack --project "$CREW_PROJECT" --stack <n>:<head-sha>,...`',
                      "sends `ex land-stack <stack>` once, only when `ex stack-status <stack>` reads `none` for every member",
                      "post one `[Sam/merge]` per member", "that member's printed `record:` line",
@@ -892,6 +891,12 @@ class PackOverlay(unittest.TestCase):
                      "`Land rule: stack of <k>`.", 'run `$CREW_BIN land resume --project "$CREW_PROJECT"`; it never requests.'):
             self.assertIn(rule, flat)
         self.assert_crew_commands_parse(synth[synth.index("Stack land"):])
+        recipe = flat[flat.index("Stack land"):]
+        refusal = recipe.index("refuse the whole stack: one held member (`crew:hold`, an open hold-until or stop), one "
+                               "with red, pending or missing CI, one without its passing verdict or merge permission, "
+                               "or one whose head moved means zero requests. Never run `$CREW_BIN land stack` then")
+        self.assertLess(recipe.index("for every member at that member's own live head"), refusal)
+        self.assertLess(refusal, recipe.index('Otherwise run `$CREW_BIN land stack --project'))  # gates before request
         flat = " ".join(tested["runtime/synthesizer.md"].split())
         recipe = flat[flat.index("Stack land"):]
         for rule in ("(`land.serializes`, C7): take no repo lock.", "`Land rule: stack of <k>, backend combined test`",
