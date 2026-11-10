@@ -8,12 +8,16 @@ network, no writes but stdout. Informational: it recommends keep, revise or reve
 nothing; the metrics gate (docs/metrics/decisions.md) and its thresholds are unchanged.
 
 Chain: a `- rp-ID: ... accept -> #n` line in a `[<Bot>/reflection-decision]` comment names the issue (a later
-decision wins); a merged PR whose body closes it lands it. Before: the proposal's latest ledger baseline. After: the
-measure over whole 14-day windows from the confirmed activation's `recorded_at`, CSV rows limited to the baseline's
-repos (the cohort). The measure is the issue's `Effect metric`. Status: `pending` (not merged, activation pending or
-no whole window yet), `insufficient` (no baseline or metric, fewer than 3 PRs on a side of a PR measure, or a
-counter's coverage unknown), else `evaluated`. Only an evaluated row recommends: keep when the measure did not rise,
-revert when it rose more than 30% (the latency sensor's default), else revise. Lower is better for every measure.
+decision wins); a merged PR whose body closes it lands it. The measure is the issue's `Effect metric`. Before: that
+measure over the proposal's latest ledger baseline window. After: the same measure over the latest completed window
+of the same length counted from the confirmed activation's `recorded_at` (14 days for a 14-day baseline), so both
+periods are equal. Cohort: the baseline's repos and the card's Failure class; both sides are computed from the same
+inputs limited to it. A CSV without a `class` column, or an observation or incident line without `repo` and
+`class`, cannot place its rows in the cohort, and the row says so. Status: `pending` (not merged, activation pending
+or no whole window yet), `insufficient` (no baseline, metric or established cohort, fewer than 3 PRs on a side of a
+PR measure, or a counter's coverage unknown), else `evaluated`. Each side shows its sample coverage. Only an
+evaluated row recommends: keep when the measure did not rise, revert when it rose more than 30% (the latency
+sensor's default), else revise. Lower is better for every measure.
 
 Usage: reflection-effects.py --forge FILE... --ledger FILE [--now T] [--json] (reflection-measures measure options)
 Exit codes: 0 table printed, 2 usage or malformed input.
@@ -26,7 +30,7 @@ import os
 import re
 import sys
 import tempfile
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -41,7 +45,6 @@ def module(name, path):
 rs = module("reflection_scan", "reflection-scan.py")
 rm = module("reflection_measures", "reflection-measures.py")
 tc = rs.tc
-WINDOW = timedelta(days=14)
 MIN_PRS = 3
 REVERT_PCT = 30
 PR_MEASURES = ("verdict_rounds_per_pr", "ci_fix_rounds_per_pr", "ready_to_land")
@@ -73,20 +76,45 @@ def metric(issue):
     return next((name for name in MEASURES if m and name in m[1]), None)
 
 
-def cohort_csv(path, repos):
-    """The CSV limited to the cohort's repos, as a temp file; all rows when the cohort names none."""
-    if not repos or not path or not os.path.exists(path):
-        return path
-    with open(path, newline="") as f:
-        reader = csv.DictReader(f)
-        rows = [r for r in reader if r.get("repo") in repos]
-        fields = reader.fieldnames
-    out = tempfile.NamedTemporaryFile("w", suffix=".csv", delete=False, newline="")
+def temp(suffix, write):
+    out = tempfile.NamedTemporaryFile("w", suffix=suffix, delete=False, newline="")
     with out:
-        writer = csv.DictWriter(out, fieldnames=fields)
-        writer.writeheader()
-        writer.writerows(rows)
+        write(out)
     return out.name
+
+
+def in_cohort(r, repos, cls):
+    return r.get("repo") in repos and r.get("class") == cls
+
+
+def cohort_inputs(args, name, repos, cls):
+    """The measure's inputs limited to the cohort, as temp files, and the reasons a cohort cannot be established."""
+    gaps, files = [], {"csv": None, "observations": None, "incidents": None}
+    if cls == "unknown":
+        return ["no proposal class"], files
+    if name in ("verdict_rounds_per_pr", "ci_fix_rounds_per_pr"):
+        if not args.csv or not os.path.exists(args.csv):
+            return ["no metrics CSV"], files
+        with open(args.csv, newline="") as f:
+            reader = csv.DictReader(f)
+            rows, fields = list(reader), reader.fieldnames or []
+        if "class" not in fields:
+            return ["cohort: CSV records no class"], files
+
+        def write(out):
+            w = csv.DictWriter(out, fieldnames=fields)
+            w.writeheader()
+            w.writerows(r for r in rows if in_cohort(r, repos, cls))
+        files["csv"] = temp(".csv", write)
+        return gaps, files
+    key = "incidents" if name == "false_throttles" else "observations"
+    lines = rm.jsonl(getattr(args, key))
+    if any("repo" not in r or "class" not in r for r in lines):
+        return ["cohort: %s lines record no repo or class" % key], files
+    if getattr(args, key) and os.path.exists(getattr(args, key)):
+        files[key] = temp(".jsonl", lambda out: out.writelines(
+            json.dumps(r) + "\n" for r in lines if in_cohort(r, repos, cls)))
+    return gaps, files
 
 
 def verdict(name, before, after):
@@ -108,7 +136,7 @@ def verdict(name, before, after):
 def row(proposal, link, ledger, args, now):
     issue, pr, item = link
     records = [r for r in ledger if r.get("proposal") == proposal]
-    baselines = [r for r in records if r.get("type") == "baseline"]
+    baselines = [r for r in records if r.get("type") == "baseline" and r.get("window")]
     active = [r for r in records if r.get("type") == "activation" and r.get("activation", "pending") != "pending"]
     name = metric(item)
     out = {"proposal": proposal, "issue": issue, "pr": tc.ref(pr).lower() if pr else None, "metric": name,
@@ -121,31 +149,48 @@ def row(proposal, link, ledger, args, now):
     if not active:
         out["missing"].append("activation pending")
         return out
-    start = datetime.strptime(active[-1]["recorded_at"], rm.FMT).replace(tzinfo=timezone.utc)
-    windows = int((now - start) / WINDOW)
-    out["next_evaluation"] = (start + WINDOW * (windows + 1)).strftime("%Y-%m-%d")
-    if not windows:
-        out["missing"].append("first 14-day window open")
-        return out
-    out["status"] = "insufficient"
     if not baselines or not name:
+        out["status"] = "insufficient"
         out["missing"] += (["no baseline"] if not baselines else []) + (["no effect metric"] if not name else [])
         return out
-    before = baselines[-1][name]
-    out["repos"] = sorted({r.split("#")[0] for r in before["refs"] if "#" in r and "/" in r}) or [tc.repo_of(pr)]
-    window = argparse.Namespace(since=start.strftime(rm.FMT), until=(start + WINDOW * windows).strftime(rm.FMT),
-                                csv=cohort_csv(args.csv, out["repos"]), observations=args.observations,
-                                incidents=args.incidents, errors=args.errors)
-    after = rm.measures(window)[name]
-    if window.csv != args.csv:
-        os.unlink(window.csv)
-    out["before"], out["after"] = before, after
-    out["status"], out["missing"], out["recommendation"] = verdict(name, before, after)
+    base = baselines[-1]
+    since, until = (datetime.strptime(base["window"][k], rm.FMT).replace(tzinfo=timezone.utc)
+                    for k in ("since", "until"))
+    length = until - since
+    start = datetime.strptime(active[-1]["recorded_at"], rm.FMT).replace(tzinfo=timezone.utc)
+    windows = int((now - start) / length)
+    out["next_evaluation"] = (start + length * (windows + 1)).strftime("%Y-%m-%d")
+    if not windows:
+        out["missing"].append("first %d-day window open" % length.days)
+        return out
+    out["status"] = "insufficient"
+    refs = (base.get(name) or {}).get("refs") or []
+    out["repos"] = sorted({r.split("#")[0] for r in refs if "#" in r and "/" in r}) or [tc.repo_of(pr)]
+    gaps, files = cohort_inputs(args, name, out["repos"], out["class"])
+    try:
+        if not gaps:
+            sides = []
+            for lo in (since, start + length * (windows - 1)):
+                window = argparse.Namespace(since=lo.strftime(rm.FMT), until=(lo + length).strftime(rm.FMT),
+                                            errors=args.errors, **files)
+                sides.append(rm.measures(window)[name])
+            out["before"], out["after"] = sides
+            out["status"], gaps, out["recommendation"] = verdict(name, *sides)
+    finally:
+        for path in filter(None, files.values()):
+            os.unlink(path)
+    out["missing"] = gaps
     return out
 
 
 def cell(m):
-    return "unknown" if not m or m["value"] is None else "%s (n=%d)" % (m["value"], m["n"])
+    if not m:
+        return "unknown"
+    cov = m.get("coverage")
+    if isinstance(cov, dict):
+        cov = "%s%s to %s" % ("partial " if cov["partial"] else "", cov["from"], cov["to"])
+    value = "unknown" if m["value"] is None else m["value"]
+    return "%s (n=%d; coverage %s)" % (value, m["n"], cov or "unknown")
 
 
 def render(rows):
