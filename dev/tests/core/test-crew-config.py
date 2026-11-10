@@ -392,6 +392,20 @@ class ValidateTest(unittest.TestCase):
         self.assertFails(VALID.replace('name = "tmux"', 'name = "hosted"'),
                          "crew.toml:runtime.name: unknown value 'hosted' (expected one of: grok-bot, tmux, session)")
 
+    def test_role_runtime_schema(self):  # #1055
+        code, lines = resolve(VALID)
+        self.assertFalse([ln for ln in lines if "role_runtime" in ln], lines)
+        for value in ('{}', '{ coordinator = "session" }', '{ coordinator = "session", builder = "grok-bot" }'):
+            code, lines = validate(VALID.replace('options = { builders = 3 }', 'options = { role_runtime = %s }' % value))
+            self.assertEqual(code, 0, lines)
+        for value, expected in [('"session"', 'role_runtime: expected table, got string'),
+                                ('{ solo = "session" }', 'role_runtime.solo: unknown key'),
+                                ('{ coordinator = 1 }', 'role_runtime.coordinator: expected string, got integer'),
+                                ('{ coordinator = "tmux" }',
+                                 "role_runtime.coordinator: unknown value 'tmux' (expected one of: grok-bot, session)")]:
+            self.assertFails(VALID.replace('options = { builders = 3 }', 'options = { role_runtime = %s }' % value),
+                             'crew.toml:runtime.options.' + expected)
+
     def test_launch_topology_schema(self):
         """#606: absent launch adds no resolved key; each key and its values validate."""
         code, lines = resolve(VALID)
