@@ -290,8 +290,20 @@ class TeamRef(Base):
         self.assertTrue(os.path.isfile(self.record))
 
     def test_apply_relocates_the_selected_repo_only(self):
+        self.apply_and_check("[repos.gadgets]")
+
+    def test_indented_sibling_header_is_kept(self):  # r1 R1: TOML allows an indented header
+        self.apply_and_check("  [repos.gadgets]")
+
+    def test_spaced_quoted_sibling_header_is_kept(self):  # r1 R1: and spaced, quoted dotted keys
+        self.apply_and_check('[ repos . "gadgets" ]  # sibling')
+
+    def apply_and_check(self, header):
         with open(self.new_file) as f:
-            gadgets = f.read().split("[repos.gadgets]")[1]
+            text = f.read().replace("[repos.gadgets]", header)
+        with open(self.new_file, "w") as f:
+            f.write(text)
+        gadgets = text.split(header)[1]
         r = self.migrate("--apply")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertFalse(os.path.exists(self.old_state))
@@ -302,7 +314,7 @@ class TeamRef(Base):
             self.assertEqual(json.load(f), {"project": self.old_file + "#gadgets"})
         with open(self.new_file) as f:
             text = f.read()
-        self.assertEqual(text.split("[repos.gadgets]")[1], gadgets)
+        self.assertEqual(text.split(header)[1], gadgets)
         self.assertIn('checkout = "%s/gadgets"' % self.old_home, text)
         self.assertIn('merge_grant = "see %s/runs/x.md"' % self.new_state, text)
         self.assertIn("next: mdstack up --project %s --coordinator-only" % self.new_ref, r.stdout)

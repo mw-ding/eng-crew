@@ -130,7 +130,7 @@ def files(state, globs):
     return sorted({p for g in globs for p in glob.glob(os.path.join(state, g)) if os.path.isfile(p)})
 
 
-HEADER = re.compile(r"(?m)^(\[[^\]\n]+\][ \t]*(?:#.*)?)$")
+HEADER = re.compile(r"(?m)^([ \t]*\[[^\]\n]+\][ \t]*(?:#.*)?)$")  # TOML allows an indented header
 
 
 def rewrite_profile(text, maps, repo, rx=None):
@@ -140,8 +140,8 @@ def rewrite_profile(text, maps, repo, rx=None):
     parts, count = HEADER.split(text), 0
     for i in range(0, len(parts), 2):
         header = parts[i - 1].split("#")[0].strip()[1:-1].strip() if i else ""
-        section = header.split(".")
-        if section[0] == "repos" and len(section) > 1 and section[1].strip('"\'') != repo:
+        section = [key.strip().strip('"\'') for key in header.split(".")]
+        if section[0] == "repos" and len(section) > 1 and section[1] != repo:
             continue
         parts[i], n = rewrite(parts[i], maps, rx)
         count += n
