@@ -114,8 +114,8 @@ def sandbox(values, project):
             found.append("this session")
     for engine in sorted(e for e in used if e in harnesses.ADAPTERS):
         roots = getattr(harnesses.ADAPTERS[engine], "sandbox_roots", lambda v: None)(values)
-        if roots is not None and not any(os.path.commonpath([os.path.abspath(r), git]) == os.path.abspath(r)
-                                         for r in roots):
+        if roots is not None and not any(os.path.commonpath([os.path.realpath(r), os.path.realpath(git)]) ==
+                                         os.path.realpath(r) for r in roots):  # git reports resolved paths
             found.append(engine + "'s launcher")
     if not found:
         return [("ok", "sandbox", "no session sandbox over %s" % git, "")]

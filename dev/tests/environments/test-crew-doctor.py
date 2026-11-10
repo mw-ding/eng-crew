@@ -606,7 +606,9 @@ class Sandbox(DoctorBase):
         git = os.path.join(self.project_dir, ".git")
         with mock.patch.dict(os.environ, {"CREW_SANDBOX_ENV": ""}):
             self.assertEqual(sandbox(values, self.project)[0][0], "ok")  # no declaration: no sandbox
-            for roots, status in ([self.tmp], "ok"), ([os.path.join(self.tmp, "other")], "fail"):
+            alias = os.path.join(self.tmp, "alias")
+            os.symlink(self.project_dir, alias)  # a root named through a symlink still covers the resolved .git
+            for roots, status in ([self.tmp], "ok"), ([alias], "ok"), ([os.path.join(self.tmp, "other")], "fail"):
                 with mock.patch.object(adapter, "sandbox_roots", lambda v: roots, create=True):
                     row = sandbox(values, self.project)[0]
                 self.assertEqual(row[0], status, row)
