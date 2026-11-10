@@ -1960,8 +1960,8 @@ class HostInventoryTest(unittest.TestCase):
                          "(expected one of: claude-code, codex, muse, opencode, pi, cursor)")
         self.assertFails(VALID + HOSTS.replace('needs = { devices', 'needs = { gpu = "a100", devices'),
                          "crew.toml:placement.rules[0].needs.gpu: unknown key")
-        self.assertFails(VALID + HOSTS.replace("max_runs = 4", 'max_runs = 4\naddress = "host-b"'),
-                         "crew.toml:hosts.host-b.address: unknown key")
+        self.assertFails(VALID + HOSTS.replace("max_runs = 4", 'max_runs = 4\nip = "10.0.0.7"'),
+                         "crew.toml:hosts.host-b.ip: unknown key")
 
     def test_required_keys_and_types(self):
         self.assertFails(VALID + HOSTS.replace("max_runs = 4\n", ""), "crew.toml:hosts.host-b.max_runs: missing required key")
