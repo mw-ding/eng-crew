@@ -3,7 +3,7 @@
 > - **Status:** partly built
 > - **Applies to:** hand-dispatched or hosted sessions; profiles with `runtime.name = "session"`
 > - **Current rules:** [protocol](../protocol.md), [runtime contract](README.md#contract)
-> - **Built:** [Run parameters for hosted dispatch](#run-parameters-for-hosted-dispatch) via `mdstack brief` (#647); the [selector, options and briefs](#selector-options-and-briefs) (#914); [starting the coordinator](#starting-the-coordinator) via `mdstack up` (#1548); [upgrading](#upgrading) via `mdstack upgrade` (#1541)
+> - **Built:** [Run parameters for hosted dispatch](#run-parameters-for-hosted-dispatch) via `mdstack brief` (#647); the [selector, options and briefs](#selector-options-and-briefs) (#914); [starting the coordinator](#starting-the-coordinator) via `mdstack up` (#1548); [upgrading](#upgrading) via `mdstack upgrade` (#1541); the [triage sweep routine](#triage-sweep-routine) (#1404)
 > - **Design only:** everything in [Implementation follow-ups](#implementation-follow-ups)
 > - **Last checked:** 2026-11-09 at `1db3f1d`
 
@@ -26,14 +26,14 @@ A profile selects the binding with `runtime.name = "session"`
 ([options](../configuration/runtime-options.md#session-options)):
 `max_active_milestones`, `session_backend` (`native` subagents or `cli`
 runs), the `builders` and `reviewers` pool limits, and the synthesizer's
-land-policy options. `crew-render` writes four briefs from
-`templates/runtimes/session/`: the coordinator, and the builder, reviewer and
-synthesizer worker briefs. Each worker brief carries the tmux role's
+land-policy options. `crew-render` writes five briefs from
+`templates/runtimes/session/`: the coordinator, and the builder, reviewer,
+synthesizer and researcher sweep worker briefs. Each worker brief carries the tmux role's
 contract for one pass per run and ends where the coordinator appends the
 `mdstack brief` run block (below); workers set their own `CREW_*` paths, since
-no runtime sets them. The binding has no researcher brief:
-`researchers = 0` validates as a no-op, so a profile migrated from tmux keeps
-it, and any other value is refused.
+no runtime sets them. The researcher brief runs only the
+[triage sweep](#triage-sweep-routine), carrying the tmux brief's Triage
+sweep policy; `researchers = 0` writes none (#1404).
 
 Session lands are sync and alone (#1041). `land.mode = "async"` is
 tmux-only: the validator refuses it on a session profile, and
@@ -82,6 +82,46 @@ its attach line. `launch.coordinator = "none"` is preflight only, and
 `launch.resume` or `mdstack up --resume <id>` resumes an existing Claude Code
 or Codex coordinator conversation
 ([launch options](../configuration/runtime-options.md#launch-topology)).
+
+## Triage sweep routine
+
+With `[triage] enabled = true`, a session crew runs the
+[triage](../triage.md) scan → queue → sweep → record → daily log loop as
+tmux does, in shadow mode first; the owner loop, noise cap, cooldowns and
+calibration are unchanged (#1404). The scan is
+`mdstack poll --triage-only --project <config.toml>`: one zero-model scan
+into `<state-dir>/<owner>__<repo>/triage/queue.json`, then exit. A GitHub
+tracker reads `[triage] repos` through `gh`; a non-GitHub tracker backend
+reads its `tracker.list-items` binding once per `[triage] trackers` id
+(the `<tracker>` placeholder; list it in the map's `placeholders.kept`),
+comments included for owner replies, and lists no closed milestones.
+
+No watcher runs on session, so a hosted scheduler maps
+`roles/eng/researcher/routines/triage-sweep.toml` to its own routine
+trigger ([routines](../routines.md#other-environments)):
+
+- **Schedule:** every `triage.interval_hours` hours (the routine's
+  `every_key`; default 6), with its 10-minute retry and one catch-up run
+  when a slot was missed.
+- **Skip:** the trigger first runs the scan. When `triage/queue.json` lists
+  no `items` and no `milestones`, the run ends there and starts no model
+  session.
+- **Run prompt:** names the routine file
+  `roles/eng/researcher/routines/triage-sweep.toml` and its skill
+  `triage-sweep`, and dispatches the rendered
+  `render/runtime/researcher.md` with its run block:
+
+```sh
+{ cat "<state-dir>/<owner>__<repo>/render/runtime/researcher.md"
+  cli/mdstack brief --window riley-sweep --item "triage sweep" \
+    --pass research --base "<default-branch-head-sha>" \
+    --engine "<engine> <model> <effort>"
+} > "<dispatch-brief>"
+```
+
+A P0 candidate also appends a `triage-p0` record to `wake/queue.jsonl`; with
+no watcher, the coordinator reads it on its next §6 sweep. A crew whose
+host sleeps still misses slots; the catch-up run covers the gap.
 
 ## Decisions
 
@@ -175,7 +215,8 @@ the contract's invariant floor; a gap never waives a merge gate.
 ## Implementation follow-ups
 
 Profiles accept `session`, the renderer writes its briefs (#914) and
-`mdstack up` starts the coordinator (#1548). Still to build: the lifecycle runner, durable receipts/status, external task/process identity probes,
+`mdstack up` starts the coordinator (#1548); the triage scan and sweep brief
+run from a hosted trigger (#1404). Still to build: the lifecycle runner, durable receipts/status, external task/process identity probes,
 worktree enforcement and safe teardown, lock handling and ownership guards.
 Add a token-free wake/backstop and deadline path per supported coordinator
 adapter, or retain the declared attended-only gaps. Verify real harness

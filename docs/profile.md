@@ -416,12 +416,15 @@ crew wakes with a sweep overdue, and skips the slot when
 `<state-dir>/<owner>__<repo>/triage/queue.json` lists no items (no unplaced
 issue and no owner reply). The timer costs no model turn; its last slot is
 in `triage/sweep.json` ([mdstack watch](runtimes/tmux.md#mdstack-watch)).
+On `runtime.name = "session"`, a hosted routine trigger runs the same loop
+([session binding](runtimes/session.md#triage-sweep-routine), #1404).
 
 | Key | Type | Default | Meaning |
 |---|---|---|---|
 | `enabled` | boolean | `false` | Run the sweep timer |
 | `interval_hours` | integer, at least 1 | `6` | Hours between sweep slots |
 | `repos` | list of `owner/name` strings (non-empty) | the project's `repo.owner/repo.name` | Tracker repos a sweep reads |
+| `trackers` | list of tracker ids (non-empty, no spaces) | none (one read for the project) | A non-GitHub tracker backend only: each id fills `<tracker>` in its `tracker.list-items` binding for the scan; a GitHub tracker refuses it and reads `repos` (#1404) |
 | `rules` | string: file path | none (built-in defaults) | The owner's class rules file (label maps, P0 signals, cooldowns); Riley never writes it |
 | `mode` | string: `shadow` or `apply` | `"shadow"` | `shadow` writes records and proposals only; the owner sets `apply` after [calibration](triage.md#shadow-mode-and-calibration) |
 
