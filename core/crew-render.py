@@ -82,6 +82,7 @@ MAPPED = {
     "hold-label-blocks": ["runtime.options.hold_label_blocks"], "timezone": ["runtime.timezone"], "fallback-engine": ["engines.fallback_engine"],
     "tested-update": ["strategy.update_from_base"],
     "land-step": ["land.mode"], "land-publish": ["land.opens_draft"], "land-rule": ["land.tests_against_tip"],
+    "land-stack": ["land.stack"],
 }
 for role, metadata in ROLES.items():
     MAPPED[role.title() + "Bot"] = [metadata["identity_key"] + ".name"]
@@ -193,6 +194,45 @@ SESSION_LAND_RULE = ("\n\nBackend queue (`land.tests_against_tip`): the two rule
                      "Land every ready PR alone through step 3, one per run, even behind the default\n"
                      "branch, recording `Land rule: alone, backend queue`. Never run\n"
                      "`<op:change.update-from-base>` or `mdstack train` (it refuses).")
+# <land-stack>: the session synthesizer's stack-land recipe under land.stack (#1605); nothing otherwise, so every
+# render without the binding stays byte-identical and keeps one land per run.
+SESSION_LAND_STACK = (
+    "\n\nStack land (`land.stack`, protocol §7): when two or more ready PRs form one\n"
+    "linear `Depends on` stack, land them in one request instead of one per run.\n"
+    "%s\n"
+    "Check every step 1 and 2 gate (verdict markers, precheck, flavor, merge\n"
+    "permission, holds, CI) for every member at that member's own live head. If\n"
+    "any member fails, refuse the whole stack: request nothing, release any lock\n"
+    "you hold and append `blocked: #<n> stack` naming each failing member and gate\n"
+    "to `$CREW_STATUS`. Otherwise run\n"
+    "`$CREW_BIN land stack --project \"$CREW_PROJECT\" --stack <n>:<head-sha>,...`\n"
+    "with every member, base first. It records the intent, re-reads each member's\n"
+    "head and sends `<op:change.land-stack>` once, only when\n"
+    "`<op:change.stack-status>` reads `none` for every member; never run either\n"
+    "yourself. On exit 1 post no `merge`, release any lock and report its\n"
+    "`blocked:` line. On exit 0 post one `[<SynthesizerBot>/merge]` per member,\n"
+    "naming the merge-ok or grant used, its `Land rule:` line and that member's\n"
+    "printed `record:` line, with that member's printed `marker:` line as its\n"
+    "marker (`<op:markers.write>`). Check default-branch CI as step 4 does at the\n"
+    "last member's landed revision, append one `done:` per member, then run\n"
+    "`$CREW_BIN land stack-done --project \"$CREW_PROJECT\" --stack <n>:<head-sha>,...`.\n"
+    "%s\n"
+    "At the start of every run, before step 1, run\n"
+    "`$CREW_BIN land resume --project \"$CREW_PROJECT\"`; it never requests. Complete\n"
+    "each landed stack it prints the same way, skipping a member's post when\n"
+    "`<op:markers.read>` already shows `pass=merge` at its PR and head; on exit 1\n"
+    "report its `blocked:` lines and request no new land in this run.")
+SESSION_STACK_LOCK = {True: "The backend serializes lands (`land.serializes`, C7): take no repo lock.",
+                      False: "First, " + SESSION_LOCK + " Hold it until the stack's terminal\n"
+                             "   status and, on landed, every merge post, then release with\n"
+                             "   `rmdir \"$CREW_STATE/locks/merge.lock.d\"`."}
+SESSION_STACK_TIP = {
+    True: "The backend tests the combined stack on the current tip\n"
+          "(`land.stack_tests_against_tip`): the stack may land behind the default branch,\n"
+          "and each merge post records `Land rule: stack of <k>, backend combined test`\n"
+          "with the check its `record:` line names. Never run `<op:change.update-from-base>`.",
+    False: "Tested with the default branch must hold for every member at the request;\n"
+           "each merge post records `Land rule: stack of <k>`."}
 # <land-rule>: appended to the Land rule section's opening, before its train decision; only
 # land.tests_against_tip replaces that decision, so every other render adds nothing.
 LAND_RULE = ("\nBackend queue (`land.tests_against_tip`): the rules below and the merge train\n"
@@ -405,6 +445,11 @@ class Renderer:
             if not self.values.get("land.tests_against_tip"):
                 return ""
             return self.line(SESSION_LAND_RULE if self.session_template() else LAND_RULE)
+        if name == "land-stack":
+            if not (self.values.get("land.stack") and self.session_template()):
+                return ""
+            lock = SESSION_STACK_LOCK[bool(self.values.get("land.serializes"))].replace("\n   ", "\n")
+            return self.line(SESSION_LAND_STACK % (lock, SESSION_STACK_TIP[bool(self.values.get("land.stack_tests_against_tip"))]))
         if name == "land-publish":
             return self.line(LAND_PUBLISH) if self.values.get("land.opens_draft") else ""
         if name == "TeamName":
