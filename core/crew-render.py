@@ -3,7 +3,8 @@
 
 Usage: crew-render.py --project FILE [--org-profile FILE] [--inputs DIR] [--diff-paths FILE] --out DIR
 Inputs (default: the repo's templates/): core/<role>.md for each role, if core/ exists -> briefs/<role>.md;
-runtimes/<runtime>/** of the profile's runtime -> runtime/**; backends/<backend>.toml maps each
+runtimes/<runtime>/** of the profile's runtime -> runtime/** (runtime.options.role_runtime swaps one role's
+template for runtimes/<other>/<role>.md, #1055); backends/<backend>.toml maps each
 <op:concern.operation> to a command, and its [placeholders] kept list declares extra run-time placeholders.
 Pack overlay: a render/ directory in the org profile's directory (else paths.pack) is searched per file
 before the inputs. runtime.options.notes.render files are appended verbatim to that role's rendered brief.
@@ -439,10 +440,26 @@ def render(args, paths, normalize_paths):
                   for r in idle for t in ROLES[r]["templates"].get(values["runtime.name"], [])}
         if values["runtime.name"] == "session":  # unregistered binding: an idle role's <role>.md brief (#1404)
             unused |= {os.path.join(rt, r + ".md") for r in idle}
+        moved = []  # runtime.options.role_runtime: the role's own template swapped for <runtime>/<role>.md (#1055)
+        for r in ROLES:
+            other = values.get("runtime.options.role_runtime." + r)
+            if other is None or r in idle:
+                continue
+            own = ROLES[r]["templates"].get(values["runtime.name"], [])
+            src = os.path.join("runtimes", other, r + ".md")
+            if not own:
+                problems.append("%s:1: runtime.options.role_runtime.%s: role %s declares no %s template to replace"
+                                % (args.project, r, r, values["runtime.name"]))
+            elif not any(os.path.isfile(os.path.join(root, src)) for root in roots):
+                problems.append("%s:1: missing mapping: no %s template for role %s"
+                                % (os.path.join(args.inputs, src), other, r))
+            else:
+                unused |= {os.path.relpath(t, "templates") for t in own}
+                moved.append((src, os.path.join("runtime", r + ".md"), None))
         jobs = [job for job in jobs if job[2] not in idle]
         jobs += [(os.path.join(rt, rel), os.path.join("runtime", rel), None)
                  for rel in sorted(found, key=lambda rel: [(1, d) for d in rel.split(os.sep)[:-1]] + [(0, rel)])
-                 if os.path.join(rt, rel) not in unused]
+                 if os.path.join(rt, rel) not in unused] + moved
     renderer, rendered = Renderer(values, args.inputs, normalize_paths, overlay), {}
     for rel, dst, role in jobs:
         src = renderer.find(rel)
