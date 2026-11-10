@@ -94,6 +94,8 @@ is not a pass result.
 `<state-dir>/<owner>__<repo>/status/<run-id>.status`; a completed session
 state alone is not a pass result.
 <session-backend:end>
+
+Cut go: `release_delegation = "<release-delegation>"` (docs/release.md).
 <control-item:set>
 
 ## Quota

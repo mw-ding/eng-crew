@@ -4,16 +4,72 @@ host (#345) is probed, checked and relaunched there; a clean one is removed ther
 runs again. A reflection run first rechecks its window's posted report and, when one is there, refuses (#1520); else it
 restarts with the same run ID, log issue, input SHA and window.
 
-Usage: mdstack restart WINDOW --project FILE [--org-profile FILE]
+On the coordinator's window (window 0) it relaunches the live coordinator in place instead (#1544): the current
+sandbox_env and CREW_* environment, resuming --resume ID (else launch.resume). It refuses while the land lock is held,
+when run from window 0 itself (beneath its pane process), which the stop would kill first, and for a team reference.
+
+Usage: mdstack restart WINDOW --project FILE [--org-profile FILE] [--resume ID]
 """
 import json
 import os
 import re
 import shlex
+import subprocess
 import time
 from crew_shared import (
-    BANDS, commands, finished, harness, heartbeat, identity, kill_run, LAUNCH, main, POINTER, probe, profile, remote_run, runs,
-    show_icon, tmux, unlanded, wait_harness, window_env)
+    BANDS, brief_src, commands, coordinator_harness, coordinator_window, CREW_BIN, crew_render, ENGINE_CMD, finished,
+    harness, harnesses, heartbeat, identity, kill_run, LAUNCH, main, POINTER, probe, profile, remote_run, runs, sandbox_env,
+    show_icon, stop_pane, tmux, unlanded, wait_harness, window_alias, window_env)
+
+
+def runs_under(pid):
+    """Whether this process runs beneath pid (its parent or an ancestor), on ps's pid/ppid table: a pane id alone
+    would match another tmux server's pane."""
+    out = subprocess.run(["ps", "-axo", "pid=,ppid=,stat=,comm="], capture_output=True, text=True).stdout
+    parents = {row[0]: row[1] for row in (line.split(None, 3) for line in out.splitlines()) if len(row) >= 2}
+    node, seen = str(os.getppid()), set()
+    while node and node not in seen:
+        if node == str(pid):
+            return True
+        seen.add(node)
+        node = parents.get(node)
+    return False
+
+
+def relaunch_coordinator(values, session, state, args):
+    """Respawn window 0 in place with the current sandbox_env and CREW_* environment, resuming its conversation."""
+    engine, resume = values["engines.coordinator"], args.resume or values.get("runtime.options.launch.resume", "fresh")
+    pane = tmux.pane(session, 0)
+    problem = ("a team coordinator is not relaunched here" if "#" in args.project
+               else "--resume expects fresh, ask or a session id" if resume not in ("fresh", "ask") and
+               not crew_render.crew_config.LAUNCH_SESSION_ID.fullmatch(resume)
+               else "the land lock is held" if commands()["land-lock"].held(state)
+               else "%s is not running" % session if not pane
+               else "run it from the owner's terminal, not window 0" if runs_under(pane["pid"])
+               else "%s cannot resume" % engine if resume != "fresh" and engine not in harnesses.RESUMABLE
+               else "%s has no in-place reload" % tmux.name if "reload" not in tmux.CAPABILITIES else None)
+    if problem:
+        print("crew: refusing coordinator relaunch: " + problem)
+        return 1
+    project_dir = os.path.dirname(os.path.abspath(args.project))
+    cmd = shlex.join(coordinator_harness(engine, project_dir, state, values["runtime.options.permission_mode"], values,
+                                         resume))
+    env = {"CREW_ROLE": "coordinator", "CREW_STATE": state, "CREW_IDENTITY": values["identities.coordinator.gh_user"],
+           "CREW_BIN": CREW_BIN, "CREW_BRIEF": brief_src(state, "coordinator"),
+           "CREW_PROJECT": os.path.abspath(args.project), **sandbox_env(values)}
+    tmux.hold(session, 0)
+    if stop_pane(session, 0):
+        print("crew: refusing coordinator relaunch: window 0's process group survived the stop")
+        return 1
+    tmux.respawn(session, 0, project_dir, env,
+                 LAUNCH.removesuffix(' "%s"') % cmd if resume == "ask" else LAUNCH % (cmd, POINTER))
+    try:
+        wait_harness(session, 0, coordinator_window(values), ENGINE_CMD[engine], args.timeout)
+    except RuntimeError as e:
+        print(e)
+        return 1
+    print("crew: relaunched %s in place (window 0, resume %s)" % (coordinator_window(values), resume))
+    return 0
 
 
 def relaunch(values, session, state, name, rec, items, timeout, project):
@@ -86,11 +142,14 @@ def register(sub):
     p.add_argument("--timeout", type=float, default=15.0)
     p.add_argument("--project")
     p.add_argument("--org-profile")
+    p.add_argument("--resume", metavar="ID", help="coordinator window: resume this conversation (fresh, ask or an id)")
 
 
 def run(args):
     """Restart a dead or missing run once: fresh worktree when clean, else its own worktree (tmux.md Q7)."""
     values, session, state = profile(args, "worktree_root")
+    if window_alias(values, args.window) == coordinator_window(values):
+        return relaunch_coordinator(values, session, state, args)
     rec = dict(runs(state)).get(args.window)
     if rec is None:
         print("crew: no run %s" % args.window)

@@ -184,7 +184,7 @@ including file's, so a role's shared policy is authored once (#1184).
 | `<train-min>`, `<train-window>` | tmux synthesizer batching threshold and maximum wait in seconds | `runtime.options.train_min`, `runtime.options.train_window` |
 | `<merge-grant>`, `<hold-label-blocks>` | tmux synthesizer's standing merge grant scope and whether `crew:hold` blocks | `runtime.options.merge_grant`, `runtime.options.hold_label_blocks` |
 | `<merge-grant-scope>`, `<spec-paths>` | tmux synthesizer's grant scope list and spec globs, as JSON arrays; absent keys render `["approved"]` and `["docs/specs/**"]` | `runtime.options.merge_grant_scope`, `spec.paths` |
-| `<release-delegation>` | tmux coordinator's recorded owner release delegation (words and link), or `none` | `runtime.options.release_delegation` |
+| `<release-delegation>` | tmux and session coordinators' recorded owner release delegation (words and link), or `none` | `runtime.options.release_delegation` |
 | `<mirror-deferral>` | tmux synthesizer's recorded standing mirror deferral source and scope | `runtime.options.mirror_deferral` |
 | `<mirror-gate>` | tmux synthesizer's mirror-gate paragraph: the standing-deferral rule for `live-copy`, the `n/a` by profile rule for `none` ([tmux](../docs/runtimes/tmux.md#no-live-copy-to-mirror-877)) | `runtime.options.mirror` |
 | `<land-step>` | tmux synthesizer's step 3: today's locked land for `sync`; for `async`, `mdstack land request`, the merge record and `mdstack land resume`, with the `land.serializes` and `land.tests_against_tip` alternatives ([asynchronous land](../docs/interfaces.md#asynchronous-land-design)) | `land.mode` (change backend's manifest) |
