@@ -498,7 +498,7 @@ or missing lead once through `mdstack lead ensure builder`, keeping its inbox
 and live workers. Ambiguity or a second failure reaches the coordinator's
 owner channel for explicit repair. Stopping a lead keeps its inbox; a
 successful `mdstack down` clears lead identity while keeping pending handoffs
-for the next start. Synthesizer scheduling remains separate.
+for the next start. Synthesizer lands go to the [synthesizer lead](#synthesizer-lead).
 
 ## Reviewer lead
 
@@ -537,6 +537,47 @@ Worker recovery rechecks live head and holds before one dead/missing restart;
 ambiguous or twice-failed workers require coordinator escalation. Supervisor
 lead recovery uses the same identity and one-restart rules as builder lead
 recovery, preserving workers, pending inbox ids and evidence.
+
+## Synthesizer lead
+
+The default binding installs `synthesizer-lead.md`; `mdstack up` starts the
+synthesizer lead in window 1 (the synthesizer's band), outside the role caps,
+and the watcher supervises it like the builder and reviewer leads: one
+restart of a dead or missing lead through `mdstack lead ensure synthesizer`,
+coordinator repair after that or when ambiguous (#1569). Unlike the pool
+leads, it is the lander itself: it reads the rendered `synthesizer.md` as its
+land procedure and never spawns synthesizer workers. With it installed,
+`mdstack spawn synthesizer` refuses, and nothing reaps it after a land.
+
+`mdstack route` writes `review-approved`, `selfgate-passed`, `ci-passed`
+with a passing verdict or self-gate at head (an express `ci-passed` is
+already gated by `mdstack poll`) and approved `merge-up` events as durable
+`work` events into its inbox. They no longer stay queued for the
+coordinator. A land event for a superseded head is dropped; an unapproved
+`ci-passed` is consumed unless held CI refs (`ci/<n>-*.json`) wait on it.
+A merge-up with an open rereview or a resolved conflict still goes to
+the reviewer lead. Coordinator recovery uses
+`mdstack lead handoff synthesizer land '#PR' HEAD`.
+
+The inbox is the land queue: every message without a `done: <id>` status
+line is pending, across restarts and `mdstack down`. The lead lands
+serially under the existing land lock (`locks/merge.pid`, never taken
+from a live holder), trains two or more ready PRs per the land rule, and
+re-checks every [§7](../protocol.md#7-merge-gate-synthesizer) gate live
+before each land (F3). After a direct land it settles the id only once the
+merge commit's CI is green or `blocked: main red after #<n> <run-url>` is
+written. A replayed id whose land already happened finds the PR merged at
+step 1 and only settles.
+
+Route consumes the lead's `ack:`, `done:` and waiting gate-status lines
+(`wait=ci`, `review`, `validation`, `selfgate`, `train`). Its other
+`blocked:` lines stay queued for the coordinator: owner merge-ok,
+`crew:sensitive`, holds and `main red`; lead faults arrive as `stale` or
+`dialog` wakes. Merged-PR close-out stays in route (labels, closing the
+issue, branch deletion under the existing rules, builder reclaim through the
+builder lead), so a land needs no coordinator turn. With a Slack owner
+channel, route still wakes the coordinator after close-out for the land
+notification; dependents named by `Depends on` still wake it for dispatch.
 
 ## Usage
 
@@ -2110,7 +2151,8 @@ missing `paths.mdstack` fails (#1323).
 and was reviewed before implementation. The builder and reviewer leads have
 since shipped in #534 and #537 ([Builder lead](#builder-lead),
 [Reviewer lead](#reviewer-lead)), so this section no longer describes a
-future binding. Folding the synthesizer into this contract is a later slice.
+future binding. The synthesizer joined this contract in #1569
+([Synthesizer lead](#synthesizer-lead)).
 
 Delivery is three separately reviewed PRs: [1/3] this design, [2/3] the
 builder lead, and [3/3] the reviewer lead. The first two reference #521;
