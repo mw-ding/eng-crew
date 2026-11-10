@@ -337,7 +337,9 @@ class ValidateTest(unittest.TestCase):
         session = VALID.replace('name = "tmux"\noptions = { builders = 3 }', 'name = "session"\noptions = { %s }')
         for options in ("", 'session_backend = "cli", builders = 2, reviewers = 1, max_active_milestones = 2',
                         'merge_grant = "none", lone_pr_land = "direct", train_min = 3, mirror = "none", notes = {}',
-                        'researchers = 0'):  # #1057: the documented no-researcher statement survives a tmux migration
+                        'researchers = 0',  # #1057: the documented no-researcher statement survives a tmux migration
+                        # #1548: mdstack up's coordinator launch; coordinator = none needs no roles value
+                        'session = "ash-solo", permission_mode = "safe", launch = { coordinator = "none", resume = "abc-1" }'):
             code, lines = validate(session % options)
             self.assertEqual(code, 0, lines)
         for options, expected in [
@@ -346,7 +348,9 @@ class ValidateTest(unittest.TestCase):
                                     "is accepted, got 1"),
                 ('researchers = -1', "researchers: must be >= 0, got -1"),
                 ('researchers = "0"', "researchers: expected integer, got string"),
-                ('permission_mode = "bypass"', "permission_mode: unknown key"),
+                ('tmux_server = "default"', "tmux_server: unknown key"),
+                ('permission_mode = "yolo"', "permission_mode: unknown value 'yolo' (expected one of: bypass, auto, safe)"),
+                ('launch = { coordinator = "screen" }', "launch.coordinator: unknown value 'screen' (expected one of: tmux, none)"),
                 ('max_active_milestones = 0', "max_active_milestones: must be >= 1, got 0")]:
             self.assertFails(session % options, "crew.toml:runtime.options." + expected)
 
