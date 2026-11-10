@@ -437,6 +437,8 @@ def render(args, paths, normalize_paths):
         idle = [r for r in OPTIONAL_ROLES if values.get(ROLES[r]["cap_key"]) == 0]
         unused = {os.path.relpath(t, "templates")
                   for r in idle for t in ROLES[r]["templates"].get(values["runtime.name"], [])}
+        if values["runtime.name"] == "session":  # unregistered binding: an idle role's <role>.md brief (#1404)
+            unused |= {os.path.join(rt, r + ".md") for r in idle}
         jobs = [job for job in jobs if job[2] not in idle]
         jobs += [(os.path.join(rt, rel), os.path.join("runtime", rel), None)
                  for rel in sorted(found, key=lambda rel: [(1, d) for d in rel.split(os.sep)[:-1]] + [(0, rel)])

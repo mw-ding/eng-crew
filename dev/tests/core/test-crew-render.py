@@ -1032,7 +1032,8 @@ class SessionRuntime(unittest.TestCase):
 
     def test_full_brief_set_within_budget(self):
         got = self.render(normalize=True)
-        self.assertEqual(sorted(got), ["runtime/%s.md" % r for r in ("builder", "coordinator", "reviewer", "synthesizer")])
+        self.assertEqual(sorted(got), ["runtime/%s.md" % r for r in ("builder", "coordinator", "researcher", "reviewer",
+                                                                     "synthesizer")])
         for rel, text in got.items():
             with self.subTest(brief=rel):
                 self.assertLessEqual(len(text.encode("utf-8")), 16384)
@@ -1055,8 +1056,12 @@ class SessionRuntime(unittest.TestCase):
         self.assertIn("admit at most `1` builder runs and `3` reviewer passes; an active recorded non-quiet away "
                       "entry uses the full caps.", coordinator)
 
-    def test_researchers_zero_renders_the_same_briefs(self):  # #1057: a no-op, the binding has no researcher
+    def test_researchers_zero_drops_only_the_sweep_brief(self):  # #1057; #1404: the session triage sweep brief
         upstream = self.render()
+        sweep = " ".join(upstream.pop("runtime/researcher.md").split())
+        for rule in ("This binding runs only the triage sweep", "## Triage sweep", "pass=triage-log",
+                     "$CREW_BIN poll --triage-only"):
+            self.assertIn(rule, sweep)
         self.base = self.base.replace("reviewers = 1 }", "reviewers = 1, researchers = 0 }")
         self.assertIn("researchers = 0", self.base)
         self.assertEqual(self.render(), upstream)
@@ -1079,7 +1084,7 @@ class SessionRuntime(unittest.TestCase):
         self.assertEqual(code, 1, out)
         self.assertEqual(out.splitlines(), [
             "%s:1: runtime.options.notes.render.%s: runtime session renders no %s brief (note dropped)" % (project, r, r)
-            for r in ("researcher", "builder-lead")])
+            for r in ("builder-lead",)])
         code, out, _ = render('builder = ["note.md"], builder-lead = []')
         self.assertEqual(code, 0, out)
         self.assertTrue(tree(out.splitlines()[0].rsplit("/runtime/", 1)[0])["runtime/builder.md"]
