@@ -12,7 +12,8 @@ the first read, marked landed with the merge record's landed revision and marker
 before terminal success polls without requesting, after terminal success prints the pending record, and drops a
 never-requested intent. #1042: a backend with its own change placeholder, native status words (read-landed for
 the revision) and no head-match flag runs request, resume and done; a word no declared pattern matches stays
-unknown and never requests; change.land without <head-sha> is refused unless head_guard = false. Run in CI.
+unknown and never requests; change.land without <head-sha> is refused unless head_guard = false. #1605: the
+session stack land (land stack, stack-done, resume) with per-member gates, readback and refusals. Run in CI.
 """
 import json
 import os
@@ -38,8 +39,20 @@ FAKE = textwrap.dedent("""\
         if isinstance(seq[0], int):
             sys.exit(seq[0])
         print(seq[0])
+    elif args[0] == "head" and os.path.exists(os.path.join(d, "heads.json")):
+        print(json.load(open(os.path.join(d, "heads.json")))[args[1]])
     elif args[0] == "head":
         print(open(os.path.join(d, "head.txt")).read())
+    elif args[0] == "stack-status":
+        path = os.path.join(d, "stack.json")
+        seq = json.load(open(path))
+        json.dump(seq[1:] or seq, open(path, "w"))
+        if isinstance(seq[0], int):
+            sys.exit(seq[0])
+        print(seq[0])
+    elif args[0] == "land-stack":
+        path = os.path.join(d, "land-exit.txt")
+        sys.exit(int(open(path).read()) if os.path.exists(path) else 0)
     elif args[0] == "landed":
         print(open(os.path.join(d, "landed.txt")).read())
     elif args[0] == "land":
@@ -408,6 +421,170 @@ class SessionNativeLand(NativeLand):
         self.assertEqual(r.returncode, 1, r.stdout)
         self.assertIn("blocked: land #7 @ aaaaaaa: unknown", r.stdout)
         self.assertEqual(len(self.calls("land")), 1)  # an unknown status never requests
+
+STACK_HEAD, STACK_LANDED = "d" * 40, "e" * 40
+
+
+class SessionStackLand(LandFixture):
+    """#1605: a session profile whose sync change backend declares land.stack with a combined-stack test lands #7 and
+    #8 in one atomic request; per-member readback, refusals, a lost acknowledgement and resume."""
+    def setUp(self):
+        super().setUp()
+        mapping_path = os.path.join(self.tmp, "pack", "render", "backends", "example.toml")
+        with open(mapping_path) as f:
+            mapping = f.read()
+        with open(mapping_path, "w") as f:
+            f.write(re.sub(r'(?m)^land = (.*)$', 'land = \\1\nland-stack = "exland land-stack <stack>"\n'
+                           'stack-status = "exland stack-status <stack>"', mapping, count=1))
+        with open(self.manifest) as f:
+            text = f.read().split("\n[land]")[0]
+        with open(self.manifest, "w") as f:
+            f.write(text.replace('land-status = "supported"', 'land-stack = "supported"\nstack-status = "supported"')
+                    + '\n[land]\nstack = true\nstack_tests_against_tip = true\n')
+        self.write_profile(runtime="session")
+        with open(self.project, "a") as f:
+            f.write('[runtime.options]\nsession_backend = "native"\nland_poll_interval = 1\nland_timeout = 3\n')
+        self.heads(HEAD, STACK_HEAD)
+
+    def heads(self, seven, eight):
+        with open(os.path.join(self.fake, "heads.json"), "w") as f:
+            json.dump({"7": seven, "8": eight}, f)
+
+    def stack_statuses(self, *seq):
+        with open(os.path.join(self.fake, "stack.json"), "w") as f:
+            json.dump(list(seq), f)
+
+    def stack(self, action="stack", members="7:%s,8:%s" % (HEAD, STACK_HEAD), *extra):
+        target = [] if action == "resume" else ["--stack", members]
+        r = self.crew("land", action, "--project", self.project, "--org-profile", self.org, *target, *extra)
+        if "--owner-transcript" in sys.argv:
+            print("$ mdstack land %s --project <fixture>/crew.toml --org-profile <fixture>/pack/profile.toml%s"
+                  % (action, "".join(" " + t for t in target + list(extra))))
+            print("exit: %d\n--- stdout\n%s--- stderr\n%s" % (r.returncode, r.stdout.replace(self.tmp, "<fixture>"),
+                                                             r.stderr), end="")
+        return r
+
+    def stack_intent(self):
+        path = os.path.join(self.state, "land", "stack", "7-%s.json" % HEAD)
+        if not os.path.exists(path):
+            return None
+        with open(path) as f:
+            return json.load(f)
+
+    LANDED_BOTH = "7 landed %s\n8 landed %s\ncheck ci/run-42" % (LANDED, STACK_LANDED)
+
+    def test_stack_lands_once_with_per_member_records(self):
+        self.stack_statuses("7 none\n8 none", "7 queued\n8 landing", self.LANDED_BOTH)
+        r = self.stack()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.calls("land-stack"), [["land-stack", "7:" + HEAD, "8:" + STACK_HEAD]])
+        self.assertEqual([c[1] for c in self.calls("head")], ["7", "8"])  # every member head read before the request
+        tested = "; tested as a combined stack on `main` by the backend's stack land check `ci/run-42`"
+        for change, head, landed in ((7, HEAD, LANDED), (8, STACK_HEAD, STACK_LANDED)):
+            self.assertIn("record: #%d: Landed revision: `%s` (checked head `%s`); stack land of 2 (#7, #8)%s"
+                          % (change, landed, head, tested), r.stdout)
+            self.assertIn("marker: #%d: <!-- crew:v1 role=synthesizer pass=merge pr=%d sha=%s round=n/a verdict=n/a "
+                          "landed=%s -->" % (change, change, head, landed), r.stdout)
+        self.assertEqual(self.stack_intent()["landed"], [LANDED, STACK_LANDED])
+        self.assertEqual(self.calls("land"), [])  # no individual land
+        self.assertFalse(os.path.exists(os.path.join(self.state, "locks")))
+        self.assertFalse(os.path.exists(os.path.join(self.state, "trains")))
+        self.assertEqual(self.stack("stack-done").returncode, 0)
+        self.assertIsNone(self.stack_intent())
+
+    def test_one_stale_member_refuses_the_whole_stack(self):
+        self.stack_statuses("7 none\n8 none")
+        self.heads(HEAD, OTHER)
+        r = self.stack()
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("stale head, #8 head is '%s'; no request sent for any member" % OTHER, r.stdout)
+        self.assertEqual(self.calls("land-stack"), [])
+        self.assertIsNone(self.stack_intent())
+
+    def test_lost_acknowledgement_read_back_never_resent(self):
+        with open(os.path.join(self.fake, "land-exit.txt"), "w") as f:
+            f.write("1")
+        self.stack_statuses("7 none\n8 none", "7 queued\n8 queued", self.LANDED_BOTH)
+        self.assertEqual(self.stack().returncode, 0)
+        self.assertEqual(len(self.calls("land-stack")), 1)
+        self.assertEqual(self.stack("stack-done").returncode, 0)
+        self.stack_statuses("7 none\n8 none")
+        r = self.stack()
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("request failed and stack-status is none; rerun the §7 gate check for every member", r.stdout)
+        self.assertEqual(len(self.calls("land-stack")), 2)  # one per run
+        self.assertIsNone(self.stack_intent())
+
+    def test_malformed_or_mismatched_readback_records_nothing(self):
+        for bad in ("7 landed %s\ncheck ci/1" % LANDED,  # a member missing
+                    "8 landed %s\n7 landed %s\ncheck ci/1" % (STACK_LANDED, LANDED),  # reordered
+                    "7 landed %s\n8 none" % LANDED,  # split state
+                    "7 landed %s\n8 landed %s" % (LANDED, STACK_LANDED),  # declared combined test, no check line
+                    "7 landed abc\n8 landed %s\ncheck ci/1" % STACK_LANDED, "garbage", 2):
+            self.stack_statuses(bad)
+            r = self.stack()
+            self.assertEqual(r.returncode, 1, bad)
+            self.assertIn("blocked: land stack #7 @ aaaaaaa, #8 @ ddddddd: unknown", r.stdout)
+            self.assertIn("intent kept", r.stdout)
+            self.assertNotIn("record:", r.stdout)
+            self.assertNotIn("landed", self.stack_intent())
+        self.assertEqual(self.calls("land-stack"), [])  # an unknown state never requests
+        self.assertEqual(self.stack("stack-done").returncode, 1)  # nor completes
+
+    def test_failed_drops_intent(self):
+        self.stack_statuses("7 none\n8 none", "7 failed combined CI red\n8 failed combined CI red")
+        r = self.stack()
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("blocked: land stack #7 @ aaaaaaa, #8 @ ddddddd: failed: combined CI red", r.stdout)
+        self.assertIsNone(self.stack_intent())
+
+    def test_resume_after_timeout_never_requests(self):
+        self.stack_statuses("7 none\n8 none", "7 queued\n8 queued")
+        r = self.stack()
+        self.assertIn("timeout after 3s, still landing; intent kept", r.stdout)
+        self.stack_statuses(self.LANDED_BOTH)
+        r = self.stack("resume")
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn("record: #8: Landed revision: `%s`" % STACK_LANDED, r.stdout)
+        self.assertEqual(len(self.calls("land-stack")), 1)
+        self.assertEqual(self.stack("stack-done").returncode, 0)
+        self.assertEqual(self.stack("resume").returncode, 0)  # nothing recorded: nothing read
+        self.stack_statuses("7 none\n8 none", "7 queued\n8 queued")
+        self.stack()
+        self.stack_statuses("7 none\n8 none")
+        r = self.stack("resume")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("never requested at these heads; intent dropped", r.stdout)
+        self.assertEqual(len(self.calls("land-stack")), 2)
+
+    def test_refusals(self):
+        for members, expected in (("7:%s" % HEAD, "two or more distinct changes"),
+                                  ("7:%s,7:%s" % (HEAD, STACK_HEAD), "two or more distinct changes"),
+                                  ("7:abc,8:%s" % STACK_HEAD, "is not <n>:<full lowercase head sha>")):
+            r = self.stack(members=members)
+            self.assertEqual(r.returncode, 1)
+            self.assertIn(expected, r.stdout)
+        self.assertIn("takes --stack, not --pr or --head", self.stack("stack", "7:%s,8:%s" % (HEAD, STACK_HEAD),
+                                                                      "--pr", "7").stdout)
+        self.assertIn("refusing done", self.crew("land", "done", "--project", self.project, "--org-profile",
+                                                 self.org, "--pr", "7", "--head", HEAD).stdout)
+        with open(self.manifest) as f:
+            text = f.read()
+        with open(self.manifest, "w") as f:
+            f.write(text.split("\n[land]")[0])
+        r = self.stack()
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("declares no land.stack; land each change alone", r.stdout)
+        self.assertEqual(self.calls(), [])
+
+    def test_tmux_profile_refused(self):
+        """tmux trains are unchanged: the stack land is session-only."""
+        self.write_profile(runtime="tmux")
+        r = self.stack()
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("runtime.name is tmux, not session", r.stdout)
+        self.assertEqual(self.calls(), [])
+
 
 if __name__ == "__main__":
     unittest.main(argv=[a for a in sys.argv if a != "--owner-transcript"])

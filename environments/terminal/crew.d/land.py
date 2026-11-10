@@ -23,6 +23,8 @@ acknowledgement reading `none` drop it; a timeout or an unknown status keeps it.
 resume: on every wake, reads land-status for each recorded intent and never requests: `queued` or `landing` polls
 as above, `landed` prints the pending record, `none` (never requested at that head) and `failed` drop the intent.
 done: after the merge post, clears an intent marked landed; any other intent is refused.
+stack, stack-done: a session profile whose change backend declares land.stack = true lands a linear stack in one
+atomic request (`--stack N:SHA,N:SHA,...`, base first; _land_stack.py, #1605); resume reads stack intents back too.
 """
 import datetime
 import glob
@@ -31,7 +33,9 @@ import os
 import re
 import subprocess
 import time
-from crew_shared import crew_render, profile, require_ownership
+from crew_shared import crew_render, load, profile, require_ownership
+
+land_stack = load("crew_land_stack", "environments/terminal/crew.d/_land_stack.py")
 
 STATUS = re.compile(r"(none|queued|landing)|landed ([0-9a-f]{40}|[0-9a-f]{64})|failed (\S.*)")
 SHA = re.compile(r"[0-9a-f]{40}|[0-9a-f]{64}")
@@ -39,11 +43,12 @@ SHA = re.compile(r"[0-9a-f]{40}|[0-9a-f]{64}")
 
 def register(sub):
     p = sub.add_parser("land")
-    p.add_argument("action", choices=["status", "request", "resume", "done"])
+    p.add_argument("action", choices=["status", "request", "resume", "done", "stack", "stack-done"])
     p.add_argument("--project")
     p.add_argument("--org-profile")
     p.add_argument("--pr", type=int)
     p.add_argument("--head")
+    p.add_argument("--stack", help="N:SHA,N:SHA,... base first (stack, stack-done)")
 
 
 def command(renderer, op, pr, head, land):
@@ -159,7 +164,12 @@ def commands_for(renderer, pr, head, land):
 
 
 def run(args):
+    if args.action in ("stack", "stack-done"):
+        return run_stack(args)
     values, _, state_dir = profile(args, runtimes=("tmux", "session"))  # session async land binding (#1351)
+    if args.stack is not None:
+        print("crew: --stack only goes with land stack or stack-done")
+        return 1
     if args.action == "resume":
         if args.pr is not None or args.head is not None:
             print("crew: land resume takes no --pr or --head; it reads every recorded intent")
@@ -187,7 +197,8 @@ def run(args):
         return 0
     meta = {}
     crew_render.crew_config.resolve_profile(args.project, args.org_profile, meta=meta)
-    if meta.get("land.mode", ("sync",))[0] != "async":
+    stacked = args.action == "resume" and stack_declared(meta, values)
+    if meta.get("land.mode", ("sync",))[0] != "async" and not stacked:
         tag = "#%d @ %s" % (args.pr, args.head[:7]) if args.pr is not None else "resume"
         print("crew: refusing land %s: the change backend's land.mode is sync; land with change.land" % tag)
         return 1
@@ -198,7 +209,9 @@ def run(args):
     renderer = crew_render.Renderer(values, os.path.join(os.path.dirname(crew_render.HERE), "templates"),
                                     overlay=crew_render.pack_overlay(args.project, args.org_profile, values))
     if args.action == "resume":
-        code = 0
+        code = resume_stacks(renderer, values, meta, land, state_dir) if stacked else 0
+        if meta.get("land.mode", ("sync",))[0] != "async":
+            return code
         for path in sorted(glob.glob(os.path.join(state_dir, "land", "*.json"))):
             try:
                 with open(path) as f:
@@ -251,3 +264,50 @@ def run(args):
             return 1
     state, detail = poll(cmds, values, tag, state, detail, land["status"])
     return finish(path, intent, meta, values, tag, state, detail)
+
+
+def stack_declared(meta, values):
+    return values["runtime.name"] == "session" and meta.get("land.stack", (False,))[0]
+
+
+def stack_commands(renderer, members, land):
+    return land_stack.commands(renderer, members, lambda op, pr, head: command(renderer, op, pr, head, land))
+
+
+def resume_stacks(renderer, values, meta, land, state_dir):
+    need = meta.get("land.stack_tests_against_tip", (False,))[0]
+    return land_stack.resume(call, lambda members: stack_commands(renderer, members, land), values, need, state_dir)
+
+
+def run_stack(args):
+    """land stack|stack-done: the session stack land (#1605); refused unless the change backend declares land.stack."""
+    values, _, state_dir = profile(args, runtimes=("session",))
+    if args.pr is not None or args.head is not None:
+        print("crew: land %s takes --stack, not --pr or --head" % args.action)
+        return 1
+    try:
+        members = land_stack.parse(args.stack)
+    except ValueError as e:
+        print("crew: %s" % e)
+        return 1
+    if args.action == "stack-done":
+        return land_stack.done(members, state_dir)
+    meta = {}
+    crew_render.crew_config.resolve_profile(args.project, args.org_profile, meta=meta)
+    if not stack_declared(meta, values):
+        print("crew: refusing land %s: the change backend declares no land.stack; land each change alone"
+              % land_stack.tag(members))
+        return 1
+    if not require_ownership(values, "land"):
+        return 1
+    land = {"change_placeholder": meta.get("land.change_placeholder", ("n",))[0],
+            "head_guard": meta.get("land.head_guard", (True,))[0], "status": meta.get("land.status", ({},))[0]}
+    renderer = crew_render.Renderer(values, os.path.join(os.path.dirname(crew_render.HERE), "templates"),
+                                    overlay=crew_render.pack_overlay(args.project, args.org_profile, values))
+    try:
+        cmds = stack_commands(renderer, members, land)
+    except ValueError as e:
+        print("crew: refusing land %s: %s" % (land_stack.tag(members), e))
+        return 1
+    need = meta.get("land.stack_tests_against_tip", (False,))[0]
+    return land_stack.request(call, cmds, members, values, need, state_dir)

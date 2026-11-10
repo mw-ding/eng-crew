@@ -212,7 +212,7 @@ KEPT = {"n", "sha7", "head-sha", "reviewed-base-sha", "k", "pass", "role", "pass
         "planned | applied | live", "date", "reason", "issue#", "pr", "tier", "engine", "model", "effort",
         "UTC timestamp", "file", "full-40-char-head-sha", "new-head-sha", "gate", "run-id", "worktree",
         "run-url", "harness", "branch", "t", "M", "login", "project", "url", "id", "item", "status-field", "option", "tag",
-        "version", "APPROVE|REQUEST_CHANGES", "sweep-id", "outcome", "band", "shadow|apply"}
+        "version", "APPROVE|REQUEST_CHANGES", "sweep-id", "outcome", "band", "shadow|apply", "stack"}
 TOKEN = re.compile(r"<([^<>\s!/=-][^<>\n]*)>")
 OP = re.compile(r"op:(.*)\.(.*)")
 PLACEHOLDER = re.compile(r"[a-z][a-z0-9-]*")
