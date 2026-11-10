@@ -238,6 +238,29 @@ class Upgrade(bootstrap_tests.Bootstrap):
         self.assertEqual(json.loads(self.manifest.read_text())["self_test"]["deploy"], "ok")
         self.assertIn("New reviewed rule.", (Path(self.state) / "render/runtime/builder.md").read_text())
 
+    def test_session_profile_applies_without_tmux(self):  # #1541
+        record = json.loads(self.manifest.read_text())
+        record["harnesses"] = []
+        self.manifest.write_text(json.dumps(record))
+        self.project_path.write_text(self.project_path.read_text().replace('name = "tmux"', 'name = "session"'))
+        result = self.bootstrap("--yes")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.tool("tmux", 'case "$1" in -L|-S) shift 2;; esac; case "$1" in list-windows) echo "10 ben-7";; esac')
+        source = self.bundle / "templates/runtimes/session/builder.md"
+        source.write_text(source.read_text() + "\nNew reviewed rule.\n")
+        before = self.manifest.read_bytes()
+        result = self.upgrade("--dry-run")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("+New reviewed rule.", result.stdout)
+        self.assertEqual(self.manifest.read_bytes(), before)
+        result = self.upgrade("--yes", "--wait-timeout", "0")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertNotIn("in-flight", result.stdout)
+        self.assertIn("session runtime: restart the coordinator", result.stdout)
+        self.assertIn("New reviewed rule.", (Path(self.tmp) / "live/runtime/builder.md").read_text())
+        self.assertEqual(json.loads(self.manifest.read_text())["runtime"], "session")
+        self.assertIn("no changes", self.upgrade("--yes").stdout)
+
     def test_inflight_timeout_leaves_install_untouched(self):
         (self.bundle / "VERSION").write_text("v2.2.0\n")
         self.tool("tmux", 'case "$1" in -L|-S) shift 2;; esac; case "$1" in list-windows) echo "10 ben-7";; esac')

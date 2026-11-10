@@ -3,7 +3,7 @@
 > - **Status:** partly built
 > - **Applies to:** hand-dispatched or hosted sessions; profiles with `runtime.name = "session"`
 > - **Current rules:** [protocol](../protocol.md), [runtime contract](README.md#contract)
-> - **Built:** [Run parameters for hosted dispatch](#run-parameters-for-hosted-dispatch) via `mdstack brief` (#647); the [selector, options and briefs](#selector-options-and-briefs) (#914); [starting the coordinator](#starting-the-coordinator) via `mdstack up` (#1548)
+> - **Built:** [Run parameters for hosted dispatch](#run-parameters-for-hosted-dispatch) via `mdstack brief` (#647); the [selector, options and briefs](#selector-options-and-briefs) (#914); [starting the coordinator](#starting-the-coordinator) via `mdstack up` (#1548); [upgrading](#upgrading) via `mdstack upgrade` (#1541)
 > - **Design only:** everything in [Implementation follow-ups](#implementation-follow-ups)
 > - **Last checked:** 2026-11-09 at `1db3f1d`
 
@@ -47,7 +47,17 @@ A session profile may carry a `[hosts]` inventory, without `[placement]`.
 primary gets `mdstack doctor`'s session rows, the engine login rows and the
 project mirror row, with load 0 since session workers hold no tmux windows;
 any other host gets the same remote rows as under tmux (#1122). Other host
-and runtime commands (`hosts`, `layout`, `upgrade`) stay tmux-only.
+and runtime commands (`hosts`, `layout`) stay tmux-only.
+
+## Upgrading
+
+`mdstack upgrade --project <config.toml>` runs on a session profile
+(#1541): `--dry-run` previews the re-render, `--yes` applies it to
+`paths.live_dir` and `--version` or `--latest` fetch and verify a bundle,
+as for tmux ([bootstrap Q8](../bootstrap.md#q8-idempotency-upgrade-and-uninstall)).
+With no role windows, it skips the in-flight wait and window reload and
+restarts nothing. Finish or pause dispatch first, then exit the coordinator
+and run `mdstack up` so it loads the new briefs.
 
 With `repo.control_item` set, a GitHub issue or a tracker-native item, the
 coordinator brief carries the ownership guard and the handoff steps. Without
