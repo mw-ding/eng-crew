@@ -36,6 +36,7 @@ crew_render = load("crew_render", "core/crew-render.py")
 harnesses = crew_render.crew_config.harnesses  # harnesses/<engine>/adapter.py (harness-adapters.md); one instance, so
 # the adapters a pack.toml pack adds at resolve (docs/packs.md#pack-plug-ins) are the ones crew spawns
 sessions = load("crew_session", "environments/terminal/crew-session.py")  # sessions/<backend>/adapter.py
+copy_claim = load("crew_copy_claim", "environments/terminal/copy-claim.py")  # host-wide working-copy claims (#391)
 
 
 class SessionBackend:

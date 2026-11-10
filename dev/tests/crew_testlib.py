@@ -181,6 +181,7 @@ class Base(unittest.TestCase):
                         FAKE_TMUX_LOG=self.log, FAKE_TMUX_STATE=self.state_file)
         for name in ("CREW_PROJECT", "MDSTACK_CONFIG", "CREW_ROOT"):  # a crew window's own config never leaks in (#1324)
             self.env.pop(name, None)
+        self.env["MDSTACK_COPY_CLAIMS"] = os.path.join(self.tmp, "copy-claims")  # never the real host store (#391)
         self.project_dir = os.path.join(self.tmp, "project")
         os.makedirs(self.project_dir)
         self.state = os.path.join(self.tmp, "state", "acme__widgets")
