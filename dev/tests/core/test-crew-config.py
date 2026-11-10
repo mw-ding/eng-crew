@@ -1630,6 +1630,26 @@ class AsyncLandTest(unittest.TestCase):
             self.assertEqual(code, 1, lines)
             self.assertIn(expected, lines)
 
+    def test_manifest_stack_land(self):
+        """#1605: land.stack admits the atomic stack-land operation and its readback; the validator checks both."""
+        ok = (0, ["crew-config: OK (crew.toml)"])
+        stack = GITHUB_MANIFEST.replace('land = "supported"\n', 'land = "supported"\nland-stack = "supported"\n'
+                                        'stack-status = "supported"\n', 1)
+        self.assertEqual(validate(stack), ok)  # declared operations alone change nothing
+        self.assertEqual(validate(stack + '\n[land]\nstack = true\n'), ok)  # sync individual lands plus a stack land
+        self.assertEqual(validate(stack + '\n[land]\nstack = true\nstack_tests_against_tip = true\n'), ok)
+        for text, expected in (
+                (GITHUB_MANIFEST + '\n[land]\nstack = true\n',
+                 "crew.toml:land.stack: needs change.land-stack supported or emulated"),
+                (stack.replace('stack-status = "supported"', 'stack-status = "unsupported"') + '\n[land]\nstack = true\n',
+                 "crew.toml:land.stack: needs change.stack-status supported or emulated"),
+                (stack + '\n[land]\nstack_tests_against_tip = true\n',
+                 "crew.toml:land.stack_tests_against_tip: only valid with stack = true"),
+                (stack + '\n[land]\nstack = "yes"\n', "crew.toml:land.stack: expected boolean, got string")):
+            code, lines = validate(text)
+            self.assertEqual(code, 1, lines)
+            self.assertIn(expected, lines)
+
     def test_profile_may_declare_conditional_operations(self):
         text = VALID.replace('[backends.change]\nname = "github"',
                              '[backends.change]\nname = "github"\ncapabilities = { publish = "unsupported", '
