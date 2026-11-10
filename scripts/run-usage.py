@@ -73,7 +73,7 @@ def parse_time(text):
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="Print a role run's usage line.")
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--run", help="run record JSON")
     ap.add_argument("--engine")
     ap.add_argument("--dir", help="the run's worktree or working directory")

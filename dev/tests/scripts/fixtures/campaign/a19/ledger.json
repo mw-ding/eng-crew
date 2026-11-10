@@ -96,6 +96,13 @@
      "tests": [
       "environments/test-crew-doctor.py:test_adapter_declared_roots"
      ]
+    },
+    "usage": {
+     "oracle": true,
+     "tests": [
+      "scripts/test-run-usage.py:test_claude_reader",
+      "scripts/test-run-usage.py:test_unreadable_log_is_na_without_path"
+     ]
     }
    },
    "codex": {
@@ -192,6 +199,13 @@
      "tests": [
       "environments/test-crew-doctor.py:test_adapter_declared_roots"
      ]
+    },
+    "usage": {
+     "oracle": true,
+     "tests": [
+      "scripts/test-run-usage.py:test_codex_reader",
+      "scripts/test-run-usage.py:test_unreadable_log_is_na_without_path"
+     ]
     }
    },
    "pi": {
@@ -268,6 +282,12 @@
      "default": true,
      "tests": [
       "environments/test-crew-doctor.py:test_adapter_declared_roots"
+     ]
+    },
+    "usage": {
+     "default": true,
+     "tests": [
+      "scripts/test-run-usage.py:test_no_reader_or_no_log_is_na"
      ]
     }
    },
@@ -346,6 +366,12 @@
      "default": true,
      "tests": [
       "environments/test-crew-doctor.py:test_adapter_declared_roots"
+     ]
+    },
+    "usage": {
+     "default": true,
+     "tests": [
+      "scripts/test-run-usage.py:test_no_reader_or_no_log_is_na"
      ]
     }
    },
@@ -426,6 +452,12 @@
      "tests": [
       "environments/test-crew-doctor.py:test_adapter_declared_roots"
      ]
+    },
+    "usage": {
+     "default": true,
+     "tests": [
+      "scripts/test-run-usage.py:test_no_reader_or_no_log_is_na"
+     ]
     }
    },
    "opencode": {
@@ -483,6 +515,12 @@
      "default": true,
      "tests": [
       "environments/test-crew-doctor.py:test_adapter_declared_roots"
+     ]
+    },
+    "usage": {
+     "default": true,
+     "tests": [
+      "scripts/test-run-usage.py:test_no_reader_or_no_log_is_na"
      ]
     }
    }
