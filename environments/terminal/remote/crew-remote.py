@@ -17,7 +17,10 @@ without a request id. Built verbs: `version` (with the host's os from uname); `c
 project mirror, logins, runner and capacity, plus capabilities when the call declares an os, the ssh listener
 with a host OS adapter and an ssh_port, and linger on a systemd linux host, with projects and load, the reply mdstack host check reads); `prepare` (create or fetch
 mirrors/<owner>__<repo>.git with the host's gh login) and `seed` (a forge-less host: fetch the primary's base64
-one-ref git bundle into the mirror as refs/crew/heads/<sha>, and refs/heads/<branch> when given); both fail step
+one-ref git bundle into the mirror as refs/crew/heads/<sha>, and refs/heads/<branch> when given); `prepare` with
+checkout=command instead runs the argv the host declares in checkout/<owner>__<repo>.json ({argv, path}; no shell,
+cwd root, checked exit; nothing of it crosses SSH), requires `path` to exist, and records state/<owner>__<repo>/
+checkout.json, which `check` with checkout=command reads for its `project checkout` row (#1035); both fail step
 `capabilities` before any change when a declared `os` is not this host's, then make wt/
 and state/<owner>__<repo>/, and a failed reply names its `step`. With a `toolkit` pin (tag, bundle_sha256,
 transport) both also install that release into toolkit/mdstack-<v>/ with the shared verifier (docs/bootstrap.md Host toolkit, #945): staged under
@@ -327,9 +330,53 @@ def install_toolkit(root, project, pin, request_id):
     return dict(tag=pin["tag"], state=state)
 
 
+def declared_checkout(root, project):
+    """(argv, path) from checkout/<owner>__<repo>.json under root, the host's own declaration (#1035)."""
+    try:
+        decl = load(os.path.join(root, "checkout", project + ".json"))
+        argv, path = decl["argv"], decl["path"]
+    except (OSError, ValueError, KeyError, TypeError):
+        raise Failed("checkout", "no valid checkout/%s.json under root: needs argv and path" % project)
+    if not (isinstance(argv, list) and argv and all(isinstance(a, str) and a for a in argv)
+            and isinstance(path, str) and path):
+        raise Failed("checkout", "checkout/%s.json: argv must be a non-empty list of strings, path a string" % project)
+    return argv, os.path.join(root, os.path.expanduser(path))
+
+
+def run_checkout(root, project):
+    """Run the declared checkout command (argv, no shell, cwd root, checked exit), then record the checkout."""
+    argv, path = declared_checkout(root, project)
+    try:
+        r = subprocess.run(argv, cwd=root, stdin=subprocess.DEVNULL, capture_output=True, text=True,
+                           timeout=PREPARE_TIMEOUT)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        raise Failed("checkout", str(e)[-200:])
+    if r.returncode:
+        raise Failed("checkout", r.stderr.strip()[-200:] or "exit %d" % r.returncode)
+    if not os.path.isdir(path):
+        raise Failed("checkout", "declared path %s missing after the command ran" % path)
+    os.makedirs(os.path.join(root, "state", project), exist_ok=True)
+    save(os.path.join(root, "state", project, "checkout.json"), dict(path=path, at=int(time.time())))
+    return dict(step="checkout", path=path)
+
+
+def checkout_row(root, project):
+    """The `project checkout` row: the declaration is valid and its path is the one the last prepare recorded."""
+    try:
+        _, path = declared_checkout(root, project)
+        ran = load(os.path.join(root, "state", project, "checkout.json")).get("path") == path
+    except (Failed, OSError, ValueError, AttributeError):
+        ran = False
+    if not ran or not os.path.isdir(path):
+        return row("fail", "project checkout", "%s checkout command has not run" % project, "run mdstack host prepare")
+    return row("ok", "project checkout", "%s at %s" % (project, path))
+
+
 @project_step
 def prepare(request, root, project, mirror):
-    """Create the project mirror with the host's own gh login, or fetch it."""
+    """Create the project mirror with the host's own gh login, or fetch it; or run the declared checkout command."""
+    if request.get("checkout") == "command":
+        return run_checkout(root, project)
     if os.path.isdir(mirror):
         sh("fetch", "git", "-C", mirror, "fetch", "--quiet", "--prune", "origin")
         return dict(step="fetch")
@@ -516,7 +563,11 @@ def check_verb(request, root):
     checks = [row("fail", "tools", "missing " + ", ".join(missing), "install them on the host") if missing
               else row("ok", "tools", ", ".join(tools))]
     mirror, bin_dir = os.path.join(root, "mirrors", project + ".git"), request.get("toolchain_bin")
-    if probe("git", "-C", mirror, "rev-parse", "--verify", "--quiet", "refs/heads/" + branch)[0]:
+    if request.get("checkout") == "command":
+        checks.append(checkout_row(root, project))
+        if bin_dir and not os.path.isdir(os.path.expanduser(str(bin_dir))):
+            checks.append(row("fail", "project mirror", "toolchain_bin %s missing" % bin_dir, "fix toolchain_bin"))
+    elif probe("git", "-C", mirror, "rev-parse", "--verify", "--quiet", "refs/heads/" + branch)[0]:
         checks.append(row("fail", "project mirror", "%s has no %s" % (project, branch), "run mdstack host prepare"))
     elif bin_dir and not os.path.isdir(os.path.expanduser(str(bin_dir))):
         checks.append(row("fail", "project mirror", "toolchain_bin %s missing" % bin_dir, "fix toolchain_bin"))
@@ -545,8 +596,9 @@ def check_verb(request, root):
     checks.append(row("ok" if free >= DISK_FLOOR else "fail", "capacity", "%.1f GiB free, %d running" % (
         free / (1 << 30), load), None if free >= DISK_FLOOR else "free disk under root"))
     mirrors = os.path.join(root, "mirrors")
-    projects = sorted(m[:-4] for m in (os.listdir(mirrors) if os.path.isdir(mirrors) else []) if m.endswith(".git"))
-    return dict(result="ok", checks=checks, projects=projects, load=load)
+    projects = {m[:-4] for m in (os.listdir(mirrors) if os.path.isdir(mirrors) else []) if m.endswith(".git")}
+    projects |= {os.path.basename(os.path.dirname(p)) for p in glob.glob(os.path.join(root, "state", "*", "checkout.json"))}
+    return dict(result="ok", checks=checks, projects=sorted(projects), load=load)
 
 
 def run_record(request, root):
