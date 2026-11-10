@@ -3,7 +3,7 @@
 > - **Status:** partly built
 > - **Applies to:** hand-dispatched or hosted sessions; profiles with `runtime.name = "session"`
 > - **Current rules:** [protocol](../protocol.md), [runtime contract](README.md#contract)
-> - **Built:** [Run parameters for hosted dispatch](#run-parameters-for-hosted-dispatch) via `mdstack brief` (#647); the [selector, options and briefs](#selector-options-and-briefs) (#914)
+> - **Built:** [Run parameters for hosted dispatch](#run-parameters-for-hosted-dispatch) via `mdstack brief` (#647); the [selector, options and briefs](#selector-options-and-briefs) (#914); [starting the coordinator](#starting-the-coordinator) via `mdstack up` (#1548)
 > - **Design only:** everything in [Implementation follow-ups](#implementation-follow-ups)
 > - **Last checked:** 2026-11-09 at `1db3f1d`
 
@@ -54,6 +54,24 @@ coordinator brief carries the ownership guard and the handoff steps. Without
 one, `mdstack ownership` always permits, so the render drops that inert text:
 one paragraph says there is no ownership record or handoff, and the worker
 briefs omit their ownership line.
+
+## Starting the coordinator
+
+`mdstack up --project <config.toml>` on a session profile starts the
+interactive coordinator only (#1548): window 0 of the tmux session
+`runtime.options.session` (default `crew-<owner>-<repo>`) runs the
+coordinator's [harness adapter](harness-adapters.md) with `CREW_ROLE=coordinator`,
+`CREW_PROJECT`, `CREW_STATE`, `CREW_BIN`, `CREW_IDENTITY` and `CREW_BRIEF`
+set from the resolved profile, and the first prompt points at the rendered
+`render/runtime/coordinator.md`, with any `runtime.options.notes.coordinator`
+files appended. It runs the same preflight as tmux (coordinator notes, host
+checks, `launch.resume`, the checkout row) and opens no role windows, pool
+leads or lifecycle instances, and installs no tmux Stop-hook guard: workers
+stay dispatched per pass. If the session already runs, `mdstack up` prints
+its attach line. `launch.coordinator = "none"` is preflight only, and
+`launch.resume` or `mdstack up --resume <id>` resumes an existing Claude Code
+or Codex coordinator conversation
+([launch options](../configuration/runtime-options.md#launch-topology)).
 
 ## Decisions
 
@@ -146,8 +164,8 @@ the contract's invariant floor; a gap never waives a merge gate.
 
 ## Implementation follow-ups
 
-Profiles accept `session` and the renderer writes its briefs (#914). Still to
-build: the lifecycle runner, durable receipts/status, external task/process identity probes,
+Profiles accept `session`, the renderer writes its briefs (#914) and
+`mdstack up` starts the coordinator (#1548). Still to build: the lifecycle runner, durable receipts/status, external task/process identity probes,
 worktree enforcement and safe teardown, lock handling and ownership guards.
 Add a token-free wake/backstop and deadline path per supported coordinator
 adapter, or retain the declared attended-only gaps. Verify real harness

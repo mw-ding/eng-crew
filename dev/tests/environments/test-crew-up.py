@@ -268,6 +268,70 @@ class Up(Base):
         with open(self.project, "a") as f:
             f.write("\n[runtime.options.launch]\n" + table + "\n")
 
+    def test_session_runtime_starts_only_the_coordinator(self):
+        """#1548: a session profile gets window 0 from the rendered session coordinator brief, no role windows, no
+        tmux Stop-hook guard; a second up reports the attach line."""
+        self.write_profile(runtime="session")
+        r = self.crew("up", "--project", self.project)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("workers are dispatched per pass", r.stdout)
+        call = self.new_session()
+        self.assertFalse(any(c[0] == "new-window" for c in self.calls()), self.calls())
+        brief = os.path.join(self.state, "render", "runtime", "coordinator.md")
+        self.assertFalse(os.path.exists(os.path.join(self.state, "render", "briefs", "coordinator.md")))
+        with open(brief) as f:
+            self.assertIn("session", f.read().lower())
+        self.assertEqual(call[call.index("-s") + 1], "crew-acme-widgets")
+        self.assertEqual(call[call.index("-n") + 1], "ash")
+        env = [call[i + 1] for i, a in enumerate(call) if a == "-e"]
+        for var in ("CREW_ROLE=coordinator", "CREW_STATE=" + self.state, "CREW_PROJECT=" + self.project,
+                    "CREW_BRIEF=" + brief, "CREW_IDENTITY=acme-bot"):
+            self.assertIn(var, env)
+        self.assertIn('exec claude "Read your brief at $CREW_BRIEF and follow it."', call[-1])
+        self.assertFalse(os.path.exists(os.path.join(self.project_dir, ".claude")))
+        r = self.crew("up", "--project", self.project)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("already running; attach with:", r.stdout)
+        self.new_session()
+
+    def test_session_runtime_resume_and_launch_options(self):
+        """#1548: --resume or launch.resume resumes the coordinator; launch.session names the tmux session;
+        launch.coordinator = none is preflight only."""
+        for args, table, expected in ((["--resume", "abc-123"], "", "exec claude --resume abc-123 "),
+                                      ([], 'resume = "abc-123"', "exec claude --resume abc-123 "),
+                                      (["--resume", "ask"], "", "exec claude --resume")):
+            with self.subTest(args=args, table=table):
+                self.write_profile(runtime="session")
+                with open(self.project, "a") as f:
+                    f.write('\n[runtime.options]\nsession = "ash-solo"\n')
+                if table:
+                    self.launch(table)
+                if os.path.exists(self.log):
+                    os.remove(self.log)
+                r = self.crew("up", "--project", self.project, *args)
+                self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+                call = self.new_session()
+                self.assertEqual(call[call.index("-s") + 1], "ash-solo")
+                self.assertIn(expected, call[-1])
+                self.crew("down", "--project", self.project)
+                os.remove(self.state_file)
+        r = self.crew("up", "--project", self.project, "--resume", "a b")
+        self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
+        self.assertIn("--resume expects fresh, ask or a session id", r.stdout)
+        self.write_profile(runtime="session")
+        self.launch('coordinator = "none"')
+        os.remove(self.log)
+        r = self.crew("up", "--project", self.project)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("launch.coordinator = none, so no session started", r.stdout)
+        self.assertEqual([c for c in self.calls() if c[0] != "has-session"], [])
+
+    def test_tmux_resume_flag_overrides_launch_resume(self):
+        self.launch('resume = "fresh"')
+        r = self.crew("up", "--project", self.project, "--inputs", INPUTS, "--resume", "abc-123")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("exec claude --resume abc-123 ", self.new_session()[-1])
+
     def test_hosted_roles_open_only_the_tagged_coordinator(self):
         """#606: roles = hosted (or --coordinator-only) starts window 0 tagged as today and no lead windows."""
         r = self.crew("up", "--project", self.project)

@@ -134,7 +134,9 @@ RUNTIME_OPTIONS = {"grok-bot": {"max_active_milestones": (int, 1)},
                                "merge_grant_scope": ("list[str]", None),
                                "lone_pr_land": (str, "train"), "train_min": (int, 2), "train_window": (int, 600),
                                "train_local_checks": (bool, False), "mirror_deferral": (str, "none"),
-                               "mirror": (str, "live-copy"), "hold_label_blocks": (bool, True), "notes": (dict, {})}}
+                               "mirror": (str, "live-copy"), "hold_label_blocks": (bool, True), "notes": (dict, {}),
+                               # mdstack up's coordinator launch (#1548): its tmux session, harness flags and topology
+                               "session": (str, None), "permission_mode": (str, "bypass"), "launch": (dict, None)}}
 SESSION_BACKENDS = {"tmux": sessions.CHOICES, "session": ["native", "cli"]}  # runtime.options.session_backend
 LAUNCH_SESSION_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}")  # launch.resume: a harness conversation id
 TRIAGE_MODES = ["shadow", "apply"]  # [triage] mode (docs/triage.md Shadow mode and calibration)
@@ -843,7 +845,7 @@ def validate(profile, err, backends=BACKENDS, pack_dir=None, item=None):
                 check_choice(err, "runtime.options.launch.reconcile", launch.get("reconcile"), ["backend"])
                 if launch.get("resume", "fresh") not in ("fresh", "ask") and not LAUNCH_SESSION_ID.fullmatch(launch["resume"]):
                     err("runtime.options.launch.resume", "expected fresh, ask or a session id ([A-Za-z0-9._:-])")
-                if launch.get("coordinator") == "none" and launch.get("roles", "tmux") == "tmux":
+                if rt["name"] == "tmux" and launch.get("coordinator") == "none" and launch.get("roles", "tmux") == "tmux":
                     err("runtime.options.launch.roles", "roles = tmux needs coordinator = tmux (role windows join its session)")
             for key, minimum in (("present_builders", 1), ("present_reviewers", 1), *((k, 0) for k in ZERO_CAPS),
                                  ("max_active_milestones", 1), ("train_min", 2), ("train_window", 1),
