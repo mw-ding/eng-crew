@@ -1445,6 +1445,21 @@ summary: the newest `<worktree>/.crew/runs/**/summary.md` under the worktree
 in `runs/<window>.json` ([observe.md](../observe.md#tmux-attach-and-logs)).
 `-f` follows it with `tail -f`. It never prints raw logs (`steps/`).
 
+### mdstack copy-claim
+
+```sh
+cli/mdstack copy-claim acquire|release|show --path <dir> [--run <id>] [--item <text>] [--project <config.toml>]
+```
+
+Host-wide working-copy claim (#391,
+[working-copy claims](multi-device.md#working-copy-claims)). Before a run
+uses an existing copy, its coordinator runs `acquire`; a claim held by
+another crew (another state root) or run exits 1 and names the holder, and
+the run is not dispatched. `release` drops the claim only for its holder
+(same state root and `--run`) and exits 1 for anyone else; no claim is a
+no-op. `show` prints the claim record as JSON, or `null`. `mdstack spawn`
+claims each worktree it adds and `mdstack kill` releases it.
+
 ### mdstack land-lock
 
 ```sh

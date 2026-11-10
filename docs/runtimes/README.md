@@ -114,7 +114,10 @@ Each run works in its own unique worktree
 main checkout and never a branch-named shared path. The worktree starts from a
 fresh base: the current remote default branch, or the parent change's branch
 for stacked work. Spawn refuses a path that breaks these rules. Teardown
-deletes that run's worktree and build output only.
+deletes that run's worktree and build output only. Where several crews share
+a host, the terminal binding also claims each run's working copy host-wide,
+so another crew's run never starts in it
+([working-copy claims](multi-device.md#working-copy-claims)).
 
 Teardown never removes a worktree whose work has not landed (decision
 [#160 row 3](https://github.com/mw-ding/eng-crew/issues/160#issuecomment-6531125583)).

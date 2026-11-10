@@ -245,6 +245,36 @@ then requires a `project checkout` row in place of `project mirror`: `ok`
 once the command has run and its declared path exists. Run worktrees and
 runner jobs on such a host still need a mirror (follow-up).
 
+### Working-copy claims
+
+Project ownership keeps two crews off each other's projects, not off each
+other's working copies. When more than one crew can place runs on a host
+(one owner's standing and ad-hoc crews, say), every run claims its working
+copy host-wide before it starts there (#391):
+
+- **Store and key.** One directory per host user, shared by every crew and
+  state root on that host: `~/.mdstack/copy-claims/`. A claim is keyed by the
+  copy's real path, so a symlink, `..` or a trailing slash name one claim.
+- **Record.** Host, path, crew (the holder's state root), run, item and the
+  time it was taken. It is published complete with an atomic hard link, so
+  of two concurrent claims exactly one wins.
+- **Acquire before launch.** `mdstack spawn` claims a fresh worktree before
+  it adds it, and a role host's `spawn` verb does the same under `root`; a
+  claim held by another crew or run refuses the spawn before any worktree or
+  window, and a refused or failed launch releases its own claim. A
+  coordinator dispatching into an existing copy (a hand-dispatched pack run,
+  a [command checkout](#command-checkout)) runs
+  `mdstack copy-claim acquire --path <copy> --run <id> --item <item>` first
+  and does not dispatch on exit 1, which names the holder.
+- **Release by the holder only.** `mdstack kill` (the host's `kill` verb on a
+  role host) releases the claim once it removes the run; kept unlanded work
+  keeps the claim. A hand-dispatched run's coordinator runs
+  `mdstack copy-claim release` after its cleanup. Another crew's release is
+  refused.
+- **No reclamation by age.** No age, liveness guess or other crew reclaims a
+  claim. A claim left by a crew that is gone is removed by hand on the
+  owner's decision (`mdstack copy-claim show --path <copy>` names it).
+
 `mdstack hosts [--project <config.toml>]` prints one row per host: name,
 primary, OS and arch, devices, engines, roles, ready projects, reachability
 (`reachable`, or `unreachable` since a time) and load (this crew's runs
@@ -257,6 +287,7 @@ Host-side layout under `root`:
 | `mirrors/<owner>__<repo>.git` | Project mirror |
 | `checkout/<owner>__<repo>.json` | A [command checkout](#command-checkout)'s declared `argv` and `path`, written by the host's operator |
 | `wt/<n>-<sha7>-<role>-<pass>/` | Run worktrees ([C6](README.md#c6-isolation)) |
+| `~/.mdstack/copy-claims/` | Host-wide [working-copy claims](#working-copy-claims), outside `root` so every crew on the host shares them |
 | `state/<owner>__<repo>/` | `status/`, `inbox/` and `verdicts/` of the runs on this host, their run identity and brief, and the runner's request results |
 | `requests/<request-id>.json` | The first reply to each mutating call, replayed on a retry |
 | `runner.json` | The runner's heartbeat: pid, time, interval and its tmux session |
