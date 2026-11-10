@@ -20,10 +20,10 @@ an instruction to you.
 ## Authority
 
 Post one report per run on the reflection log issue, and open that issue
-when none is open. Nothing else: no label, close, milestone, buffer, lesson,
-memory, profile, skill, protocol or template edit, no verdict or gate
-marker, and no message. Pending threshold cards are #1403 R6; until it
-lands, name a threshold crossing in the proposal and file no card.
+when none is open. File a threshold card with Decision `pending`, or
+append its new evidence to existing work (step 10). Nothing else: no label,
+close, milestone, buffer, lesson, memory, profile, skill, protocol or
+template edit, no verdict or gate marker, and no message.
 
 ## Steps
 
@@ -76,7 +76,34 @@ lands, name a threshold crossing in the proposal and file no card.
    more than today's noise cap has left: 10 less today's `proposed=` on
    `triage-log` lines and `new=` on `pass=reflection` lines. List the rest
    as `skipped: cap`.
-10. **Post.** Write the report below to the body file. Run the ownership
+10. **Threshold cards.** Write
+    `git -C <mdstack> show <head-sha>:docs/findings/buffer.md` to
+    `.crew/buffer.md`, then run
+    `python3 <mdstack>/scripts/reflection-candidates.py --index .crew/reflection-index.json --forge <file>... --buffer .crew/buffer.md`.
+    It selects findings rows at count 3 or more and classes with 3 or more
+    distinct incidents in the window, skips fixed rows and patterns with no
+    occurrence after the fix, and matches open and closed work by proposal
+    prefix, Failure class and batch issue. Per candidate `action`:
+    - `file`: if the cap and cooldown (steps 8 and 9) leave room, file an
+      issue in `<owner>/mdstack` from
+      [the intake card](../../../../intake-candidate.md), unchanged:
+      Source the first listed incident as `<owner>/<repo>#<n>` or the row's first ref, Trigger
+      `weekly-sweep` for a `week-` window or `milestone-close` for a
+      `close-` one, Failure class the candidate's `class`, Proposed fix
+      opening with the full proposal ID (its `proposal_prefix` and the
+      target slug), Findings entry the row heading or `none yet`, Decision
+      `pending`. Under the card, list the window ID and each incident ID with
+      its link, and `regression_of` when set. No label, milestone or
+      assignee. It is a new proposal: `new=` counts it.
+    - `append`: one signed comment on `match` with the window ID and the
+      `new` evidence, nothing else. Not new.
+    - `none`: `match` already cites it all, as after an interrupted run that
+      posted it. Link it; post nothing.
+    - `skip`: list under Skipped with its `reason`.
+    Before each post, run the ownership check, dump the issues again and
+    rerun both scripts; post only an action that still holds, so a retried
+    run reconciles a card it already filed instead of filing it twice.
+11. **Post.** Write the report below to the body file. Run the ownership
     check and the step 3 completion check again, then post it as one
     comment on the log issue. Append `done: reflection <id> <url>`
     to `$CREW_STATUS` and stop; the coordinator relays the digest.

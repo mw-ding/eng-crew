@@ -327,7 +327,15 @@ incidents of one class in the window, makes the researcher file a
 deduplicated intake card with Decision `pending`, or append the evidence to
 the existing card or issue. That clarifies #1403's component 3: a threshold
 files a **pending** card, never an accepted one. Recurrence, age or count
-never implies acceptance.
+never implies acceptance. `scripts/reflection-candidates.py` selects the
+crossings from the evidence index offline. A fixed or applied row, or a
+pattern whose card closed, gives no new work without an occurrence after
+the fix. It matches open and closed work by proposal prefix
+(`rp-<class>-`), Failure class and batch issue. A filed card is a new
+proposal under the report cap and cooldown. A retried run reconciles a card
+it already posted before filing again. The researcher's
+`protocol-reflection` procedure files or appends; it never edits the buffer,
+labels for readiness or places in a milestone.
 
 **Authority.**
 
