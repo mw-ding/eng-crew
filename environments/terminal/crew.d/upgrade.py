@@ -1,4 +1,4 @@
-"""Upgrade a tmux install from this bundle (or --version), previewing before restarting roles.
+"""Upgrade a tmux or session install from this bundle (or --version), previewing before restarting roles.
 
 Usage: mdstack upgrade --project FILE [--version vX.Y.Z | --latest] [--dry-run] [--yes]
                      [--wait-timeout SECONDS] [--timeout SECONDS]
@@ -12,6 +12,8 @@ step), then flips that root's releases/current, so its <root>/bin launcher follo
 Run from a separate operator terminal with dispatch paused. Waits for every current pass to finish
 before applying; a timeout leaves the install and sessions untouched. Restarts preserve worktrees,
 claims, inboxes and run metadata. Coordinator is last. Grok Bot routine reload remains manual.
+A session profile (runtime.name = "session", #1541) applies the install with no in-flight wait or window reload, since
+it has no role windows; restart the coordinator (exit it, then mdstack up) to load the new briefs.
 A changed pack.harness registry or source re-plans even with an unchanged render and tag; edited
 registry targets are reported as drift and never overwritten.
 """
@@ -114,8 +116,8 @@ def run(args):
     try:
         if args.uninstall or args.remove_labels or args.routines_removed or args.smoke:
             raise ValueError("use mdstack bootstrap for uninstall or smoke")
-        values, session, state = profile(args)
-        if "reload" not in tmux.CAPABILITIES:
+        values, session, state = profile(args, runtimes=("tmux", "session"))
+        if session and "reload" not in tmux.CAPABILITIES:
             raise ValueError("%s: in-place upgrade unsupported; stop the crew and restart the updated install" % tmux.name)
         if not require_ownership(values):
             return 1
@@ -147,7 +149,7 @@ def run(args):
             if bootstrap.budget_render(args.project, args.org_profile, values):
                 return 1
             desired = {p.relative_to(tmp): p.read_bytes() for p in Path(tmp).rglob("*") if p.is_file()}
-            live = Path(state) / "render"
+            live = Path(state) / "render" if session else Path(values["paths.live_dir"]).absolute()  # as bootstrap
             actual = {p.relative_to(live): p.read_bytes() for p in live.rglob("*") if p.is_file()}
             if (desired == actual and previous["tag"] == tag and same_pointers(args, previous, live, Path(tmp))
                     and previous["source"] == str(bootstrap.ROOT) and bootstrap.same_source(previous, install)
@@ -162,6 +164,12 @@ def run(args):
                 return 0
             if not args.yes:
                 raise ValueError("confirmation required; review --dry-run then use --yes")
+            if not session:  # a session profile has no role windows to wait on or reload
+                if not require_ownership(values) or bootstrap.run(args):
+                    return 1
+                print("crew upgrade: session runtime: restart the coordinator (exit it, then mdstack up) to load "
+                      "the new briefs")
+                return 0
             deadline = time.monotonic() + args.wait_timeout
             while active := busy(state, session, tmux.list_windows(session)):
                 if time.monotonic() >= deadline:

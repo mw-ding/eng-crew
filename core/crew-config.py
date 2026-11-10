@@ -13,7 +13,8 @@ prints them as ids.item and ids.change, plus the change map's ids.marker_key
 when declared (docs/handoff.md#id-declaration).
 Every problem prints as `file:key: reason`; exit 1 if any, else 0.
 `precheck-scope` classifies each changed path by builder.precheck.owners and
-prints JSON; exit 3 on unowned code, 4 on an owners query failure (stop).
+prints JSON; a path absent from the working directory is `removed`, never queried.
+Exit 3 on unowned code, 4 on an owners query failure (stop).
 `sensitive --diff` reads a `git diff --no-renames` unified diff and adds content rule matches (#879);
 `sensitive` exits 3 on incomplete input: a path list with content rules, or an unreadable diff.
 With a bound classify.sensitive extension it also runs that command on the same stdin and unions its matches,
@@ -325,8 +326,11 @@ def validate_hosts(profile, top, err):
             err(path, "expected an overlay network name ([a-z0-9-], 1-63 characters); no IP literal, user@ or :port")
         h = check_table(err, path, table, {"primary": (bool, False), "forge": (bool, True), "capabilities": (dict, REQUIRED),
                                             "max_runs": (int, REQUIRED), "roles": (list, None), "root": (str, None),
-                                            "toolchain_bin": (str, None)})
+                                            "toolchain_bin": (str, None), "checkout": (str, None)})
         forge = h.get("forge", True)
+        check_choice(err, path + ".checkout", h.get("checkout"), ["mirror", "command"])
+        if h.get("checkout") == "command" and h.get("primary"):
+            err(path + ".checkout", "the primary uses its own git checkout; expected no checkout command")
         caps = check_platform(err, path + ".capabilities", h["capabilities"], {"os": (str, REQUIRED), "arch": (str, REQUIRED),
                               "engines": ("list[str]", REQUIRED if forge else None)}) if "capabilities" in h else {}
         check_choices(err, path + ".capabilities.engines", caps.get("engines", []), ENGINES)
@@ -385,7 +389,7 @@ def check_capabilities(err, path, table, concern, required):
             err("%s.%s" % (path, op), "expected supported or unsupported (an extension runs or does not)")
 
 
-# semver.org 2.0.0, no leading v; the same shape as changelog-cut.py's SEMVER, which installs do not ship.
+# semver.org 2.0.0, no leading v; the same shape as changelog-cut.py's SEMVER.
 SEMVER = re.compile(
     r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
     r"(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)"
@@ -1319,8 +1323,8 @@ def resolve_profile(project, org_profile=None, pack_manifest=None, meta=None):
     """Layered effective profile: (merged, provenance, problems, layer names).
 
     provenance maps each leaf key of merged (as `leaves` yields it) to the layer that set it.
-    meta, when given, receives the external pack's pack.version, the change backend's declared land.* and
-    strategy.* keys and a bound classify.sensitive extension command as {key: (value, layer)}, outside merged.
+    meta, when given, receives the external pack's (else pack.toml's) pack.version, the change backend's declared
+    land.* and strategy.* keys and a bound classify.sensitive extension command as {key: (value, layer)}, outside merged.
     On any problem, merged and provenance are None. A team file (or FILE#<repo>) resolves as
     core < default < org < team < repo; its state root is <paths.state_dir>/<team>.
     """
@@ -1454,8 +1458,9 @@ def resolve_profile(project, org_profile=None, pack_manifest=None, meta=None):
         if len(problems) == count and strategy:
             layer = next(iter(strategy.values()))[1]
             check_strategy(lambda key, reason: err(layer, key, reason), {k: v for k, (v, _) in strategy.items()})
-        if meta is not None and external and "version" in external["pack"]:
-            meta["pack.version"] = (external["pack"]["version"], "pack:" + external["pack"]["name"])
+        versioned = external["pack"] if external and "version" in external["pack"] else plugin
+        if meta is not None and versioned and "version" in versioned:  # external manifest, else pack.toml (#1350)
+            meta["pack.version"] = (versioned["version"], "pack:" + versioned["name"])
         if meta is not None:
             meta.update({"land." + key: entry for key, entry in land.items()})
             meta.update({"strategy." + key: entry for key, entry in strategy.items()})
@@ -1698,12 +1703,16 @@ def class_flavor(profile, paths, express=False):
 
 
 def precheck_scope(precheck, paths):
-    """Classify changed paths (#881): owned (owning test targets), no-owner-ok (reasoned n/a) or unowned code.
+    """Classify changed paths (#881): owned (owning test targets), no-owner-ok (reasoned n/a), unowned code,
+    or removed: absent at head under the working directory (deleted or a rename source; #1345), never queried.
 
     The owners command gets one path as a single shell argument, so spaces survive. Returns (result, exit code);
     a failed query raises RuntimeError, never n/a."""
     entries = []
     for path in sorted(set(p for p in paths if p)):
+        if not os.path.lexists(path):
+            entries.append({"path": path, "class": "removed", "targets": []})
+            continue
         run = subprocess.run(["sh", "-c", precheck["owners"] + ' "$1"', "sh", path], capture_output=True, text=True)
         if run.returncode:
             raise RuntimeError("owners query failed (exit %d) for %r: %s" % (run.returncode, path, run.stderr.strip()))
@@ -1716,7 +1725,8 @@ def precheck_scope(precheck, paths):
     tests = "fail" if unowned else "run" if owned else "n/a"
     return {"tests": tests, "targets": sorted({t for e in owned for t in e["targets"]}),
             "no_owner_ok": [e["path"] for e in entries if e["class"] == "no-owner-ok"],
-            "unowned": unowned, "paths": entries}, 3 if unowned else 0
+            "unowned": unowned, "removed": [e["path"] for e in entries if e["class"] == "removed"],
+            "paths": entries}, 3 if unowned else 0
 
 
 def main(argv=None):

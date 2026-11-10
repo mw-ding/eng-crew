@@ -180,6 +180,7 @@ class Render(unittest.TestCase):
             brief = tree(self.out)["briefs/builder.md"]
             self.assertEqual("core/crew-config.py precheck-scope" in brief, present)
             self.assertEqual("`tests=n/a` only when every path is no-owner-ok" in brief, present)
+            self.assertEqual("a path absent there is `removed`, with no owners query" in brief, present)
 
     def test_unknown_placeholder_golden(self):
         shutil.copy(os.path.join(FIX, "unknown", "core", "builder.md"), os.path.join(self.inputs, "core", "builder.md"))
@@ -1143,6 +1144,19 @@ class SessionRuntime(unittest.TestCase):
                              "`Land rule: alone, direct`",
                              "If express resolves (`core/crew-config.py class-flavor --express`)"):
                     self.assertIn(rule, flat)
+
+    def test_synthesizer_renders_sections_the_merge_gate_refers_to(self):
+        """#1539: the shared merge gate points "below" to gate-status and verdict portability."""
+        synth = self.render()["runtime/synthesizer.md"]
+        flat = " ".join(synth.split())
+        for ref in ("report gate-status below", "carried only under the portability check below"):
+            self.assertIn(ref, flat)
+        for section in ("Verdict portability: apply protocol §7's full content",
+                        "Gate-status reporting (diagnostic only; changes no gate or exemption):",
+                        "pass=gate-status pr=<n> sha=<head-sha>"):
+            self.assertIn(section, flat)
+            self.assertLess(flat.index("report gate-status below"), flat.index(section))
+        self.assertIn("otherwise edit that review body in place with gh api --method PUT", flat)
 
 
 if __name__ == "__main__":

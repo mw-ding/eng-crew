@@ -9,7 +9,9 @@ failing the link check, refusals, and a build of the current repo, extracted to
 a temp dir, where `cli/mdstack --help`, `core/crew-config.py validate
 profiles/default.toml` and `core/crew-render.py --project
 profiles/default.toml --out <tmp>` and `scripts/check-repo.py --only markdown`
-(its `check-markdown.py` dependency ships, #644) must exit 0. Run in CI.
+(its `check-markdown.py` dependency ships, #644) must exit 0, and the bundled
+`scripts/changelog-cut.py` cuts a scratch pack's changelog from the bundle
+alone (#1033). Run in CI.
 """
 import contextlib
 import hashlib
@@ -193,6 +195,26 @@ class ReleaseBundleTest(unittest.TestCase):
             self.assertIn("name: " + skill, text)
             self.assertNotIn("<include:", text)
             self.assertIn("## ", text)
+        self.cut_scratch_pack(os.path.join(out, "mdstack-0.0.0", "scripts", "changelog-cut.py"))
+
+    def cut_scratch_pack(self, script):
+        pack = os.path.join(self.tmp.name, "pack")
+        os.makedirs(os.path.join(pack, "notes", "next"))
+        files = {"crew.toml": '[release]\nchangelog = "HISTORY.md"\nfragments = "notes/next"\nrelease_id = "commit"\n',
+                 "HISTORY.md": "# History\n\n## [Unreleased]\n\n## [1.0.0] - 2026-11-01\n\n### Added\n\n- First.\n",
+                 "notes/next/7-retry.md": "---\ntype: fixed\nissue: 7\n---\n\nRetry works.\n"}
+        for name, text in files.items():
+            with open(os.path.join(pack, name), "w", encoding="utf-8") as f:
+                f.write(text)
+        run = subprocess.run([sys.executable, script, "1.1.0", "--project", "crew.toml", "--date", "2026-11-09"],
+                             cwd=pack, capture_output=True, text=True)
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertIn("1 fragment assembled and deleted", run.stdout)
+        with open(os.path.join(pack, "HISTORY.md"), encoding="utf-8") as f:
+            self.assertEqual(f.read(), "# History\n\n## [Unreleased]\n\n## [1.1.0] - 2026-11-09\n\n"
+                             "### Fixed\n\n- Retry works. (issue #7)\n\n## [1.0.0] - 2026-11-01\n\n"
+                             "### Added\n\n- First.\n")
+        self.assertEqual(os.listdir(os.path.join(pack, "notes", "next")), [])
 
 
 if __name__ == "__main__":

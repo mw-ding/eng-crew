@@ -146,7 +146,7 @@ class ScoutRole(SpawnBase):
 
 
 class ShippedDiscovery(unittest.TestCase):
-    """The shipped roles keep the former self-test brief lists for tmux and the other runtimes."""
+    """The shipped roles keep the former self-test brief lists for tmux and grok-bot; session uses the tmux names (#1541)."""
 
     def test_former_brief_lists(self):
         spec = importlib.util.spec_from_loader("crew_shipped_cli", SourceFileLoader("crew_shipped_cli", os.path.join(os.path.dirname(SCRIPTS), "cli", "mdstack")))
@@ -159,8 +159,8 @@ class ShippedDiscovery(unittest.TestCase):
                 Path(tmp, "runtime").mkdir(exist_ok=True)
                 Path(tmp, "runtime", name + ".md").write_text("brief\n")
             self.assertEqual(bootstrap.missing_briefs(tmp, "grok-bot"), [])
-            self.assertEqual(bootstrap.missing_briefs(tmp, "session"), ["coordinator", "builder", "reviewer"])
             self.assertEqual(bootstrap.missing_briefs(tmp, "tmux"), ["coordinator", "builder", "reviewer"])
+            self.assertEqual(bootstrap.missing_briefs(tmp, "session"), ["coordinator", "builder", "reviewer"])
 
 
 if __name__ == "__main__":

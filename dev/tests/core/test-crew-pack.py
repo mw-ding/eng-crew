@@ -155,6 +155,36 @@ class Version(PackCase):
         self.assertIn("not a stable release tag", pk.compatible(pack, "v5.3.0-rc.1"))
         self.assertIn("not a stable release tag", pk.compatible(pack, "a" * 40))
 
+    def resolve_lines(self, *extra):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+            code = cc.main(["resolve", "--project", self.project, *extra])
+        return code, out.getvalue().splitlines()
+
+    def test_resolve_prints_pack_toml_version(self):  # #1350
+        self.edit("pack.toml", 'version = "0.1.0"', 'version = "1.2.3"')
+        code, lines = self.resolve_lines()
+        self.assertEqual(code, 0, lines)
+        self.assertEqual(lines[-1], 'pack.version = "1.2.3"  # pack:example')
+        self.edit("pack.toml", 'version = "1.2.3"\n', '')
+        code, lines = self.resolve_lines()
+        self.assertEqual(code, 0, lines)
+        self.assertFalse(any(ln.startswith("pack.version") for ln in lines), lines)
+
+    def test_external_manifest_version_wins_else_pack_toml(self):
+        manifest = os.path.join(self.tmp, "manifest.toml")
+        with open(os.path.join(ROOT, "connectors", "github", "manifest.toml")) as f:
+            text = f.read().replace('name = "github"', 'name = "example-ext"')
+
+        def run(version):
+            with open(manifest, "w") as f:
+                f.write(text.replace("[pack]\n", '[pack]\nmdstack_version = "v5.0.0"\n%s' % version))
+            code, lines = self.resolve_lines("--pack-manifest", manifest)
+            self.assertEqual(code, 0, lines)
+            return [ln for ln in lines if ln.startswith("pack.")]
+        self.assertEqual(run('version = "9.9.9"\n'), ['pack.version = "9.9.9"  # pack:example-ext'])
+        self.assertEqual(run(""), ['pack.version = "0.1.0"  # pack:example'])  # versionless external: pack.toml
+
     def test_malformed_framework_refuses(self):
         self.edit("pack.toml", 'framework = ">=5.0.0, <6.0.0"', 'framework = "5.x"')
         self.assertTrue(any("pack.framework: expected comparators" in p for p in self.loaded()[1]))
