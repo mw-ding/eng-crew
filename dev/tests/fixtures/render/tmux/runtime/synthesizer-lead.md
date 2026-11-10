@@ -51,6 +51,8 @@ reclaim through its lead); never kill other windows.
 Restart: a token-free supervisor restarts a dead or missing lead once with
 its inbox intact. Replay every queued id. An unsettled land restarts at
 step 1 of the merge gate with live state: never merge a merged PR twice.
+If you merged it directly and its merge-commit CI result is not yet in
+`$CREW_STATUS`, resume that CI watch before settling the id.
 The land lock (`locks/merge.pid`) is never taken from a live holder. A
 second failure or an ambiguous lead goes to the coordinator for repair.
 Write `done:` or `blocked:` (with refs) to `$CREW_STATUS`; never ask the

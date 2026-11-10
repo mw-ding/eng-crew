@@ -18,9 +18,11 @@ a merged PR's close-out while their own spawn PR lacks completion (its direct-la
 the inbox check and reap share the queue lock with send's inbox append.
 With the synthesizer lead installed (#1569), `review-approved`, `selfgate-passed`, `ci-passed` with a passing verdict
 or self-gate at head, and approved merge-ups become durable `work` events in its land queue, never coordinator
-wakes; a superseded one is dropped, and an unapproved `ci-passed` is consumed unless held CI refs for that PR
+wakes (a merge-up head's `ci-passed` counts its approved previous head); a superseded one is dropped, and an
+unapproved `ci-passed` is consumed unless held CI refs for that PR
 (`ci/<n>-*.json`) still wait on it. Its waiting gate-status blocks are consumed like a synthesizer's; its other
-`blocked:` lines (owner merge-ok, sensitive, holds, `main red`) stay queued for the coordinator.
+`blocked:` lines (owner merge-ok, sensitive, holds, `main red`) stay queued for the coordinator; a clean
+`train-report` (all landed, `dropped=none stop=none`) is consumed.
 
 Usage: mdstack route --project FILE [--org-profile FILE] [--timeout SECS]
 """
@@ -42,6 +44,8 @@ WAITING = re.compile(r"blocked: #\d+ [0-9a-f]{40} gate-status \S+ wait=(?:ci|rev
 # A reviewer's finished pass; a trailing note after the verdict is allowed (#1343), as on a builder's done line (#695).
 # A reflection run's completion with its posted report (templates/policy/researcher/skills/protocol-reflection).
 REFLECTION_DONE = re.compile(r"done: reflection (\S+) (https?://\S+)")
+# A finished train with every member landed and nothing dropped: a train-report the coordinator need not read.
+TRAIN_CLEAN = re.compile(r"train-report n=\d+ members=\S+ landed=\S+ dropped=none stop=none path=\S+")
 LAND_EVENTS = ("review-approved", "selfgate-passed", "ci-passed")
 REVIEW_DONE = re.compile(r"done: #(\d+) ([0-9a-f]{40}) (review|validate|recheck) (pass|changes|escalate)(?:\s.*)?")
 
@@ -308,6 +312,8 @@ def route_record(args, values, state, w):
     if (rec and rec["role"] == "synthesizer" or leader and leader["role"] == "synthesizer-lead") and \
             WAITING.fullmatch(line):
         return True  # recorded in the status file and gate-status review; CI or a pass will wake it again (#578)
+    if leader and leader["role"] == "synthesizer-lead" and TRAIN_CLEAN.fullmatch(line):
+        return True  # every member landed and none dropped: nothing for the coordinator (#1569)
     if w.get("reason") == "lead-backstop":
         lead.retry_pending(args, w["window"])
         return True
@@ -409,8 +415,10 @@ def route_record(args, values, state, w):
             reap(args, w["window"], state)
         return False
     if landing:
-        snapshot = commands()["poll"].pr_snapshot(own_view(values, pr))
+        own = own_view(values, pr)
+        snapshot = commands()["poll"].pr_snapshot(own)
         if event == "ci-passed" and "pass" not in (snapshot["verdict"], snapshot["selfgate"]) and \
+                not approved_merge_up(own, repo, values["repo.default_branch"]) and \
                 not commands()["poll"].express_lane(args, values, pr):  # poll gates an express ci-passed already
             return not glob.glob(os.path.join(state, "ci", "%d-*.json" % n))  # held CI refs: the coordinator drops them
         return lead.event(args, "synthesizer", w) == 0

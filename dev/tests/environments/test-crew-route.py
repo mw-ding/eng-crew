@@ -402,9 +402,11 @@ class Route(SpawnBase):
         url = "https://github.com/acme/widgets/pull/12#pullrequestreview-1"
         gate = "blocked: #12 %s gate-status %s " % (self.sha, url)
         quiet = [dict(reason="status", window="sam-lead", line=line) for line in (
-            "ack: m1", "done: #12 " + self.sha, "done: m1", gate + "wait=ci", gate + "wait=review,selfgate")]
+            "ack: m1", "done: #12 " + self.sha, "done: m1", gate + "wait=ci", gate + "wait=review,selfgate",
+            "train-report n=3 members=12,13 landed=12,13 dropped=none stop=none path=train")]
         loud = [dict(reason="status", window="sam-lead", line=line) for line in (
-            gate + "wait=ci,merge-ok", "blocked: #12 sensitive", "blocked: main red after #12 " + url)]
+            gate + "wait=ci,merge-ok", "blocked: #12 sensitive", "blocked: main red after #12 " + url,
+            "train-report n=4 members=12,13 landed=none dropped=none stop=ci=fail path=train")]
         self.queue(*quiet, *loud)
         self.route()
         self.assertEqual(self.pending(), loud)

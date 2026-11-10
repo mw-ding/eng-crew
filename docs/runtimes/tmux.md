@@ -550,9 +550,9 @@ land procedure and never spawns synthesizer workers. With it installed,
 `mdstack spawn synthesizer` refuses, and nothing reaps it after a land.
 
 `mdstack route` writes `review-approved`, `selfgate-passed`, `ci-passed`
-with a passing verdict or self-gate at head (an express `ci-passed` is
-already gated by `mdstack poll`) and approved `merge-up` events as durable
-`work` events into its inbox. They no longer stay queued for the
+with a passing verdict or self-gate at head, or on an approved merge-up head
+(an express `ci-passed` is already gated by `mdstack poll`), and approved
+`merge-up` events as durable `work` events into its inbox. They no longer stay queued for the
 coordinator. A land event for a superseded head is dropped; an unapproved
 `ci-passed` is consumed unless held CI refs (`ci/<n>-*.json`) wait on it.
 A merge-up with an open rereview or a resolved conflict still goes to
@@ -567,10 +567,15 @@ re-checks every [§7](../protocol.md#7-merge-gate-synthesizer) gate live
 before each land (F3). After a direct land it settles the id only once the
 merge commit's CI is green or `blocked: main red after #<n> <run-url>` is
 written. A replayed id whose land already happened finds the PR merged at
-step 1 and only settles.
+step 1; after a direct land it resumes the merge-commit CI watch before
+settling. `mdstack land-lock acquire` records the lead's pane as the lock
+owner, so a lock left by a dead lead pane is released and the restarted lead
+can take it. Train delegations name the lead as the `synthesizer` window,
+so `train-done` and `train-failed` reach it.
 
 Route consumes the lead's `ack:`, `done:` and waiting gate-status lines
-(`wait=ci`, `review`, `validation`, `selfgate`, `train`). Its other
+(`wait=ci`, `review`, `validation`, `selfgate`, `train`), and a clean
+`train-report` (`dropped=none stop=none`). Its other
 `blocked:` lines stay queued for the coordinator: owner merge-ok,
 `crew:sensitive`, holds and `main red`; lead faults arrive as `stale` or
 `dialog` wakes. Merged-PR close-out stays in route (labels, closing the

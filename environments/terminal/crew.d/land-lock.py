@@ -8,7 +8,7 @@ import os
 import signal
 import subprocess
 import time
-from crew_shared import profile, runs, tmux
+from crew_shared import commands, profile, runs, tmux
 
 
 def proc_identity(pid):
@@ -88,7 +88,8 @@ def run(args):
     os.makedirs(os.path.dirname(lock), exist_ok=True)
     if args.action == "acquire":
         cleanup(state)
-        run = dict(runs(state)).get(os.environ.get("CREW_ID"), {})
+        me = os.environ.get("CREW_ID")  # a run, or the synthesizer lead (#1569): its pane owns the lock
+        run = dict(runs(state)).get(me) or dict(commands()["lead"].records(state)).get(me) or {}
         owner = None
         if run.get("pane_pid") and run.get("pane_start"):
             owner = {"pid": int(run["pane_pid"]), "start": run["pane_start"]}

@@ -98,7 +98,8 @@ def train_delegate(args, values, state, repo, slug):
     else:
         base = fetch(repo, values["repo.default_branch"])
     rec = {"n": n, "base": base, "after": args.after, "members": [], "closed": False,
-           "synthesizer": values.get("identities.synthesizer.name", NAMES["synthesizer"]).lower()}
+           "synthesizer": values.get("identities.synthesizer.name", NAMES["synthesizer"]).lower() +
+           ("-lead" if commands()["lead"].enabled(state, "synthesizer") else "")}  # its lead lands (#1569)
     for pr in dict.fromkeys(args.items):
         try:
             rec["members"].append({"pr": pr, "head": fetch(repo, "pull/%d/head" % pr)})

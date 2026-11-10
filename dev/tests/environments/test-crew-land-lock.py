@@ -214,6 +214,28 @@ class LandLock(Base):
         if "--owner-transcript" in sys.argv:
             print("state: merge.pid absent after release")
 
+    def test_synthesizer_lead_pane_owns_the_lock(self):  # #1569: a dead lead pane releases its lock
+        owner = subprocess.Popen(["sleep", "30"])
+        self.addCleanup(owner.wait)
+        self.addCleanup(lambda: owner.kill() if owner.poll() is None else None)
+        start = subprocess.run(["ps", "-o", "lstart=", "-p", str(owner.pid)], capture_output=True,
+                               text=True).stdout.strip()
+        self.put("leads/synthesizer.json", json.dumps(dict(name="sam-lead", index=1, role="synthesizer-lead",
+                                                           harness="codex", pane_pid=owner.pid, pane_start=start)))
+        r = self.lock("acquire", CREW_ID="sam-lead")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.addCleanup(self.lock, "release")
+        self.assertEqual(self.pidfile()["owner"], dict(pid=owner.pid, start=start))
+        owner.terminate()
+        owner.wait()
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline:
+            r = self.lock("acquire")
+            if r.returncode == 0:
+                break
+            time.sleep(.1)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+
     def test_missing_window_reaps_lock_even_when_pane_process_survives(self):
         owner = subprocess.Popen(["sleep", "30"])
         self.addCleanup(owner.wait)
