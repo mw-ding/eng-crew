@@ -338,14 +338,13 @@ class ValidateTest(unittest.TestCase):
         for options in ("", 'session_backend = "cli", builders = 2, reviewers = 1, max_active_milestones = 2',
                         'merge_grant = "none", lone_pr_land = "direct", train_min = 3, mirror = "none", notes = {}',
                         'researchers = 0',  # #1057: the documented no-researcher statement survives a tmux migration
+                        'researchers = 1',  # #1404: the session triage sweep worker
                         # #1548: mdstack up's coordinator launch; coordinator = none needs no roles value
                         'session = "ash-solo", permission_mode = "safe", launch = { coordinator = "none", resume = "abc-1" }'):
             code, lines = validate(session % options)
             self.assertEqual(code, 0, lines)
         for options, expected in [
                 ('session_backend = "tmux"', "session_backend: unknown value 'tmux' (expected one of: native, cli)"),
-                ('researchers = 1', "researchers: the session runtime has no researcher; only 0 (no researcher) "
-                                    "is accepted, got 1"),
                 ('researchers = -1', "researchers: must be >= 0, got -1"),
                 ('researchers = "0"', "researchers: expected integer, got string"),
                 ('tmux_server = "default"', "tmux_server: unknown key"),
@@ -881,10 +880,20 @@ class ResearcherProfile(unittest.TestCase):
         for bad, key in [("interval_hours = 0", "triage.interval_hours"), ('mode = "auto"', "triage.mode"),
                          ('repos = ["widgets"]', "triage.repos[0]"), ("repos = []", "triage.repos"),
                          ('rules = " "', "triage.rules"), ('enabled = "yes"', "triage.enabled"),
-                         ("cadence = 6", "triage.cadence")]:
+                         ("cadence = 6", "triage.cadence"), ("trackers = []", "triage.trackers"),
+                         ('trackers = ["OPS board"]', "triage.trackers[0]")]:
             code, lines = validate(VALID + "\n[triage]\n" + bad + "\n")
             self.assertEqual(code, 1, bad)
             self.assertTrue(any(key + ":" in ln for ln in lines), (bad, lines))
+
+    def test_triage_trackers_name_a_non_github_tracker(self):  # #1404
+        code, lines = validate(VALID + '\n[triage]\ntrackers = ["OPS"]\n')
+        self.assertEqual(code, 1)
+        self.assertTrue(any("triage.trackers: needs a non-GitHub tracker backend" in ln for ln in lines), lines)
+        native = VALID.replace('[backends.tracker]\nname = "github"', '[backends.tracker]\nname = "example"')
+        self.assertNotEqual(native, VALID)
+        code, lines = validate(native + '\n[triage]\ntrackers = ["OPS", "ops:intake"]\n')
+        self.assertFalse([ln for ln in lines if "triage." in ln], lines)
 
     def test_reflection_table_defaults_off_and_checks(self):  # #1521
         code, lines = resolve(VALID, default=VALID)
@@ -1988,6 +1997,22 @@ class HostInventoryTest(unittest.TestCase):
                          "crew.toml:placement.rules[0].needs.gpu: unknown key")
         self.assertFails(VALID + HOSTS.replace("max_runs = 4", 'max_runs = 4\nip = "10.0.0.7"'),
                          "crew.toml:hosts.host-b.ip: unknown key")
+
+    def test_connect(self):
+        connect = 'max_runs = 4\nconnect = { alias = "b", transport = "mosh", proxy = "p %h %p", options = ["-v"] }'
+        self.assertEqual(validate(VALID + HOSTS.replace("max_runs = 4", connect)), OK)
+        self.assertFails(VALID + HOSTS.replace("max_runs = 4", connect.replace('"mosh"', '"telnet"')),
+                         "crew.toml:hosts.host-b.connect.transport: unknown value 'telnet' (expected one of: ssh, mosh, et)")
+        self.assertFails(VALID + HOSTS.replace("max_runs = 4", connect.replace('"mosh"', '"et"')),
+                         "crew.toml:hosts.host-b.connect.proxy: et takes its ProxyCommand from your SSH config; set "
+                         "proxy only for ssh or mosh")
+        self.assertFails(VALID + HOSTS.replace("max_runs = 4", connect.replace('"b"', '"B.x"')),
+                         "crew.toml:hosts.host-b.connect.alias: expected [a-z0-9-], 1-63 characters")
+        self.assertFails(VALID + HOSTS.replace("max_runs = 4", connect.replace('"b"', '"host-a"')),
+                         "crew.toml:hosts: connect alias 'host-a' names more than one host")
+        self.assertEqual(validate(VALID + HOSTS.replace("max_runs = 4", connect.replace('"b"', '"host-b"'))), OK)
+        self.assertFails(VALID + HOSTS.replace("max_runs = 4", 'max_runs = 4\nconnect = { port = 22 }'),
+                         "crew.toml:hosts.host-b.connect.port: unknown key")
 
     def test_required_keys_and_types(self):
         self.assertFails(VALID + HOSTS.replace("max_runs = 4\n", ""), "crew.toml:hosts.host-b.max_runs: missing required key")

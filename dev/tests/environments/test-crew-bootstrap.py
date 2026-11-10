@@ -499,6 +499,15 @@ class Bootstrap(doctor_tests.DoctorBase):
         self.assertEqual(files[0].read_text(), "owner edit\n")
         self.assertEqual(self.manifest.read_text(), before)
 
+    def test_session_self_test_finds_session_briefs_and_skips_grok_steps(self):
+        self.project_path.write_text(self.project_path.read_text().replace('name = "tmux"', 'name = "session"'))
+        r = self.bootstrap("--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("Self-test: briefs ok", r.stdout)
+        self.assertIn("Human step: Run mdstack up --project " + self.project, r.stdout)
+        self.assertNotIn("routines", r.stdout)
+        self.assertTrue((Path(self.tmp) / "live" / "runtime" / "coordinator.md").is_file())
+
     def test_grok_triage_enabled_reports_no_timer(self):
         text = self.project_path.read_text().replace('name = "tmux"', 'name = "grok-bot"')
         for enabled in (False, True):

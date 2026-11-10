@@ -3,7 +3,7 @@
 > - **Status:** partly built
 > - **Applies to:** a tmux primary plus forge-less runner hosts
 > - **Current rules:** [tmux binding](tmux.md), [protocol](../protocol.md)
-> - **Built:** host inventory, `mdstack host check`, `mdstack hosts`, `mdstack host prepare`, the remote call and runner, [Forge-less hosts](#forge-less-hosts-remote-test-runner) and its [runbook](#runbook-add-a-runner-host), the [role-host runbook](#runbook-add-or-remove-a-role-host), the [host OS adapter](#host-os-adapters) dispatch and the `macos` and `linux` adapters, [placement](#placement) in `mdstack spawn`, the [remote run lifecycle](#remote-run-lifecycle) (`spawn`, `kill`, `restart`, `down`), [remote attach and logs](#observability), [remote wakes and messages](#remote-wakes-and-messages) (`pull`, `send`, `host_scan_interval`), [partition handling](#failure-and-partition) (`unreachable`, reconcile, abandon with a tombstone), proved on fakes, and the pull through a disconnect and a placed run's partition on lab C (#204–#208, #345–#349, #726–#729, #1358, #1359, #1363), plus the two-host dry run on lab C as a simulated host (#209, #1442)
+> - **Built:** host inventory, `mdstack host check`, `mdstack hosts`, `mdstack host prepare`, the remote call and runner, [Forge-less hosts](#forge-less-hosts-remote-test-runner) and its [runbook](#runbook-add-a-runner-host), the [role-host runbook](#runbook-add-or-remove-a-role-host), the [host OS adapter](#host-os-adapters) dispatch and the `macos` and `linux` adapters, [placement](#placement) in `mdstack spawn`, the [remote run lifecycle](#remote-run-lifecycle) (`spawn`, `kill`, `restart`, `down`), [remote attach and logs](#observability), [remote wakes and messages](#remote-wakes-and-messages) (`pull`, `send`, `host_scan_interval`), the owner's [`mdstack connect`](#connect-to-a-host) login, [partition handling](#failure-and-partition) (`unreachable`, reconcile, abandon with a tombstone), proved on fakes, and the pull through a disconnect and a placed run's partition on lab C (#204–#208, #345–#349, #726–#729, #1358, #1359, #1363), plus the two-host dry run on lab C as a simulated host (#209, #1442)
 > - **Last checked:** 2026-11-09 at `a679007`
 
 How one coordinator runs role sessions on several hosts (laptops, a
@@ -113,6 +113,7 @@ needs = { devices = ["ios-simulator"] }
 | `hosts.<name>.roles` | list from `builder`, `reviewer` | both | Roles placed there; the primary also runs the coordinator and synthesizer |
 | `hosts.<name>.root` | string: path on that host | `~/.mdstack` | Mirrors, worktrees and host state; ignored on the primary, which uses [`[paths]`](../profile.md#paths) |
 | `hosts.<name>.toolchain_bin` | string: path on that host | none | `<toolchain-bin>` for builders there |
+| `hosts.<name>.connect` | `{ alias?, transport?, proxy?, options? }` | `ssh`, no alias | The owner's [`mdstack connect`](#connect-to-a-host) login; not crew traffic ([profile](../profile.md#hostsname-and-placement)) |
 | `placement.hosts` | non-empty list of host names, preferred first | the primary | Project affinity |
 | `placement.rules` | array of `{ role, pass?, paths?, needs }` | `[]` | Capability exceptions; first match wins; `needs` takes `os`, `arch`, `devices` |
 | `runtime.options.host_scan_interval` | integer ≥ 1 (seconds) | `15` | How often the watcher pulls each role host |
@@ -501,6 +502,66 @@ Rules:
 | `mdstack attach builders` | Adds one pane per remote builder that prints its host's `capture` reply every 15 s; host_scan_interval (#346) replaces that interval |
 | `mdstack logs` | The `logs` verb returns the step summary tail (`-n`, at most 500 lines); never raw logs. `-f` is local only |
 | `mdstack hosts` | The inventory view above |
+| `mdstack connect <alias> [<session>]` | The owner's own shell or tmux session on a host ([Connect to a host](#connect-to-a-host)); not a crew window |
+
+## Connect to a host
+
+`mdstack connect` ([#1036](https://github.com/mw-ding/eng-crew/issues/1036))
+is the owner's one command to get a shell on an inventory host from any
+machine that has the profile, usually a laptop:
+
+```sh
+mdstack connect [--project <config.toml>] <alias> [<session>] [-- <transport args>...]
+```
+
+- `<alias>` is a host name or its `connect.alias`. An unknown alias prints
+  the known ones and exits 1.
+- With `<session>` it runs `tmux new-session -A -s <session>` on the host,
+  so the same command creates the session the first time and reattaches it
+  later. Detaching (tmux prefix, then `d`) leaves it running. Without a
+  session it opens a plain login shell.
+- The transport, its proxy command and fixed options are profile data under
+  `hosts.<name>.connect`, so one verb serves an SSH-only setup and a
+  reconnecting one (mosh, Eternal Terminal). Words after the alias and
+  session that start with `-` (for example a port tunnel) go to the
+  transport; mdstack's own options go before the alias.
+- It replaces itself with the transport, under the owner's SSH config and
+  keys. It never uses the [crew SSH key](#security-model), whose forced
+  entrypoint gives no shell, and it changes no crew state.
+
+| `transport` | Plain shell | With `<session>` | `proxy` |
+|---|---|---|---|
+| `ssh` (default) | `ssh <host>` | `ssh -t <host> tmux new-session -A -s <session>` | `-o ProxyCommand=<proxy>` |
+| `mosh` | `mosh <host>` | `mosh <host> -- tmux new-session -A -s <session>` | `--ssh=ssh -o ProxyCommand=<proxy>` plus `--experimental-remote-ip=remote`, since mosh's own remote-IP discovery uses the ProxyCommand slot |
+| `et` | `et <host>` | `et <host> -c 'tmux new-session -A -s <session>'` | Refused; set `ProxyCommand` in the SSH config |
+
+Profile options and passed-through arguments go between the transport and
+the host. The host name is the destination, as for every other call, so
+user, port and key come from the SSH config.
+
+**Laptop to server, end to end.** The owner's laptop holds a profile with
+the inventory; `host-b` is a Linux server reached over a reconnecting
+transport behind an org proxy:
+
+```toml
+[hosts.host-b]
+capabilities = { os = "linux", arch = "x86_64", engines = ["codex"] }
+max_runs = 4
+connect = { alias = "b", transport = "mosh", proxy = "corp-proxy %h %p" }
+```
+
+1. `mdstack connect b work` opens `work` on `host-b`, creating it the first
+   time: `mosh --ssh='ssh -o ProxyCommand=…' --experimental-remote-ip=remote
+   host-b -- tmux new-session -A -s work`.
+2. Work, then detach with the tmux prefix and `d`, or close the laptop; mosh
+   rides out a network change or sleep while the session keeps running.
+3. Later, from home or another laptop with the same profile, `mdstack
+   connect b work` reattaches the same session.
+4. On an `ssh` host, `mdstack connect host-a -- -L 8080:localhost:8080`
+   opens a plain shell with the port forward passed to `ssh`; mosh has no
+   port forwards.
+5. `mdstack connect x` with no such host prints
+   `crew connect: unknown host alias x; known: b, host-a, host-b` and exits 1.
 
 ## Forge-less hosts: remote test runner
 

@@ -156,6 +156,7 @@ TYPE_NAMES = {str: "string", int: "integer", bool: "boolean", float: "float", li
 # Host inventory and project affinity (docs/runtimes/multi-device.md, #204).
 HOST_NAME = re.compile(r"[a-z0-9-]{1,63}")
 HOST_ADDRESS = re.compile(r"(?=.{1,253}$)[a-z0-9-]{1,63}(\.[a-z0-9-]{1,63})*\.[a-z-][a-z0-9-]{0,62}")  # a DNS name, no IP
+CONNECT_TRANSPORTS = ["ssh", "mosh", "et"]
 HOST_OS, HOST_ARCH = ["linux", "macos"], ["x86_64", "arm64"]
 DEVICES = ["ios-simulator", "ios-device", "android-emulator", "android-device"]
 PLACED_PASSES = {r: v["placement"] for r, v in ROLE_REGISTRY.items() if "placement" in v}  # mdstack spawn passes
@@ -320,6 +321,17 @@ def check_platform(err, path, table, fields):
     return out
 
 
+def validate_connect(err, path, table):
+    """hosts.<name>.connect: the owner's `mdstack connect` alias, transport, proxy command and fixed options."""
+    c = check_table(err, path, table, {"alias": (str, None), "transport": (str, None), "proxy": (str, None),
+                                       "options": ("list[str]", None)})
+    if "alias" in c and not HOST_NAME.fullmatch(c["alias"]):
+        err(path + ".alias", "expected [a-z0-9-], 1-63 characters")
+    check_choice(err, path + ".transport", c.get("transport"), CONNECT_TRANSPORTS)
+    if c.get("transport") == "et" and "proxy" in c:
+        err(path + ".proxy", "et takes its ProxyCommand from your SSH config; set proxy only for ssh or mosh")
+
+
 def validate_hosts(profile, top, err):
     """[hosts.<name>] and [placement]: hosts by overlay network name, or a DNS `address`, never an IP (spec R1)."""
     hosts = {}
@@ -329,9 +341,12 @@ def validate_hosts(profile, top, err):
             err(path, "expected an overlay network name ([a-z0-9-], 1-63 characters); no IP literal, user@ or :port")
         h = check_table(err, path, table, {"primary": (bool, False), "forge": (bool, True), "capabilities": (dict, REQUIRED),
                                             "max_runs": (int, REQUIRED), "roles": (list, None), "root": (str, None),
-                                            "toolchain_bin": (str, None), "address": (str, None), "checkout": (str, None)})
+                                            "toolchain_bin": (str, None), "address": (str, None), "checkout": (str, None),
+                                            "connect": (dict, None)})
         if "address" in h and not HOST_ADDRESS.fullmatch(h["address"]):
             err(path + ".address", "expected a dotted DNS name ([a-z0-9-] labels); no IP literal, user@ or :port")
+        if "connect" in h:
+            validate_connect(err, path + ".connect", h["connect"])
         forge = h.get("forge", True)
         check_choice(err, path + ".checkout", h.get("checkout"), ["mirror", "command"])
         if h.get("checkout") == "command" and h.get("primary"):
@@ -348,6 +363,10 @@ def validate_hosts(profile, top, err):
             err(path + ".roles", "a forge-less host takes runner jobs only; expected no roles")
         hosts[name] = dict(caps, primary=h.get("primary", False), forge=forge,
                            roles=h.get("roles", list(PLACED_PASSES)) if forge else [])
+    aliases = list(hosts) + [t["connect"]["alias"] for n, t in top.get("hosts", {}).items() if isinstance(t, dict)
+                             and isinstance(t.get("connect"), dict) and t["connect"].get("alias") not in (None, n)]
+    for alias in sorted({a for a in aliases if aliases.count(a) > 1}):
+        err("hosts", "connect alias %r names more than one host" % alias)
     rt = profile.get("runtime")
     if "hosts" in top and isinstance(rt, dict) and rt.get("name") not in (None, "tmux", "session"):
         err("hosts", "a host inventory needs runtime tmux or session, got %r" % rt.get("name"))
@@ -756,13 +775,19 @@ def validate(profile, err, backends=BACKENDS, pack_dir=None, item=None):
     if "triage" in top:  # always-on triage sweep (docs/triage.md, #748)
         tri = check_table(err, "triage", top["triage"], {"enabled": (bool, False), "interval_hours": (int, 6),
                                                         "repos": ("list[str]", None), "rules": (str, None),
-                                                        "mode": (str, "shadow")})
+                                                        "mode": (str, "shadow"), "trackers": ("list[str]", None)})
         check_choice(err, "triage.mode", tri.get("mode"), TRIAGE_MODES)
         if tri.get("interval_hours", 6) < 1:
             err("triage.interval_hours", "must be >= 1, got %d" % tri["interval_hours"])
         for i, repo in enumerate(tri.get("repos", [])):
             if not TRACKER_REPO.fullmatch(repo):
                 err("triage.repos[%d]" % i, "expected owner/name, got %r" % repo)
+        for i, tracker in enumerate(tri.get("trackers", [])):  # a non-GitHub tracker's list-items <tracker> (#1404)
+            if not re.fullmatch(r"\S+", tracker):
+                err("triage.trackers[%d]" % i, "expected a nonempty tracker id without spaces, got %r" % tracker)
+        if "trackers" in tri and isinstance(top.get("backends"), dict) and \
+                (top["backends"].get("tracker") or {}).get("name") == "github":
+            err("triage.trackers", "needs a non-GitHub tracker backend; name GitHub repositories in triage.repos")
         if "rules" in tri and not tri["rules"].strip():
             err("triage.rules", "expected a nonempty file path")
     if "reflection" in top:  # scheduled protocol reflection (docs/self-improve.md#reflection, #1521)
@@ -852,6 +877,9 @@ def validate(profile, err, backends=BACKENDS, pack_dir=None, item=None):
                                        {r: (str, None) for r in ROLE_REGISTRY})
             for role, other in role_runtime.items():
                 check_choice(err, "runtime.options.role_runtime." + role, other, [n for n in RUNTIME_OPTIONS if n != rt["name"]])
+                if role == "researcher" and other == "session":  # a sweep-only brief, not a full researcher (#1404)
+                    err("runtime.options.role_runtime.researcher", "the session researcher brief runs only the "
+                        "triage sweep; it cannot replace the %s researcher brief" % rt["name"])
             if "launch" in opts:
                 launch = check_table(err, "runtime.options.launch", opts["launch"], {
                     "coordinator": (str, "tmux"), "roles": (str, "tmux"), "resume": (str, "fresh"), "reconcile": (str, "backend")})
@@ -874,9 +902,6 @@ def validate(profile, err, backends=BACKENDS, pack_dir=None, item=None):
                     full = opts.get(key, RUNTIME_OPTIONS["session"][key][1])
                     if opts.get("present_" + key, full) > full:
                         err("runtime.options.present_" + key, "must be <= %s (%d), got %d" % (key, full, opts["present_" + key]))
-            if rt["name"] == "session" and opts.get("researchers", 0) > 0:  # no researcher binding; 0 says so (#1057)
-                err("runtime.options.researchers", "the session runtime has no researcher; only 0 (no researcher) "
-                    "is accepted, got %d" % opts["researchers"])
             if opts.get("land_timeout", 3600) < opts.get("land_poll_interval", 60):
                 err("runtime.options.land_timeout", "must be >= land_poll_interval (%d), got %d"
                     % (opts.get("land_poll_interval", 60), opts.get("land_timeout", 3600)))
