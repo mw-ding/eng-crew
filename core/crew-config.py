@@ -1319,8 +1319,8 @@ def resolve_profile(project, org_profile=None, pack_manifest=None, meta=None):
     """Layered effective profile: (merged, provenance, problems, layer names).
 
     provenance maps each leaf key of merged (as `leaves` yields it) to the layer that set it.
-    meta, when given, receives the external pack's pack.version, the change backend's declared land.* and
-    strategy.* keys and a bound classify.sensitive extension command as {key: (value, layer)}, outside merged.
+    meta, when given, receives the external pack's (else pack.toml's) pack.version, the change backend's declared
+    land.* and strategy.* keys and a bound classify.sensitive extension command as {key: (value, layer)}, outside merged.
     On any problem, merged and provenance are None. A team file (or FILE#<repo>) resolves as
     core < default < org < team < repo; its state root is <paths.state_dir>/<team>.
     """
@@ -1454,8 +1454,9 @@ def resolve_profile(project, org_profile=None, pack_manifest=None, meta=None):
         if len(problems) == count and strategy:
             layer = next(iter(strategy.values()))[1]
             check_strategy(lambda key, reason: err(layer, key, reason), {k: v for k, (v, _) in strategy.items()})
-        if meta is not None and external and "version" in external["pack"]:
-            meta["pack.version"] = (external["pack"]["version"], "pack:" + external["pack"]["name"])
+        versioned = external["pack"] if external and "version" in external["pack"] else plugin
+        if meta is not None and versioned and "version" in versioned:  # external manifest, else pack.toml (#1350)
+            meta["pack.version"] = (versioned["version"], "pack:" + versioned["name"])
         if meta is not None:
             meta.update({"land." + key: entry for key, entry in land.items()})
             meta.update({"strategy." + key: entry for key, entry in strategy.items()})

@@ -63,8 +63,10 @@ pack's release and gates nothing.
 - `validate` refuses a malformed `version`; a manifest without one stays
   valid.
 - `resolve` with an external pack prints it after the profile keys as
-  `pack.version = "<version>"  # pack:<name>`. It is metadata only: the
-  effective profile gets no `pack` table.
+  `pack.version = "<version>"  # pack:<name>`. Without an external manifest
+  version, a wired [`pack.toml`](#pack-plug-ins) pack's `[pack] version`
+  prints the same way. It is metadata only: the effective profile gets no
+  `pack` table.
 - Bootstrap and upgrade record `"pack": {"name", "version"}` in
   `install.json`, and `mdstack doctor` shows it as the `pack` row. Upgrade
   updates the record when only the pack version changed.
