@@ -3,7 +3,8 @@
 
 Usage: crew-render.py --project FILE [--org-profile FILE] [--inputs DIR] [--diff-paths FILE] --out DIR
 Inputs (default: the repo's templates/): core/<role>.md for each role, if core/ exists -> briefs/<role>.md;
-runtimes/<runtime>/** of the profile's runtime -> runtime/**; backends/<backend>.toml maps each
+runtimes/<runtime>/** of the profile's runtime -> runtime/** (runtime.options.role_runtime swaps one role's
+template for runtimes/<other>/<role>.md, #1055); backends/<backend>.toml maps each
 <op:concern.operation> to a command, and its [placeholders] kept list declares extra run-time placeholders.
 Pack overlay: a render/ directory in the org profile's directory (else paths.pack) is searched per file
 before the inputs. runtime.options.notes.render files are appended verbatim to that role's rendered brief.
@@ -274,6 +275,7 @@ class Renderer:
     def __init__(self, values, inputs, normalize_paths=False, overlay=None):
         self.values, self.inputs, self.tables = values, inputs, {}
         self.normalize_paths, self.overlay, self.kept = normalize_paths, overlay, set()
+        self.template = None  # runtime of the runtimes/<runtime>/ template being rendered, set per job
 
     def find(self, *parts):
         """An input file: the pack overlay's copy when present, else the inputs' copy."""
@@ -389,7 +391,7 @@ class Renderer:
         if name == "mirror-gate":
             return self.line(MIRROR_GATE[self.values.get("runtime.options.mirror", "live-copy")])
         if name == "land-step":
-            session = self.values.get("runtime.name") == "session"
+            session = self.session_template()
             if self.values.get("land.mode", "sync") == "sync":
                 return self.line(SESSION_LAND_SYNC if session else LAND_SYNC)
             lock = (SESSION_LAND_LOCK if session else LAND_LOCK)[bool(self.values.get("land.serializes"))]
@@ -398,7 +400,7 @@ class Renderer:
         if name == "land-rule":
             if not self.values.get("land.tests_against_tip"):
                 return ""
-            return self.line(SESSION_LAND_RULE if self.values.get("runtime.name") == "session" else LAND_RULE)
+            return self.line(SESSION_LAND_RULE if self.session_template() else LAND_RULE)
         if name == "land-publish":
             return self.line(LAND_PUBLISH) if self.values.get("land.opens_draft") else ""
         if name == "TeamName":
@@ -422,6 +424,10 @@ class Renderer:
 
     def line(self, text):
         return TOKEN.sub(self.fill, text)
+
+    def session_template(self):
+        """True while rendering a session runtime template, whatever the profile's runtime (role_runtime, #1055)."""
+        return (self.template or self.values.get("runtime.name")) == "session"
 
     def precheck(self):
         if not self.values.get("builder.precheck.enabled", False):
@@ -488,13 +494,33 @@ def render(args, paths, normalize_paths):
         idle = [r for r in OPTIONAL_ROLES if values.get(ROLES[r]["cap_key"]) == 0]
         unused = {os.path.relpath(t, "templates")
                   for r in idle for t in ROLES[r]["templates"].get(values["runtime.name"], [])}
+        if values["runtime.name"] == "session":  # unregistered binding: an idle role's <role>.md brief (#1404)
+            unused |= {os.path.join(rt, r + ".md") for r in idle}
+        moved = []  # runtime.options.role_runtime: the role's own template swapped for <runtime>/<role>.md (#1055)
+        for r in ROLES:
+            other = values.get("runtime.options.role_runtime." + r)
+            if other is None or r in idle:
+                continue
+            own = ROLES[r]["templates"].get(values["runtime.name"], [])
+            src = os.path.join("runtimes", other, r + ".md")
+            if not own:
+                problems.append("%s:1: runtime.options.role_runtime.%s: role %s declares no %s template to replace"
+                                % (args.project, r, r, values["runtime.name"]))
+            elif not any(os.path.isfile(os.path.join(root, src)) for root in roots):
+                problems.append("%s:1: missing mapping: no %s template for role %s"
+                                % (os.path.join(args.inputs, src), other, r))
+            else:
+                unused |= {os.path.relpath(t, "templates") for t in own}
+                moved.append((src, os.path.join("runtime", r + ".md"), None))
         jobs = [job for job in jobs if job[2] not in idle]
         jobs += [(os.path.join(rt, rel), os.path.join("runtime", rel), None)
                  for rel in sorted(found, key=lambda rel: [(1, d) for d in rel.split(os.sep)[:-1]] + [(0, rel)])
-                 if os.path.join(rt, rel) not in unused]
+                 if os.path.join(rt, rel) not in unused] + moved
     renderer, rendered = Renderer(values, args.inputs, normalize_paths, overlay), {}
     for rel, dst, role in jobs:
         src = renderer.find(rel)
+        parts = rel.split(os.sep)
+        renderer.template = parts[1] if parts[0] == "runtimes" and len(parts) > 2 else None
         try:
             with open(src, encoding="utf-8") as f:
                 lines = f.read().splitlines(keepends=True)

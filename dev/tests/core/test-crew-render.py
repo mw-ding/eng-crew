@@ -1062,6 +1062,68 @@ class PackOverlay(unittest.TestCase):
             renderer.line("<op:markers.write-item|tracker.comment>")
 
 
+class RoleRuntime(unittest.TestCase):
+    """#1055: runtime.options.role_runtime renders one role from another runtime's templates."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp)
+        with open(os.path.join(os.path.dirname(SCRIPTS), "profiles", "tmux.toml")) as f:
+            self.base = f.read()
+        self.options = 'options = { permission_mode = "bypass", researchers = 2'
+        self.assertIn(self.options + " }", self.base)
+
+    def render(self, role_runtime=None):
+        name = "crew-%d.toml" % len(os.listdir(self.tmp))
+        project, out_dir = os.path.join(self.tmp, name), os.path.join(self.tmp, "out-" + name)
+        with open(project, "w") as f:
+            f.write(self.base if role_runtime is None else
+                    self.base.replace(self.options, self.options + ", role_runtime = %s" % role_runtime))
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(io.StringIO()):
+            code = cr.main(["--project", project, "--out", out_dir], normalize_paths=True)
+        return code, buf.getvalue().replace(self.tmp + os.sep, ""), tree(out_dir) if code == 0 else None
+
+    def test_session_coordinator_beside_tmux_workers(self):
+        _, _, upstream = self.render()
+        code, out, got = self.render('{ coordinator = "session" }')
+        self.assertEqual(code, 0, out)
+        self.assertEqual(sorted(got), sorted(upstream))
+        self.assertEqual({rel for rel in got if got[rel] != upstream[rel]}, {"runtime/coordinator.md"})
+        self.assertTrue(got["runtime/coordinator.md"].startswith("# Coordinator brief: <owner>/<repo> (session)\n"))
+        self.assertIn("Concurrency caps: builder runs `5`, reviewer passes", got["runtime/coordinator.md"])
+        for worker in ("builder", "reviewer", "synthesizer", "researcher"):
+            self.assertTrue(got["runtime/%s.md" % worker].startswith("# "), worker)
+            self.assertNotIn("(session)", got["runtime/%s.md" % worker].splitlines()[0], worker)
+
+    def test_session_synthesizer_keeps_its_own_land_step(self):
+        """#1351 merge-up: <land-step> follows the template's runtime, so a swapped-in session synthesizer keeps its
+        mkdir-lock land on a tmux profile and never gets the tmux land-lock step."""
+        code, out, got = self.render('{ synthesizer = "session" }')
+        self.assertEqual(code, 0, out)
+        synth = got["runtime/synthesizer.md"]
+        self.assertIn("3. Serial land (session C7;", synth)
+        self.assertNotIn("land-lock acquire", synth)
+
+    def test_empty_override_renders_byte_identically(self):
+        _, _, upstream = self.render()
+        code, out, got = self.render("{}")
+        self.assertEqual(code, 0, out)
+        self.assertEqual(got, upstream)
+
+    def test_missing_template_fails_closed(self):
+        code, out, _ = self.render('{ builder = "grok-bot" }')
+        self.assertEqual(code, 1)
+        self.assertRegex(out, r"templates/runtimes/grok-bot/builder\.md:1: missing mapping: no grok-bot template "
+                              r"for role builder\n")
+        code, out, _ = self.render('{ researcher = "session" }')  # #1404: the session brief is sweep-only
+        self.assertEqual(code, 1)
+        self.assertIn("role_runtime.researcher: the session researcher brief runs only the triage sweep", out)
+        code, out, _ = self.render('{ coordinator = "tmux" }')
+        self.assertEqual(code, 1)
+        self.assertIn("role_runtime.coordinator: unknown value 'tmux'", out)
+
+
 class SessionRuntime(unittest.TestCase):
     """#914: runtime.name = "session" renders the coordinator and every worker brief."""
 
@@ -1084,7 +1146,8 @@ class SessionRuntime(unittest.TestCase):
 
     def test_full_brief_set_within_budget(self):
         got = self.render(normalize=True)
-        self.assertEqual(sorted(got), ["runtime/%s.md" % r for r in ("builder", "coordinator", "reviewer", "synthesizer")])
+        self.assertEqual(sorted(got), ["runtime/%s.md" % r for r in ("builder", "coordinator", "researcher", "reviewer",
+                                                                     "synthesizer")])
         for rel, text in got.items():
             with self.subTest(brief=rel):
                 self.assertLessEqual(len(text.encode("utf-8")), 16384)
@@ -1100,6 +1163,12 @@ class SessionRuntime(unittest.TestCase):
                      "Exit 2 (a missing Item, Pass or Base) means do not dispatch."):
             self.assertIn(rule, coordinator)
 
+    def test_release_delegation_renders_in_coordinator(self):  # #1542: #1435 parity with the tmux coordinator
+        self.assertIn('Cut go: `release_delegation = "none"` (docs/release.md).', self.render()["runtime/coordinator.md"])
+        self.base = self.base.replace("reviewers = 1 }", 'reviewers = 1, release_delegation = "make releases https://x/985#c1" }')
+        coordinator = self.render()["runtime/coordinator.md"]
+        self.assertIn('Cut go: `release_delegation = "make releases https://x/985#c1"` (docs/release.md).', coordinator)
+
     def test_present_caps_render(self):  # #1053
         self.base = self.base.replace("builders = 2, reviewers = 1", "builders = 4, reviewers = 3, present_builders = 1")
         coordinator = " ".join(self.render()["runtime/coordinator.md"].split())
@@ -1107,8 +1176,12 @@ class SessionRuntime(unittest.TestCase):
         self.assertIn("admit at most `1` builder runs and `3` reviewer passes; an active recorded non-quiet away "
                       "entry uses the full caps.", coordinator)
 
-    def test_researchers_zero_renders_the_same_briefs(self):  # #1057: a no-op, the binding has no researcher
+    def test_researchers_zero_drops_only_the_sweep_brief(self):  # #1057; #1404: the session triage sweep brief
         upstream = self.render()
+        sweep = " ".join(upstream.pop("runtime/researcher.md").split())
+        for rule in ("This binding runs only the triage sweep", "## Triage sweep", "pass=triage-log",
+                     "$CREW_BIN poll --triage-only"):
+            self.assertIn(rule, sweep)
         self.base = self.base.replace("reviewers = 1 }", "reviewers = 1, researchers = 0 }")
         self.assertIn("researchers = 0", self.base)
         self.assertEqual(self.render(), upstream)
@@ -1131,7 +1204,7 @@ class SessionRuntime(unittest.TestCase):
         self.assertEqual(code, 1, out)
         self.assertEqual(out.splitlines(), [
             "%s:1: runtime.options.notes.render.%s: runtime session renders no %s brief (note dropped)" % (project, r, r)
-            for r in ("researcher", "builder-lead")])
+            for r in ("builder-lead",)])
         code, out, _ = render('builder = ["note.md"], builder-lead = []')
         self.assertEqual(code, 0, out)
         self.assertTrue(tree(out.splitlines()[0].rsplit("/runtime/", 1)[0])["runtime/builder.md"]

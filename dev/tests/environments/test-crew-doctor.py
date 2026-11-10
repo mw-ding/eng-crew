@@ -13,7 +13,7 @@ written and read through the same read-item binding as the guard, #937), and the
 recorded pack name and version; no row without one), the install source row (a recorded non-github transport; no row
 without one), no latest-release query under a non-github source, the checkout row (a clone of another repo fails,
 no or a path origin warns, https and ssh URLs of [repo] pass), the install and mdstack link rows (#1323), and when gh
-is needed: a github-bound concern or the github release source (#1123). Run in CI.
+is needed: a github-bound concern or the github release source (#1123), and the sandbox row (#1544). Run in CI.
 """
 import importlib.machinery
 import importlib.util
@@ -554,6 +554,68 @@ class Forge(DoctorBase):
         self.assertTrue(forge(dict(packed, **{"backends.markers.name": "github"})))
         self.assertTrue(forge(dict(packed, **{"install.source": "github"})))
         self.assertTrue(forge({"backends.change.name": "example"}))
+
+
+class Sandbox(DoctorBase):
+    """A session sandbox with no writable root over the checkout's .git fails unless sandbox_env is set (#1544)."""
+
+    def test_unwritable_checkout_git_fails_until_sandbox_env(self):
+        os.remove(os.path.join(self.bindir, "git"))
+        os.symlink(shutil.which("git", path=os.environ["PATH"]), os.path.join(self.bindir, "git"))
+        subprocess.run(["git", "init", "-q", self.project_dir], check=True)
+        git = os.path.realpath(os.path.join(self.project_dir, ".git"))  # git reports the resolved path
+        self.env.pop("CREW_SANDBOX_ENV", None)
+        self.assertEqual(self.rows(self.doctor())["sandbox"], "ok")
+        os.chmod(git, 0o500)
+        self.addCleanup(os.chmod, git, 0o755)
+        r = self.doctor()
+        self.assertEqual((r.returncode, self.rows(r)["sandbox"]), (1, "fail"), r.stdout)
+        self.assertEqual(self.detail(r, "sandbox"), "this session sandboxed with no writable root over %s; set "
+                         'runtime.options.sandbox_env = "<NAME>=%s" with the launcher\'s writable-roots variable (or '
+                         "export CREW_SANDBOX_ENV), then rerun" % (git, git))
+        self.env["CREW_SANDBOX_ENV"] = "CREW_TEST_SANDBOX=" + git
+        self.assertEqual(self.rows(self.doctor())["sandbox"], "ok")
+        self.assertFalse([n for n in os.listdir(git) if n.startswith("mdstack-probe-")])
+
+    def test_linked_worktree_checkout_probes_the_common_dir(self):
+        os.remove(os.path.join(self.bindir, "git"))
+        os.symlink(shutil.which("git", path=os.environ["PATH"]), os.path.join(self.bindir, "git"))
+        main = os.path.join(self.tmp, "main")
+        subprocess.run(["git", "init", "-q", main], check=True)
+        subprocess.run(["git", "-C", main, "-c", "user.name=t", "-c", "user.email=t", "commit", "-q", "--allow-empty",
+                        "-m", "base"], check=True)
+        linked = os.path.join(self.tmp, "linked")
+        subprocess.run(["git", "-C", main, "worktree", "add", "-q", linked], check=True)
+        with open(self.project, "a") as f:
+            f.write('checkout = "%s"\n' % linked)
+        common = os.path.realpath(os.path.join(main, ".git"))
+        os.chmod(common, 0o500)
+        self.addCleanup(os.chmod, common, 0o755)
+        self.env.pop("CREW_SANDBOX_ENV", None)
+        r = self.doctor()
+        self.assertEqual(self.rows(r)["sandbox"], "fail", r.stdout)
+        self.assertIn("no writable root over %s" % common, self.detail(r, "sandbox"))
+
+    def test_adapter_declared_roots(self):
+        loader = importlib.machinery.SourceFileLoader("crew_cli", CREW)
+        mod = importlib.util.module_from_spec(importlib.util.spec_from_loader("crew_cli", loader))
+        loader.exec_module(mod)
+        sandbox = mod.commands()["doctor"].sandbox
+        adapter = mod.harnesses.ADAPTERS["claude-code"]
+        values = {"engines.coordinator": "claude-code"}
+        git = os.path.join(self.project_dir, ".git")
+        with mock.patch.dict(os.environ, {"CREW_SANDBOX_ENV": ""}):
+            self.assertEqual(sandbox(values, self.project)[0][0], "ok")  # no declaration: no sandbox
+            alias = os.path.join(self.tmp, "alias")
+            os.symlink(self.project_dir, alias)  # a root named through a symlink still covers the resolved .git
+            for roots, status in ([self.tmp], "ok"), ([alias], "ok"), ([os.path.join(self.tmp, "other")], "fail"):
+                with mock.patch.object(adapter, "sandbox_roots", lambda v: roots, create=True):
+                    row = sandbox(values, self.project)[0]
+                self.assertEqual(row[0], status, row)
+            self.assertIn("claude-code's launcher sandboxed with no writable root over " + git, row[2])
+            with mock.patch.object(adapter, "sandbox_roots", lambda v: [], create=True), \
+                    mock.patch.dict(os.environ, {"CREW_SANDBOX_ENV": "CREW_TEST_SANDBOX=1"}):
+                self.assertEqual(sandbox(values, self.project)[0], ("ok", "sandbox", "sandbox_env set", ""))
 
 
 if __name__ == "__main__":

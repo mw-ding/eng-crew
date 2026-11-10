@@ -416,12 +416,15 @@ crew wakes with a sweep overdue, and skips the slot when
 `<state-dir>/<owner>__<repo>/triage/queue.json` lists no items (no unplaced
 issue and no owner reply). The timer costs no model turn; its last slot is
 in `triage/sweep.json` ([mdstack watch](runtimes/tmux.md#mdstack-watch)).
+On `runtime.name = "session"`, a hosted routine trigger runs the same loop
+([session binding](runtimes/session.md#triage-sweep-routine), #1404).
 
 | Key | Type | Default | Meaning |
 |---|---|---|---|
 | `enabled` | boolean | `false` | Run the sweep timer |
 | `interval_hours` | integer, at least 1 | `6` | Hours between sweep slots |
 | `repos` | list of `owner/name` strings (non-empty) | the project's `repo.owner/repo.name` | Tracker repos a sweep reads |
+| `trackers` | list of tracker ids (non-empty, no spaces) | none (one read for the project) | A non-GitHub tracker backend only: each id fills `<tracker>` in its `tracker.list-items` binding for the scan; a GitHub tracker refuses it and reads `repos` (#1404) |
 | `rules` | string: file path | none (built-in defaults) | The owner's class rules file (label maps, P0 signals, cooldowns); Riley never writes it |
 | `mode` | string: `shadow` or `apply` | `"shadow"` | `shadow` writes records and proposals only; the owner sets `apply` after [calibration](triage.md#shadow-mode-and-calibration) |
 
@@ -619,6 +622,11 @@ needs = { devices = ["ios-simulator"] }
 | `hosts.<name>.roles` | list from `builder`, `reviewer` | both | Roles placed there |
 | `hosts.<name>.root` | string: path on that host | `~/.mdstack` | Mirrors, worktrees and host state |
 | `hosts.<name>.toolchain_bin` | string: path on that host | none | `<toolchain-bin>` for builders there |
+| `hosts.<name>.checkout` | string: `mirror` or `command` | `mirror` | `command`: `mdstack host prepare` runs the checkout command that host declares in `<root>/checkout/<owner>__<repo>.json` in place of the git mirror or seed steps, for a checkout made by its own VCS ([command checkout](runtimes/multi-device.md#command-checkout), #1035); `validate` refuses it on the primary |
+| `hosts.<name>.connect.alias` | string: a DNS label, unique across host names and aliases | none | A short name for [`mdstack connect`](runtimes/multi-device.md#connect-to-a-host); the host name always works too |
+| `hosts.<name>.connect.transport` | string: `ssh`, `mosh` or `et` | `ssh` | The owner's login transport for `mdstack connect` |
+| `hosts.<name>.connect.proxy` | string: an SSH `ProxyCommand` | none | Passed to `ssh -o ProxyCommand=` (directly, or through mosh's `--ssh` with `--experimental-remote-ip=remote`); `validate` refuses it with `et`, which reads it from the owner's SSH config |
+| `hosts.<name>.connect.options` | list of strings | `[]` | Fixed transport options, before any passed through on the command line |
 | `placement.hosts` | list of host names (non-empty), preferred first | the primary | Project affinity |
 | `placement.rules` | array of tables: `role` and `needs` *required*, `pass` and `paths` optional | `[]` | Capability exceptions; first match wins |
 

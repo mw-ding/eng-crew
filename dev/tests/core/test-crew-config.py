@@ -338,14 +338,13 @@ class ValidateTest(unittest.TestCase):
         for options in ("", 'session_backend = "cli", builders = 2, reviewers = 1, max_active_milestones = 2',
                         'merge_grant = "none", lone_pr_land = "direct", train_min = 3, mirror = "none", notes = {}',
                         'researchers = 0',  # #1057: the documented no-researcher statement survives a tmux migration
+                        'researchers = 1',  # #1404: the session triage sweep worker
                         # #1548: mdstack up's coordinator launch; coordinator = none needs no roles value
                         'session = "ash-solo", permission_mode = "safe", launch = { coordinator = "none", resume = "abc-1" }'):
             code, lines = validate(session % options)
             self.assertEqual(code, 0, lines)
         for options, expected in [
                 ('session_backend = "tmux"', "session_backend: unknown value 'tmux' (expected one of: native, cli)"),
-                ('researchers = 1', "researchers: the session runtime has no researcher; only 0 (no researcher) "
-                                    "is accepted, got 1"),
                 ('researchers = -1', "researchers: must be >= 0, got -1"),
                 ('researchers = "0"', "researchers: expected integer, got string"),
                 ('tmux_server = "default"', "tmux_server: unknown key"),
@@ -353,6 +352,18 @@ class ValidateTest(unittest.TestCase):
                 ('launch = { coordinator = "screen" }', "launch.coordinator: unknown value 'screen' (expected one of: tmux, none)"),
                 ('max_active_milestones = 0', "max_active_milestones: must be >= 1, got 0")]:
             self.assertFails(session % options, "crew.toml:runtime.options." + expected)
+
+    def test_session_release_delegation_resolves_and_needs_a_link(self):  # #1542: #1435 parity
+        session = VALID.replace('name = "tmux"\noptions = { builders = 3 }', 'name = "session"\noptions = { %s }')
+        code, lines = resolve(session % "")
+        self.assertEqual(code, 0, lines)
+        self.assertIn('runtime.options.release_delegation = "none"  # core', lines)
+        code, lines = resolve(session % 'release_delegation = "make releases https://github.com/o/r/issues/985#c1"')
+        self.assertEqual(code, 0, lines)
+        self.assertIn('runtime.options.release_delegation = "make releases https://github.com/o/r/issues/985#c1"  # project',
+                      lines)
+        self.assertFails(session % 'release_delegation = "releases ok"', "crew.toml:runtime.options.release_delegation: "
+                         "expected the owner's recorded words with a https:// link to the record")
 
     def test_session_present_caps_bounded_by_full_caps(self):  # #1053
         session = VALID.replace('name = "tmux"\noptions = { builders = 3 }', 'name = "session"\noptions = { %s }')
@@ -379,6 +390,20 @@ class ValidateTest(unittest.TestCase):
                          "crew.toml:runtime.options.tmux_server: unknown value 'own' (expected one of: default, dedicated)")
         self.assertFails(VALID.replace('name = "tmux"', 'name = "hosted"'),
                          "crew.toml:runtime.name: unknown value 'hosted' (expected one of: grok-bot, tmux, session)")
+
+    def test_role_runtime_schema(self):  # #1055
+        code, lines = resolve(VALID)
+        self.assertFalse([ln for ln in lines if "role_runtime" in ln], lines)
+        for value in ('{}', '{ coordinator = "session" }', '{ coordinator = "session", builder = "grok-bot" }'):
+            code, lines = validate(VALID.replace('options = { builders = 3 }', 'options = { role_runtime = %s }' % value))
+            self.assertEqual(code, 0, lines)
+        for value, expected in [('"session"', 'role_runtime: expected table, got string'),
+                                ('{ solo = "session" }', 'role_runtime.solo: unknown key'),
+                                ('{ coordinator = 1 }', 'role_runtime.coordinator: expected string, got integer'),
+                                ('{ coordinator = "tmux" }',
+                                 "role_runtime.coordinator: unknown value 'tmux' (expected one of: grok-bot, session)")]:
+            self.assertFails(VALID.replace('options = { builders = 3 }', 'options = { role_runtime = %s }' % value),
+                             'crew.toml:runtime.options.' + expected)
 
     def test_launch_topology_schema(self):
         """#606: absent launch adds no resolved key; each key and its values validate."""
@@ -855,10 +880,20 @@ class ResearcherProfile(unittest.TestCase):
         for bad, key in [("interval_hours = 0", "triage.interval_hours"), ('mode = "auto"', "triage.mode"),
                          ('repos = ["widgets"]', "triage.repos[0]"), ("repos = []", "triage.repos"),
                          ('rules = " "', "triage.rules"), ('enabled = "yes"', "triage.enabled"),
-                         ("cadence = 6", "triage.cadence")]:
+                         ("cadence = 6", "triage.cadence"), ("trackers = []", "triage.trackers"),
+                         ('trackers = ["OPS board"]', "triage.trackers[0]")]:
             code, lines = validate(VALID + "\n[triage]\n" + bad + "\n")
             self.assertEqual(code, 1, bad)
             self.assertTrue(any(key + ":" in ln for ln in lines), (bad, lines))
+
+    def test_triage_trackers_name_a_non_github_tracker(self):  # #1404
+        code, lines = validate(VALID + '\n[triage]\ntrackers = ["OPS"]\n')
+        self.assertEqual(code, 1)
+        self.assertTrue(any("triage.trackers: needs a non-GitHub tracker backend" in ln for ln in lines), lines)
+        native = VALID.replace('[backends.tracker]\nname = "github"', '[backends.tracker]\nname = "example"')
+        self.assertNotEqual(native, VALID)
+        code, lines = validate(native + '\n[triage]\ntrackers = ["OPS", "ops:intake"]\n')
+        self.assertFalse([ln for ln in lines if "triage." in ln], lines)
 
     def test_reflection_table_defaults_off_and_checks(self):  # #1521
         code, lines = resolve(VALID, default=VALID)
@@ -1967,6 +2002,22 @@ class HostInventoryTest(unittest.TestCase):
         self.assertFails(VALID + HOSTS.replace("max_runs = 4", 'max_runs = 4\naddress = "host-b"'),
                          "crew.toml:hosts.host-b.address: unknown key")
 
+    def test_connect(self):
+        connect = 'max_runs = 4\nconnect = { alias = "b", transport = "mosh", proxy = "p %h %p", options = ["-v"] }'
+        self.assertEqual(validate(VALID + HOSTS.replace("max_runs = 4", connect)), OK)
+        self.assertFails(VALID + HOSTS.replace("max_runs = 4", connect.replace('"mosh"', '"telnet"')),
+                         "crew.toml:hosts.host-b.connect.transport: unknown value 'telnet' (expected one of: ssh, mosh, et)")
+        self.assertFails(VALID + HOSTS.replace("max_runs = 4", connect.replace('"mosh"', '"et"')),
+                         "crew.toml:hosts.host-b.connect.proxy: et takes its ProxyCommand from your SSH config; set "
+                         "proxy only for ssh or mosh")
+        self.assertFails(VALID + HOSTS.replace("max_runs = 4", connect.replace('"b"', '"B.x"')),
+                         "crew.toml:hosts.host-b.connect.alias: expected [a-z0-9-], 1-63 characters")
+        self.assertFails(VALID + HOSTS.replace("max_runs = 4", connect.replace('"b"', '"host-a"')),
+                         "crew.toml:hosts: connect alias 'host-a' names more than one host")
+        self.assertEqual(validate(VALID + HOSTS.replace("max_runs = 4", connect.replace('"b"', '"host-b"'))), OK)
+        self.assertFails(VALID + HOSTS.replace("max_runs = 4", 'max_runs = 4\nconnect = { port = 22 }'),
+                         "crew.toml:hosts.host-b.connect.port: unknown key")
+
     def test_required_keys_and_types(self):
         self.assertFails(VALID + HOSTS.replace("max_runs = 4\n", ""), "crew.toml:hosts.host-b.max_runs: missing required key")
         self.assertFails(VALID + HOSTS.replace('os = "linux", ', ""), "crew.toml:hosts.host-b.capabilities.os: missing required key")
@@ -2014,6 +2065,16 @@ class HostInventoryTest(unittest.TestCase):
                          "crew.toml:hosts.host-c.capabilities.engines: missing required key")
         self.assertFails(VALID + HOSTS + runner.replace("max_runs = 3", "max_runs = 3\nprimary = true"),
                          "crew.toml:hosts.host-c.forge: a forge-less host cannot be the primary")
+
+    def test_host_checkout_command(self):
+        """#1035: checkout = "command" on a non-primary host, forge-less or not; never on the primary."""
+        runner = '[hosts.host-c]\nforge = false\ncapabilities = { os = "linux", arch = "x86_64" }\nmax_runs = 3\n'
+        self.assertEqual(validate(VALID + HOSTS + runner + 'checkout = "command"\n'), OK)
+        self.assertEqual(validate(VALID + HOSTS + runner + 'checkout = "mirror"\n'), OK)
+        self.assertFails(VALID + HOSTS + runner + 'checkout = "sl clone"\n',
+                         "crew.toml:hosts.host-c.checkout: unknown value 'sl clone' (expected one of: mirror, command)")
+        self.assertFails(VALID + HOSTS.replace("primary = true", 'primary = true\ncheckout = "command"', 1),
+                         "crew.toml:hosts.host-a.checkout: the primary uses its own git checkout; expected no checkout command")
         self.assertFails(VALID + HOSTS + runner.replace("max_runs = 3", 'max_runs = 3\nroles = ["reviewer"]'),
                          "crew.toml:hosts.host-c.roles: a forge-less host takes runner jobs only; expected no roles")
         self.assertFails(VALID + HOSTS.replace('hosts = ["host-a", "host-b"]', 'hosts = ["host-a", "host-c"]') + runner,
