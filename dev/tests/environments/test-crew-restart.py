@@ -3,7 +3,8 @@
 Covers: only when dead or missing and only once (fresh worktree when clean, relaunch in place
 keeping unlanded work), a finished run refused, a builder after `done:` restarts as its PR's fix
 pass (fresh or in place), an in-place relaunch accepts a Claude Code pane whose command reads as
-its version (#286), a dead train worker respawns with --train and keeps the pending train record (#1391). Run in CI.
+its version (#286), a dead train worker respawns with --train and keeps the pending train record (#1391), a dead
+reflection run rechecks its posted report and refuses, else respawns with the same request (#1520). Run in CI.
 """
 import json
 import os
@@ -153,6 +154,48 @@ class Restart(LivenessBase):
         self.set_pane(after["index"], dead="1")
         again = self.crew("restart", "ben-train3", "--project", self.project, "--timeout", "1")
         self.assertIn("already restarted once; escalate", again.stdout)  # the lead then sends train-failed
+
+    def reflection_gh(self, comments, exit=0):
+        """A fake gh: one open reflection:log issue, #5, holding these comments."""
+        with open(os.path.join(self.tmp, "bin", "gh"), "w") as f:
+            f.write("#!/usr/bin/env python3\nimport json, sys\na = sys.argv[1:]\n"
+                    "open(%r, 'a').write(json.dumps(a) + '\\n')\nif %d: sys.exit(%d)\n"
+                    "if a[:2] == ['issue', 'list']: print(json.dumps([{'number': 5}]))\n"
+                    "elif a[:2] == ['issue', 'view']: print(json.dumps({'comments': json.loads(%r)}))\n" % (
+                        os.path.join(self.tmp, "gh-calls.log"), exit, exit, json.dumps(comments)))
+
+    def test_restart_dead_reflection_respawns_with_its_request(self):  # #1520
+        self.assertEqual(self.spawn("researcher", "--reflection", "close-3").returncode, 0)
+        before = self.record("riley-reflection")
+        self.git("commit", "-q", "--allow-empty", "-m", "newer")
+        self.git("push", "-q", "origin", "main")
+        self.reflection_gh([{"url": "https://example.invalid/5#c1", "body": "[Riley/reflection] close-2\n\n"
+                             "<!-- crew:v1 role=researcher pass=reflection window=close-2 sha=%s proposals=0 new=0 "
+                             "incidents=0 -->" % HEAD}])
+        self.set_pane(before["index"], dead="1")
+        r = self.crew("restart", "riley-reflection", "--project", self.project, "--timeout", "1")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        after = self.record("riley-reflection")
+        self.assertEqual((after["restarts"], after["args"], after["item"], after["head"]),
+                         (1, before["args"], before["item"], before["head"]))
+        with open(os.path.join(self.tmp, "gh-calls.log")) as f:
+            self.assertEqual([json.loads(line)[:3] for line in f], [["issue", "list", "-R"], ["issue", "view", "5"]])
+
+    def test_restart_refuses_a_reflection_whose_report_is_posted(self):  # #1520
+        self.assertEqual(self.spawn("researcher", "--reflection", "close-3", "--log", "5").returncode, 0)
+        rec = self.record("riley-reflection")
+        self.set_pane(rec["index"], dead="1")
+        self.reflection_gh([], exit=1)
+        r = self.crew("restart", "riley-reflection", "--project", self.project, "--timeout", "1")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("refusing restart: cannot recheck reflection close-3's report", r.stdout)
+        self.reflection_gh([{"url": "https://example.invalid/5#c2", "body": "[Riley/reflection] week-2026-W45+close-3\n\n"
+                             "<!-- crew:v1 role=researcher pass=reflection window=week-2026-W45+close-3 sha=%s "
+                             "proposals=1 new=1 incidents=2 -->" % HEAD}])
+        r = self.crew("restart", "riley-reflection", "--project", self.project, "--timeout", "1")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("refusing restart: reflection close-3 already posted at https://example.invalid/5#c2", r.stdout)
+        self.assertEqual(self.record("riley-reflection"), rec)  # nothing respawned to write again
 
     def test_restart_in_place_accepts_claude_version_pane(self):  # #286: the relaunch takes spawn's start evidence
         self.assertEqual(self.spawn("builder", "--issue", "8", "--tier", "trivial").returncode, 0)

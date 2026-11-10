@@ -4,8 +4,10 @@ Refuses solo-labelled builder items before creating a claim, queue entry or wind
 a triage sweep window, riley-sweep, with no item (docs/triage.md#host, #748); its Item names the queued closed
 milestones it takes for a milestone-close sweep (#374). `researcher --docs-pass` starts a docs pass window, riley-docs,
 with no item (docs/project-docs.md#docs-pass, #1026); its Item names each repo's scan.json, and it is refused unless
-`[docs] enabled` is true. `builder --train N` starts a train worker, ben-trainN, for the synthesizer's delegated merge
-train N (#1391); its Item names the delegation record.
+`[docs] enabled` is true. `researcher --reflection WINDOW` starts a reflection run, riley-reflection, with no item
+(docs/self-improve.md#reflection, #1520): its run ID, reflection log issue, input SHA and window are fixed at the request,
+so a queued, dequeued or restarted run carries them intact; the worktree is at the input SHA. `builder --train N` starts
+a train worker, ben-trainN, for the synthesizer's delegated merge train N (#1391); its Item names the delegation record.
 
 With a [hosts] inventory, placement (_placement.py, docs/runtimes/multi-device.md#placement, #207) picks the host and
 engine from the profile and live host facts, queues with one reason per host, or refuses; the run record keeps host,
@@ -14,7 +16,8 @@ post spawns nothing. On a role host (#345, _remote.py) the host fetches the head
 starts the harness in its runner's session; the brief (its Worktree line names the host's path) and the PR's review
 files travel in the call, and the run record (`remote`), claim and brief copy stay on the primary.
 
-Usage: mdstack spawn ROLE --issue N | --pr N | --sweep | --docs-pass | --train N [--pass PASS] [--round K] [--tier T] [--host H --reason TEXT] --project FILE [--org-profile FILE]
+Usage: mdstack spawn ROLE --issue N | --pr N | --sweep | --docs-pass | --reflection WINDOW [--log N] [--input-sha SHA]
+       [--run-id ID] | --train N [--pass PASS] [--round K] [--tier T] [--host H --reason TEXT] --project FILE [--org-profile FILE]
 """
 import collections
 import json
@@ -28,6 +31,15 @@ from crew_shared import (
     synthesizer_work)
 
 placement = load("crew_placement", "environments/terminal/crew.d/_placement.py")
+# A reflection window ID (docs/self-improve.md#reflection); coalesced windows join with +.
+WINDOW = re.compile(r"(?:week-\d{4}-W\d{2}|close-\d+)(?:\+(?:week-\d{4}-W\d{2}|close-\d+))*")
+
+
+def reflection_of(args):
+    """The reflection request's fields, or None: run ID, log issue, input SHA and window (#1520)."""
+    window = getattr(args, "reflection", None)
+    return window and {"window": window, "run": getattr(args, "run_id", None), "log": getattr(args, "log", None),
+                       "sha": getattr(args, "input_sha", None)}
 
 
 def engine_order(values, tier, avoid=None, role=None):
@@ -118,6 +130,8 @@ def enqueue(state, args, pass_, reason=None):
         entry["docs_pass"] = True
     if getattr(args, "train", None):
         entry["train"] = args.train
+    if reflection_of(args):
+        entry["reflection"] = reflection_of(args)
     if reason:
         entry["reason"] = reason
     if getattr(args, "host", None):  # an override survives the queue; dequeue posts its reason at the spawn
@@ -129,7 +143,7 @@ def enqueue(state, args, pass_, reason=None):
         with queue_lock(state), open(os.path.join(state, "wake", "queue.jsonl"), "a") as f:
             f.write(json.dumps(dict(event="builder-queued", reason="spawn")) + "\n")
     print("queued: %s %s %s (%s; run mdstack dequeue when a window closes)" % (
-        args.role, pass_, "train %d" % entry["train"] if entry.get("train") else "sweep" if entry.get("sweep") else "docs pass" if entry.get("docs_pass") else "issue #%s" % args.issue if args.issue else "PR #%s" % args.pr,
+        args.role, pass_, "train %d" % entry["train"] if entry.get("train") else "reflection " + args.reflection if entry.get("reflection") else "sweep" if entry.get("sweep") else "docs pass" if entry.get("docs_pass") else "issue #%s" % args.issue if args.issue else "PR #%s" % args.pr,
         "no host: " + reason if reason else args.role + " cap reached"))
     return 0
 
@@ -141,6 +155,10 @@ def register(sub):
     p.add_argument("--pr", type=int)
     p.add_argument("--sweep", action="store_true", help="researcher only: a triage sweep, no item (docs/triage.md)")
     p.add_argument("--docs-pass", action="store_true", help="researcher only: a docs pass, no item (docs/project-docs.md)")
+    p.add_argument("--reflection", metavar="WINDOW", help="researcher only: a reflection run, no item (docs/self-improve.md#reflection)")
+    p.add_argument("--log", type=int, help="reflection only: the reflection log issue, if one is open")
+    p.add_argument("--input-sha", help="reflection only: the input SHA (default: the default branch head at the request)")
+    p.add_argument("--run-id", help="reflection only: the run ID (default: minted at the request)")
     p.add_argument("--train", type=int, help="builder only: build the delegated merge train N, no item (#1391)")
     p.add_argument("--pass", dest="pass_", choices=sorted({p for v in PASSES.values() for p in v}))
     p.add_argument("--head", help="expected PR head; refuse a changed head, including a queued spawn")
@@ -172,10 +190,31 @@ def run(args):
     if docs_pass and (role != "researcher" or args.issue or args.pr):
         print("crew: --docs-pass is researcher-only and takes no --issue or --pr")
         return 2
+    reflection = reflection_of(args)
+    if not reflection and any(getattr(args, k, None) for k in ("log", "input_sha", "run_id")):
+        print("crew: --log, --input-sha and --run-id go with --reflection")
+        return 2
+    if reflection and (role != "researcher" or args.issue or args.pr or sweep or docs_pass):
+        print("crew: --reflection is researcher-only and takes no --issue, --pr, --sweep or --docs-pass")
+        return 2
     if docs_pass and not values.get("docs.enabled"):
         print("crew: refusing spawn: --docs-pass needs [docs] enabled = true (docs/profile.md#docs)")
         return 1
-    if sweep or docs_pass:
+    if reflection and not (WINDOW.fullmatch(reflection["window"]) and re.fullmatch(r"[0-9a-f]{40}", reflection["sha"] or "0" * 40)
+                           and re.fullmatch(r"[\w.+-]+", reflection["run"] or "-")):
+        print("crew: --reflection takes a window ID (week-YYYY-Www or close-N, joined by +), --input-sha a full SHA "
+              "and --run-id letters, digits and ._+-")
+        return 2
+    if reflection and not (reflection["sha"] and reflection["run"]):  # fixed now, so a queued run keeps them (#1520)
+        try:
+            args.input_sha = args.input_sha or fetch(git(checkout(values, args.project), "rev-parse", "--show-toplevel"),
+                                                     values["repo.default_branch"])
+        except RuntimeError as e:
+            print(e)
+            return 1
+        args.run_id = args.run_id or "%s-%s" % (args.reflection, time.strftime("%Y%m%dT%H%M%SZ", time.gmtime()))
+        reflection = reflection_of(args)
+    if sweep or docs_pass or reflection:
         inputs = []
     override, reason = getattr(args, "host", None), getattr(args, "reason", None)
     if bool(override) != bool(reason):
@@ -198,7 +237,7 @@ def run(args):
             return 1
     nm = values.get(data["identity_key"] + ".name", NAMES[role]).lower()
     instance = getattr(args, "instance", None)  # mdstack up <role>: an on-demand instance, named by mdstack up (#1231)
-    name = instance or data["window_name"].format(name=nm, issue="sweep" if sweep else "docs" if docs_pass else "train%d" % train if train else args.issue, change=args.pr, round=args.round, **{"pass": pass_})
+    name = instance or data["window_name"].format(name=nm, issue="sweep" if sweep else "docs" if docs_pass else "reflection" if reflection else "train%d" % train if train else args.issue, change=args.pr, round=args.round, **{"pass": pass_})
     if not tmux.has_session(session):
         print("crew: session %s not reachable (tmux socket, or run mdstack up first)" % session)
         return 1
@@ -220,6 +259,8 @@ def run(args):
         notes = role_notes(values, state, role)
         repo = git(checkout(values, args.project), "rev-parse", "--show-toplevel")
         sha = fetch(repo, "pull/%d/head" % args.pr if args.pr else values["repo.default_branch"])
+        if reflection:  # the request's input SHA, never a newer head
+            sha = git(repo, "rev-parse", "--verify", reflection["sha"] + "^{commit}")
         if getattr(args, "head", None) and args.head != sha:
             raise RuntimeError("crew: stale spawn: expected %s, live head %s" % (args.head, sha))
         base = fetch(repo, values["repo.default_branch"]) if args.pr else None
@@ -246,6 +287,7 @@ def run(args):
     run = "%s-pr%d-%s" % (role, args.pr, sha[:7]) if args.pr else ""
     run += "-r%d-%s" % (args.round, pass_) if data["lifetime"] == "pass" else ""  # review and validate coexist (#139 F3)
     claim = os.path.join(state, "claims", "%s-train%d" % (role, train) if train else "%s-sweep" % role if sweep else "%s-docs" % role if docs_pass else
+                         "%s-reflection" % role if reflection else
                          "%s-%s" % (role, instance) if instance else "%s-issue%s" % (role, args.issue) if not args.pr else run)
     for d in ["claims", "runs", "inbox", "status"]:
         os.makedirs(os.path.join(state, d), exist_ok=True)
@@ -261,12 +303,15 @@ def run(args):
     if docs_pass:  # each repo's scan, docs-scan.py's output path
         item = "docs pass (docs/project-docs.md); scans: " + ", ".join(os.path.join(
             os.path.dirname(state), r.replace("/", "__"), "docs", "scan.json") for r in values["docs.repos"])
+    if reflection:
+        item = "reflection %s (run %s, input sha %s, log %s)" % (reflection["window"], reflection["run"], sha, "#%d" % reflection[
+            "log"] if reflection["log"] else "none given: find or open it")
     milestones = commands()["poll"].triage_untaken(state) if sweep else []  # taken only once the window starts (#374)
     if milestones:
         item += "; milestone close: " + ", ".join("%s milestone %d (%s)" % (m["repo"], m["number"], m["title"])
                                                   for m in milestones)
     wt_name = "%s-%s-%s-%s%s" % (
-        args.pr or args.issue or ("train%d" % train if train else "docs" if docs_pass else instance or "sweep"), sha[:7], role, "r%d-" % args.round if data["lifetime"] == "pass" else "", pass_)
+        args.pr or args.issue or ("train%d" % train if train else "docs" if docs_pass else "reflection" if reflection else instance or "sweep"), sha[:7], role, "r%d-" % args.round if data["lifetime"] == "pass" else "", pass_)
     wt = os.path.join(placement.setting(values, remote, "root", "~/.mdstack"), "wt", wt_name) if remote else \
         os.path.join(os.path.abspath(values["paths.worktree_root"]), wt_name)
     rec = {"index": None if remote else free[0], "role": role, "item": item, "pass": pass_, "repo": repo, "worktree": None, "claim": claim,
@@ -342,6 +387,7 @@ def run(args):
     rec["start"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     rec.update({} if remote else identity(session, free[0]), args=dict({"issue": args.issue, "pr": args.pr, "pass": pass_,
                                                       "round": args.round, "tier": args.tier}, **({"sweep": True} if sweep else {"docs_pass": True} if docs_pass else
+                                                                               {"reflection": reflection} if reflection else
                                                                                {"train": train} if train else {})))
     save()
     if role in ("builder", "reviewer"):  # its run record has appeared: the grant ends here, not at the next decide (#1050)

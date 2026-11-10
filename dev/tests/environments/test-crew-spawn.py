@@ -441,6 +441,48 @@ class Spawn(SpawnBase):
             self.assertEqual(r.returncode, 2, argv)
             self.assertIn("is researcher-only", r.stdout)
 
+    def test_researcher_reflection_carries_run_log_sha_and_window(self):  # #1520
+        old = self.git("rev-parse", "HEAD")
+        self.git("commit", "-q", "--allow-empty", "-m", "newer")
+        self.git("push", "-q", "origin", "main")
+        r = self.spawn("researcher", "--reflection", "week-2026-W45+close-3", "--log", "5", "--input-sha", old)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        call = self.windows()[0]
+        self.assertEqual(call[call.index("-n") + 1], "riley-reflection")
+        rec = self.record("riley-reflection")
+        mode = rec["args"]["reflection"]
+        self.assertTrue(mode.pop("run").startswith("week-2026-W45+close-3-"))
+        self.assertEqual(mode, {"window": "week-2026-W45+close-3", "log": 5, "sha": old})
+        self.assertEqual((rec["pass"], rec["head"]), ("research", old))  # the input SHA, not the newer head
+        self.assertTrue(rec["item"].startswith("reflection week-2026-W45+close-3 (run week-2026-W45+close-3-"))
+        self.assertTrue(rec["item"].endswith("input sha %s, log #5)" % old))
+        self.assertTrue(rec["claim"].endswith("researcher-reflection"))
+        self.assertTrue(os.path.basename(rec["worktree"]).startswith("reflection-"))
+        self.assertEqual(self.git("rev-parse", "HEAD", cwd=rec["worktree"]), old)
+        env = dict(call[i + 1].split("=", 1) for i, a in enumerate(call) if a == "-e")
+        with open(env["CREW_BRIEF"]) as f:
+            self.assertIn("- Item: reflection week-2026-W45+close-3 (run ", f.read())
+        self.assertEqual(self.spawn("researcher", "--reflection", "week-2026-W46").returncode, 1)  # already running
+
+    def test_reflection_defaults_and_invalid_combinations_refuse(self):  # #1520
+        head = self.git("rev-parse", "HEAD")
+        for argv in (("researcher", "--reflection", "close-3", "--issue", "7"),
+                     ("researcher", "--reflection", "close-3", "--sweep"),
+                     ("researcher", "--reflection", "close-3", "--docs-pass"),
+                     ("builder", "--reflection", "close-3"), ("researcher", "--train", "3", "--reflection", "close-3"),
+                     ("researcher", "--issue", "7", "--log", "5"), ("researcher", "--sweep", "--run-id", "r1"),
+                     ("researcher", "--reflection", "week-26"), ("researcher", "--reflection", "close-3", "--input-sha", "abc"),
+                     ("researcher", "--reflection", "close-3", "--run-id", "a b")):
+            r = self.spawn(*argv)
+            self.assertEqual(r.returncode, 2, argv)
+        self.assertEqual(self.windows(), [])
+        self.assertFalse(os.path.exists(os.path.join(self.state, "claims", "researcher-reflection")))
+        self.assertFalse(os.path.exists(os.path.join(self.state, "spawn-queue.jsonl")))
+        self.assertEqual(self.spawn("researcher", "--reflection", "close-3").returncode, 0)
+        rec = self.record("riley-reflection")
+        self.assertEqual((rec["args"]["reflection"]["sha"], rec["args"]["reflection"]["log"]), (head, None))
+        self.assertIn("log none given: find or open it)", rec["item"])
+
     def test_docs_pass_queues_behind_the_researchers_cap(self):  # #1026
         with open(self.project, "a") as f:
             f.write("\n[docs]\nenabled = true\n")

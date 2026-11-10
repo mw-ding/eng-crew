@@ -425,6 +425,19 @@ class Route(SpawnBase):
         self.assertTrue(os.path.exists(os.path.join(self.state, "runs", "riley-7.json")))
         self.assertEqual(self.pending(), [done])
 
+    def test_reflection_done_relays_its_report_and_reaps_only_its_window(self):  # #1520
+        self.assertEqual(self.spawn("researcher", "--reflection", "close-3").returncode, 0)
+        old = dict(reason="status", window="riley-reflection", line="done: reflection close-2 https://example.invalid/5#c1")
+        self.queue(old)
+        self.route()
+        self.assertIn("riley-reflection", self.names())  # an earlier window's completion never reaps this run
+        self.assertEqual(self.pending(), [dict(old, report="https://example.invalid/5#c1")])
+        done = dict(reason="status", window="riley-reflection", line="done: reflection close-3 https://example.invalid/5#c2")
+        self.queue(done)
+        self.route()
+        self.assertNotIn("riley-reflection", self.names())
+        self.assertEqual(self.pending()[-1], dict(done, report="https://example.invalid/5#c2"))
+
     def test_new_head_deduplicates_live_queued_and_posted_pass(self):
         self.queue(self.event(), self.event())
         self.route()
