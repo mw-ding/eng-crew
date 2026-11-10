@@ -907,6 +907,16 @@ next steps: `mdstack layout --write`, then `mdstack up --coordinator-only` with 
 new profile. Unregistered directories stay where they are for the owner's
 cleanup.
 
+`--project` and `--to` may each be a team reference `<file>#<repo>` (#1347).
+The file is the profile that moves and is rewritten, and it may sit outside
+every clone: the repo section's `checkout` names the git repository both
+sides must share. Only that repo's state folder, its `[repos.<repo>]` section
+and the `[team]` table change; a sibling repo's state folder and section
+stay as they are. Operational records keep the `#<repo>` suffix, and
+the next steps name the new reference. With an explicit `team.name`
+([team files](../configuration/team-files.md#schema-and-example)), a new file
+name such as `config.toml` keeps the team's state root and session.
+
 ```sh
 cli/mdstack migrate --project ~/.mdstack/config.toml --rename-to <owner>/<new> [--apply]
 ```
