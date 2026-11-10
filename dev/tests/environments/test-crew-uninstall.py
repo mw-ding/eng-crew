@@ -115,6 +115,30 @@ elif a[:2] == ['label', 'list']:
         self.assertFalse(list((Path(self.project_dir) / ".claude").rglob("*.md")))
         self.assertEqual([line for line in exclude.read_text().splitlines() if line.startswith("/")], [])
 
+    def test_home_root_target_is_removed_unless_edited(self):
+        """#1032: uninstall removes an unchanged home-root registry target and keeps an edited one."""
+        fixtures.HarnessTargets.registry(self, fixtures.HarnessTargets.HOME_REGISTRY + """[[pointer]]
+harness = "claude-code"
+root = "home"
+target = ".claude/rules/kept.md"
+source = "harness/venue.md"
+""", fixtures.HarnessTargets.FILES)
+        uninstall_gh = (Path(self.bindir) / "gh").read_bytes()
+        (Path(self.bindir) / "gh").write_bytes(self.doctor_gh)
+        result = self.bootstrap("--harness", "claude-code", "--yes")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        (Path(self.bindir) / "gh").write_bytes(uninstall_gh)
+        removed, kept = Path(self.home) / ".claude/rules/org.md", Path(self.home) / ".claude/rules/kept.md"
+        self.assertTrue(removed.is_file())
+        kept.write_text("owner edit\n")
+        result = self.uninstall("--yes")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertFalse(removed.exists())
+        self.assertEqual(kept.read_text(), "owner edit\n")
+        offboarding = json.loads((self.archive() / "install.json").read_text())["offboarding"]
+        self.assertIn(str(removed), offboarding["removed"])
+        self.assertIn(str(kept), offboarding["kept"])
+
     def test_tracked_target_and_work_output_are_kept(self):
         target = Path(self.project_dir) / "pointer.md"
         target.write_text("tracked pointer\n")

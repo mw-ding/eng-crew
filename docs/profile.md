@@ -667,11 +667,13 @@ the file and every `source` and `launch_note` must resolve, symlinks
 followed, to a regular UTF-8 file inside the pack directory, and the
 registry is a list of `[[pointer]]` tables. An entry with `launch_note` takes
 only `harness` (`codex`) and `launch_note`; any other entry takes `harness`
-(`claude-code` or `codex`), `target`, `source` and an optional `mode`
-(`copy` or `pointer`). An adapter without an install pointer (`pi`, `muse`,
+(`claude-code` or `codex`), `target`, `source`, an optional `mode`
+(`copy` or `pointer`) and an optional `root` (`project`, the default, or
+`home`, the per-user agent home, #1032). An adapter without an install pointer (`pi`, `muse`,
 `opencode`, `cursor`) and an unknown name are refused. A `target` must be
-project-relative and normalized (no leading `/` or `~`, no empty, `.`, `..`
-or `.git` component), unique, and none of the built-in bootstrap targets.
+relative to its root and normalized (no leading `/` or `~`, no empty, `.`, `..`
+or `.git` component), unique within its root, and, for a project root, none
+of the built-in bootstrap targets.
 `mdstack bootstrap --harness` installs the entries and records them under
 `harness_pointers` ([#965](https://github.com/mw-ding/eng-crew/issues/965)).
 

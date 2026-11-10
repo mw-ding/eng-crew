@@ -70,8 +70,10 @@ def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def check_target(path, old, doctor, project):
-    parents = [p for p in path.parents if p.is_relative_to(project.parent)]
+def check_target(path, old, doctor, project, base=None):
+    """Q4 refusals for one target. base, the target's root, bounds the symlink check: the project directory, or
+    $HOME for a pack.harness home-root entry (#1032)."""
+    parents = [p for p in path.parents if p.is_relative_to(base or project.parent)]
     if any(p.is_symlink() for p in (path, *parents)):
         raise ValueError("symlink target or parent: " + str(path))
     if path.exists() and old.get(str(path)) != digest(path):
@@ -153,6 +155,12 @@ def pack_table(org_profile, project=None):
     return None
 
 
+def target_root(entry, project):
+    """A pack.harness file entry's (or harness_pointers record's) root: $HOME for root = "home" (#1032), resolved
+    per user at bootstrap; else the project directory."""
+    return Path.home() if entry.get("root") == "home" else project.parent
+
+
 def pack_pointers(harnesses, org_profile, project):
     """The pack.harness registry entries of the selected harnesses (docs/bootstrap.md#pack-harness-pointers-design):
     {target: text}, Codex launch notes, and harness_pointers records. Sources are read as data, never run."""
@@ -174,9 +182,11 @@ def pack_pointers(harnesses, org_profile, project):
             notes.append(str(root / entry["launch_note"]))
             continue
         mode, source = entry.get("mode", "copy"), root / entry["source"]
-        path = project.parent / entry["target"]
+        path = target_root(entry, project) / entry["target"]
         targets[path] = source.read_bytes().decode() if mode == "copy" else "Read %s and follow it.\n" % source
         owned[str(path)] = dict(harness=entry["harness"], source=entry["source"], mode=mode)
+        if "root" in entry:
+            owned[str(path)]["root"] = entry["root"]
     return targets, notes, owned
 
 
@@ -514,13 +524,15 @@ def bootstrap(args):
         rendered = {live / p.relative_to(preview): p.read_text() for p in preview.rglob("*") if p.is_file()}
         registry, notes, owned = pack_pointers(harnesses, args.org_profile, project)
         pointers, launches = harness_targets(harnesses, project, state, live, preview, old, doctor, notes)
+        bases = {Path(p): target_root(e, project) for p, e in {**previous.get("harness_pointers", {}),
+                                                                **owned}.items()}
         refused = []
         for path in registry:
             if str(path) in old and path.is_file() and not path.is_symlink() and digest(path) != old[str(path)]:
                 refused.append("drift: %s" % path)
                 continue
             try:
-                check_target(path, old, doctor, project)
+                check_target(path, old, doctor, project, bases[path])
             except ValueError as e:
                 refused.append(str(e))
         if refused:
@@ -532,13 +544,14 @@ def bootstrap(args):
         removals = []
         for path in stale:
             try:
-                check_target(path, old, doctor, project)
+                check_target(path, old, doctor, project, bases[path])
                 if path.exists():
                     removals.append(path)
             except ValueError:
                 pending.append("Remove or keep %s: dropped from the pack registry but edited since install; "
                                "no longer owned" % path)
-        dropped = ["/" + str(path.relative_to(project.parent)) for path in removals]
+        dropped = {path: "/" + str(path.relative_to(project.parent)) for path in removals
+                   if path.is_relative_to(project.parent)}
         targets.update(pointers)
         if harnesses:
             targets.update(rendered)
@@ -548,13 +561,14 @@ def bootstrap(args):
             if existing - targets.keys():
                 raise ValueError("live copy has extra files; reconcile before bootstrap")
         for path, text in targets.items():
-            check_target(path, old, doctor, project)
+            check_target(path, old, doctor, project, bases.get(path))
         repo = Path(checkout(values, str(project)))  # a non-git runtime home excludes in its checkout (#1178)
         scaffold = spec_scaffold(values, repo)
         for path in scaffold:
             check_target(path, {}, doctor, project)
         excludes = [".crew/"] if tmux else []
-        excludes += ["/" + str(path.relative_to(project.parent)) for path in pointers if repo == project.parent]
+        excludes += ["/" + str(path.relative_to(project.parent)) for path in pointers
+                     if repo == project.parent and path.is_relative_to(project.parent)]
         exclude = None
         if harnesses:
             exclude = Path(git(str(repo), "rev-parse", "--path-format=absolute", "--git-path", "info/exclude"))
@@ -570,11 +584,15 @@ def bootstrap(args):
                   sum(p.is_file() for p in preview.rglob("*")))
         for line in excludes:
             print("Repo operation: add %s to .git/info/exclude" % line)
+        for path in registry:
+            if not path.is_relative_to(project.parent):
+                print("Home operation: write %s (pack.harness root = home; no exclude line)" % path)
         for path in scaffold:
             print("Repo operation: scaffold %s from templates/spec.md (yours to commit; never overwritten)" % path)
-        for path, line in zip(removals, dropped):
+        for path in removals:
             print("Remove: %s (dropped from the pack registry)" % path)
-            print("Repo operation: remove %s from .git/info/exclude" % line)
+            if path in dropped:
+                print("Repo operation: remove %s from .git/info/exclude" % dropped[path])
         for launch in launches:
             print("Codex launch (from %s): %s" % (project.parent, launch))
         if not tmux and values.get("triage.enabled"):
@@ -597,7 +615,7 @@ def bootstrap(args):
             exclude.parent.mkdir(parents=True, exist_ok=True)
             text = exclude.read_text() if exclude.exists() else ""
             if dropped:
-                text = "".join(line for line in text.splitlines(True) if line.rstrip("\n") not in dropped)
+                text = "".join(line for line in text.splitlines(True) if line.rstrip("\n") not in dropped.values())
                 exclude.write_text(text)
             missing = [line for line in excludes if line not in text.splitlines()]
             if missing:

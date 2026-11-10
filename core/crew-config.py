@@ -165,6 +165,7 @@ PLACED_PASSES = {r: v["placement"] for r, v in ROLE_REGISTRY.items() if "placeme
 # install pointer bootstrap implements, and the Q4 built-in targets no entry may claim.
 HARNESS_INSTALLS = harnesses.INSTALLS
 HARNESS_BUILTINS = harnesses.INSTALL_BUILTINS
+HARNESS_ROOTS = ["project", "home"]  # a file entry's target root (#1032): home is the per-user agent home, $HOME
 # Backend map [ids] (docs/handoff.md#id-declaration, #936): item from the tracker map, change from the change map.
 ID_CONCERNS = {"item": "tracker", "change": "change"}
 ID_MARKER_KEYS = ["change", "item"]  # the change map's marker_key: selfgate keys on pr= or issue= (#876, #1031)
@@ -502,7 +503,8 @@ def validate_harness_registry(err, name, pack_dir):
         path = "pack.harness.pointer[%d]" % i
         note = isinstance(entry, dict) and "launch_note" in entry
         fields = {"harness": (str, REQUIRED), "launch_note": (str, REQUIRED)} if note else {
-            "harness": (str, REQUIRED), "target": (str, REQUIRED), "source": (str, REQUIRED), "mode": (str, None)}
+            "harness": (str, REQUIRED), "target": (str, REQUIRED), "source": (str, REQUIRED), "mode": (str, None),
+            "root": (str, None)}
         e = check_table(err, path, entry, fields)
         harness = e.get("harness")
         if note and harness is not None and harness not in harnesses.LAUNCH_NOTES:
@@ -514,18 +516,19 @@ def validate_harness_registry(err, name, pack_dir):
         else:
             check_choice(err, path + ".harness", harness, HARNESS_INSTALLS)
         check_choice(err, path + ".mode", e.get("mode"), ["copy", "pointer"])
-        target = e.get("target")
+        check_choice(err, path + ".root", e.get("root"), HARNESS_ROOTS)
+        target, root = e.get("target"), e.get("root", "project")
         if target is None:
             pass
         elif target.startswith(("/", "~")):
-            err(path + ".target", "expected a project-relative path, got %r" % target)
+            err(path + ".target", "expected a %s-relative path, got %r" % (root, target))
         elif any(part in ("", ".", "..", ".git") for part in target.split("/")):
             err(path + ".target", "expected a normalized path with no empty, ., .. or .git component, got %r" % target)
-        elif target in targets:
+        elif (root, target) in targets:
             err(path + ".target", "duplicate target %r" % target)
-        elif target in HARNESS_BUILTINS:
+        elif root == "project" and target in HARNESS_BUILTINS:
             err(path + ".target", "collides with a built-in bootstrap target: %r" % target)
-        targets.add(target)
+        targets.add((root, target))
         for key in ("source", "launch_note"):
             if key in e:
                 pack_file(err, "%s.%s" % (path, key), pack_dir, e[key])
