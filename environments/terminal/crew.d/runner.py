@@ -39,11 +39,12 @@ def register(sub):
     commands()["host"].options(p)
 
 
-def remote(host, verb, poll, **fields):
-    """One call, retried with the same request id while the transport fails, at most 3 calls in a row."""
+def remote(values, host, verb, poll, **fields):
+    """One call to host's address, retried with the same request id while the transport fails, at most 3 calls in a
+    row."""
     for attempt in range(3):
         time.sleep(poll if attempt else 0)
-        reply = REMOTE.call(host, verb, **fields)
+        reply = REMOTE.call(commands()["host"].address(values, host), verb, **fields)
         if reply["result"] != "unreachable":
             return reply
         fields["request_id"] = reply.get("request_id")
@@ -72,12 +73,12 @@ def run_remote(host, values, head, spec, poll):
         with open(os.path.join(tmp, "head.bundle"), "rb") as f:
             bundle = base64.b64encode(f.read()).decode()
     root = commands()["host"].setting(values, host, "root", "~/.mdstack")
-    reply = remote(host, "seed", poll, timeout=660, project=project, root=root, bundle=bundle)
+    reply = remote(values, host, "seed", poll, timeout=660, project=project, root=root, bundle=bundle)
     if reply["result"] == "ok":
-        reply = remote(host, "job", poll, project=project, root=root, job_id=job_id, head=head, commands=spec)
+        reply = remote(values, host, "job", poll, project=project, root=root, job_id=job_id, head=head, commands=spec)
     while reply["result"] == "ok" and "commands" not in reply:  # a retried job_id replies done without results
         time.sleep(poll)
-        reply = remote(host, "result", poll, root=root, job_id=job_id)
+        reply = remote(values, host, "result", poll, root=root, job_id=job_id)
     if reply["result"] == "unreachable":
         return "unreachable"
     if reply["result"] != "ok":
@@ -94,7 +95,7 @@ def run(args):
             return 1
         with open(stored) as f:
             host = json.load(f)["host"]
-        reply = remote(host, "result", 3, root=commands()["host"].setting(values, host, "root", "~/.mdstack"),
+        reply = remote(values, host, "result", 3, root=commands()["host"].setting(values, host, "root", "~/.mdstack"),
                        job_id=args.job_id)
         if reply["result"] != "ok":
             print("crew runner: %s %s" % (reply["result"], reply.get("reason") or reply.get("error", "")))
