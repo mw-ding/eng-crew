@@ -159,7 +159,7 @@ class ShippedDiscovery(unittest.TestCase):
                 Path(tmp, "runtime").mkdir(exist_ok=True)
                 Path(tmp, "runtime", name + ".md").write_text("brief\n")
             self.assertEqual(bootstrap.missing_briefs(tmp, "grok-bot"), [])
-            self.assertEqual(bootstrap.missing_briefs(tmp, "session"), [])
+            self.assertEqual(bootstrap.missing_briefs(tmp, "session"), ["coordinator", "builder", "reviewer"])
             self.assertEqual(bootstrap.missing_briefs(tmp, "tmux"), ["coordinator", "builder", "reviewer"])
 
 
