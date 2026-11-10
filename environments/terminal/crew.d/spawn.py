@@ -8,6 +8,7 @@ with no item (docs/project-docs.md#docs-pass, #1026); its Item names each repo's
 (docs/self-improve.md#reflection, #1520): its run ID, reflection log issue, input SHA and window are fixed at the request,
 so a queued, dequeued or restarted run carries them intact; the worktree is at the input SHA. `builder --train N` starts
 a train worker, ben-trainN, for the synthesizer's delegated merge train N (#1391); its Item names the delegation record.
+With the synthesizer lead installed, `spawn synthesizer` refuses: the lead is the lander (#1569).
 
 With a [hosts] inventory, placement (_placement.py, docs/runtimes/multi-device.md#placement, #207) picks the host and
 engine from the profile and live host facts, queues with one reason per host, or refuses; the run record keeps host,
@@ -177,6 +178,9 @@ def run(args):
     args.tier = args.tier or data.get("default_tier", "default")  # the researcher's research row: high effort (#584)
     tool = ("toolchain_bin",) if data["lifetime"] == "issue" else ()
     values, session, state = profile(args, "worktree_root", *tool)
+    if role == "synthesizer" and commands()["lead"].enabled(state, role):  # its lead lands in window 1 (#1569)
+        print("crew: refusing spawn: the synthesizer lead owns lands; run mdstack lead handoff synthesizer land '#N' HEAD")
+        return 1
     train = getattr(args, "train", None)
     pass_ = "train" if train else args.pass_ or (data.get("change_pass", PASSES[role][0]) if args.pr else PASSES[role][0])
     inputs = data["inputs"].get(pass_, [])

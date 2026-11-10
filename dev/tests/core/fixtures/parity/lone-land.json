@@ -12,7 +12,7 @@
   ],
   "coordinator": [
     "two or more ready PRs train",
-    "keep the synthesizer alive until its merge-commit CI check reports green",
+    "it owns the land queue, trains and merge-commit CI watch",
     "file a blocking `crew:ready` fix issue linking the landed PR and the default-branch CI run for its merge commit",
     "keep the blocker open until default-branch CI is green"
   ]

@@ -66,7 +66,7 @@ def roundtrip(src, teams, states, gh, ready, emit):
             run(to, "handoff", "ack", "--signature", "s-" + to)
         writers.append(writer())
         run(to, "up")  # the new owner starts its whole team: b ran read-only (coordinator only), a went down
-        for pool in ("builder", "reviewer"):  # as its coordinator does on wake; a no-op for a lead already alive
+        for pool in ("builder", "reviewer", "synthesizer"):  # as its coordinator does on wake; a no-op for a lead already alive
             run(to, "lead", "ensure", pool)
         problems.extend([] if ready(to) else ["%s: roles not alive after up" % to])
         run(frm, "handoff", "stopped", "--foreground", *sig)

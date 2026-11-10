@@ -17,6 +17,16 @@ that reviewer's verdicts too.
 Synthesizers remain alive while land requests lack completion or other inbox messages lack acknowledgment, and through
 a merged PR's close-out while their own spawn PR lacks completion (its direct-land main CI check, #1339);
 the inbox check and reap share the queue lock with send's inbox append.
+With the synthesizer lead installed (#1569), `review-approved`, `selfgate-passed`, `ci-passed` with a passing verdict
+or self-gate at head, and approved merge-ups become durable `work` events in its land queue, never coordinator
+wakes (a merge-up head's `ci-passed` counts its approved previous head, and a head-pinned coordinator `merge-ok`
+steer counts as the §7 approval override); a superseded one is dropped, and an
+unapproved `ci-passed` is consumed unless held CI refs for that PR
+(`ci/<n>-*.json`) still wait on it. Its waiting gate-status blocks are consumed like a synthesizer's; its other
+`blocked:` lines (owner merge-ok, sensitive, holds, `main red`) stay queued for the coordinator; a clean
+`train-report` (all landed, `dropped=none stop=none`) is consumed. After its land's close-out, route queues the
+away-only Slack `land` message itself and hands `crew:ready` dependents to the builder lead; only dependents that are
+not ready still wake the coordinator.
 
 Usage: mdstack route --project FILE [--org-profile FILE] [--timeout SECS]
 """
@@ -38,6 +48,9 @@ WAITING = re.compile(r"blocked: #\d+ [0-9a-f]{40} gate-status \S+ wait=(?:ci|rev
 # A reviewer's finished pass; a trailing note after the verdict is allowed (#1343), as on a builder's done line (#695).
 # A reflection run's completion with its posted report (templates/policy/researcher/skills/protocol-reflection).
 REFLECTION_DONE = re.compile(r"done: reflection (\S+) (https?://\S+)")
+# A finished train with every member landed and nothing dropped: a train-report the coordinator need not read.
+TRAIN_CLEAN = re.compile(r"train-report n=\d+ members=\S+ landed=\S+ dropped=none stop=none path=\S+")
+LAND_EVENTS = ("review-approved", "selfgate-passed", "ci-passed")
 # A release cut's CHANGELOG.md patch adds a version section heading (scripts/changelog-cut.py).
 RELEASE_HEADING = re.compile(r"^\+## \[\d+\.\d+\.\d+\]", re.M)
 REVIEW_DONE = re.compile(r"done: #(\d+) ([0-9a-f]{40}) (review|validate|recheck) (pass|changes|escalate)(?:\s.*)?")
@@ -285,6 +298,28 @@ def dependents(repo, pr):
                              for n in re.findall(r"#(\d+)", block)})
 
 
+def ready(repo, n):
+    return any(label["name"] == "crew:ready" for label in gh("issue", "view", str(n), "-R", repo, "--json", "labels")["labels"])
+
+
+def notify_land(args, state, repo, pr):
+    """The away-only Slack `land` message the coordinator used to queue after close-out (#1569); the merge post is
+    its GitHub record, and notify dedupes by away entry, kind and id."""
+    trains = []
+    for path in sorted(glob.glob(os.path.join(state, "trains", "train-*.json"))):
+        with open(path) as f:
+            rec = json.load(f)
+        if any(m["pr"] == pr["number"] for m in rec.get("landed", [])):
+            trains.append(rec["n"])
+    event = dict(id="land-%d" % pr["number"], kind="land", url="https://github.com/%s/pull/%d" % (repo, pr["number"]),
+                 title=pr.get("title") or "#%d" % pr["number"], train=str(trains[-1]) if trains else "direct",
+                 milestone=(pr.get("milestone") or {}).get("title") or "None")
+    path = os.path.join(state, "wake", "land-%d.json" % pr["number"])
+    with open(path, "w") as f:
+        json.dump(event, f)
+    invoke(args, "notify", event_file=path, flush=False, status=False)
+
+
 def milestone_complete(repo, pr):
     """The merge closes the last open item of an active milestone, or is a release cut whose diff adds a CHANGELOG.md
     version heading (#1559): the coordinator closes the milestone and admits the next one."""
@@ -322,8 +357,11 @@ def route_record(args, values, state, w):
     leader = dict(lead.records(state)).get(w.get("window"))
     if leader and w.get("reason") == "status" and line.startswith(("done:", "deferred:")):
         return True
-    if rec and rec["role"] == "synthesizer" and WAITING.fullmatch(line):
+    if (rec and rec["role"] == "synthesizer" or leader and leader["role"] == "synthesizer-lead") and \
+            WAITING.fullmatch(line):
         return True  # recorded in the status file and gate-status review; CI or a pass will wake it again (#578)
+    if leader and leader["role"] == "synthesizer-lead" and TRAIN_CLEAN.fullmatch(line):
+        return True  # every member landed and none dropped: nothing for the coordinator (#1569)
     if w.get("reason") == "lead-backstop":
         lead.retry_pending(args, w["window"])
         return True
@@ -372,7 +410,8 @@ def route_record(args, values, state, w):
     if done and done[4] in ("pass", "escalate") and rec is None and not getattr(args, "reviewer_lead", False):
         return True
     terminal = line.startswith("done:") and rec and rec["role"] in ("reviewer", "synthesizer")
-    if event not in ("new-head", "merge-up", "pr-merged", "pr-closed", "builder-message", "fix-at-head", "ci-failed") and not terminal and not built and not done:
+    landing = event in LAND_EVENTS and lead.enabled(state, "synthesizer")
+    if event not in ("new-head", "merge-up", "pr-merged", "pr-closed", "builder-message", "fix-at-head", "ci-failed") and not terminal and not built and not done and not landing:
         return False
     if built:
         n, head = int(built[2]), built[3]
@@ -397,16 +436,24 @@ def route_record(args, values, state, w):
         n, head = int(w["refs"][0].lstrip("#")), w["refs"][1]
     repo = "%s/%s" % (values["repo.owner"], values["repo.name"])
     fields = "number,state,headRefOid,isDraft,labels,reviews,statusCheckRollup,headRefName,baseRefName," \
-             "headRepositoryOwner,headRepository,isCrossRepository,closingIssuesReferences"
+             "headRepositoryOwner,headRepository,isCrossRepository,closingIssuesReferences,title,milestone"
     pr = gh("pr", "view", str(n), "-R", repo, "--json", fields)
     if event in ("pr-merged", "pr-closed"):
         if pr["state"] != ("MERGED" if event == "pr-merged" else "CLOSED"):
             return False
         if event == "pr-merged":
             close_out(args, values, state, pr)
+            landed = lead.enabled(state, "synthesizer")  # its lead's lands need no coordinator turn (#1569)
             if values["backends.owner-channel.name"] == "slack":
-                return False  # The coordinator records the away land notification after cleanup.
+                if not landed:
+                    return False  # The coordinator records the away land notification after cleanup.
+                notify_land(args, state, repo, pr)
             waiting, complete = dependents(repo, pr), milestone_complete(repo, pr)
+            if waiting and landed and lead.enabled(state, "builder"):
+                for d in [d for d in waiting if ready(repo, d)]:
+                    if lead.handoff(args, "builder", "build", ["#%d" % d]) not in (0, 4):
+                        raise RuntimeError("crew: builder lead handoff failed for dependent #%d" % d)
+                    waiting.remove(d)
             if waiting:
                 w["dependents"] = ["#%d" % n for n in waiting]  # dispatched now, not at the backstop (#814)
             if complete:
@@ -421,13 +468,23 @@ def route_record(args, values, state, w):
                                                 run["args"].get("issue") in issues):
                     reap(args, name)
         return True
-    if event == "ci-failed" and pr["headRefOid"] != head:
-        return True  # superseded head: its new head gets its own CI (#578)
+    if (event == "ci-failed" or landing) and pr["state"] == "OPEN" and pr["headRefOid"] != head:
+        return True  # superseded head: its new head gets its own CI (#578) and its own land event (#1569)
     labels = {label["name"] for label in pr["labels"]}
     if pr["state"] != "OPEN" or pr["headRefOid"] != head or pr["isDraft"] or labels & {"crew:escalated", "crew:hold"}:
         if terminal:  # a finished reviewer frees its slot, keeping its verdict files, even when its PR moved on (#719)
             reap(args, w["window"], state)
         return False
+    if landing:
+        own = own_view(values, pr)
+        snapshot = commands()["poll"].pr_snapshot(own)
+        merge_ok = any(m.get("role") == "coordinator" and m.get("pass") == "steer" and m.get("cmd") == "merge-ok" and
+                       m.get("sha") == head for m in markers("\n".join(r["body"] for r in pr["reviews"])))
+        if event == "ci-passed" and "pass" not in (snapshot["verdict"], snapshot["selfgate"]) and not merge_ok and \
+                not approved_merge_up(own, repo, values["repo.default_branch"]) and \
+                not commands()["poll"].express_lane(args, values, pr):  # poll gates an express ci-passed already
+            return not glob.glob(os.path.join(state, "ci", "%d-*.json" % n))  # held CI refs: the coordinator drops them
+        return lead.event(args, "synthesizer", w) == 0
     delta = merge_up_delta(pr, head)
     if event == "merge-up" and (open_rereview(pr, head) or delta) and lead.enabled(state, "reviewer") and not getattr(args, "reviewer_lead", False):
         return lead.event(args, "reviewer", w) == 0
@@ -494,7 +551,7 @@ def route_record(args, values, state, w):
         review(args, state, pr, head, "validate", round_)
     elif event in ("new-head", "merge-up", "fix-at-head"):
         if event == "merge-up" and not open_rereview(pr, head) and not delta:
-            return False
+            return lead.enabled(state, "synthesizer") and lead.event(args, "synthesizer", w) == 0
         snapshot = commands()["poll"].pr_snapshot(own_view(values, pr))
         if event != "merge-up" and snapshot["verdict"] and not snapshot["fixed"] and not open_rereview(pr, head):
             return True  # this head already has the newest round's verdict: a replayed event opens no round (#1124)

@@ -1,5 +1,7 @@
 """Long-lived pool leads, durable reference handoffs and token-free supervision.
-Solo-labelled items skip builder build/fix/CI/merge-up handoffs.
+Solo-labelled items skip builder build/fix/CI/merge-up handoffs. The synthesizer lead (window 1, #1569) is the
+long-lived lander itself: its durable inbox is the land queue, and route hands it approval, self-gate, green-CI and
+approved merge-up events.
 
 Usage: mdstack lead ensure|suites|handoff|report ROLE [KIND REF...] --project FILE
 """
@@ -14,7 +16,7 @@ from crew_shared import (
     require_ownership, runs, show_icon, stop_pane, tmux, wait_harness, window_env)
 
 
-POOLS = {"builder": 2, "reviewer": 3}
+POOLS = {"builder": 2, "reviewer": 3, "synthesizer": 1}
 DEFERRALS = {"capacity", "load", "suites", "probe-unavailable"}
 BLOCKS = {"spawn-failure", "missing-dependency", "owner-decision", "lead-fault"}
 

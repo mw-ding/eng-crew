@@ -338,6 +338,89 @@ class Route(SpawnBase):
             self.assertEqual(self.windows(), [])
             self.assertEqual(self.pending(), [event, event])
 
+    def synthesizer_lead(self):
+        bindir = os.path.join(self.tmp, "bin")
+        os.rename(os.path.join(bindir, "tmux"), os.path.join(bindir, "tmux-base"))
+        for name, text in (("tmux", FAKE_TMUX_PANES), ("ps", FAKE_PS)):
+            with open(os.path.join(bindir, name), "w") as f:
+                f.write(text)
+            os.chmod(os.path.join(bindir, name), 0o755)
+        self.env.update(FAKE_PANES=os.path.join(self.tmp, "panes.json"), FAKE_PS=os.path.join(self.tmp, "ps.json"))
+        self.put("render/runtime/synthesizer-lead.md", "Land approved PRs.\n")
+
+    def land_queue(self):
+        path = os.path.join(self.state, "inbox", "sam-lead.jsonl")
+        if not os.path.exists(path):
+            return []
+        events = []
+        with open(path) as f:
+            for m in map(json.loads, f):
+                with open(m["refs"][0]) as event_file:
+                    events.append(json.load(event_file)["event"])
+        return events
+
+    def test_land_events_go_to_the_synthesizer_lead_not_the_coordinator(self):  # #1569
+        self.synthesizer_lead()
+        previous = self.approved_push()
+        self.queue(self.event("review-approved"), self.event("ci-passed"),
+                   dict(self.event("merge-up"), previous_head=previous, round=2))
+        self.route()
+        self.assertEqual(self.pending(), [])
+        self.assertIn("sam-lead", self.names())
+        self.assertEqual(self.land_queue(), ["review-approved", "ci-passed", "merge-up"])
+        self.live["reviews"] = [dict(body="<!-- crew:v1 role=builder pass=selfgate pr=12 sha=%s verdict=pass -->"
+                                          % self.sha)]
+        self.save()
+        self.queue(self.event("selfgate-passed"), self.event("ci-passed"))
+        self.route()
+        self.assertEqual(self.pending(), [])
+        self.assertEqual(self.land_queue(), ["review-approved", "ci-passed", "merge-up", "selfgate-passed"])
+        self.live["reviews"] = [dict(body="[Ash/steer] merge-ok\n<!-- crew:v1 role=coordinator pass=steer pr=12 sha=%s "
+                                          "round=n/a verdict=n/a cmd=merge-ok cmd-id=chat -->" % self.sha)]
+        self.save()
+        self.queue(dict(self.event("ci-passed"), id="merge-ok"))  # the §7 approval override counts too
+        self.route()
+        self.assertEqual(self.pending(), [])
+        self.assertEqual(self.land_queue()[-1], "ci-passed")
+        self.assertEqual(len(self.land_queue()), 5)
+
+    def test_unapproved_superseded_and_held_land_events(self):  # #1569
+        self.synthesizer_lead()
+        superseded = dict(event="review-approved", refs=["#12", "f" * 40])
+        self.queue(self.event("ci-passed"), superseded)
+        self.route()
+        self.assertEqual((self.pending(), self.land_queue()), ([], []))
+        self.put("ci/12-%s.json" % self.sha, "{}")  # held CI failure: the coordinator drops it on green
+        self.live["labels"] = []
+        self.save()
+        self.queue(self.event("ci-passed"))
+        self.route()
+        self.assertEqual(self.pending(), [self.event("ci-passed")])
+        self.live["labels"] = [{"name": "crew:hold"}]
+        self.save()
+        self.put("wake/queue.jsonl", "")
+        self.queue(self.event("review-approved"))
+        self.route()
+        self.assertEqual(self.pending(), [self.event("review-approved")])
+        self.assertEqual(self.land_queue(), [])
+
+    def test_synthesizer_lead_status_wakes_coordinator_only_for_exceptions(self):  # #1569
+        self.synthesizer_lead()
+        self.queue(self.event("review-approved"))
+        self.route()
+        url = "https://github.com/acme/widgets/pull/12#pullrequestreview-1"
+        gate = "blocked: #12 %s gate-status %s " % (self.sha, url)
+        quiet = [dict(reason="status", window="sam-lead", line=line) for line in (
+            "ack: m1", "done: #12 " + self.sha, "done: m1", gate + "wait=ci", gate + "wait=review,selfgate",
+            "train-report n=3 members=12,13 landed=12,13 dropped=none stop=none path=train")]
+        loud = [dict(reason="status", window="sam-lead", line=line) for line in (
+            gate + "wait=ci,merge-ok", "blocked: #12 sensitive", "blocked: main red after #12 " + url,
+            "train-report n=4 members=12,13 landed=none dropped=none stop=ci=fail path=train")]
+        self.queue(*quiet, *loud)
+        self.route()
+        self.assertEqual(self.pending(), loud)
+        self.assertIn("sam-lead", self.names())
+
     def test_non_merge_fix_push_gets_normal_review(self):
         self.approved_push(merge=False)
         self.queue(dict(reason="status", window="ben-7", line="done: #7 #12 " + self.sha),
@@ -596,6 +679,30 @@ class Route(SpawnBase):
         self.route()
         self.assertEqual(self.pending(), [self.event("pr-merged")])
         self.assertIn(["api", "-X", "DELETE", "repos/acme/widgets/git/refs/heads/builder/7-feature"], self.gh_calls())
+
+    def test_lead_land_closeout_needs_no_coordinator_turn(self):  # #1569
+        self.synthesizer_lead()
+        self.put("render/runtime/builder-lead.md", "Manage the builder pool.\n")
+        with open(self.project, "a") as f:
+            f.write('\n[backends.owner-channel]\nname = "slack"\n[runtime.options]\n'
+                    'slack_webhook_env = "CREW_TEST_WEBHOOK"\n')
+        self.live.update(state="MERGED", title="Feature", milestone={"title": "M40"},
+                         _open=[dict(number=9, body="## Depends on\n\n#7. Start after.\n")])
+        self.save()
+        self.queue(self.event("pr-merged"))
+        self.route()
+        self.assertEqual(self.pending(), [])
+        self.assertIn(["api", "-X", "DELETE", "repos/acme/widgets/git/refs/heads/builder/7-feature"], self.gh_calls())
+        with open(os.path.join(self.state, "wake", "land-12.json")) as f:
+            self.assertEqual(json.load(f), dict(id="land-12", kind="land", url="https://github.com/acme/widgets/pull/12",
+                                                title="Feature", train="direct", milestone="M40"))
+        with open(os.path.join(self.state, "inbox", "ben-lead.jsonl")) as f:
+            self.assertEqual([(m["kind"], m["refs"]) for m in map(json.loads, f)], [("build", ["#9"])])
+        self.live["_issue"] = {"labels": [], "state": "CLOSED", "stateReason": "COMPLETED"}  # #9 not released yet
+        self.save()
+        self.queue(self.event("pr-merged"))
+        self.route()
+        self.assertEqual(self.pending(), [dict(self.event("pr-merged"), consumer="coordinator", dependents=["#9"])])
 
     def test_dependency_merge_reaches_coordinator_after_cleanup(self):
         self.live.update(state="MERGED", _open=[dict(number=9, body="## Depends on\n\n#7. Start after.\n\n## AC\n#1"),

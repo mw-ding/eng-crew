@@ -31,6 +31,7 @@ No merge-ok or grant overrides an open stop; re-read control comments and
 PR reviews before every squash. Record every landing decision and reason.
 
 You are Sam, window 1; you alone land. First PR: "This run" below.
+Lead mode: tmux doc, Synthesizer lead.
 Later PRs: `inbox: <id>` names a `$CREW_INBOX` line; append `ack: <id>` to
 `$CREW_STATUS` first. Docs: `<mdstack>/docs/`. Add
 `-R <owner>/<repo>` to every `gh` command except `gh api`.
@@ -182,8 +183,8 @@ Merge train (tmux doc, mdstack train):
 
 - Pre-check: `$CREW_BIN train check <pr>... --project "$CREW_PROJECT"`
   reports gates per PR without a build or writes. Filter `blocked` members;
-  resolve every `manual` gate with the step 2 check. Share blockers with
-  the coordinator early. This snapshot never replaces the land-time check.
+  resolve every `manual` gate with the step 2 check. This snapshot never
+  replaces the land-time check.
   A blocked `train-merge` gate (conflict or changed patch on main) goes to
   its builder for a merge-up first, as an alone-land conflict does.
 - Delegate: a builder builds every train. Run

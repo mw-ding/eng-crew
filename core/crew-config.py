@@ -65,7 +65,7 @@ ROLE_REGISTRY = load_roles(ROLES_DIR)
 
 REQUIRED = object()
 # Render-time note roles (runtime.options.notes.render): every registry role and the pool leads.
-NOTE_ROLES = list(ROLE_REGISTRY) + ["builder-lead", "reviewer-lead"]
+NOTE_ROLES = list(ROLE_REGISTRY) + ["builder-lead", "reviewer-lead", "synthesizer-lead"]
 # Registry identities a profile may leave out; resolve fills gh_user from the coordinator's author login (#584).
 OPTIONAL_IDENTITIES = [r["identity_key"].removeprefix("identities.") for r in ROLE_REGISTRY.values() if r.get("identity_optional")]
 # tmux role caps (runtime.options.<cap>): each capped role's default, and the caps that may be 0 to run no such role.
