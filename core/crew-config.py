@@ -325,8 +325,11 @@ def validate_hosts(profile, top, err):
             err(path, "expected an overlay network name ([a-z0-9-], 1-63 characters); no IP literal, user@ or :port")
         h = check_table(err, path, table, {"primary": (bool, False), "forge": (bool, True), "capabilities": (dict, REQUIRED),
                                             "max_runs": (int, REQUIRED), "roles": (list, None), "root": (str, None),
-                                            "toolchain_bin": (str, None)})
+                                            "toolchain_bin": (str, None), "checkout": (str, None)})
         forge = h.get("forge", True)
+        check_choice(err, path + ".checkout", h.get("checkout"), ["mirror", "command"])
+        if h.get("checkout") == "command" and h.get("primary"):
+            err(path + ".checkout", "the primary uses its own git checkout; expected no checkout command")
         caps = check_platform(err, path + ".capabilities", h["capabilities"], {"os": (str, REQUIRED), "arch": (str, REQUIRED),
                               "engines": ("list[str]", REQUIRED if forge else None)}) if "capabilities" in h else {}
         check_choices(err, path + ".capabilities.engines", caps.get("engines", []), ENGINES)
