@@ -836,6 +836,74 @@ class PackOverlay(unittest.TestCase):
             self.assertIn(rule, synth)
         self.assertNotIn("mkdir -p", synth[synth.index("3. Serial land"):synth.index(" 4. ")])
 
+    def stack_pack(self, land):
+        """The example pack with change.land-stack and change.stack-status mapped and a [land] table (#1605)."""
+        mapping = self.github.replace('cli-name = "gh"', 'cli-name = "ex"').replace(
+            'land = "gh pr merge <n> --squash --match-head-commit <head-sha>"',
+            'land = "gh pr merge <n> --squash --match-head-commit <head-sha>"\n'
+            'land-stack = "ex land-stack <stack>"\nstack-status = "ex stack-status <stack>"\n'
+            'land-status = "ex land-status <n> <head-sha>"')
+        write_pack(os.path.join(self.tmp, "pack"), mapping=mapping)
+        manifest = os.path.join(self.tmp, "pack", "manifest.toml")
+        with open(manifest) as f:
+            text = f.read().replace('land = "supported"',
+                                    'land = "supported"\nland-stack = "supported"\nstack-status = "supported"\n'
+                                    'land-status = "supported"')
+        with open(manifest, "w") as f:
+            f.write(text + "\n[land]\n" + land)
+
+    def test_session_stack_land_renders_only_with_binding(self):
+        """#1605: land.stack renders the session synthesizer's stack-land recipe; without the binding the session
+        render keeps one land per run, and tmux renders (trains) never change."""
+        with open(os.path.join(os.path.dirname(SCRIPTS), "profiles", "session.toml")) as f:
+            session = self.project(f.read().replace('[runtime]\nname = "session"\n', ""))
+        with open(session) as f:
+            text = f.read().replace('name = "tmux"', 'name = "session"', 1)
+        with open(session, "w") as f:
+            f.write(text)
+        renders = {}
+        for name, land in (("bare", None), ("stack", "stack = true\n"),
+                           ("tested", 'stack = true\nstack_tests_against_tip = true\nmode = "async"\nserializes = true\n')):
+            if land is None:
+                write_pack(os.path.join(self.tmp, "pack"))
+            else:
+                self.stack_pack(land)
+            code, out, got = self.render(session, "--org-profile", self.org)
+            self.assertEqual(code, 0, out)
+            code, out, tmux = self.render(self.project(), "--org-profile", self.org)
+            self.assertEqual(code, 0, out)
+            renders[name] = (tree(got), tree(tmux))
+        bare, stack, tested = (renders[k][0] for k in ("bare", "stack", "tested"))
+        self.assertNotIn("Stack land", bare["runtime/synthesizer.md"])
+        self.assertEqual({k for k in stack if stack[k] != bare[k]}, {"runtime/synthesizer.md"})
+        self.assertEqual(renders["stack"][1], renders["bare"][1])  # tmux: no stack land, trains unchanged
+        self.assertNotIn("land stack", renders["tested"][1]["runtime/synthesizer.md"])
+        synth = stack["runtime/synthesizer.md"]
+        self.assertEqual(synth.replace(synth[synth.index("\n\nStack land"):synth.index("\n\nEach `[")], ""),
+                         bare["runtime/synthesizer.md"])  # the recipe is the only addition
+        flat = " ".join(synth.split())
+        for rule in ("Stack land (`land.stack`, protocol §7): when two or more ready PRs form one linear",
+                     "for every member at that member's own live head",
+                     'run `$CREW_BIN land stack --project "$CREW_PROJECT" --stack <n>:<head-sha>,...`',
+                     "sends `ex land-stack <stack>` once, only when `ex stack-status <stack>` reads `none` for every member",
+                     "post one `[Sam/merge]` per member", "that member's printed `record:` line",
+                     'mkdir "$CREW_STATE/locks/merge.lock.d"', "Tested with the default branch must hold for every member",
+                     "`Land rule: stack of <k>`.", 'run `$CREW_BIN land resume --project "$CREW_PROJECT"`; it never requests.'):
+            self.assertIn(rule, flat)
+        self.assert_crew_commands_parse(synth[synth.index("Stack land"):])
+        recipe = flat[flat.index("Stack land"):]
+        refusal = recipe.index("refuse the whole stack: one held member (`crew:hold`, an open hold-until or stop), one "
+                               "with red, pending or missing CI, one without its passing verdict or merge permission, "
+                               "or one whose head moved means zero requests. Never run `$CREW_BIN land stack` then")
+        self.assertLess(recipe.index("for every member at that member's own live head"), refusal)
+        self.assertLess(refusal, recipe.index('Otherwise run `$CREW_BIN land stack --project'))  # gates before request
+        flat = " ".join(tested["runtime/synthesizer.md"].split())
+        recipe = flat[flat.index("Stack land"):]
+        for rule in ("(`land.serializes`, C7): take no repo lock.", "`Land rule: stack of <k>, backend combined test`",
+                     "(`land.stack_tests_against_tip`): the stack may land behind the default branch"):
+            self.assertIn(rule, recipe)
+        self.assertNotIn("mkdir", recipe)
+
     def assert_crew_commands_parse(self, text):
         """Every `$CREW_BIN ...` command in text parses with the crew CLI's own argument parser (#1008 review)."""
         loader = importlib.machinery.SourceFileLoader("crew_cli", os.path.join(os.path.dirname(SCRIPTS), "cli", "mdstack"))

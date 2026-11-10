@@ -104,11 +104,13 @@ KNOWLEDGE_OPERATIONS = {"knowledge": ["read", "propose-edit"]}
 # them (docs/handoff.md). read-diff: needed only by a profile with [[sensitive.content]] rules
 # (docs/interfaces.md#change, #879).
 # read-landed: only an async land whose status mapping names `landed` without a revision group (#1042).
-CONDITIONAL_OPERATIONS = {"change": ["publish", "land-status", "read-branch-head", "read-diff", "read-landed"],
+# land-stack and stack-status: only a backend declaring land.stack, the session stack land (#1605).
+CONDITIONAL_OPERATIONS = {"change": ["publish", "land-status", "read-branch-head", "read-diff", "read-landed",
+                                     "land-stack", "stack-status"],
                           "tracker": ["unlabel"]}
 LAND_FIELDS = {"mode": (str, "sync"), "opens_draft": (bool, False), "serializes": (bool, False),
                "tests_against_tip": (bool, False), "change_placeholder": (str, "n"), "head_guard": (bool, True),
-               "status": (dict, None)}
+               "status": (dict, None), "stack": (bool, False), "stack_tests_against_tip": (bool, False)}
 LAND_STATES = ["none", "queued", "landing", "landed", "failed"]
 STRATEGY_FIELDS = {"update_from_base": (str, "merge"), "retains_prior_heads": (bool, False)}
 ASYNC_RUNTIMES = ["tmux", "session"]  # runtimes with an async land binding; others refuse land.mode = "async"
@@ -452,6 +454,11 @@ def check_land(err, land, change_caps, runtime=None):
     if landed_needs_read(status) and unsupported("read-landed"):
         err("land.status", "a landed pattern without a (?P<revision>...) group needs change.read-landed supported "
             "or emulated")
+    for op in ("land-stack", "stack-status"):  # session stack land (docs/interfaces.md#stack-land, #1605)
+        if land.get("stack") and unsupported(op):
+            err("land.stack", "needs change.%s supported or emulated" % op)
+    if land.get("stack_tests_against_tip") and not land.get("stack"):
+        err("land.stack_tests_against_tip", "only valid with stack = true")
 
 
 def landed_needs_read(status):

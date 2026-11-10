@@ -356,6 +356,70 @@ render stays byte-identical.
 | B3 | `scripts/crew.d/land.py`, protocol §7 | Persisted intent, restart read-back, the merge record's landed revision |
 | B4 | `scripts/crew-render.py`, tmux builder and synthesizer templates, `scripts/crew.d/train.py`, protocol §7 and the gate registry | Rendered `<op:change.publish>`, `<op:change.land>` and `<op:change.land-status>` steps when async (the sync render stays byte-identical), no-lock and train refusal under the flags |
 
+## Stack land
+
+**Status: active on the session runtime** (#1605). Session lands go one per
+run, and merge trains are tmux-only. A backend whose review tool lands a
+linear stack of changes atomically, with CI on the combined result, may bind
+that operation instead, so a milestone's stack lands in one request. Without
+the binding nothing changes.
+
+### Declaration
+
+Two optional keys join the `[land]` table above. They are independent of
+`mode`: a `sync` backend may declare a stack land beside its individual
+land.
+
+| Key | Values (default) | Meaning |
+|---|---|---|
+| `stack` | bool (`false`) | The backend lands a linear stack atomically through `change.land-stack`, read back by `change.stack-status` |
+| `stack_tests_against_tip` | bool (`false`) | The stack land tests the combined stack on the current tip and refuses on red; its readback names the check |
+
+`resolve` fails when `stack = true` is declared with `change.land-stack` or
+`change.stack-status` unsupported, and when `stack_tests_against_tip = true`
+is declared without `stack = true`. Both operations are conditional, so a
+manifest without `stack` never needs them. Only the session runtime renders
+or runs the stack land; `mdstack land stack` refuses a tmux profile.
+
+### Operations
+
+| Operation | Guarantee | Protects |
+|---|---|---|
+| Land stack (`land-stack`) | One atomic request for the stack in `<stack>`: space-separated `<change>:<head-sha>` pairs, base first. Refused, landing nothing, if any member's head moved. All members land, or none. A repeated request for the same stack never lands twice | I3, I4 |
+| Stack status (`stack-status`) | For the stack in `<stack>`, one line per member in stack order: `<change> none`, `queued`, `landing`, `landed <full revision>` or `failed <reason>`. With the combined-stack check run, a last line `check <reference>` | I3, I4 |
+
+Atomic means every member reads the same state. A missing, extra,
+reordered or malformed member line, or members in different states, is
+unknown: never `none`, never permission to request, never a merge record.
+Under `stack_tests_against_tip`, a landed readback without its `check` line
+is unknown, since the declaration alone is no receipt of the combined test.
+`[land.status]` maps only the individual `land-status`; `stack-status` uses
+the core grammar above.
+
+### Synthesizer loop
+
+1. **Every member's gates.** Check every §7 gate for every member at that
+   member's own head. One failing member refuses the whole stack, and no
+   request is sent.
+2. **Intent first.** `mdstack land stack --stack <n>:<head-sha>,...`
+   records one intent for the stack, reads `stack-status` and requests only
+   when every member reads `none` and `change.read-head` still returns each
+   member's checked head. A lost acknowledgement is read back, never resent.
+3. **Poll and record.** It polls as for an asynchronous land. On a complete
+   landed readback it prints one merge record line and marker per member,
+   each with that member's landed revision, and, when declared, the
+   combined-stack check. Default-branch CI is then checked at the last
+   member's landed revision. `failed` drops the intent; a timeout or an
+   unknown state keeps it.
+4. **Restart.** `mdstack land resume` reads every stack intent back and
+   never requests; `mdstack land stack-done` clears a landed one after the
+   merge posts.
+
+### GitHub
+
+GitHub declares no stack land: its manifest has no `land.stack`, and every
+GitHub render stays byte-identical.
+
 ## Bindable sensitivity (design)
 
 **Status: in effect** ([#880](https://github.com/mw-ding/eng-crew/issues/880)

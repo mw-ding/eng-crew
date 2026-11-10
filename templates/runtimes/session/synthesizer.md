@@ -65,7 +65,7 @@ step 3, one per run, in `Depends on` then approval order:
 - Otherwise land it through step 3 if its head contains the default branch;
   else run `<op:change.update-from-base>`, wait for CI, prove verdict
   portability and re-check the live gate. Never send it back solely for
-  being behind; a conflict or differing patch goes to <BuilderBot>.<land-rule>
+  being behind; a conflict or differing patch goes to <BuilderBot>.<land-rule><land-stack>
 
 Each `[<SynthesizerBot>/merge]` post names the rule in one `Land rule:` line,
 for example `Land rule: alone, session`.

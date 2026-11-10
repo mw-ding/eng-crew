@@ -35,7 +35,8 @@ no runtime sets them. The researcher brief runs only the
 [triage sweep](#triage-sweep-routine), carrying the tmux brief's Triage
 sweep policy; `researchers = 0` writes none (#1404).
 
-Session lands go alone, one per run (#1041). A sync backend lands under the
+Session lands go alone, one per run (#1041), unless the change backend
+declares a [stack land](../interfaces.md#stack-land) (below). A sync backend lands under the
 brief's `mkdir` repo lock. A change backend that declares `land.mode =
 "async"` with its `[land]` table, change placeholder and `[land.status]` map
 is accepted on a session profile too (#1351): the synthesizer brief's step 3
@@ -47,6 +48,26 @@ stale head, a timeout or an unknown status, and each run starts with
 `mkdir` lock until the terminal status and the merge post. Merge trains are
 tmux-only, since every `mdstack train` action refuses a session profile:
 `train_min`, `train_window` and `train_local_checks` have no effect.
+
+A change backend that declares `land.stack = true`, with `change.land-stack`
+and `change.stack-status` bound, adds a stack land (#1605): when two or more
+ready PRs form one linear `Depends on` stack, the synthesizer brief checks
+every [§7 gate](../protocol.md#7-merge-gate-synthesizer) for every member at
+that member's own head and refuses the whole stack, requesting nothing, if
+any member fails. Otherwise it runs
+`mdstack land stack --stack <n>:<head-sha>,...` (base first) once. That
+records the intent, re-reads every member's head, sends one atomic request
+only when every member's status reads `none`, polls as above, and on a
+complete per-member readback prints one merge record and marker per member,
+each with its landed revision. A missing, reordered or malformed member
+line, or members in different states, is unknown and records nothing.
+`mdstack land resume` reads stack intents back without requesting, and
+`mdstack land stack-done` clears a landed one after the merge posts and the
+default-branch CI check. With `land.stack_tests_against_tip = true` the
+backend's combined-stack test on the current tip meets tested with the
+default branch, but only when the readback names the check, which each
+member's record then cites. Without `land.stack` the brief renders no stack
+recipe and lands stay one per run; tmux renders and trains are unchanged.
 
 A session profile may carry a `[hosts]` inventory, without `[placement]`.
 `mdstack host check` and `mdstack host prepare` then run as for tmux: the
