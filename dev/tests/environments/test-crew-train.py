@@ -1808,6 +1808,7 @@ class Delegated(TrainBase):
         self.assertEqual(again.returncode, 1)
         self.assertIn("delegated train 1 is already built; run mdstack train wait 1", again.stdout)
         self.assertEqual(self.gh_calls("pr", "merge"), [])  # the builder never lands
+        self.assertEqual([r.returncode for r in self.land_all(1, (1, 2))], [0, 0])
 
     def test_delegation_names_the_synthesizer_lead_when_installed(self):  # #1569: train-done reaches the lander
         self.pr(1, {"f1.txt": "x\n"})
@@ -1815,7 +1816,6 @@ class Delegated(TrainBase):
         code, out, _ = self.delegate(1)
         self.assertEqual(code, 0, out)
         self.assertEqual(self.delegation()["synthesizer"], "sam-lead")
-        self.assertEqual([r.returncode for r in self.land_all(1, (1, 2))], [0, 0])
 
     def test_refused_handoff_closes_the_delegation(self):
         self.pr(1, {"f1.txt": "x\n"})
