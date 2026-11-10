@@ -943,6 +943,22 @@ liveness, restarts the work in a fresh unique worktree and may take over a
 silent claim despite the 2h rule in step 2. The sweeper's nudge cap and
 escalation (§5) apply. Reviewer-validator workers are not covered here.
 
+**Authoritative revision (#377, #376).** The backend's read head
+(`change.read-head`, [interfaces](interfaces.md#change)) is a change's one
+authoritative revision.
+
+- **Writers.** After each publish or push, the builder reads the head back
+  from the backend and puts that full SHA in markers, evidence headers,
+  `done:` lines and handoffs. A local hash is never relabelled as the tested
+  revision. If the backend head differs from the local commit (the backend
+  rewrote the commit on upload, or the push did not land), proof captured at
+  the local commit does not describe that head: recapture at the backend head.
+- **Readers.** Each review, validate, gate or land pass reads the head once
+  at its start and pins its diff, CI, verdict, merge-ok and evidence reads to
+  that SHA. A local revision or a newer unpublished draft is never the head.
+  If the published head changes during the pass, its observations are void:
+  stop, as in step 1, and the next pass starts at the new head.
+
 **Coordinator triage window.** The coordinator owns triage and runs a window
 at least once per awake half-day (the user's awake hours in PT). Every open
 tracker item leaves the window with exactly one disposition: `crew:ready`,

@@ -102,6 +102,8 @@ Build pass:
    carrying the issue label too. Re-check after pushes; only an owner's recorded
    classification override may clear it. Open a non-draft PR: `gh pr create --base main --head <branch> --title <t> --body-file <file>`, body per §3, written once, never
    edited; label it `crew:in-review`. Evidence is inline in the body.
+   After each push, read the head back (`gh pr view <n> --json headRefOid -q .headRefOid`); use that
+   full SHA, never a local hash, in markers, evidence and `done:`.
    A CLI change that only runs against test fakes may use a named test
    command that invokes it and asserts exit, stdout and stderr as its repro
    pair (verification Q2).

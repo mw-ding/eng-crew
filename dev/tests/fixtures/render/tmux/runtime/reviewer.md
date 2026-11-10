@@ -84,7 +84,8 @@ synthesizer's portability check with no new reviewer session.
    is not Base, or the PR is closed, merged or escalated, or has `crew:hold`,
    report
    `$CREW_BIN action report --status done --ref '#<n>' --ref stale`
-   and exit. If docs this brief cites are unreadable, append
+   and exit. Pin diff, CI and verdict reads to Base; if the head moves
+   mid-pass, discard them and report stale. If docs this brief cites are unreadable, append
    `blocked: #<n> spec-unreadable` and exit. Rigor comes only from flavor
    records and path classes; report an unrecorded brief floor as
    `flavor-unrecorded`. Stop the same way if this
