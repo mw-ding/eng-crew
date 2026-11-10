@@ -171,7 +171,8 @@ Commands and the per-command fix limit come from
    With a configured `owners` query, classify each changed path with
    `precheck-scope` ([profile](profile.md#builderprecheck)) and run the
    owning targets. Unowned code fails the step and a query failure stops
-   it; neither is ever `n/a`.
+   it; neither is ever `n/a`. A path absent at head is `removed`, not
+   unowned, and adds no targets.
 4. **Self-review.** Check the diff against every acceptance criterion, scope
    and repository rules. Publish only the result, never the self-review
    reasoning, so the independent reviewer is not anchored by it.

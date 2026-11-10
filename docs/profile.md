@@ -165,8 +165,12 @@ and existing builder duties are unchanged. No merge gate is added.
 With `owners` set, the builder pipes the changed paths to
 `core/crew-config.py precheck-scope --project <file>`, which runs the
 query once per path and prints each path's class (`owned`, `no-owner-ok` or
-`unowned`) and the owning targets as JSON. It exits 3 on unowned code and 4
-when a query fails; both stop the check. `no_owner_ok` uses the
+`unowned`) and the owning targets as JSON. The builder pipes every changed
+path, both rename paths included, from the worktree at head; a path absent
+there (a deletion or a rename source) is `removed`, gets no owners query and
+no targets, and never counts as unowned
+([#1345](https://github.com/mw-ding/mdstack/issues/1345)). It exits 3 on
+unowned code and 4 when a query fails; both stop the check. `no_owner_ok` uses the
 [`sensitive`](#sensitive) glob syntax. Without `owners`, behaviour and
 render are unchanged ([#881](https://github.com/mw-ding/eng-crew/issues/881)).
 

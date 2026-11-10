@@ -180,6 +180,7 @@ class Render(unittest.TestCase):
             brief = tree(self.out)["briefs/builder.md"]
             self.assertEqual("core/crew-config.py precheck-scope" in brief, present)
             self.assertEqual("`tests=n/a` only when every path is no-owner-ok" in brief, present)
+            self.assertEqual("a path absent there is `removed`, with no owners query" in brief, present)
 
     def test_unknown_placeholder_golden(self):
         shutil.copy(os.path.join(FIX, "unknown", "core", "builder.md"), os.path.join(self.inputs, "core", "builder.md"))
