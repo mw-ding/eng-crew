@@ -22,7 +22,9 @@ wakes (a merge-up head's `ci-passed` counts its approved previous head); a super
 unapproved `ci-passed` is consumed unless held CI refs for that PR
 (`ci/<n>-*.json`) still wait on it. Its waiting gate-status blocks are consumed like a synthesizer's; its other
 `blocked:` lines (owner merge-ok, sensitive, holds, `main red`) stay queued for the coordinator; a clean
-`train-report` (all landed, `dropped=none stop=none`) is consumed.
+`train-report` (all landed, `dropped=none stop=none`) is consumed. After its land's close-out, route queues the
+away-only Slack `land` message itself and hands `crew:ready` dependents to the builder lead; only dependents that are
+not ready still wake the coordinator.
 
 Usage: mdstack route --project FILE [--org-profile FILE] [--timeout SECS]
 """
@@ -292,6 +294,28 @@ def dependents(repo, pr):
                              for n in re.findall(r"#(\d+)", block)})
 
 
+def ready(repo, n):
+    return any(label["name"] == "crew:ready" for label in gh("issue", "view", str(n), "-R", repo, "--json", "labels")["labels"])
+
+
+def notify_land(args, state, repo, pr):
+    """The away-only Slack `land` message the coordinator used to queue after close-out (#1569); the merge post is
+    its GitHub record, and notify dedupes by away entry, kind and id."""
+    trains = []
+    for path in sorted(glob.glob(os.path.join(state, "trains", "train-*.json"))):
+        with open(path) as f:
+            rec = json.load(f)
+        if any(m["pr"] == pr["number"] for m in rec.get("landed", [])):
+            trains.append(rec["n"])
+    event = dict(id="land-%d" % pr["number"], kind="land", url="https://github.com/%s/pull/%d" % (repo, pr["number"]),
+                 title=pr.get("title") or "#%d" % pr["number"], train=str(trains[-1]) if trains else "direct",
+                 milestone=(pr.get("milestone") or {}).get("title") or "None")
+    path = os.path.join(state, "wake", "land-%d.json" % pr["number"])
+    with open(path, "w") as f:
+        json.dump(event, f)
+    invoke(args, "notify", event_file=path, flush=False, status=False)
+
+
 def route_record(args, values, state, w):
     line = w.get("line", "")
     if w.get("reason") == "status" and line.startswith(("ack:", "heartbeat:")):
@@ -388,18 +412,27 @@ def route_record(args, values, state, w):
         n, head = int(w["refs"][0].lstrip("#")), w["refs"][1]
     repo = "%s/%s" % (values["repo.owner"], values["repo.name"])
     fields = "number,state,headRefOid,isDraft,labels,reviews,statusCheckRollup,headRefName,baseRefName," \
-             "headRepositoryOwner,headRepository,isCrossRepository,closingIssuesReferences"
+             "headRepositoryOwner,headRepository,isCrossRepository,closingIssuesReferences,title,milestone"
     pr = gh("pr", "view", str(n), "-R", repo, "--json", fields)
     if event in ("pr-merged", "pr-closed"):
         if pr["state"] != ("MERGED" if event == "pr-merged" else "CLOSED"):
             return False
         if event == "pr-merged":
             close_out(args, values, state, pr)
+            landed = lead.enabled(state, "synthesizer")  # its lead's lands need no coordinator turn (#1569)
             if values["backends.owner-channel.name"] == "slack":
-                return False  # The coordinator records the away land notification after cleanup.
+                if not landed:
+                    return False  # The coordinator records the away land notification after cleanup.
+                notify_land(args, state, repo, pr)
             if waiting := dependents(repo, pr):
-                w.update(consumer="coordinator", dependents=["#%d" % n for n in waiting])
-                return False  # the coordinator dispatches the unblocked dependents now, not at the backstop (#814)
+                if landed and lead.enabled(state, "builder"):
+                    for d in [d for d in waiting if ready(repo, d)]:
+                        if lead.handoff(args, "builder", "build", ["#%d" % d]) not in (0, 4):
+                            raise RuntimeError("crew: builder lead handoff failed for dependent #%d" % d)
+                        waiting.remove(d)
+                if waiting:
+                    w.update(consumer="coordinator", dependents=["#%d" % n for n in waiting])
+                    return False  # the coordinator dispatches the unblocked dependents now, not at the backstop (#814)
         else:
             issues = {i["number"] for i in pr["closingIssuesReferences"]}
             for name, run in list(runs(state)):

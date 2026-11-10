@@ -671,6 +671,30 @@ class Route(SpawnBase):
         self.assertEqual(self.pending(), [self.event("pr-merged")])
         self.assertIn(["api", "-X", "DELETE", "repos/acme/widgets/git/refs/heads/builder/7-feature"], self.gh_calls())
 
+    def test_lead_land_closeout_needs_no_coordinator_turn(self):  # #1569
+        self.synthesizer_lead()
+        self.put("render/runtime/builder-lead.md", "Manage the builder pool.\n")
+        with open(self.project, "a") as f:
+            f.write('\n[backends.owner-channel]\nname = "slack"\n[runtime.options]\n'
+                    'slack_webhook_env = "CREW_TEST_WEBHOOK"\n')
+        self.live.update(state="MERGED", title="Feature", milestone={"title": "M40"},
+                         _open=[dict(number=9, body="## Depends on\n\n#7. Start after.\n")])
+        self.save()
+        self.queue(self.event("pr-merged"))
+        self.route()
+        self.assertEqual(self.pending(), [])
+        self.assertIn(["api", "-X", "DELETE", "repos/acme/widgets/git/refs/heads/builder/7-feature"], self.gh_calls())
+        with open(os.path.join(self.state, "wake", "land-12.json")) as f:
+            self.assertEqual(json.load(f), dict(id="land-12", kind="land", url="https://github.com/acme/widgets/pull/12",
+                                                title="Feature", train="direct", milestone="M40"))
+        with open(os.path.join(self.state, "inbox", "ben-lead.jsonl")) as f:
+            self.assertEqual([(m["kind"], m["refs"]) for m in map(json.loads, f)], [("build", ["#9"])])
+        self.live["_issue"] = {"labels": [], "state": "CLOSED", "stateReason": "COMPLETED"}  # #9 not released yet
+        self.save()
+        self.queue(self.event("pr-merged"))
+        self.route()
+        self.assertEqual(self.pending(), [dict(self.event("pr-merged"), consumer="coordinator", dependents=["#9"])])
+
     def test_dependency_merge_reaches_coordinator_after_cleanup(self):
         self.live.update(state="MERGED", _open=[dict(number=9, body="## Depends on\n\n#7. Start after.\n\n## AC\n#1"),
                                                 dict(number=10, body="Depends on #3\n"),

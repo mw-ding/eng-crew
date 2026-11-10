@@ -581,8 +581,11 @@ Route consumes the lead's `ack:`, `done:` and waiting gate-status lines
 `dialog` wakes. Merged-PR close-out stays in route (labels, closing the
 issue, branch deletion under the existing rules, builder reclaim through the
 builder lead), so a land needs no coordinator turn. With a Slack owner
-channel, route still wakes the coordinator after close-out for the land
-notification; dependents named by `Depends on` still wake it for dispatch.
+channel, route also queues the away-only `land` notification through
+`mdstack notify` (stable id `land-<n>`, the train number or `direct`, the
+milestone or `None`). Open issues whose `Depends on` names the merged PR go
+to the builder lead as `build` handoffs when they carry `crew:ready`; only a
+dependent that is not ready still wakes the coordinator.
 
 ## Usage
 
@@ -2504,7 +2507,8 @@ After each event's GitHub record exists, write JSON to a local scratch file
 and run `mdstack notify --project FILE --event-file EVENT_FILE`. Use a stable
 `id` from that record (same ID on replay), `kind`, and its full HTTPS `url`.
 With this binding, mechanical merge cleanup leaves `pr-merged` for the
-coordinator to queue its land message after cleanup.
+coordinator to queue its land message after cleanup, unless the
+[synthesizer lead](#synthesizer-lead) is installed: then route queues it.
 Every required field below is a nonempty string; use `None` for empty digest
 sections and `direct` for a land without a train. Copy URLs from live records.
 
