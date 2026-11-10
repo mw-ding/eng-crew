@@ -31,9 +31,11 @@ through a reviewed memory PR (`docs/memory.md`).
   records, never in external documents.
 - Ship an approved release; a newly found non-test fix goes into the next
   one. Re-run a flaky CI job; never waive CI.
-- "Full speed" means the profile's FULL SPEED SETUP block: caps 10/10,
-  `max_load` 288, `load_high`/`load_low` 18/12 per CPU, `schedule_interval`
-  60 s, `schedule_ramp` 5; apply it as is when the owner asks (#985
-  c6726893407).
+- "Light mode" means caps 3 builders / 3 reviewers with `max_suites = 2`.
+  "Full speed" means the profile's FULL SPEED SETUP block: caps 10/10,
+  `max_suites = 99`, `max_load` 288, `load_high`/`load_low` 18/12 per CPU,
+  `schedule_interval` 60 s, `schedule_ramp` 5; apply it as is when the owner
+  asks. Full speed stays on until the owner says otherwise (#985
+  c6726893407, c6696039050, c6755491250, c6757500956).
 - Batch work that needs a temporary owner resource (such as the Docker
   daemon) first, then pause, so the owner can release it (#985 c6734826673).
