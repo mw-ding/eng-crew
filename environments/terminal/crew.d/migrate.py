@@ -3,7 +3,9 @@
 Usage: mdstack migrate --project OLD (--to NEW | --rename-to OWNER/NAME) [--org-profile FILE] [--apply]
 
 OLD is the profile the crew runs from today; NEW is the relocated profile the owner wrote (for example
-~/.mdstack/config.toml with paths.root). Both must resolve and name the same repo. The preview writes nothing and
+~/.mdstack/config.toml with paths.root). Both must resolve and name the same repo. Either may be a team reference
+FILE#<repo> (#1347): the file is the profile that moves and is rewritten, outside any clone, with the repo's declared
+checkout as its git repository; only that repo's state and [repos.<repo>] section change, never a sibling repo's. The preview writes nothing and
 prints, one per line: each path mapping (`map OLD -> NEW`, most specific first), each operation (`move` of the
 project's state directory and the live dir, `worktree-move` of each registered role worktree under the old worktree
 root, `keep` of each unregistered directory there, `archive` of the old lead and watcher process identities,
@@ -60,9 +62,12 @@ def register(sub):
     p.add_argument("--apply", action="store_true", help="run the plan; refused while anything is blocked")
 
 
-def layout(values, project, state):
+def layout(values, ref, state):
+    """The crew's paths; a team reference FILE#<repo> (#1347) splits into the file ("project") and its repo."""
+    project, repo = crew_render.crew_config.split_ref(ref)
     home = os.path.dirname(os.path.abspath(project))
-    return {"project": os.path.abspath(project), "home": home, "checkout": checkout(values, project), "state": state,
+    return {"ref": os.path.abspath(ref), "repo": repo, "project": os.path.abspath(project), "home": home,
+            "checkout": checkout(values, project), "state": state,
             "worktree_root": os.path.abspath(values["paths.worktree_root"]),
             "live_dir": os.path.abspath(values["paths.live_dir"]) if values.get("paths.live_dir") else None,
             "mdstack": os.path.abspath(values["paths.mdstack"]) if values.get("paths.mdstack") else None}
@@ -125,6 +130,24 @@ def files(state, globs):
     return sorted({p for g in globs for p in glob.glob(os.path.join(state, g)) if os.path.isfile(p)})
 
 
+HEADER = re.compile(r"(?m)^([ \t]*\[[^\]\n]+\][ \t]*(?:#.*)?)$")  # TOML allows an indented header
+
+
+def rewrite_profile(text, maps, repo, rx=None):
+    """rewrite() of a profile, leaving every other repo's [repos.<name>] section of a team file as it is (#1347)."""
+    if repo is None:
+        return rewrite(text, maps, rx)
+    parts, count = HEADER.split(text), 0
+    for i in range(0, len(parts), 2):
+        header = parts[i - 1].split("#")[0].strip()[1:-1].strip() if i else ""
+        section = [key.strip().strip('"\'') for key in header.split(".")]
+        if section[0] == "repos" and len(section) > 1 and section[1] != repo:
+            continue
+        parts[i], n = rewrite(parts[i], maps, rx)
+        count += n
+    return "".join(parts), count
+
+
 def plan(old, new, session, maps):
     """(operations, owner steps, blockers); each operation is a tuple naming its kind first."""
     ops, owner, blocked = [], [], []
@@ -154,7 +177,8 @@ def plan(old, new, session, maps):
     rx = pattern(maps)
     for path in files(old["state"], OPERATIONAL) + [new["project"]]:
         with open(path, encoding="utf-8", errors="surrogateescape") as f:
-            count = rewrite(f.read(), maps, rx)[1]
+            text = f.read()
+        count = (rewrite_profile(text, maps, new["repo"], rx) if path == new["project"] else rewrite(text, maps, rx))[1]
         if count:
             ops.append(("rewrite", path, count))
     settings = os.path.join(old["home"], SETTINGS)
@@ -356,7 +380,8 @@ def apply(old, new, ops, maps, retext=None):
                     data = f.read()
                 os.makedirs(os.path.dirname(original(path)), exist_ok=True)
                 shutil.copy2(path, original(path))
-                text = rewrite(data.decode("utf-8", "surrogateescape"), maps)[0]
+                text = data.decode("utf-8", "surrogateescape")
+                text = (rewrite_profile(text, maps, new["repo"]) if path == new["project"] else rewrite(text, maps))[0]
                 text = retext(path, text) if retext else text
                 if path.startswith(os.path.join(new["state"], "status") + os.sep):
                     offsets[os.path.basename(path)[:-len(".status")]] = data
@@ -385,8 +410,8 @@ def apply(old, new, ops, maps, retext=None):
     for entry in journal:
         print("done: " + entry["op"])
     print("crew migrate: applied; journal and originals in %s" % work)
-    print("next: mdstack layout --project %s --write" % new["project"])
-    print("next: mdstack up --project %s --coordinator-only" % new["project"])
+    print("next: mdstack layout --project %s --write" % new["ref"])
+    print("next: mdstack up --project %s --coordinator-only" % new["ref"])
     return 0
 
 

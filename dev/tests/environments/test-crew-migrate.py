@@ -7,8 +7,11 @@ directory kept, the old process identities archived, the operational rewrites, t
 memory and trust steps, writing nothing; a destination that exists blocks; profiles naming different repos are
 refused; on apply, an unrelated compound hook keeps its shell text while the guard is re-quoted, a hook citing an
 old path whose new path needs quoting blocks before anything moves, and an interrupted apply's quoted rollback
-commands run and restore the state. Run in CI.
+commands run and restore the state; a team reference FILE#<repo> outside the clone previews and applies through its
+declared checkout, rewriting only its own state and repo section, and the land lock and destination still block
+(#1347). Run in CI.
 """
+import fcntl
 import json
 import os
 import shlex
@@ -17,7 +20,7 @@ import tomllib
 import unittest
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # dev/tests/: crew_testlib
-from crew_testlib import KillLandedBase, PROFILE
+from crew_testlib import Base, KillLandedBase, PROFILE
 
 
 def tree(root):
@@ -211,6 +214,112 @@ class Apply(MigrateBase):
         self.assertIn("refusing migrate --apply: blocked", r.stdout)
         self.assertTrue(os.path.isdir(self.state))
         self.assertFalse(os.path.exists(self.new_state))
+
+
+TEAM = """\
+[team]
+name = "md"
+runtime = {{ name = "tmux" }}
+identities = {{ owners = ["acme-owner"], coordinator = {{ gh_user = "acme-bot", name = "Ash" }}, builder = {{ gh_user = "acme-bot", name = "Ben" }}, reviewer = {{ gh_user = "acme-reviewer", name = "Vera" }}, synthesizer = {{ gh_user = "acme-bot", name = "Sam" }} }}
+engines = {{ coordinator = "claude-code" }}
+paths = {{ {paths}, toolchain_bin = "/opt/node/bin" }}
+
+[repos.widgets]
+repo = "acme/widgets"
+checkout = "{checkout}"
+notes = 1
+
+[repos.gadgets]
+repo = "acme/gadgets"
+checkout = "{home}/gadgets"
+"""
+
+
+class TeamRef(Base):
+    """#1347: a team reference FILE#<repo>, outside the clone, relocates through the declared checkout."""
+
+    def setUp(self):
+        super().setUp()
+        subprocess.run(["git", "init", "-q", self.project_dir], check=True)
+        self.old_home, self.new_home = os.path.join(self.tmp, "old-home"), os.path.join(self.tmp, "new root")
+        self.old_file, self.new_file = os.path.join(self.old_home, "md.toml"), os.path.join(self.new_home, "config.toml")
+        self.old_ref, self.new_ref = self.old_file + "#widgets", self.new_file + "#widgets"
+        old_paths = 'state_dir = "%s/state", worktree_root = "%s/state/wt"' % (self.tmp, self.tmp)
+        new_paths = 'root = "%s", state_dir = ".crew/state", worktree_root = ".crew/wt"' % self.new_home
+        for path, paths in ((self.old_file, old_paths), (self.new_file, new_paths)):
+            os.makedirs(os.path.dirname(path))
+            with open(path, "w") as f:
+                f.write(TEAM.format(paths=paths, checkout=self.project_dir, home=self.old_home).replace(
+                    "notes = 1\n", 'merge_grant = "see %s/state/md/acme__widgets/runs/x.md"\n' % self.tmp))
+        self.old_state = os.path.join(self.tmp, "state", "md", "acme__widgets")
+        self.sibling = os.path.join(self.tmp, "state", "md", "acme__gadgets", "runs", "sam-1.json")
+        self.new_state = os.path.join(self.new_home, ".crew", "state", "md", "acme__widgets")
+        os.makedirs(os.path.dirname(self.sibling))
+        with open(self.sibling, "w") as f:
+            f.write(json.dumps({"project": self.old_file + "#gadgets"}))
+        self.record = os.path.join(self.old_state, "runs", "ben-7.json")
+        os.makedirs(os.path.dirname(self.record))
+        with open(self.record, "w") as f:
+            json.dump({"project": self.old_ref, "claim": os.path.join(self.old_state, "claims", "x")}, f)
+
+    def migrate(self, *args):
+        return self.crew("migrate", "--project", self.old_ref, "--to", self.new_ref, *args)
+
+    def test_preview_resolves_refs_and_writes_nothing(self):
+        before = tree(self.tmp)
+        r = self.migrate()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        lines = r.stdout.splitlines()
+        self.assertIn("map %s -> %s" % (self.old_file, self.new_file), lines)
+        self.assertIn("move %s -> %s" % (self.old_state, self.new_state), lines)
+        self.assertIn("rewrite %s (2 refs)" % self.record, lines)
+        self.assertIn("rewrite %s (1 refs)" % self.new_file, lines)  # widgets' merge_grant; gadgets' checkout kept
+        self.assertFalse([line for line in lines if line.startswith("blocked:") or "#widgets" in line], lines)
+        self.assertEqual(tree(self.tmp), before)
+
+    def test_land_lock_and_existing_destination_still_block(self):
+        lock = os.path.join(self.old_state, "locks", "merge.lock")
+        os.makedirs(os.path.dirname(lock))
+        os.makedirs(self.new_state)
+        with open(lock, "w") as f:
+            fcntl.flock(f, fcntl.LOCK_EX)
+            r = self.migrate("--apply")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("blocked: the land lock %s is held" % lock, r.stdout)
+        self.assertIn("blocked: destination exists: %s" % self.new_state, r.stdout)
+        self.assertTrue(os.path.isfile(self.record))
+
+    def test_apply_relocates_the_selected_repo_only(self):
+        self.apply_and_check("[repos.gadgets]")
+
+    def test_indented_sibling_header_is_kept(self):  # r1 R1: TOML allows an indented header
+        self.apply_and_check("  [repos.gadgets]")
+
+    def test_spaced_quoted_sibling_header_is_kept(self):  # r1 R1: and spaced, quoted dotted keys
+        self.apply_and_check('[ repos . "gadgets" ]  # sibling')
+
+    def apply_and_check(self, header):
+        with open(self.new_file) as f:
+            text = f.read().replace("[repos.gadgets]", header)
+        with open(self.new_file, "w") as f:
+            f.write(text)
+        gadgets = text.split(header)[1]
+        r = self.migrate("--apply")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse(os.path.exists(self.old_state))
+        with open(os.path.join(self.new_state, "runs", "ben-7.json")) as f:
+            rec = json.load(f)
+        self.assertEqual(rec, {"project": self.new_ref, "claim": os.path.join(self.new_state, "claims", "x")})
+        with open(self.sibling) as f:  # the sibling repo's state stays, unrewritten
+            self.assertEqual(json.load(f), {"project": self.old_file + "#gadgets"})
+        with open(self.new_file) as f:
+            text = f.read()
+        self.assertEqual(text.split(header)[1], gadgets)
+        self.assertIn('checkout = "%s/gadgets"' % self.old_home, text)
+        self.assertIn('merge_grant = "see %s/runs/x.md"' % self.new_state, text)
+        self.assertIn("next: mdstack up --project %s --coordinator-only" % self.new_ref, r.stdout)
+        r = self.crew("migrate", "--project", self.new_ref, "--to", self.new_ref)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
 
 class Rename(MigrateBase):

@@ -17,10 +17,17 @@ One owner often runs more than one crew, and each crew serves several repos
 ([#634](https://github.com/mw-ding/eng-crew/issues/634)). A team file holds
 the whole crew once, with a small section per repo. Keep it at
 `<config-home>/teams/<team>.toml`, outside any release bundle and any repo
-clone, so upgrades never touch it. The file name is the team name
-(`[a-z0-9-]`, 1–63 characters).
+clone, so upgrades never touch it. The team name (`[a-z0-9-]`, 1–63
+characters) keys the team's state root and tmux session. Set it with
+`[team] name = "<team>"`, so a conventional `config.toml`, a renamed file or
+a symlink to the file all resolve the same team (#1348). Without
+`team.name`, the file name is the team name, as before, so a nameless file
+keeps its current identity. Changing the team name, or adding one that
+differs from the file name, moves the state root and session: stop the crew
+and move the state with [`mdstack migrate`](../runtimes/tmux.md#mdstack-migrate)
+first.
 
-- `[team]` holds every team-only table, in the shape described above:
+- `[team]` holds the optional `name` and every team-only table, in the shape described above:
   `runtime`, `backends`, `identities`, `engines`, `paths`, `flavor`,
   `hosts`, `placement`, `tools`, `size_budget`, `builder`, `sensitive` and
   `spec`.
@@ -40,6 +47,7 @@ clone, so upgrades never touch it. The file name is the team name
 
 ```text
 [team]
+name = "md"
 pack = "github"
 personas = { coordinator = "Ash", builder = "Ben", reviewer = "Vera", synthesizer = "Sam" }
 accounts = { all = "<bot-login>", reviewer = "<reviewer-login>" }

@@ -726,7 +726,7 @@ limit), and the provenance output, problem format and example.
 
 Moved to [Team files](configuration/team-files.md):
 [schema and example](configuration/team-files.md#schema-and-example) (the
-team file's location and name, the `[team]` tables with the `pack`,
+team file's location and name, the optional `team.name`, the `[team]` tables with the `pack`,
 `personas` and `accounts` shorthands, the `[repos.<name>]` allowlist and its
 refusals, and an example with two repo sections),
 [resolution and the team instance](configuration/team-files.md#resolution-and-team-instance)
