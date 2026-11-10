@@ -24,7 +24,8 @@ including file's. Nothing here renders on its own.
   the role-wide fragments, and one `skills/<skill>/SKILL.md` per procedure
   names the fragments it is made of. Skill files have `name` and
   `description` front matter, never render, and add no rule. A procedure
-  no brief has room for (researcher `protocol-reflection`) keeps its steps
+  no brief has room for (researcher and coordinator
+  `protocol-reflection`) keeps its steps
   in its skill file, restating the doc that owns its rules.
 - Edit a fragment and every runtime template that includes it changes. Run
   the render and parity tests (`test-crew-render.py`, `test-render-parity.py`,
