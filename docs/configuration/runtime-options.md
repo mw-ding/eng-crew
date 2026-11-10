@@ -114,7 +114,7 @@ brief renders the land options as for `tmux`:
 
 | Option | Type | Default | Replaces |
 |---|---|---|---|
-| `session_backend` | string: `native` or `cli` | `"native"` | `<session-backend>`: `native` dispatches workers as harness subagents with task handles; `cli` as external harness CLI runs with a recorded PID and start time |
+| `session_backend` | string: `native`, `cli` or `hosted` | `"native"` | `<session-backend>`: `native` dispatches workers as harness subagents with task handles; `cli` as external harness CLI runs with a recorded PID and start time; `hosted` as hosted sessions created through a control plane, addressed by the returned session id and probed by a control-plane state read (#1052) |
 | `builders` | integer | `5` | `<builder-cap>`: concurrent builder runs |
 | `reviewers` | integer | `2` | `<reviewer-cap>`: concurrent reviewer passes |
 | `present_builders` | integer, at least 1, at most `builders` | resolved `builders` | `<present-builder-cap>`: owner-present builder limit, as in `tmux`; a value above `builders` is refused (#1053) |

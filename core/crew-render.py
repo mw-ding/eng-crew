@@ -32,6 +32,9 @@ A template line starting <strategy:merge> or <strategy:rebase> renders, without 
 backend's resolved strategy.update_from_base (default merge) matches.
 A line exactly <control-item:set> or <control-item:none> opens a block, closed by a line exactly <control-item:end>,
 that renders, without its marker lines, only when repo.control_item is set (any tracker item) or unset.
+A line exactly <session-backend:hosted> or <session-backend:local> opens a block, closed by a line exactly
+<session-backend:end>, that renders, without its marker lines, only when runtime.options.session_backend is or is
+not "hosted"; it may sit inside a control-item block (#1052).
 <op:a.b|c.d> renders the first listed operation the backend supports. A researchers cap of 0 renders no
 researcher template, so it needs none of the researcher's operations.
 A line exactly <include:policy/DIR/NAME.md> is replaced by templates/policy/DIR/NAME.md (pack overlay first), so
@@ -167,6 +170,7 @@ OP = re.compile(r"op:(.*)\.(.*)")
 PLACEHOLDER = re.compile(r"[a-z][a-z0-9-]*")
 STRATEGY_LINE = re.compile(r"<strategy:(merge|rebase)>")
 CONTROL_BLOCK = re.compile(r"<control-item:(set|none|end)>\n?")
+BACKEND_BLOCK = re.compile(r"<session-backend:(hosted|local|end)>\n?")
 INCLUDE_LINE = re.compile(r"<include:policy/([a-z0-9-]+/[a-z0-9-]+\.md)>\n?")
 # Operations that always render the core entry, whatever the backend (docs/interfaces.md#one-entry-point): core runs a
 # bound extension itself, so no backend map can replace the core run.
@@ -451,13 +455,18 @@ def render(args, paths, normalize_paths):
             problems.append("%s:1: missing mapping: no brief for role %s (%s)" % (src, role, e) if role else
                             "%s:1: cannot read (%s)" % (src, e))
             continue
-        out, strategy, keep = [], values.get("strategy.update_from_base", "merge"), True
+        out, strategy, keep, backend_keep = [], values.get("strategy.update_from_base", "merge"), True, True
+        hosted = values.get("runtime.options.session_backend") == "hosted"
         for where, i, text in renderer.expand(src, lines, problems):
             block = CONTROL_BLOCK.fullmatch(text)
             if block:
                 keep = block.group(1) == "end" or (block.group(1) == "set") == ("repo.control_item" in values)
                 continue
-            if not keep:
+            block = BACKEND_BLOCK.fullmatch(text)
+            if block:
+                backend_keep = block.group(1) == "end" or (block.group(1) == "hosted") == hosted
+                continue
+            if not (keep and backend_keep):
                 continue
             only = STRATEGY_LINE.match(text)
             if only and only.group(1) != strategy:

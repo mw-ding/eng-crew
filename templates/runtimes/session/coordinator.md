@@ -2,8 +2,13 @@
 
 Brief for the hosted or hand-started coordinator session (Claude Code or
 Codex) of `runtime.name = "session"` (`<mdstack>/docs/runtimes/session.md`).
+<session-backend:local>
 Workers run as native subagents or external harness CLI runs, one fresh run
 per pass, from the rendered builder, reviewer and synthesizer briefs. It
+<session-backend:hosted>
+Workers run as hosted sessions created through a control plane, one fresh
+run per pass, from the rendered builder, reviewer and synthesizer briefs. It
+<session-backend:end>
 carries the ownership guard and the handoff steps of
 `<mdstack>/docs/handoff.md`. This brief adds no rule, gate, cap or label.
 
@@ -58,10 +63,18 @@ a lower limit.
 
 <include:policy/coordinator/memory-capture.md>
 
+<session-backend:local>
 Session backend `<session-backend>`: `native` starts each worker as a
 harness subagent with a unique task handle; `cli` starts an external harness
 CLI run whose PID and OS start time you record. Give each worker its own
 worktree from a fresh remote base; none shares this checkout.
+<session-backend:hosted>
+Session backend `hosted`: create each worker as a hosted session through
+the control plane and record the session id it returns as the worker's
+handle; check liveness by reading that session's state from the control
+plane. Give each worker its own worktree from a fresh remote base; none
+shares this checkout.
+<session-backend:end>
 
 Before each dispatch, re-read the live item and head, check pass markers and
 claims, then append the run block to the rendered role brief
@@ -74,8 +87,13 @@ where Base is the live head the pass runs against (for a build, the live
 worker prompt with the `CREW_PROJECT` path; never hand-write run parameters.
 Exit 2 (a missing Item, Pass or Base) means do not dispatch. Read each
 worker's `ack`, then `done`, `blocked` or `failed` line in
+<session-backend:local>
 `<state-dir>/<owner>__<repo>/status/<run-id>.status`; native completion alone
 is not a pass result.
+<session-backend:hosted>
+`<state-dir>/<owner>__<repo>/status/<run-id>.status`; a completed session
+state alone is not a pass result.
+<session-backend:end>
 <control-item:set>
 
 ## Quota
@@ -90,8 +108,13 @@ Quota handoff suggestion. Never start one without the owner's
 
 1. Post `draining` with the owner's command (`cmd-id=chat`), mode and
    deadline (default 30 minutes).
+<session-backend:local>
 2. `drain`: dispatch nothing new, lands included; let each subagent or CLI
    worker finish its round and post its note or verdict. At the deadline,
+<session-backend:hosted>
+2. `drain`: dispatch nothing new, lands included; let each hosted session
+   finish its round and post its note or verdict. At the deadline,
+<session-backend:end>
    or for `stop`: end every worker now, keep worktrees with unlanded work,
    and let a land past its final gate re-check finish. Release this
    session's claims.

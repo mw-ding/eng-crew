@@ -1111,6 +1111,29 @@ class SessionRuntime(unittest.TestCase):
                                      none["runtime/%s.md" % role])
 
 
+    def test_hosted_backend_renders_control_plane_dispatch(self):  # #1052
+        for repo in ("", "[repo]\ncontrol_item = 985\n\n"):
+            with self.subTest(control_item=bool(repo)):
+                local = self.render(repo)
+                self.base = self.base.replace('session_backend = "native"', 'session_backend = "hosted"')
+                hosted = self.render(repo)
+                self.base = self.base.replace('session_backend = "hosted"', 'session_backend = "native"')
+                self.assertEqual(sorted(hosted), sorted(local))
+                for rel, text in hosted.items():
+                    self.assertNotIn("<session-backend:", text)
+                    self.assertIsNone(re.search(r"subagent|\bPID\b|native|task handle", text, re.I), rel)
+                    self.assertIn("hosted session", " ".join(text.split()), rel)
+                coordinator = " ".join(hosted["runtime/coordinator.md"].split())
+                for rule in ("Session backend `hosted`: create each worker as a hosted session through the control "
+                             "plane and record the session id it returns as the worker's handle; check liveness by "
+                             "reading that session's state from the control plane.",
+                             "a completed session state alone is not a pass result."):
+                    self.assertIn(rule, coordinator)
+                self.assertEqual("let each hosted session finish its round" in coordinator, bool(repo))
+                for rel, text in local.items():
+                    self.assertNotIn("<session-backend:", text)
+                    self.assertNotIn("hosted session", " ".join(text.split()), rel)
+
     def test_land_step_holds_a_working_lock(self):
         synth = self.render()["runtime/synthesizer.md"]
         step = synth[synth.index("3. Serial land"):synth.index("\n4. ")]
