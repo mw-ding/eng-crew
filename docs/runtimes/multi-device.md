@@ -513,7 +513,7 @@ mdstack connect [--project <config.toml>] <alias> [<session>] [-- <transport arg
 | `transport` | Plain shell | With `<session>` | `proxy` |
 |---|---|---|---|
 | `ssh` (default) | `ssh <host>` | `ssh -t <host> tmux new-session -A -s <session>` | `-o ProxyCommand=<proxy>` |
-| `mosh` | `mosh <host>` | `mosh <host> -- tmux new-session -A -s <session>` | `--ssh=ssh -o ProxyCommand=<proxy>` |
+| `mosh` | `mosh <host>` | `mosh <host> -- tmux new-session -A -s <session>` | `--ssh=ssh -o ProxyCommand=<proxy>` plus `--experimental-remote-ip=remote`, since mosh's own remote-IP discovery uses the ProxyCommand slot |
 | `et` | `et <host>` | `et <host> -c 'tmux new-session -A -s <session>'` | Refused; set `ProxyCommand` in the SSH config |
 
 Profile options and passed-through arguments go between the transport and
@@ -532,8 +532,8 @@ connect = { alias = "b", transport = "mosh", proxy = "corp-proxy %h %p" }
 ```
 
 1. `mdstack connect b work` opens `work` on `host-b`, creating it the first
-   time: `mosh --ssh='ssh -o ProxyCommand=…' host-b -- tmux new-session -A
-   -s work`.
+   time: `mosh --ssh='ssh -o ProxyCommand=…' --experimental-remote-ip=remote
+   host-b -- tmux new-session -A -s work`.
 2. Work, then detach with the tmux prefix and `d`, or close the laptop; mosh
    rides out a network change or sleep while the session keeps running.
 3. Later, from home or another laptop with the same profile, `mdstack

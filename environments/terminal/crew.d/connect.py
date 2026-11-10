@@ -49,7 +49,8 @@ def argv(values, host, session, extra):
     transport, proxy, options = get("transport", "ssh"), get("proxy"), get("options", [])
     tmux = ["tmux", "new-session", "-A", "-s", session] if session else []
     if transport == "mosh":
-        via = ["--ssh=ssh -o ProxyCommand=" + shlex.quote(proxy)] if proxy else []
+        # mosh's default remote-IP discovery runs its own ProxyCommand, which a configured proxy replaces
+        via = ["--ssh=ssh -o ProxyCommand=" + shlex.quote(proxy), "--experimental-remote-ip=remote"] if proxy else []
         return ["mosh", *via, *options, *extra, host] + (["--", *tmux] if tmux else [])
     if transport == "et":  # et takes a ProxyCommand from the owner's SSH config; validate refuses connect.proxy
         return ["et", *options, *extra, host] + (["-c", shlex.join(tmux)] if tmux else [])

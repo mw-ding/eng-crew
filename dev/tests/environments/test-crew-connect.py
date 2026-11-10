@@ -48,10 +48,12 @@ class Connect(Base):
 
     def test_alias_proxy_options_and_passthrough(self):
         _, argv = self.connect("b", "work", "--", "-L", "8080:localhost:8080")
-        self.assertEqual(argv[1:], ["--ssh=ssh -o ProxyCommand='corp-proxy %h %p'", "--predict=always", "-L",
+        self.assertEqual(argv[1:], ["--ssh=ssh -o ProxyCommand='corp-proxy %h %p'", "--experimental-remote-ip=remote",
+                                    "--predict=always", "-L",
                                     "8080:localhost:8080", "host-b", "--", "tmux", "new-session", "-A", "-s", "work"])
         _, argv = self.connect("host-b", "-v")
-        self.assertEqual(argv[1:], ["--ssh=ssh -o ProxyCommand='corp-proxy %h %p'", "--predict=always", "-v", "host-b"])
+        self.assertEqual(argv[1:], ["--ssh=ssh -o ProxyCommand='corp-proxy %h %p'", "--experimental-remote-ip=remote",
+                                    "--predict=always", "-v", "host-b"])
 
     def test_et_session_and_ssh_proxy(self):
         _, argv = self.connect("c", "work")
