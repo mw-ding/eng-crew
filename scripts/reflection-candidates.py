@@ -17,7 +17,8 @@ is preferred, then the latest closed; a closed item of one counted incident fixe
 and is not a match. Actions: `file` (no match, or a closed match with a fresh occurrence after it closed:
 `regression_of`), `append` (an open match missing some of the evidence, listed in `new`), `none` (the open match
 already cites everything, as after an interrupted run that posted its card) and `skip`. A fixed row with a fresh
-occurrence checks open matches too, so a retry finds the regression card it already filed.
+occurrence then checks its matching cards too, open or closed, so a retry finds the regression card it already
+filed and a closed one needs an occurrence after it closed.
 
 Usage: reflection-candidates.py --index FILE [--forge FILE]... [--buffer FILE]
 Exit codes: 0 candidates printed, 2 usage or malformed input.
@@ -160,9 +161,8 @@ def run(a):
                         ", ".join(row["status_refs"]) or "an unnamed fix")))
                     continue
                 got = candidate(c, fix, linked, repo, fresh)
-                if got["action"] == "file":
-                    opened = [m for m in matching(cls) if (m.get("state") or "").upper() == "OPEN"]
-                    got = candidate(got, opened, linked, repo, fresh) if opened else got
+                if got["action"] != "skip":
+                    got = candidate(got, fix + matching(cls), linked, repo, fresh)
                 out.append(got)
                 continue
             batched = row["status_refs"] if row.get("status") == "batched" else []

@@ -157,7 +157,11 @@ class FindingsThreshold(unittest.TestCase):
         got = only([fix, mine], buffer=later)
         self.assertEqual((got["action"], got["new"]), ("none", []))
         mine.update(state="CLOSED", closedAt="2026-11-07T18:00:00Z")
-        self.assertEqual(only([fix, mine], buffer=later)["action"], "file")
+        got = only([fix, mine], buffer=later)
+        self.assertEqual((got["action"], got["match"]), ("skip", U + "issues/40"))
+        got = only([fix, mine], buffer=row(4, "fixed by #30", date="2026-11-08"))
+        self.assertEqual((got["action"], got["regression_of"], got["fresh"]),
+                         ("file", U + "issues/40", ["row-date-2026-11-08"]))
         self.assertEqual(only([fix, mine], buffer=row(4, "fixed by #30"))["action"], "skip")
 
     def test_fixed_row_with_an_unknown_fix_is_skipped(self):
