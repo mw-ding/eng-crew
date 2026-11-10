@@ -108,6 +108,18 @@ class RunUsageTest(unittest.TestCase):
         self.assertEqual(self.run_usage("--run", self.record(engine="codex")),
                          (0, "Run: 23m 10s · tokens n/a · opus (high)", ""))
 
+    def test_unreadable_log_is_na_without_path(self):
+        self.claude_logs()
+        real_open = open
+
+        def deny(path, *a, **k):
+            if str(path).endswith(".jsonl"):
+                raise PermissionError(13, "Permission denied", path)
+            return real_open(path, *a, **k)
+        with mock.patch("builtins.open", deny):
+            code, out, err = self.run_usage("--run", self.record())
+        self.assertEqual((code, out, err), (0, "Run: 23m 10s · tokens n/a · opus (high)", ""))
+
     def test_flags_override_record_and_coordinator_form(self):
         self.claude_logs()
         code, out, _ = self.run_usage("--engine", "claude-code", "--dir", self.wt, "--start", "2026-11-10T07:02:30Z")

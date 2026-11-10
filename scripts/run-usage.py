@@ -10,8 +10,8 @@ override it, and a run without a record (the coordinator) passes them alone.
 Wall-clock time runs from the start to now. Tokens come from the engine's
 harness adapter `usage(directory, start)` reader of its local session log
 (docs/runtimes/harness-adapters.md); an adapter without a reader, or no log
-entry since the start, prints `tokens n/a`, never an estimate. The model is
-the one the log names, else the record's. For example:
+entry since the start, or an unreadable log, prints `tokens n/a`, never an
+estimate. The model is the one the log names, else the record's. For example:
 
   Run: 23m 10s · 1.24M in (1.1M cached) / 38.2k out · claude-opus-5-5 (high)
 
@@ -52,7 +52,10 @@ def duration(seconds):
 
 def line(engine, directory, start, model, effort, now, adapters):
     reader = getattr(adapters.get(engine), "usage", None)
-    totals = reader(directory, start.timestamp()) if reader and directory else None
+    try:
+        totals = reader(directory, start.timestamp()) if reader and directory else None
+    except OSError:  # a log that vanished or is unreadable: n/a, never a traceback naming its path
+        totals = None
     tokens = "tokens n/a"
     if totals:
         tokens = "%s in (%s cached) / %s out" % (count(totals["input"]), count(totals["cached"]),

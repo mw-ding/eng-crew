@@ -12,9 +12,9 @@ brief a shorter form.
 
 Role-wide rules:
 
-- The usage line ([usage-line.md](../shared/usage-line.md)) is inlined in
-  the research and reflection report formats: the tmux researcher brief has
-  no room for the fragment.
+- The usage line ([usage-line.md](../shared/usage-line.md)): the tmux
+  brief has a one-line pointer to fit its size budget, and the reflection
+  report format carries the line inline.
 
 Procedures:
 
