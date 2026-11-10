@@ -2903,6 +2903,23 @@ launch_note = "harness/codex-venue.md"
             self.assertRejects("pack.harness.pointer[0].target: collides with a built-in bootstrap target: %r" % builtin,
                                target(builtin))
 
+    def test_home_root(self):
+        """#1032: root = "home" targets the agent home; still relative, and only project targets meet the built-ins."""
+        home = '[[pointer]]\nharness = "claude-code"\nroot = "home"\ntarget = "%s"\nsource = "harness/venue.md"\n'
+        builtin = sorted(cc.HARNESS_BUILTINS)[0]
+        self.assertEqual(self.run_validate(self.REGISTRY + home % builtin)[0], 0)
+        self.assertEqual(self.run_validate(self.REGISTRY + home % ".claude/skills/org-review-tool/SKILL.md")[0], 0)
+        for bad in ("/etc/crew.md", "~/.claude/CLAUDE.md"):
+            self.assertRejects("pack.harness.pointer[3].target: expected a home-relative path, got %r" % bad,
+                               self.REGISTRY + home % bad)
+        self.assertRejects("pack.harness.pointer[3].target: expected a normalized path with no empty, ., .. or "
+                           ".git component, got '../x.md'", self.REGISTRY + home % "../x.md")
+        self.assertRejects("pack.harness.pointer[4].target: duplicate target 'rules.md'",
+                           self.REGISTRY + home % "rules.md" + home % "rules.md")
+        self.assertRejects("pack.harness.pointer[3].root: unknown value 'etc' (expected one of: project, home)",
+                           self.REGISTRY + (home % "x.md").replace('"home"', '"etc"'))
+        self.assertRejects("pack.harness.pointer[2].root: unknown key", self.REGISTRY + 'root = "home"\n')
+
     def test_source_containment(self):
         self.assertRejects("pack.harness.pointer[0].source: escapes the pack directory: '../secret.md'",
                            self.REGISTRY.replace('"harness/review-tool.md"', '"../secret.md"'))

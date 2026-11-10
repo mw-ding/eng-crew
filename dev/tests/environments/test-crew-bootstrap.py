@@ -1323,6 +1323,78 @@ launch_note = "harness/codex-note.md"
         self.assertNotIn("Then read", json.loads(self.manifest.read_text())["launches"][0])
         self.assertEqual(self.upgrade("--dry-run").stdout.splitlines()[-1], "crew upgrade: no changes")
 
+    HOME_REGISTRY = """[[pointer]]
+harness = "claude-code"
+root = "home"
+target = ".claude/rules/org.md"
+source = "harness/venue.md"
+mode = "pointer"
+[[pointer]]
+harness = "claude-code"
+target = ".claude/skills/org-tool/SKILL.md"
+source = "harness/tool.md"
+"""
+
+    def test_home_root_entry_installs_upgrades_and_reports_drift(self):
+        """#1032: a root = "home" entry installs under $HOME with the project targets' hash, drift and refusals,
+        and no exclude line."""
+        pack = self.registry(self.HOME_REGISTRY, self.FILES).resolve()
+        home = Path(self.home) / ".claude/rules/org.md"
+        before = self.exclude.read_text()
+        r = self.bootstrap("--harness", "claude-code", "--dry-run")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("%s (planned)" % home, r.stdout)
+        self.assertIn("Home operation: write %s (pack.harness root = home; no exclude line)" % home, r.stdout)
+        self.assertNotIn("Repo operation: add /.claude/rules/org.md", r.stdout)
+        self.assertFalse(home.exists())
+        r = self.bootstrap("--harness", "claude-code", "--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        record = json.loads(self.manifest.read_text())
+        self.assertEqual(home.read_text(), "Read %s/harness/venue.md and follow it.\n" % pack)
+        self.assertEqual(record["harness_pointers"][str(home)],
+                         {"harness": "claude-code", "source": "harness/venue.md", "mode": "pointer", "root": "home"})
+        self.assertNotIn("root", record["harness_pointers"][str(Path(self.project_dir) / ".claude/skills/org-tool/SKILL.md")])
+        self.assertEqual(record["targets"][str(home)], hashlib.sha256(home.read_bytes()).hexdigest())
+        self.assertNotIn("rules", self.exclude.read_text())
+        self.assertEqual(self.upgrade("--dry-run").stdout.splitlines()[-1], "crew upgrade: no changes")
+        (pack / "harness.toml").write_text(self.HOME_REGISTRY.replace('mode = "pointer"', 'mode = "copy"'))
+        r = self.upgrade("--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(home.read_text(), "Venue.\n")
+        self.assertEqual(json.loads(self.manifest.read_text())["targets"][str(home)],
+                         hashlib.sha256(b"Venue.\n").hexdigest())
+        home.write_text("owner edit\n")
+        (pack / "harness/venue.md").write_text("Venue v2.\n")
+        manifest = self.manifest.read_bytes()
+        r = self.upgrade("--yes")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("drift: " + str(home), r.stdout + r.stderr)
+        self.assertEqual(home.read_text(), "owner edit\n")
+        self.assertEqual(self.manifest.read_bytes(), manifest)
+        self.assertEqual(self.exclude.read_text().count("rules"), before.count("rules"))
+
+    def test_home_root_refusals(self):
+        """#1032: an unowned home target or a symlinked parent under $HOME is refused before any write."""
+        self.registry(self.HOME_REGISTRY, self.FILES)
+        rules = Path(self.home) / ".claude/rules"
+        outside = Path(self.tmp) / "elsewhere"
+        outside.mkdir()
+        rules.parent.mkdir(parents=True)
+        rules.symlink_to(outside, target_is_directory=True)
+        r = self.bootstrap("--harness", "claude-code", "--yes")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("symlink target or parent: " + str(rules / "org.md"), r.stderr)
+        self.assertFalse(self.manifest.exists())
+        self.assertEqual(list(outside.iterdir()), [])
+        rules.unlink()
+        rules.mkdir()
+        (rules / "org.md").write_text("owner rules\n")
+        r = self.bootstrap("--harness", "claude-code", "--yes")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("target edited or unowned: " + str(rules / "org.md"), r.stderr)
+        self.assertEqual((rules / "org.md").read_text(), "owner rules\n")
+        self.assertFalse(self.manifest.exists())
+
     def test_harness_requires_role_render(self):
         self.project_path.write_text(self.project_path.read_text().replace('name = "tmux"', 'name = "grok-bot"'))
         r = self.bootstrap("--harness", "claude-code", "--yes")
