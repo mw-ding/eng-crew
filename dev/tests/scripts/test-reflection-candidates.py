@@ -145,6 +145,21 @@ class FindingsThreshold(unittest.TestCase):
         got = [c for c in got["candidates"] if c["basis"] == "findings"][0]
         self.assertEqual((got["action"], got["fresh"]), ("file", ["ri-o-r-2", "ri-o-r-3"]))
 
+    def test_fixed_row_regression_reconciles_a_filed_card(self):
+        fix = pr(30, "2026-11-06T00:00:00Z")
+        later = row(4, "fixed by #30", date="2026-11-07")
+        mine = item(40, "2026-11-07T12:00:00Z", "**Failure class:** ci-flakes-on-retry\n"
+                    "**Proposed fix:** rp-ci-flakes-on-retry-scripts-ci-py\nEvidence: o/r#1, o/r#2")
+        got = only([fix, mine], buffer=later)
+        self.assertEqual((got["action"], got["match"], got["new"], got["regression_of"]),
+                         ("append", U + "issues/40", ["o/r#3"], U + "pull/30"))
+        mine["body"] += ", o/r#3"
+        got = only([fix, mine], buffer=later)
+        self.assertEqual((got["action"], got["new"]), ("none", []))
+        mine.update(state="CLOSED", closedAt="2026-11-07T18:00:00Z")
+        self.assertEqual(only([fix, mine], buffer=later)["action"], "file")
+        self.assertEqual(only([fix, mine], buffer=row(4, "fixed by #30"))["action"], "skip")
+
     def test_fixed_row_with_an_unknown_fix_is_skipped(self):
         got = only([pr(1, "2026-10-02T00:00:00Z")], buffer=row(5, "fixed by #99"))
         self.assertEqual((got["action"], got["reason"]), ("skip", "fixed by o/r#99, fix date unknown"))
