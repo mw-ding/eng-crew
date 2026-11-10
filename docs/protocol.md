@@ -209,9 +209,9 @@ for an existing change). List the commands, key outputs, N/A reasons and
 typed inline proof labels alongside the results; retain the existing
 builder engine marker. `sha` binds the results to the final full head SHA;
 a result for an older head does not describe the current change.
-With `owners`, `tests=n/a` only when every changed path is no-owner-ok.
-With a mix, `tests` is `pass` or `fail` from the owned code paths, and the
-no-owner-ok paths are listed beside the marker.
+With `owners`, `tests=n/a` only when every changed path is no-owner-ok or
+removed (absent at head). With a mix, `tests` is `pass` or `fail` from the
+owned code paths, and the no-owner-ok paths are listed beside the marker.
 
 **Drawbacks and limits** (decision [#160, row 8](https://github.com/mw-ding/eng-crew/issues/160#issuecomment-6531125583)
 and [row 11](https://github.com/mw-ding/eng-crew/issues/160#issuecomment-6531918771)):
