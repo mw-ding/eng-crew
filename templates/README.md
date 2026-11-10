@@ -179,17 +179,17 @@ including file's, so a role's shared policy is authored once (#1184).
 | `<max-active-milestones>` | Maximum open milestones for new coordinator build dispatch, in milestone order | `runtime.options.max_active_milestones` |
 | `<builder-cap>`, `<reviewer-cap>` | session coordinator's concurrent builder runs and reviewer passes | `runtime.options.builders`, `runtime.options.reviewers` |
 | `<present-builder-cap>`, `<present-reviewer-cap>` | session coordinator's owner-present builder and reviewer limits | `runtime.options.present_builders`, `runtime.options.present_reviewers` |
-| `<session-backend>` | session coordinator's worker launcher: `native` subagents or `cli` runs | `runtime.options.session_backend` |
+| `<session-backend>` | session coordinator's worker launcher: `native` subagents or `cli` runs; `hosted` renders control-plane session text instead (#1052) | `runtime.options.session_backend` |
 | `<lone-pr-land>` | tmux lone-ready-PR landing policy | `runtime.options.lone_pr_land` |
 | `<train-min>`, `<train-window>` | tmux synthesizer batching threshold and maximum wait in seconds | `runtime.options.train_min`, `runtime.options.train_window` |
 | `<merge-grant>`, `<hold-label-blocks>` | tmux synthesizer's standing merge grant scope and whether `crew:hold` blocks | `runtime.options.merge_grant`, `runtime.options.hold_label_blocks` |
 | `<merge-grant-scope>`, `<spec-paths>` | tmux synthesizer's grant scope list and spec globs, as JSON arrays; absent keys render `["approved"]` and `["docs/specs/**"]` | `runtime.options.merge_grant_scope`, `spec.paths` |
-| `<release-delegation>` | tmux coordinator's recorded owner release delegation (words and link), or `none` | `runtime.options.release_delegation` |
+| `<release-delegation>` | tmux and session coordinators' recorded owner release delegation (words and link), or `none` | `runtime.options.release_delegation` |
 | `<mirror-deferral>` | tmux synthesizer's recorded standing mirror deferral source and scope | `runtime.options.mirror_deferral` |
 | `<mirror-gate>` | tmux synthesizer's mirror-gate paragraph: the standing-deferral rule for `live-copy`, the `n/a` by profile rule for `none` ([tmux](../docs/runtimes/tmux.md#no-live-copy-to-mirror-877)) | `runtime.options.mirror` |
-| `<land-step>` | tmux synthesizer's step 3: today's locked land for `sync`; for `async`, `mdstack land request`, the merge record and `mdstack land resume`, with the `land.serializes` and `land.tests_against_tip` alternatives ([asynchronous land](../docs/interfaces.md#asynchronous-land-design)) | `land.mode` (change backend's manifest) |
+| `<land-step>` | tmux and session synthesizer's step 3: today's locked land for `sync` (the session one by its `mkdir` lock); for `async`, `mdstack land request`, the merge record and `mdstack land resume`, with the `land.serializes` and `land.tests_against_tip` alternatives ([asynchronous land](../docs/interfaces.md#asynchronous-land-design)) | `land.mode` (change backend's manifest) |
 | `<land-publish>` | tmux builder's publish line after opening the PR, only when the backend opens drafts; otherwise nothing | `land.opens_draft` (change backend's manifest) |
-| `<land-rule>` | tmux synthesizer's Land rule opening: under `land.tests_against_tip`, every ready PR lands alone through step 3 with no update-from-base or train; otherwise nothing | `land.tests_against_tip` (change backend's manifest) |
+| `<land-rule>` | tmux synthesizer's Land rule opening (session: after its two rules): under `land.tests_against_tip`, every ready PR lands alone through step 3 with no update-from-base or train; otherwise nothing | `land.tests_against_tip` (change backend's manifest) |
 | `<parent>` | Number of the parent spec issue | none (run-time) |
 | `<date>`, `<reason>` | Date and reason recorded in a state file (for example a quota steer) | none (run-time) |
 | `<sweep-id>`, `<outcome>`, `<band>`, `<shadow\|apply>` | A triage sweep's UTC start, a triage record's decision slug, its priority band `P0`–`P3` and the sweep's `triage.mode` ([protocol §4](../docs/protocol.md#4-marker-conventions)) | none (run-time) |

@@ -18,6 +18,8 @@ Role-wide rules:
   skip. Who records a skip stays in each runtime template.
 - [no-downloads.md](../shared/no-downloads.md): local tools only (tmux and
   session).
+- [usage-line.md](../shared/usage-line.md): usage line above the signature
+  of every pass-reporting post (tmux and session).
 
 Procedures:
 

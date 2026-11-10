@@ -12,7 +12,8 @@ read-only calls); express routing (no reviewer event, `ci-passed` only with a se
 `fixtures/poll/triage-*.json` (each skip rule, owner replies, exact-key duplicate hints, card fields from the intake
 template, P0 signals from defaults or a rules file, unreadable items and repos recorded, one wake per new P0, issue
 reads only, off unless `triage.enabled`, #747); closed milestones queued after a baseline until a sweep takes them
-(#374). Run in CI.
+(#374); a non-GitHub tracker scanned through its `tracker.list-items` binding per `triage.trackers` id, never `gh`,
+and `poll --triage-only` on a session profile (#1404). Run in CI.
 """
 import importlib.machinery
 import importlib.util
@@ -27,7 +28,7 @@ import unittest
 from unittest import mock
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # dev/tests/: crew_testlib
-from crew_testlib import Base, CREW, SCRIPTS
+from crew_testlib import Base, CREW, SCRIPTS, write_pack
 
 
 POLL = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures", "poll")
@@ -318,7 +319,7 @@ class GhRetry(unittest.TestCase):
                 mock.patch("time.time", return_value=1_800_000_000), \
                 mock.patch("time.sleep", side_effect=KeyboardInterrupt) as sleep:
             with self.assertRaises(KeyboardInterrupt):
-                self.poll.run(mock.Mock(once=False))
+                self.poll.run(mock.Mock(once=False, triage_only=False))
         sleep.assert_called_once_with(600)
 
     def refused(self, *argv, **kwargs):
@@ -338,8 +339,8 @@ class GhRetry(unittest.TestCase):
             with mock.patch.object(self.poll, "profile", return_value=(values, None, state)), \
                     mock.patch.object(self.poll.ownership_module, "status", return_value="active"), \
                     mock.patch.object(self.poll, "gh_json", return_value=[]), \
-                    mock.patch.object(self.poll, "triage_poll", lambda v, s, p: triage(v, s, p, read=read)):
-                code = self.poll.run(mock.Mock(once=True, project="crew.toml"))
+                    mock.patch.object(self.poll, "triage_poll", lambda v, s, p, **kw: triage(v, s, p, read=read, **kw)):
+                code = self.poll.run(mock.Mock(once=True, triage_only=False, project="crew.toml"))
         self.assertEqual(code, 75)
         self.assertEqual(reads, [("issue", "list")])  # no milestones read after the refusal
         self.assertIn("rate-limited until 2027-01-15T08:30:00Z", str(out.call_args_list[-1].args[0]))
@@ -362,7 +363,7 @@ class GhRetry(unittest.TestCase):
                     mock.patch.object(self.poll.ownership_module, "status", return_value="active"), \
                     mock.patch.object(self.poll, "gh_json", side_effect=read), \
                     mock.patch.object(train.precheck.config, "resolve_profile", return_value=({},)):
-                code = self.poll.run(mock.Mock(once=True, project="crew.toml", org_profile=None))
+                code = self.poll.run(mock.Mock(once=True, triage_only=False, project="crew.toml", org_profile=None))
             self.assertFalse(os.path.exists(os.path.join(state, "poll-state.json")))  # no baseline recorded
         self.assertEqual(code, 75)
         self.assertEqual(reads[-1], ("api", "repos/acme/widgets/pulls/171/files?per_page=100"))
@@ -388,7 +389,7 @@ class GhRetry(unittest.TestCase):
                     self.assertRaises(self.poll.RateLimited, call)
 
     def test_once_exits_tempfail_on_transient_and_one_otherwise(self):
-        args = mock.Mock(once=True)
+        args = mock.Mock(once=True, triage_only=False)
         for error, code in [(self.poll.Transient("crew: gh pr list failed: HTTP 504"), 75),
                             (self.poll.RateLimited("crew: gh pr list rate-limited until ...", 0), 75),
                             (RuntimeError("crew: gh pr list failed: HTTP 404"), 1)]:
@@ -794,6 +795,100 @@ class TriageScan(unittest.TestCase):
         self.crew.triage_poll(self.values, self.tmp, os.path.join(self.tmp, "crew.toml"), read=down)
         with open(os.path.join(self.tmp, "triage", "queue.json")) as f:
             self.assertEqual(json.load(f)["milestones"], [m3])
+
+
+class NativeTriage(Base):
+    """#1404: a non-GitHub tracker's triage scan reads `tracker.list-items`, never gh; `--triage-only` runs on session."""
+    EX = textwrap.dedent("""\
+        #!/usr/bin/env python3
+        import json, os, sys
+        if sys.argv[1:3] == ["items", "DOWN"]:
+            sys.exit("ex: no tracker DOWN")
+        with open(os.environ["EX_ITEMS"] + ".log", "a") as f:
+            f.write(json.dumps(sys.argv[1:]) + "\\n")
+        print(open(os.environ["EX_ITEMS"]).read())
+        """)
+
+    def setUp(self):
+        super().setUp()
+        self.write_profile(runtime="session")
+        with open(os.path.join(SCRIPTS, "..", "templates", "backends", "github.toml")) as f:
+            github = f.read()
+        mapping = re.sub(r"(?m)^list-items = .*$", 'list-items = "ex items <tracker> --json --root <state-dir>"', github)
+        write_pack(os.path.join(self.project_dir, "pack"), mapping=mapping)
+        with open(self.project, "a") as f:
+            f.write('pack = "pack"\n[triage]\nenabled = true\ntrackers = ["OPS", "DOWN"]\n')
+        for name, text in (("ex", self.EX), ("gh", '#!/bin/sh\necho "$*" >> "%s"\nexit 1\n'
+                                                 % os.path.join(self.tmp, "gh.log"))):
+            path = os.path.join(self.tmp, "bin", name)
+            with open(path, "w") as f:
+                f.write(text)
+            os.chmod(path, 0o755)
+        self.env["EX_ITEMS"] = os.path.join(self.tmp, "items.json")
+        owner = "acme-owner"
+        record = "<!-- crew:v1 role=researcher pass=triage issue=OPS-3 decision=classify priority=P2 mode=shadow -->"
+        with open(self.env["EX_ITEMS"], "w") as f:
+            json.dump([{"id": "OPS-1", "title": "Pipeline blocked on deploy", "body": "", "labels": ["bug"]},
+                       {"id": "OPS-2", "title": "Placed", "body": "", "labels": [], "milestone": "M3"},
+                       {"id": "OPS-3", "title": "Recorded", "body": "", "labels": [{"name": "P2"}],
+                        "comments": [{"author": "acme-bot", "body": record, "created": "2026-11-01T00:00:00Z"},
+                                     {"author": owner, "body": "triage: accept", "created": "2026-11-02T00:00:00Z"}]},
+                       {"id": "OPS-4", "title": "Pipeline blocked on deploy", "body": "", "state": "closed"}], f)
+
+    def test_triage_only_scans_the_tracker_binding_on_a_session_profile(self):
+        r = self.crew("poll", "--triage-only", "--project", self.project)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("crew: poll: triage queue 2 items (OPS ok, DOWN unreadable: tracker.list-items failed: "
+                      "ex: no tracker DOWN)", r.stdout)
+        with open(os.path.join(self.state, "triage", "queue.json")) as f:
+            queue = json.load(f)
+        items = {e["ref"]: e for e in queue["items"]}
+        self.assertEqual(sorted(items), ["OPS#OPS-1", "OPS#OPS-3"])
+        self.assertEqual((items["OPS#OPS-1"]["reason"], items["OPS#OPS-1"]["p0"]), ("new", ["keyword:pipeline blocked"]))
+        self.assertEqual([d["ref"] for d in items["OPS#OPS-1"]["duplicates"]], ["OPS#OPS-4"])
+        self.assertEqual(items["OPS#OPS-3"]["reason"], "owner-feedback")
+        self.assertEqual(queue["milestones"], [])
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, "gh.log")))  # gh never ran
+        with open(self.env["EX_ITEMS"] + ".log") as f:  # install-time <state-dir> filled, <tracker> per read
+            self.assertEqual(json.loads(f.readline()), ["items", "OPS", "--json", "--root",
+                                                        os.path.join(self.tmp, "state")])
+        with open(os.path.join(self.state, "wake", "queue.jsonl")) as f:
+            self.assertEqual([json.loads(line)["refs"] for line in f], [["OPS#OPS-1"]])
+
+    def test_triage_only_needs_triage_enabled_and_plain_poll_stays_tmux_only(self):
+        with open(self.project) as f:
+            text = f.read()
+        with open(self.project, "w") as f:
+            f.write(text.replace("enabled = true", "enabled = false"))
+        r = self.crew("poll", "--triage-only", "--project", self.project)
+        self.assertEqual((r.returncode, r.stdout.strip()), (1, "crew: poll: triage.enabled is false; nothing to scan"))
+        r = self.crew("poll", "--once", "--project", self.project)
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("runtime.name is session, not tmux", r.stdout)
+
+    def test_list_items_shapes_normalize(self):
+        crew = load_crew()
+        opened, closed = crew.triage_items([[{"number": 7, "title": "a", "labels": [{"name": "P1"}],
+                                              "comments": [{"author": {"login": "o"}, "body": None}]}],
+                                            [{"id": "12", "title": "b", "state": "CLOSED"}]])
+        self.assertEqual((opened[0]["number"], opened[0]["labels"], opened[0]["comments"][0]["body"]),
+                         (7, [{"name": "P1"}], ""))
+        self.assertEqual((closed[0]["number"], closed[0]["url"]), (12, ""))
+        with self.assertRaises(ValueError):
+            crew.triage_items({"items": []})
+
+    def test_relayed_decision_names_a_native_item(self):  # #1404 self-gate: `#OPS-3`, not only `#123`
+        crew = load_crew()
+        record = {"author": {"login": "acme-bot"}, "createdAt": "2026-11-01T00:00:00Z",
+                  "body": "<!-- crew:v1 role=researcher pass=triage issue=OPS-3 decision=classify mode=shadow -->"}
+        decision = {"author": {"login": "acme-bot"}, "createdAt": "2026-11-02T00:00:00Z",
+                    "body": "[Ash/decision] owner: accept #OPS-3 as P2"}
+        items = [{"number": "OPS-3", "title": "Recorded", "body": "", "labels": [], "comments": [record], "url": ""},
+                 {"number": "OPS-9", "title": "Decision log", "body": "", "labels": [], "comments": [decision],
+                  "url": "", "milestone": "M1"}]
+        entries = crew.triage_scan("OPS", items, [], crew.TRIAGE_RULES, {"acme-owner"}, crew.triage_card_fields(),
+                                   ("acme-bot", "Ash"))
+        self.assertEqual([(e["ref"], e["reason"]) for e in entries], [("OPS#OPS-3", "owner-feedback")])
 
 
 if __name__ == "__main__":

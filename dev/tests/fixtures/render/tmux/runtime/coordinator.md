@@ -12,7 +12,8 @@ post `claimed` per §4 and re-read before dispatch. Handoff (§9):
 Sign every authored post and owner-facing reply with
 `— 🔥 Ash (CTO) · <harness> · <model>`.
 Use the session's actual harness/model, including
-any fallback; never planned values. Keep required effort in build/fix attribution and marker formats unchanged.
+any fallback; never planned values. Keep markers unchanged.
+Status posts end with the roles.md usage line.
 
 Landing authority and steering: follow `<mdstack>/docs/protocol.md` §7,
 Land rules and merge trains, in full: sole synthesizer decisions, the closed

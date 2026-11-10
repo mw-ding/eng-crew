@@ -784,6 +784,58 @@ class PackOverlay(unittest.TestCase):
             step3 = synth[synth.index("\n3. "):synth.index("\n4. ")]
             self.assert_crew_commands_parse(step3)
 
+    def test_session_async_land_polls_declared_status_within_bound(self):
+        """#1351: a session profile renders the async land step: the backend's placeholder and status map through
+        `mdstack land request`, bounded by land_timeout, refusing failed or unknown; sync renders stay unchanged."""
+        with open(os.path.join(os.path.dirname(SCRIPTS), "profiles", "session.toml")) as f:
+            session = self.project(f.read().replace('[runtime]\nname = "session"\n', ""))
+        with open(session) as f:
+            text = f.read().replace('name = "tmux"', 'name = "session"', 1)
+        with open(session, "w") as f:
+            f.write(text)
+        code, out, sync = self.render(session, "--org-profile", self.org)
+        self.assertEqual(code, 0, out)
+        sync = tree(sync)
+        self.assertIn("3. Serial land (session C7;", sync["runtime/synthesizer.md"])
+        self.assertNotIn("$CREW_BIN land", sync["runtime/synthesizer.md"])
+        self.async_pack('mode = "async"\nchange_placeholder = "change"\n[land.status]\n"^MERGED (?P<revision>[0-9a-f]{40})$" '
+                        '= "landed"\n"^FAILED" = "failed"\n"^PENDING$" = "queued"\n"^NONE$" = "none"\n')
+        mapping = os.path.join(self.tmp, "pack", "render", "backends", "example.toml")
+        with open(mapping) as f:
+            text = f.read().replace("ex land <n> --expect-head", "ex land <change> --expect-head").replace(
+                "ex land-status <n>", "ex land-status <change>")
+        with open(mapping, "w") as f:
+            f.write(text + '\n[placeholders]\nkept = ["change"]\n')
+        code, out, bare = self.render(session, "--org-profile", self.org)
+        self.assertEqual(code, 0, out)
+        bare = tree(bare)
+        self.assertEqual({k for k in bare if bare[k] != sync[k]}, {"runtime/synthesizer.md"})
+        synth = bare["runtime/synthesizer.md"]
+        step3 = synth[synth.index("\n3. "):synth.index("\n4. ")]
+        flat = " ".join(step3.split())
+        for rule in ('run `$CREW_BIN land request --project "$CREW_PROJECT" --pr <n> --head <head-sha>`',
+                     "fills the backend's change placeholder", "sends `ex land <change> --expect-head <head-sha>`",
+                     "only when `ex land-status <change> <head-sha>` reads `none` at an unmoved head",
+                     "maps each status read through the declared `land.status`",
+                     "polls every `land_poll_interval` seconds for at most `land_timeout` seconds",
+                     "On exit 1 (failed, stale head, timeout or unknown status) post no `merge`",
+                     "Hold it until the terminal status", 'release with `rmdir "$CREW_STATE/locks/merge.lock.d"`',
+                     "Tested with the default branch must hold at the request",
+                     'run `$CREW_BIN land resume --project "$CREW_PROJECT"`. It never requests a land again.',
+                     "Complete each landed intent it prints through (a) to (c)"):
+            self.assertIn(rule, flat)
+        self.assertNotIn("land-lock acquire", step3)  # mdstack land-lock stays tmux-only
+        self.assertNotIn("Backend queue", synth)
+        self.assert_crew_commands_parse(step3)
+        self.async_pack('mode = "async"\nserializes = true\ntests_against_tip = true\n')
+        code, out, queue = self.render(session, "--org-profile", self.org)
+        self.assertEqual(code, 0, out)
+        synth = " ".join(tree(queue)["runtime/synthesizer.md"].split())
+        for rule in ("(`land.serializes`, C7): take no repo lock.", "`Land rule: alone, backend queue`",
+                     "Backend queue (`land.tests_against_tip`): the two rules above do not apply."):
+            self.assertIn(rule, synth)
+        self.assertNotIn("mkdir -p", synth[synth.index("3. Serial land"):synth.index(" 4. ")])
+
     def assert_crew_commands_parse(self, text):
         """Every `$CREW_BIN ...` command in text parses with the crew CLI's own argument parser (#1008 review)."""
         loader = importlib.machinery.SourceFileLoader("crew_cli", os.path.join(os.path.dirname(SCRIPTS), "cli", "mdstack"))
@@ -1011,6 +1063,68 @@ class PackOverlay(unittest.TestCase):
             renderer.line("<op:markers.write-item|tracker.comment>")
 
 
+class RoleRuntime(unittest.TestCase):
+    """#1055: runtime.options.role_runtime renders one role from another runtime's templates."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp)
+        with open(os.path.join(os.path.dirname(SCRIPTS), "profiles", "tmux.toml")) as f:
+            self.base = f.read()
+        self.options = 'options = { permission_mode = "bypass", researchers = 2'
+        self.assertIn(self.options + " }", self.base)
+
+    def render(self, role_runtime=None):
+        name = "crew-%d.toml" % len(os.listdir(self.tmp))
+        project, out_dir = os.path.join(self.tmp, name), os.path.join(self.tmp, "out-" + name)
+        with open(project, "w") as f:
+            f.write(self.base if role_runtime is None else
+                    self.base.replace(self.options, self.options + ", role_runtime = %s" % role_runtime))
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(io.StringIO()):
+            code = cr.main(["--project", project, "--out", out_dir], normalize_paths=True)
+        return code, buf.getvalue().replace(self.tmp + os.sep, ""), tree(out_dir) if code == 0 else None
+
+    def test_session_coordinator_beside_tmux_workers(self):
+        _, _, upstream = self.render()
+        code, out, got = self.render('{ coordinator = "session" }')
+        self.assertEqual(code, 0, out)
+        self.assertEqual(sorted(got), sorted(upstream))
+        self.assertEqual({rel for rel in got if got[rel] != upstream[rel]}, {"runtime/coordinator.md"})
+        self.assertTrue(got["runtime/coordinator.md"].startswith("# Coordinator brief: <owner>/<repo> (session)\n"))
+        self.assertIn("Concurrency caps: builder runs `5`, reviewer passes", got["runtime/coordinator.md"])
+        for worker in ("builder", "reviewer", "synthesizer", "researcher"):
+            self.assertTrue(got["runtime/%s.md" % worker].startswith("# "), worker)
+            self.assertNotIn("(session)", got["runtime/%s.md" % worker].splitlines()[0], worker)
+
+    def test_session_synthesizer_keeps_its_own_land_step(self):
+        """#1351 merge-up: <land-step> follows the template's runtime, so a swapped-in session synthesizer keeps its
+        mkdir-lock land on a tmux profile and never gets the tmux land-lock step."""
+        code, out, got = self.render('{ synthesizer = "session" }')
+        self.assertEqual(code, 0, out)
+        synth = got["runtime/synthesizer.md"]
+        self.assertIn("3. Serial land (session C7;", synth)
+        self.assertNotIn("land-lock acquire", synth)
+
+    def test_empty_override_renders_byte_identically(self):
+        _, _, upstream = self.render()
+        code, out, got = self.render("{}")
+        self.assertEqual(code, 0, out)
+        self.assertEqual(got, upstream)
+
+    def test_missing_template_fails_closed(self):
+        code, out, _ = self.render('{ builder = "grok-bot" }')
+        self.assertEqual(code, 1)
+        self.assertRegex(out, r"templates/runtimes/grok-bot/builder\.md:1: missing mapping: no grok-bot template "
+                              r"for role builder\n")
+        code, out, _ = self.render('{ researcher = "session" }')  # #1404: the session brief is sweep-only
+        self.assertEqual(code, 1)
+        self.assertIn("role_runtime.researcher: the session researcher brief runs only the triage sweep", out)
+        code, out, _ = self.render('{ coordinator = "tmux" }')
+        self.assertEqual(code, 1)
+        self.assertIn("role_runtime.coordinator: unknown value 'tmux'", out)
+
+
 class SessionRuntime(unittest.TestCase):
     """#914: runtime.name = "session" renders the coordinator and every worker brief."""
 
@@ -1033,7 +1147,8 @@ class SessionRuntime(unittest.TestCase):
 
     def test_full_brief_set_within_budget(self):
         got = self.render(normalize=True)
-        self.assertEqual(sorted(got), ["runtime/%s.md" % r for r in ("builder", "coordinator", "reviewer", "synthesizer")])
+        self.assertEqual(sorted(got), ["runtime/%s.md" % r for r in ("builder", "coordinator", "researcher", "reviewer",
+                                                                     "synthesizer")])
         for rel, text in got.items():
             with self.subTest(brief=rel):
                 self.assertLessEqual(len(text.encode("utf-8")), 16384)
@@ -1049,6 +1164,12 @@ class SessionRuntime(unittest.TestCase):
                      "Exit 2 (a missing Item, Pass or Base) means do not dispatch."):
             self.assertIn(rule, coordinator)
 
+    def test_release_delegation_renders_in_coordinator(self):  # #1542: #1435 parity with the tmux coordinator
+        self.assertIn('Cut go: `release_delegation = "none"` (docs/release.md).', self.render()["runtime/coordinator.md"])
+        self.base = self.base.replace("reviewers = 1 }", 'reviewers = 1, release_delegation = "make releases https://x/985#c1" }')
+        coordinator = self.render()["runtime/coordinator.md"]
+        self.assertIn('Cut go: `release_delegation = "make releases https://x/985#c1"` (docs/release.md).', coordinator)
+
     def test_present_caps_render(self):  # #1053
         self.base = self.base.replace("builders = 2, reviewers = 1", "builders = 4, reviewers = 3, present_builders = 1")
         coordinator = " ".join(self.render()["runtime/coordinator.md"].split())
@@ -1056,8 +1177,12 @@ class SessionRuntime(unittest.TestCase):
         self.assertIn("admit at most `1` builder runs and `3` reviewer passes; an active recorded non-quiet away "
                       "entry uses the full caps.", coordinator)
 
-    def test_researchers_zero_renders_the_same_briefs(self):  # #1057: a no-op, the binding has no researcher
+    def test_researchers_zero_drops_only_the_sweep_brief(self):  # #1057; #1404: the session triage sweep brief
         upstream = self.render()
+        sweep = " ".join(upstream.pop("runtime/researcher.md").split())
+        for rule in ("This binding runs only the triage sweep", "## Triage sweep", "pass=triage-log",
+                     "$CREW_BIN poll --triage-only"):
+            self.assertIn(rule, sweep)
         self.base = self.base.replace("reviewers = 1 }", "reviewers = 1, researchers = 0 }")
         self.assertIn("researchers = 0", self.base)
         self.assertEqual(self.render(), upstream)
@@ -1080,7 +1205,7 @@ class SessionRuntime(unittest.TestCase):
         self.assertEqual(code, 1, out)
         self.assertEqual(out.splitlines(), [
             "%s:1: runtime.options.notes.render.%s: runtime session renders no %s brief (note dropped)" % (project, r, r)
-            for r in ("researcher", "builder-lead")])
+            for r in ("builder-lead",)])
         code, out, _ = render('builder = ["note.md"], builder-lead = []')
         self.assertEqual(code, 0, out)
         self.assertTrue(tree(out.splitlines()[0].rsplit("/runtime/", 1)[0])["runtime/builder.md"]
@@ -1111,6 +1236,29 @@ class SessionRuntime(unittest.TestCase):
                     self.assertEqual(brief.replace(brief[brief.index("Ownership:"):brief.index("Flavor:")], ""),
                                      none["runtime/%s.md" % role])
 
+
+    def test_hosted_backend_renders_control_plane_dispatch(self):  # #1052
+        for repo in ("", "[repo]\ncontrol_item = 985\n\n"):
+            with self.subTest(control_item=bool(repo)):
+                local = self.render(repo)
+                self.base = self.base.replace('session_backend = "native"', 'session_backend = "hosted"')
+                hosted = self.render(repo)
+                self.base = self.base.replace('session_backend = "hosted"', 'session_backend = "native"')
+                self.assertEqual(sorted(hosted), sorted(local))
+                for rel, text in hosted.items():
+                    self.assertNotIn("<session-backend:", text)
+                    self.assertIsNone(re.search(r"subagent|\bPID\b|native|task handle", text, re.I), rel)
+                    self.assertIn("hosted session", " ".join(text.split()), rel)
+                coordinator = " ".join(hosted["runtime/coordinator.md"].split())
+                for rule in ("Session backend `hosted`: create each worker as a hosted session through the control "
+                             "plane and record the session id it returns as the worker's handle; check liveness by "
+                             "reading that session's state from the control plane.",
+                             "a completed session state alone is not a pass result."):
+                    self.assertIn(rule, coordinator)
+                self.assertEqual("let each hosted session finish its round" in coordinator, bool(repo))
+                for rel, text in local.items():
+                    self.assertNotIn("<session-backend:", text)
+                    self.assertNotIn("hosted session", " ".join(text.split()), rel)
 
     def test_land_step_holds_a_working_lock(self):
         synth = self.render()["runtime/synthesizer.md"]

@@ -1,4 +1,6 @@
 """Codex harness adapter (docs/runtimes/harness-adapters.md#codex-codex)."""
+import datetime
+import glob
 import json
 import os
 import re
@@ -89,3 +91,39 @@ def install_launch(project, pointer, notes=()):
     """The printed Codex launch line: the coordinator brief pointer, then each pack launch note in order."""
     prompt = pointer + "".join(" Then read %s and follow it." % note for note in notes)
     return shlex.join(["codex", "-c", trust(str(project.parent)), prompt])
+
+
+def usage(directory, start):
+    """Token totals since start (epoch seconds) from the Codex session logs whose cwd is directory: {input, cached,
+    output, model}, or None with no token count. Each log's cumulative total_token_usage at its end, less its last total
+    before start; Codex input already includes cached input (#1557)."""
+    base = os.environ.get("CODEX_HOME") or os.path.expanduser("~/.codex")
+    want = os.path.realpath(directory)
+    total = None
+    for path in sorted(glob.glob(os.path.join(glob.escape(base), "sessions", "**", "*.jsonl"), recursive=True)):
+        if os.path.getmtime(path) < start:
+            continue
+        cwd = model = None
+        before, last = {}, None
+        with open(path, encoding="utf-8", errors="replace") as f:
+            for line in f:
+                try:
+                    rec = json.loads(line)
+                    kind, p = rec["type"], rec["payload"]
+                    if kind == "session_meta":
+                        cwd = p["cwd"]
+                    elif kind == "turn_context":
+                        model = p.get("model") or model
+                    elif kind == "event_msg" and p["type"] == "token_count" and p["info"]:
+                        counts = p["info"]["total_token_usage"]
+                        when = datetime.datetime.fromisoformat(rec["timestamp"].replace("Z", "+00:00")).timestamp()
+                        before, last = (counts, last) if when < start else (before, counts)
+                except (ValueError, TypeError, KeyError, AttributeError):
+                    continue
+        if cwd is None or os.path.realpath(cwd) != want or last is None:
+            continue
+        total = total or {"input": 0, "cached": 0, "output": 0, "model": None}
+        for key, field in (("input", "input_tokens"), ("cached", "cached_input_tokens"), ("output", "output_tokens")):
+            total[key] += (last.get(field) or 0) - (before.get(field) or 0)
+        total["model"] = model or total["model"]
+    return total

@@ -6,7 +6,8 @@ Passed reviews start validation, including after zero-step CI startup failures (
 reviewers/synthesizers are killed and dequeued; a finished relay = coordinator run (the researcher) is killed and its done: wakes
 the coordinator, and that queued done: never kills a later run reusing the window name (#1092); a reflection run's
 `done: reflection <window> <url>` puts the report URL on the relayed wake and reaps only the run for that window (#1520); merged PRs are closed out,
-and a merge that an open issue's `Depends on` names stays queued so the coordinator dispatches the dependent (#814). Progress lines are ignored. Judgement records remain in the queue,
+and a merge that an open issue's `Depends on` names stays queued so the coordinator dispatches the dependent (#814), as does
+one that closes an active milestone's last open item or is a release cut, noted `milestone-complete` (#1559). Progress lines are ignored. Judgement records remain in the queue,
 including red CI, changes, stale heads, holds, failed commands, dialogs, blocked runs and owner asks. Red CI for a
 superseded head and synthesizer gate-status blocks that only wait (`wait=ci,review,validation,selfgate,train`) are consumed.
 Routing is serialized; interrupted batches survive in wake/queue.jsonl.route-* and are retried. Reviewer spawns
@@ -50,6 +51,8 @@ REFLECTION_DONE = re.compile(r"done: reflection (\S+) (https?://\S+)")
 # A finished train with every member landed and nothing dropped: a train-report the coordinator need not read.
 TRAIN_CLEAN = re.compile(r"train-report n=\d+ members=\S+ landed=\S+ dropped=none stop=none path=\S+")
 LAND_EVENTS = ("review-approved", "selfgate-passed", "ci-passed")
+# A release cut's CHANGELOG.md patch adds a version section heading (scripts/changelog-cut.py).
+RELEASE_HEADING = re.compile(r"^\+## \[\d+\.\d+\.\d+\]", re.M)
 REVIEW_DONE = re.compile(r"done: #(\d+) ([0-9a-f]{40}) (review|validate|recheck) (pass|changes|escalate)(?:\s.*)?")
 
 
@@ -317,6 +320,26 @@ def notify_land(args, state, repo, pr):
     invoke(args, "notify", event_file=path, flush=False, status=False)
 
 
+def milestone_complete(repo, pr):
+    """The merge closes the last open item of an active milestone, or is a release cut whose diff adds a CHANGELOG.md
+    version heading (#1559): the coordinator closes the milestone and admits the next one."""
+    def api(path):
+        r = subprocess.run(["gh", "api", path], capture_output=True, text=True)
+        if r.returncode:
+            raise RuntimeError("crew: gh api %s: %s" % (path, r.stderr.strip()))
+        return json.loads(r.stdout)
+    for f in api("repos/%s/pulls/%d/files?per_page=100" % (repo, pr["number"])):
+        if f["filename"] == "CHANGELOG.md" and RELEASE_HEADING.search(f.get("patch", "")):
+            return True
+    for n in sorted({i["number"] for i in pr["closingIssuesReferences"]}):
+        milestone = gh("issue", "view", str(n), "-R", repo, "--json", "milestone").get("milestone")
+        if milestone:
+            m = api("repos/%s/milestones/%d" % (repo, milestone["number"]))
+            if m.get("state") == "open" and m.get("open_issues") == 0:
+                return True
+    return False
+
+
 def route_record(args, values, state, w):
     line = w.get("line", "")
     if w.get("reason") == "status" and line.startswith(("ack:", "heartbeat:")):
@@ -425,15 +448,19 @@ def route_record(args, values, state, w):
                 if not landed:
                     return False  # The coordinator records the away land notification after cleanup.
                 notify_land(args, state, repo, pr)
-            if waiting := dependents(repo, pr):
-                if landed and lead.enabled(state, "builder"):
-                    for d in [d for d in waiting if ready(repo, d)]:
-                        if lead.handoff(args, "builder", "build", ["#%d" % d]) not in (0, 4):
-                            raise RuntimeError("crew: builder lead handoff failed for dependent #%d" % d)
-                        waiting.remove(d)
-                if waiting:
-                    w.update(consumer="coordinator", dependents=["#%d" % n for n in waiting])
-                    return False  # the coordinator dispatches the unblocked dependents now, not at the backstop (#814)
+            waiting, complete = dependents(repo, pr), milestone_complete(repo, pr)
+            if waiting and landed and lead.enabled(state, "builder"):
+                for d in [d for d in waiting if ready(repo, d)]:
+                    if lead.handoff(args, "builder", "build", ["#%d" % d]) not in (0, 4):
+                        raise RuntimeError("crew: builder lead handoff failed for dependent #%d" % d)
+                    waiting.remove(d)
+            if waiting:
+                w["dependents"] = ["#%d" % n for n in waiting]  # dispatched now, not at the backstop (#814)
+            if complete:
+                w["note"] = "milestone-complete"  # close the milestone and admit the next one (#1559)
+            if waiting or complete:
+                w["consumer"] = "coordinator"
+                return False
         else:
             issues = {i["number"] for i in pr["closingIssuesReferences"]}
             for name, run in list(runs(state)):

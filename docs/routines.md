@@ -114,7 +114,9 @@ background.
 
 A hosted platform maps each routine to its own routine trigger: the
 schedule becomes the trigger's schedule, and the run prompt names the
-routine file and its skill. The Grok Bot binding does not read routine
+routine file and its skill. The session binding documents its
+[`triage-sweep` trigger](runtimes/session.md#triage-sweep-routine)
+(#1404); its other routines have no trigger yet. The Grok Bot binding does not read routine
 files yet. Its routines are still rendered from
 [its templates](runtimes/grok-bot.md), and binding them is follow-up work.
 

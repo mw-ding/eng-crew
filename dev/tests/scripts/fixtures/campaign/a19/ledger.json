@@ -90,6 +90,19 @@
      "tests": [
       "environments/test-crew-bootstrap.py:test_harness_plan_and_repeat_install"
      ]
+    },
+    "sandbox_roots": {
+     "default": true,
+     "tests": [
+      "environments/test-crew-doctor.py:test_adapter_declared_roots"
+     ]
+    },
+    "usage": {
+     "oracle": true,
+     "tests": [
+      "scripts/test-run-usage.py:test_claude_reader",
+      "scripts/test-run-usage.py:test_unreadable_log_is_na_without_path"
+     ]
     }
    },
    "codex": {
@@ -180,6 +193,19 @@
      "tests": [
       "environments/test-crew-bootstrap.py:test_codex_installs_no_project_files"
      ]
+    },
+    "sandbox_roots": {
+     "default": true,
+     "tests": [
+      "environments/test-crew-doctor.py:test_adapter_declared_roots"
+     ]
+    },
+    "usage": {
+     "oracle": true,
+     "tests": [
+      "scripts/test-run-usage.py:test_codex_reader",
+      "scripts/test-run-usage.py:test_unreadable_log_is_na_without_path"
+     ]
     }
    },
    "pi": {
@@ -251,6 +277,18 @@
     "install_targets": {
      "gap": "Gap: `mdstack bootstrap --harness pi` is not implemented.",
      "tests": []
+    },
+    "sandbox_roots": {
+     "default": true,
+     "tests": [
+      "environments/test-crew-doctor.py:test_adapter_declared_roots"
+     ]
+    },
+    "usage": {
+     "default": true,
+     "tests": [
+      "scripts/test-run-usage.py:test_no_reader_or_no_log_is_na"
+     ]
     }
    },
    "cursor": {
@@ -323,6 +361,18 @@
     "install_targets": {
      "gap": "Gap: `mdstack bootstrap --harness cursor` is not implemented.",
      "tests": []
+    },
+    "sandbox_roots": {
+     "default": true,
+     "tests": [
+      "environments/test-crew-doctor.py:test_adapter_declared_roots"
+     ]
+    },
+    "usage": {
+     "default": true,
+     "tests": [
+      "scripts/test-run-usage.py:test_no_reader_or_no_log_is_na"
+     ]
     }
    },
    "muse": {
@@ -396,6 +446,18 @@
     "install_targets": {
      "gap": "Gap: `mdstack bootstrap --harness muse` is unimplemented.",
      "tests": []
+    },
+    "sandbox_roots": {
+     "default": true,
+     "tests": [
+      "environments/test-crew-doctor.py:test_adapter_declared_roots"
+     ]
+    },
+    "usage": {
+     "default": true,
+     "tests": [
+      "scripts/test-run-usage.py:test_no_reader_or_no_log_is_na"
+     ]
     }
    },
    "opencode": {
@@ -448,6 +510,18 @@
     },
     "install_targets": {
      "unsupported": "with no interactive launch"
+    },
+    "sandbox_roots": {
+     "default": true,
+     "tests": [
+      "environments/test-crew-doctor.py:test_adapter_declared_roots"
+     ]
+    },
+    "usage": {
+     "default": true,
+     "tests": [
+      "scripts/test-run-usage.py:test_no_reader_or_no_log_is_na"
+     ]
     }
    }
   }

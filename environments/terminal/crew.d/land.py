@@ -4,7 +4,8 @@
 Usage: mdstack land status|request|done --project FILE [--org-profile FILE] --pr N --head SHA
        mdstack land resume --project FILE [--org-profile FILE]
 
-Only for a change backend that declares land.mode = "async"; a sync backend is refused. The commands come from
+Only for a change backend that declares land.mode = "async"; a sync backend is refused. Runs under a tmux or
+session profile (#1351). The commands come from
 the backend map's change.land-status, change.read-head and change.land, with the change placeholder
 (land.change_placeholder, default <n>) and <head-sha> filled (#1042). change.land must carry <head-sha> unless the
 manifest declares land.head_guard = false; the head re-read right before the request is kept either way.
@@ -158,7 +159,7 @@ def commands_for(renderer, pr, head, land):
 
 
 def run(args):
-    values, _, state_dir = profile(args)
+    values, _, state_dir = profile(args, runtimes=("tmux", "session"))  # session async land binding (#1351)
     if args.action == "resume":
         if args.pr is not None or args.head is not None:
             print("crew: land resume takes no --pr or --head; it reads every recorded intent")

@@ -226,6 +226,22 @@ python3 scripts/evidence-cli.py --label R1 -- python3 scripts/check-repo.py --on
 python3 dev/tests/scripts/test-evidence-cli.py
 ```
 
+## Run usage helper
+
+`run-usage.py` prints the usage line a role puts just above the signature of
+every pass-reporting post ([roles](../docs/roles.md#usage-line), #1557):
+wall-clock time from the run start, tokens read from the harness's local
+session log by its adapter's `usage` reader
+([harness adapters](../docs/runtimes/harness-adapters.md#adapter-modules)),
+and the model and effort. A harness without a reader, or no log entry since
+the start, prints `tokens n/a`. It prints no path or credential.
+
+```sh
+python3 scripts/run-usage.py --run "$CREW_STATE/runs/$CREW_ID.json"
+python3 scripts/run-usage.py --engine codex --dir "$PWD" --start 2026-11-10T07:00:00Z
+python3 dev/tests/scripts/test-run-usage.py
+```
+
 ## Step summary helper
 
 `step-summary.py` is the thin builder helper for the
@@ -602,6 +618,14 @@ Control-item blocks: a template line exactly `<control-item:set>` or
 only when `repo.control_item` is set (a tracker-native item counts) or
 unset, respectively; the session briefs use it to drop inert ownership
 text (#914).
+
+Session-backend blocks: a template line exactly `<session-backend:hosted>`
+or `<session-backend:local>` opens a block that a line exactly
+`<session-backend:end>` closes. The block renders, without its marker
+lines, only when `runtime.options.session_backend` is or is not `hosted`,
+respectively, and may sit inside a control-item block; the session briefs
+use it to give hosted control-plane sessions their own dispatch and
+liveness text (#1052).
 
 Policy includes: a template line exactly `<include:policy/<dir>/<name>.md>`
 is replaced by `templates/policy/<dir>/<name>.md` (the pack overlay's copy

@@ -3,7 +3,7 @@
 > - **Status:** partly built
 > - **Applies to:** hand-dispatched or hosted sessions; profiles with `runtime.name = "session"`
 > - **Current rules:** [protocol](../protocol.md), [runtime contract](README.md#contract)
-> - **Built:** [Run parameters for hosted dispatch](#run-parameters-for-hosted-dispatch) via `mdstack brief` (#647); the [selector, options and briefs](#selector-options-and-briefs) (#914); [starting the coordinator](#starting-the-coordinator) via `mdstack up` (#1548); [upgrading](#upgrading) via `mdstack upgrade` (#1541)
+> - **Built:** [Run parameters for hosted dispatch](#run-parameters-for-hosted-dispatch) via `mdstack brief` (#647); the [selector, options and briefs](#selector-options-and-briefs) (#914); [starting the coordinator](#starting-the-coordinator) via `mdstack up` (#1548); [upgrading](#upgrading) via `mdstack upgrade` (#1541); the [triage sweep routine](#triage-sweep-routine) (#1404)
 > - **Design only:** everything in [Implementation follow-ups](#implementation-follow-ups)
 > - **Last checked:** 2026-11-09 at `1db3f1d`
 
@@ -24,22 +24,28 @@ runtime. It adds no rule, gate, cap, marker field or label: the
 
 A profile selects the binding with `runtime.name = "session"`
 ([options](../configuration/runtime-options.md#session-options)):
-`max_active_milestones`, `session_backend` (`native` subagents or `cli`
-runs), the `builders` and `reviewers` pool limits, and the synthesizer's
-land-policy options. `crew-render` writes four briefs from
-`templates/runtimes/session/`: the coordinator, and the builder, reviewer and
-synthesizer worker briefs. Each worker brief carries the tmux role's
+`max_active_milestones`, `session_backend` (`native` subagents, `cli`
+runs or `hosted` control-plane sessions), the `builders` and `reviewers` pool limits, and the synthesizer's
+land-policy options. `crew-render` writes five briefs from
+`templates/runtimes/session/`: the coordinator, and the builder, reviewer,
+synthesizer and researcher sweep worker briefs. Each worker brief carries the tmux role's
 contract for one pass per run and ends where the coordinator appends the
 `mdstack brief` run block (below); workers set their own `CREW_*` paths, since
-no runtime sets them. The binding has no researcher brief:
-`researchers = 0` validates as a no-op, so a profile migrated from tmux keeps
-it, and any other value is refused.
+no runtime sets them. The researcher brief runs only the
+[triage sweep](#triage-sweep-routine), carrying the tmux brief's Triage
+sweep policy; `researchers = 0` writes none (#1404).
 
-Session lands are sync and alone (#1041). `land.mode = "async"` is
-tmux-only: the validator refuses it on a session profile, and
-`mdstack land request|resume|done` resolve only tmux profiles. Merge trains
-are tmux-only too, since every `mdstack train` action refuses a session
-profile: the synthesizer brief lands each ready PR alone, one per run, and
+Session lands go alone, one per run (#1041). A sync backend lands under the
+brief's `mkdir` repo lock. A change backend that declares `land.mode =
+"async"` with its `[land]` table, change placeholder and `[land.status]` map
+is accepted on a session profile too (#1351): the synthesizer brief's step 3
+then runs `mdstack land request`, which polls the declared status map every
+`land_poll_interval` seconds up to `land_timeout` and exits 1 on `failed`, a
+stale head, a timeout or an unknown status, and each run starts with
+`mdstack land resume`. `mdstack land` resolves tmux and session profiles;
+`mdstack land-lock` stays tmux-only, so a non-serializing backend keeps the
+`mkdir` lock until the terminal status and the merge post. Merge trains are
+tmux-only, since every `mdstack train` action refuses a session profile:
 `train_min`, `train_window` and `train_local_checks` have no effect.
 
 A session profile may carry a `[hosts]` inventory, without `[placement]`.
@@ -65,6 +71,14 @@ one, `mdstack ownership` always permits, so the render drops that inert text:
 one paragraph says there is no ownership record or handoff, and the worker
 briefs omit their ownership line.
 
+With `session_backend = "hosted"` (#1052), each worker is a hosted session
+that the coordinator creates through a control plane, addresses by the
+session id it returns and probes by a control-plane state read; it is never
+a local subagent or process. The coordinator and worker briefs then render
+that dispatch and liveness text in place of the subagent, task-handle and
+PID text, through `<session-backend:hosted>` and `<session-backend:local>`
+template blocks. `native` and `cli` profiles render as before.
+
 ## Starting the coordinator
 
 `mdstack up --project <config.toml>` on a session profile starts the
@@ -83,6 +97,46 @@ its attach line. `launch.coordinator = "none"` is preflight only, and
 or Codex coordinator conversation
 ([launch options](../configuration/runtime-options.md#launch-topology)).
 
+## Triage sweep routine
+
+With `[triage] enabled = true`, a session crew runs the
+[triage](../triage.md) scan → queue → sweep → record → daily log loop as
+tmux does, in shadow mode first; the owner loop, noise cap, cooldowns and
+calibration are unchanged (#1404). The scan is
+`mdstack poll --triage-only --project <config.toml>`: one zero-model scan
+into `<state-dir>/<owner>__<repo>/triage/queue.json`, then exit. A GitHub
+tracker reads `[triage] repos` through `gh`; a non-GitHub tracker backend
+reads its `tracker.list-items` binding once per `[triage] trackers` id
+(the `<tracker>` placeholder; list it in the map's `placeholders.kept`),
+comments included for owner replies, and lists no closed milestones.
+
+No watcher runs on session, so a hosted scheduler maps
+`roles/eng/researcher/routines/triage-sweep.toml` to its own routine
+trigger ([routines](../routines.md#other-environments)):
+
+- **Schedule:** every `triage.interval_hours` hours (the routine's
+  `every_key`; default 6), with its 10-minute retry and one catch-up run
+  when a slot was missed.
+- **Skip:** the trigger first runs the scan. When `triage/queue.json` lists
+  no `items` and no `milestones`, the run ends there and starts no model
+  session.
+- **Run prompt:** names the routine file
+  `roles/eng/researcher/routines/triage-sweep.toml` and its skill
+  `triage-sweep`, and dispatches the rendered
+  `render/runtime/researcher.md` with its run block:
+
+```sh
+{ cat "<state-dir>/<owner>__<repo>/render/runtime/researcher.md"
+  cli/mdstack brief --window riley-sweep --item "triage sweep" \
+    --pass research --base "<default-branch-head-sha>" \
+    --engine "<engine> <model> <effort>"
+} > "<dispatch-brief>"
+```
+
+A P0 candidate also appends a `triage-p0` record to `wake/queue.jsonl`; with
+no watcher, the coordinator reads it on its next §6 sweep. A crew whose
+host sleeps still misses slots; the catch-up run covers the gap.
+
 ## Decisions
 
 | Concern | Session decision |
@@ -92,7 +146,7 @@ or Codex coordinator conversation
 | Independence | The coordinator schedules and combines outputs; separate workers review and validate. Validation never receives the review. Reviewer identity and engine diversity remain subject to the existing rules and recorded waivers. |
 | Dispatch | Re-read ownership and live item/head, check markers and claims, then pass a brief pointer and refs. A native subagent must enter its assigned unique worktree before changing files. |
 | Concurrency | Profile caps remain ceilings, with the owner-present limits `present_builders` and `present_reviewers` as on tmux ([runtime options](../configuration/runtime-options.md#session-options)); dispatch only as many independent workers as the harness can track. No worker shares the coordinator checkout. |
-| Landing | The synthesizer remains the landing role and selects the land rule; it lands each ready PR alone, with no merge train or async land (above). The coordinator dispatches it; one repo lock covers the final gate through the merge post. |
+| Landing | The synthesizer remains the landing role and selects the land rule; it lands each ready PR alone, with no merge train; an async backend lands through `mdstack land` (above). The coordinator dispatches it; one repo lock covers the final gate through the merge post. |
 | Persistence | Claims, run identities, inbox refs, status, summaries and unlanded worktrees live on disk; evidence and markers live on GitHub. Transcript memory is not recovery state. |
 
 ## Harness adapters and session backends
@@ -124,7 +178,7 @@ uses the [gap declaration](README.md#gap-declaration) format.
 | C2 One consumer per event | Coordinator routes each live event to the protocol's one consumer, checking the pass/head marker and claim before dispatch; duplicate receipts do not create another pass. | None under this manual procedure; no shared event listener is claimed. |
 | C3 Messages by reference, proof of delivery | Brief pointers, item/PR/full SHA and finding links go through native task dispatch or the CLI prompt. The receiver re-reads live state and writes an ack in durable status. | C3 messages by reference: partial, compensated by checking the ack and applying the protocol's bounded retry/escalation on the next coordinator wake; residual risk: no independent timer detects a lost handoff while the session is idle. A dispatch handle alone is not delivery proof. |
 | C4 Status protocol | Each worker writes `ack`, then `done`, `blocked`, `paused` or `failed` with refs to its status file; coordinator reads these without the worker transcript. A missing final status goes to C5. | None under this manual procedure; native completion alone is not a pass result. |
-| C5 Liveness | Inspect native task state or the recorded CLI PID/start time externally; confirmed exit or absent identity means dead/missing. An unqueryable task, hung subagent or failed probe is ambiguous. | C5 liveness: partial, compensated by claim heartbeats, the §6 sweep and bounded re-check then escalation of ambiguous runs; residual risk: a native task lacking a probeable handle/start time cannot be proven alive or missing. Never restart it solely for stale progress. |
+| C5 Liveness | Inspect native task state, the recorded CLI PID/start time or, for `hosted`, the control plane's state for the recorded session id externally; confirmed exit or absent identity means dead/missing. An unqueryable task, hung subagent or failed probe is ambiguous. | C5 liveness: partial, compensated by claim heartbeats, the §6 sweep and bounded re-check then escalation of ambiguous runs; residual risk: a native task lacking a probeable handle/start time cannot be proven alive or missing. Never restart it solely for stale progress. |
 | C6 Isolation | Coordinator creates each unique worktree from a fresh remote base and assigns it explicitly; teardown follows both C6 landed/discard checks, recording and preserving unlanded work. | C6 isolation: partial, compensated by explicit worktree assignment and manual C6 checks before removal; residual risk: native subagents may inherit the coordinator's cwd and bypass the assignment. If the harness cannot keep writes in the assigned worktree, that worker configuration is unsupported. |
 | C7 Serial land | Synthesizer takes the repo's exclusive lock (an atomic `mkdir` of `$CREW_STATE/locks/merge.lock.d`, per the [synthesizer brief](../../templates/runtimes/session/synthesizer.md)) before the §7 re-check and holds it through head-bound land and merge post; inability to hold the lock blocks land. | None under this manual procedure; being in one chat is not a lock. |
 | C8 Owner channel and SLA | Coordinator's interactive chat plus matching GitHub asks, with the protocol's awake-hours SLA, recommended default and auto-apply time. | C8 owner channel and SLA: partial, compensated by GitHub notifications and checking due asks at the next coordinator wake; residual risk: no session deadline watcher enforces timely defaults while the session is idle or closed. |
@@ -175,7 +229,8 @@ the contract's invariant floor; a gap never waives a merge gate.
 ## Implementation follow-ups
 
 Profiles accept `session`, the renderer writes its briefs (#914) and
-`mdstack up` starts the coordinator (#1548). Still to build: the lifecycle runner, durable receipts/status, external task/process identity probes,
+`mdstack up` starts the coordinator (#1548); the triage scan and sweep brief
+run from a hosted trigger (#1404). Still to build: the lifecycle runner, durable receipts/status, external task/process identity probes,
 worktree enforcement and safe teardown, lock handling and ownership guards.
 Add a token-free wake/backstop and deadline path per supported coordinator
 adapter, or retain the declared attended-only gaps. Verify real harness

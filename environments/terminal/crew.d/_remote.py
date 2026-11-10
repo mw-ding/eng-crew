@@ -38,10 +38,15 @@ def scope(values, host):
                 root=values.get("hosts.%s.root" % host, "~/.mdstack"))
 
 
+def address(values, host):
+    """The host's SSH destination: its inventory `address`, else its label (#1034)."""
+    return values.get("hosts.%s.address" % host, host)
+
+
 def call(values, host, verb, attempts=3, **fields):
     fields.update(scope(values, host))
     for _ in range(attempts):
-        reply = REMOTE.call(host, verb, **fields)
+        reply = REMOTE.call(address(values, host), verb, **fields)
         if reply["result"] != "unreachable":
             return reply
         fields["request_id"] = reply.get("request_id")
@@ -135,7 +140,7 @@ def reconcile_tombstone(values, state, name, t):
 
 def attach(values, name, rec, rw=False):
     """This terminal on the run's pane on its host (`ssh -t` to the attach verb); the ssh exit code, 255 unreachable."""
-    return REMOTE.attach(rec["host"], window=name, rw=rw, **scope(values, rec["host"]))
+    return REMOTE.attach(address(values, rec["host"]), window=name, rw=rw, **scope(values, rec["host"]))
 
 
 def capture(values, name, rec):
