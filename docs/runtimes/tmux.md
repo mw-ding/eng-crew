@@ -1369,6 +1369,17 @@ cli/mdstack attach <window>|<role>|builders [--rw] [--project <config.toml>]
   screen (`capture-pane`, refreshed every second). It never moves, joins or
   renumbers a crew window, and the view session is killed on detach.
 
+### mdstack connect
+
+```sh
+cli/mdstack connect [--project <config.toml>] <alias> [<session>] [-- <transport args>...]
+```
+
+`mdstack connect` (#1036) opens the owner's own shell on an inventory host,
+or reattaches-or-creates a tmux session there, through the transport in
+`hosts.<name>.connect`. See
+[Connect to a host](multi-device.md#connect-to-a-host).
+
 ### mdstack logs
 
 ```sh
