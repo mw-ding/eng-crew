@@ -1,0 +1,16 @@
+# Protocol reflection (docs/self-improve.md#reflection, #1521): the last full
+# ISO week each Monday, and a milestone's window at once when it closes, while
+# [reflection] enabled. The environment keeps its own pending, request and
+# completed ledger, independent of [triage]; overlapping windows coalesce into
+# one run, a missed week catches up once and a failed start retries in 10m.
+description = "Reflect on the period's learnings and post one ranked reflection report."
+skill = "protocol-reflection"
+actions = ["read", "run-check", "tracker", "post-marker", "report"]
+schedule = { cron = "0 0 * * 1", timezone = "owner" }
+due_on = ["dev.eng-crew.milestone.closed"]
+enabled_key = "reflection.enabled"
+inputs = ["reflection evidence index", "reflection log"]
+outputs = ["reflection report", "pending threshold cards"]
+deadline = "1d"
+on_miss = "catch-up-once"
+retry = "10m"

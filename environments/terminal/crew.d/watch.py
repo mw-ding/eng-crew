@@ -33,6 +33,9 @@ With `[triage] enabled`, each scan runs the triage sweep timer, which costs no m
 (docs/triage.md#triggers-and-cadence, #748); a newly closed milestone makes a sweep due at once (#374).
 With `[docs] enabled`, each scan runs the docs-pass timer: the zero-model docs scan, then a docs-pass researcher session
 only when the scan changed since the last report (docs/project-docs.md#docs-pass, #1026).
+With `[reflection] enabled`, each scan runs the reflection timer (`mdstack reflection`'s tick): weekly and
+milestone-close windows into a persistent ledger, one researcher reflection run at a time (docs/self-improve.md#reflection,
+#1521).
 Each scan also scales idle lifecycle role instances down to their min (`mdstack up`'s scale_down, #1231) and runs due
 role routines (`mdstack up`'s routine_tick, #1247); the triage, docs and backstop timers take their cadence from the
 researcher's and coordinator's routine files (docs/routines.md#terminal).
@@ -595,6 +598,7 @@ def run(args):
                     found += [{"reason": "poll", "event": line} for line in out.splitlines() if line.strip()]
             # after the sources: the timer reads the queue this scan's mdstack poll wrote, not a pre-pause one (#1098)
             triage_tick(values, state, time.time(), args.project, args.org_profile)
+            commands()["reflection"].tick(values, state, time.time(), args.project, args.org_profile)  # #1521
             if time.time() >= seen.get("pulls_next", 0):  # role hosts' status lines into their mirrors (#346)
                 seen["pulls_next"] = time.time() + values["runtime.options.host_scan_interval"]
                 found += pull_hosts(values, state, seen, time.time(), args.stale)

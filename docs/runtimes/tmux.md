@@ -1943,6 +1943,22 @@ neither that file nor the watch state, #591), then scans every `--interval` seco
   head, scan date and banner ages, matches the one the last `started` or
   `queued` slot recorded. The timer passes only the project's own checkout,
   so a `[docs] repos` entry naming another repo fails the scan (#1026);
+- with `[reflection] enabled` ([profile](../profile.md#reflection)), no
+  wake: each scan runs the reflection timer, kept in
+  `reflection/ledger.json` and independent of `[triage]` and its milestone
+  ledger. The researcher's `protocol-reflection` routine (Monday 00:00
+  owner time) makes the last full ISO week pending; a missed week catches
+  up once. A project-repo milestone closed since the ledger's baseline,
+  read at most once per `poll_interval`, makes `close-<n>` pending at once.
+  With no request in flight, every pending window coalesces into one
+  `mdstack spawn researcher --reflection <A+B> --run-id <id>`, recorded as
+  `started`, `queued` or `failed: <reason>`. A started or queued request is
+  never completion: once no run record or `spawn-queue.jsonl` entry holds
+  its window, the posted `pass=reflection` report on the reflection log
+  completes each window it names, with its URL; with none the request
+  failed. A failed request retries after 600 s under the same run ID, and
+  an unreadable log never starts a second run. `mdstack reflection` prints
+  the ledger (#1521);
 - no wake: each scan scales idle instances of roles with a `lifecycle` down
   to their `min` with `mdstack kill` ([role lifecycle](../roles-registry.md#lifecycle), #1231);
 - `backstop:` none of these within `--backstop` seconds (default 1800). While

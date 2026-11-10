@@ -124,6 +124,7 @@ files yet. Its routines are still rendered from
 |---|---|---|---|
 | Researcher | `triage-sweep` | Every `[triage] interval_hours` (6 h), retry 10 m, catch up once | Watcher triage timer ([triage](triage.md#triggers-and-cadence)) |
 | Researcher | `milestone-close-sweep` | At once on `dev.eng-crew.milestone.closed`, else with the triage sweep | Watcher triage timer, closed-milestone path (#374) |
+| Researcher | `protocol-reflection` | Monday 00:00 owner time and at once on `dev.eng-crew.milestone.closed`, retry 10 m, catch up once (new, #1521) | None: `[reflection] enabled` turns on the watcher reflection timer |
 | Researcher | `docs-pass` | Every `[docs] interval_days` (7 d), retry 10 m, catch up once | Watcher docs-pass timer ([project docs](project-docs.md#docs-pass)) |
 | Coordinator | `stale-sweep` | Every 30 m, doubling while idle up to 16 times, missed backstops skipped | Watcher `--backstop` default |
 | Coordinator | `metrics-refresh` | Declared, `enabled = false`: still run by hand at each milestone close | Manual ([metrics trigger path](metrics/decisions.md#trigger-path)) |
