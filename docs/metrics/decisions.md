@@ -164,6 +164,19 @@ the `crew:hold` and `hold-until-#<gate issue>` notes it added and resumes
 assigning. The next check confirms the numbers moved. The coordinator never
 removes a hold it did not add for this gate.
 
+## Reflection effects
+
+Informational only; it changes no sensor, threshold or gate above.
+`scripts/reflection-effects.py` gives each accepted reflection proposal a
+before/after row for its effect measure
+([Effect measures](../self-improve.md#effect-measures)), using the same
+14-day windows and the 3-PR minimum from [Sensors](#sensors). Until the
+proposal's change is activated and enough samples exist, its row says
+pending or insufficient. Its keep, revise or revert is a recommendation for
+the reflection report, never a cause, a trip or a revert. The researcher's
+reflection procedure attaches the table to each report, next to this
+rollup.
+
 ## Tuning
 
 Expect false trips at first: small windows, one slow spec PR, a quiet repo.

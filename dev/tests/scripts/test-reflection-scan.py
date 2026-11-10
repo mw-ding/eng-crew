@@ -295,7 +295,7 @@ class ReportFixture(unittest.TestCase):
                                       "Recommended default"], block[:60])
             for path in re.findall(r"`([\w./-]+\.\w+)`", block.split("\n- Layer:")[0]):
                 self.assertTrue(os.path.isfile(os.path.join(SCRIPTS, "..", path)), path)
-        for section in ("## Digest", "## Proposals", "## Skipped", "## Gaps"):
+        for section in ("## Digest", "## Proposals", "## Skipped", "## Effects", "## Gaps"):
             self.assertIn("\n%s\n" % section, self.text)
 
 
