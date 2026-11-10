@@ -159,6 +159,7 @@ class FindingsThreshold(unittest.TestCase):
         mine.update(state="CLOSED", closedAt="2026-11-07T18:00:00Z")
         got = only([fix, mine], buffer=later)
         self.assertEqual((got["action"], got["match"]), ("skip", U + "issues/40"))
+        self.assertNotIn("regression_of", got)
         got = only([fix, mine], buffer=row(4, "fixed by #30", date="2026-11-08"))
         self.assertEqual((got["action"], got["regression_of"], got["fresh"]),
                          ("file", U + "issues/40", ["row-date-2026-11-08"]))

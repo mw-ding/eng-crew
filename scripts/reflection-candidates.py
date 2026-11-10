@@ -100,7 +100,8 @@ def candidate(c, matches, incidents, repo, fresh_after, own=()):
     fresh = fresh_after(rs.when(m["closedAt"]))
     if fresh:
         return dict(c, action="file", regression_of=m.get("url"), fresh=fresh)
-    return dict(c, action="skip", match=m.get("url"), reason="closed %s, no occurrence after" % tc.ref(m).lower())
+    return dict({k: v for k, v in c.items() if k not in ("fresh", "regression_of")}, action="skip",
+                match=m.get("url"), reason="closed %s, no occurrence after" % tc.ref(m).lower())
 
 
 def run(a):
