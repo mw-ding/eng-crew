@@ -2000,6 +2000,16 @@ class HostInventoryTest(unittest.TestCase):
                          "crew.toml:hosts.host-c.capabilities.engines: missing required key")
         self.assertFails(VALID + HOSTS + runner.replace("max_runs = 3", "max_runs = 3\nprimary = true"),
                          "crew.toml:hosts.host-c.forge: a forge-less host cannot be the primary")
+
+    def test_host_checkout_command(self):
+        """#1035: checkout = "command" on a non-primary host, forge-less or not; never on the primary."""
+        runner = '[hosts.host-c]\nforge = false\ncapabilities = { os = "linux", arch = "x86_64" }\nmax_runs = 3\n'
+        self.assertEqual(validate(VALID + HOSTS + runner + 'checkout = "command"\n'), OK)
+        self.assertEqual(validate(VALID + HOSTS + runner + 'checkout = "mirror"\n'), OK)
+        self.assertFails(VALID + HOSTS + runner + 'checkout = "sl clone"\n',
+                         "crew.toml:hosts.host-c.checkout: unknown value 'sl clone' (expected one of: mirror, command)")
+        self.assertFails(VALID + HOSTS.replace("primary = true", 'primary = true\ncheckout = "command"', 1),
+                         "crew.toml:hosts.host-a.checkout: the primary uses its own git checkout; expected no checkout command")
         self.assertFails(VALID + HOSTS + runner.replace("max_runs = 3", 'max_runs = 3\nroles = ["reviewer"]'),
                          "crew.toml:hosts.host-c.roles: a forge-less host takes runner jobs only; expected no roles")
         self.assertFails(VALID + HOSTS.replace('hosts = ["host-a", "host-b"]', 'hosts = ["host-a", "host-c"]') + runner,
