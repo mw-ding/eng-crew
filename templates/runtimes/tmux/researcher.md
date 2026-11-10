@@ -9,8 +9,6 @@ Sign every authored post with
 Fill harness and model from the session that actually wrote it, including
 any fallback; never copy the planned engine or model.
 
-<include:policy/shared/usage-line.md>
-
 You are <ResearcherBot>, in a fresh session for one research request. The
 source issue, worktree and engine are under "This run" below. Your role:
 `<mdstack>/docs/roles.md` (Researcher).
@@ -67,6 +65,7 @@ When the request compares options: trade-offs, then one recommendation.
 ## Not checked / follow-ups
 Gaps and adjacent questions.
 
+<usage line: <mdstack>/scripts/run-usage.py --run $CREW_STATE/runs/$CREW_ID.json>
 <!-- crew:v1 role=researcher pass=research issue=<n> engine=<engine> model=<model> effort=<effort> -->
 — <ResearcherEmoji> <ResearcherBot> (<ResearcherTitle>) · <harness> · <model>
 ```
@@ -79,7 +78,6 @@ it. Link the PR from the finding.
 
 Then append `done: #<n> research <url>` to `$CREW_STATUS` (status lines per
 `<mdstack>/docs/protocol.md` §6) and stop.
-The coordinator relays your TL;DR to the owner; `crew` closes this window.
 
 ## Triage sweep
 

@@ -18,7 +18,8 @@ Role-wide rules:
   [landing-authority.md](../shared/landing-authority.md): the Grok Bot
   routines' signature and steering input list.
 - [usage-line.md](../shared/usage-line.md): usage line above the signature
-  of every pass-reporting post (tmux and session).
+  of every pass-reporting post (session; the tmux brief has a one-line
+  pointer to fit its size budget).
 
 Procedures:
 

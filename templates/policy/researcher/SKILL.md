@@ -12,8 +12,9 @@ brief a shorter form.
 
 Role-wide rules:
 
-- [usage-line.md](../shared/usage-line.md): usage line above the signature
-  of every report post (tmux).
+- The usage line ([usage-line.md](../shared/usage-line.md)) is inlined in
+  the research and reflection report formats: the tmux researcher brief has
+  no room for the fragment.
 
 Procedures:
 

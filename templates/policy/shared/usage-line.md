@@ -1,6 +1,6 @@
-Usage line ([roles](<mdstack>/docs/roles.md#usage-line)): every post that
-reports a pass (build, fix, ci-fix, review, validate, recheck, verdict,
-merge, report, status) ends with one line just above the signature, as
+Usage line (`<mdstack>/docs/roles.md`, Usage line): every post that reports
+a pass (build, fix, ci-fix, review, validate, recheck, verdict, merge,
+report, status) ends with one line just above its marker and signature, as
 printed by `python3 <mdstack>/scripts/run-usage.py --run "$CREW_STATE/runs/$CREW_ID.json"`.
 Without a run record pass `--engine <engine> --dir "$PWD" --start <UTC time
 the pass began>` instead. Paste it as printed, for example

@@ -474,12 +474,14 @@ for both. It needs no builder window, B2 watch, claim or inbox.
 
 Every role post that reports a pass (builder build, fix and ci-fix; reviewer
 review, validate, recheck and verdict; synthesizer merge; researcher report;
-coordinator status) ends with one line just above the signature, printed by
-[`scripts/run-usage.py`](../scripts/README.md#run-usage-helper):
+coordinator status) ends with one line just above its marker and signature,
+printed by [`scripts/run-usage.py`](../scripts/README.md#run-usage-helper):
 
 `Run: 23m 10s · 1.24M in (1.1M cached) / 38.2k out · claude-opus-5-5 (high)`
 
-Wall-clock time runs from the run start to now. Tokens come from the
+A role run passes `--run "$CREW_STATE/runs/$CREW_ID.json"`. The
+coordinator, which has no run record, passes `--engine <engine> --dir "$PWD"
+--start <UTC time the status cycle began>`. Wall-clock time runs from the run start to now. Tokens come from the
 harness's local session log through its adapter's `usage` reader
 ([harness adapters](runtimes/harness-adapters.md#adapter-modules)); a harness
 without one prints `tokens n/a`, never an estimate. The owner reversed the

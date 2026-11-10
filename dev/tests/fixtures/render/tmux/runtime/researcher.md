@@ -67,6 +67,7 @@ When the request compares options: trade-offs, then one recommendation.
 ## Not checked / follow-ups
 Gaps and adjacent questions.
 
+<usage line: <mdstack>/scripts/run-usage.py --run $CREW_STATE/runs/$CREW_ID.json>
 <!-- crew:v1 role=researcher pass=research issue=<n> engine=<engine> model=<model> effort=<effort> -->
 — 🔬 Riley (Researcher) · <harness> · <model>
 ```
@@ -79,7 +80,6 @@ it. Link the PR from the finding.
 
 Then append `done: #<n> research <url>` to `$CREW_STATUS` (status lines per
 `<mdstack>/docs/protocol.md` §6) and stop.
-The coordinator relays your TL;DR to the owner; `crew` closes this window.
 
 ## Triage sweep
 
