@@ -23,6 +23,9 @@ Procedures:
 - [dispatch](skills/dispatch/SKILL.md): milestone admission.
 - [memory-capture](skills/memory-capture/SKILL.md): core memory promotions
   from platform scratch.
+- [protocol-reflection](skills/protocol-reflection/SKILL.md): reflection
+  digest, decisions and build issues (tmux). Its steps live in the skill
+  file; the brief points to it.
 
 Bindings: [tmux](../../runtimes/tmux/coordinator.md),
 [session](../../runtimes/session/coordinator.md) and the Grok Bot

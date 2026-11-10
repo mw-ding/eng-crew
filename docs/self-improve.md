@@ -361,6 +361,34 @@ labels for readiness or places in a milestone.
   step at milestone close. A memory, profile or pack finding routes to its
   owner per [Knowledge routing](#knowledge-routing).
 
+### Coordinator handoff
+
+The coordinator's `protocol-reflection` procedure
+([skill](../templates/policy/coordinator/skills/protocol-reflection/SKILL.md))
+runs in the triage window after a report posts.
+
+- **Digest.** One per report: only its top three proposals, each with its
+  link and recommended default, in owner chat and as a
+  `[<CoordinatorBot>/reflection-digest]` comment on the log issue. If
+  unanswered, nothing changes and the proposals stay open.
+- **Decision.** Each accept, reject or correction is explicit, from the
+  owner's answer or the coordinator's own recorded decision, and goes in a
+  `[<CoordinatorBot>/reflection-decision]` comment on the log issue. A
+  reject keeps a triage reason; the researcher's cooldown reads it there.
+- **Build issue.** An accepted proposal becomes one normal issue per
+  independent deliverable, reusing an open issue that covers it, with
+  acceptance criteria, exact paths, the source proposal and one
+  [effect measure](#effect-measures). A reused issue, such as a pending
+  threshold card, gains whichever of these it lacks before it is labelled
+  `crew:ready`. A protocol, template, gate, spec or
+  profile-default change is marked `Owner OK: yes` and needs the owner's
+  per-change merge-ok at head.
+- **Link.** The decision line names the issue, the issue names the
+  proposal ID and report, and the PR closes the issue, so proposal → issue
+  → PR stays one chain for later evaluation.
+- **Routing.** A memory, profile or pack finding goes to its owner
+  ([Knowledge routing](#knowledge-routing)), not to a build issue.
+
 ## Effect measures
 
 A reflection proposal is judged by measures captured from now on, not
