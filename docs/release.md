@@ -162,7 +162,12 @@ on the landed revision.
 
 `changelog-cut.py` works on any layout: paths come from flags or the
 profile, it needs no `check-repo.py`, and a fragment needs only `type`
-(`issue`, `pr`, `date` and `box-skill` are optional). mdstack's repo guard
+(`issue`, `pr`, `date` and `box-skill` are optional). It ships in the
+release bundle as a [Deliverable](deliverables.md#inventory)
+([#1033](https://github.com/mw-ding/mdstack/issues/1033)), so a pack on a
+host with only the installed bundle runs `cut` as
+`python3 <bundle>/scripts/changelog-cut.py X.Y.Z --project config.toml`
+from its own checkout; the other release scripts stay Internal. mdstack's repo guard
 still requires all five fields here
 ([CONTRIBUTING: CHANGELOG](../CONTRIBUTING.md#changelog)).
 
