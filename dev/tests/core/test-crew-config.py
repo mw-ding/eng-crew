@@ -860,6 +860,19 @@ class ResearcherProfile(unittest.TestCase):
             self.assertEqual(code, 1, bad)
             self.assertTrue(any(key + ":" in ln for ln in lines), (bad, lines))
 
+    def test_reflection_table_defaults_off_and_checks(self):  # #1521
+        code, lines = resolve(VALID, default=VALID)
+        self.assertEqual(code, 0, lines)
+        self.assertIn("reflection.enabled = false  # core", lines)
+        code, lines = resolve(VALID + "\n[reflection]\nenabled = true\n", default=VALID)
+        self.assertEqual(code, 0, lines)
+        self.assertIn("reflection.enabled = true  # project", lines)
+        self.assertIn("triage.enabled = false  # core", lines)  # independent of [triage]
+        for bad, key in [('enabled = "yes"', "reflection.enabled"), ("interval_days = 7", "reflection.interval_days")]:
+            code, lines = validate(VALID + "\n[reflection]\n" + bad + "\n")
+            self.assertEqual(code, 1, bad)
+            self.assertTrue(any(key + ":" in ln for ln in lines), (bad, lines))
+
     def test_docs_table_defaults_and_checks(self):  # #1024
         code, lines = resolve(VALID, default=VALID)
         self.assertEqual(code, 0, lines)

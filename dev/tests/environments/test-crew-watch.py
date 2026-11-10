@@ -21,7 +21,10 @@ skipped, disabled, queued and failed spawns, never a wake, and closed milestones
 swept at once once the queued sweep was dequeued (#1175), and the timer
 running after the scan's `--source` commands, so a resumed crew's overdue slot reads the queue that scan's poll wrote
 (#1098); a run whose pane printed nothing for `idle_stall` waking stale with liveness `idle` despite a fresh claim,
-status file and live child, once per silence and never after `done:` (#1283). Run in CI.
+status file and live child, once per silence and never after `done:` (#1283); the reflection timer (#1521): disabled
+never reads or spawns, a weekly window queued or started never counts as complete until its posted report, a missed
+week caught up once and coalesced with a milestone close, a failed start retried under the same run ID with no second
+queue entry, and a run that ended without a report rerun, never over an unreadable log. Run in CI.
 """
 import json
 import os
@@ -515,6 +518,105 @@ class Watch(LivenessBase):
         for values in ({}, dict(self.DOCS, **{"docs.enabled": False})):
             self.assertEqual(self.docs_tick(NOW, values), (None, [], True))
         self.assertFalse(os.path.exists(os.path.join(self.state, "docs", "pass.json")))
+
+    REFLECT = {"reflection.enabled": True, "repo.owner": "acme", "repo.name": "widgets",
+               "runtime.options.poll_interval": 60, "runtime.timezone": "UTC"}
+    W19, W20 = "week-2033-W19", "week-2033-W20"  # the full ISO weeks before NOW and before Monday NOW + 5 days
+
+    def reflect(self, now, closed=(1,), rc=0, stdout="crew: started riley-reflection\n", posted=None, values=None):
+        """One reflection timer tick with fake milestone reads, spawn and report lookup: (outcome, spawn argv or None).
+        A `queued:` spawn appends its request to spawn-queue.jsonl, as `mdstack spawn` does at the cap."""
+        mod, restart = self.mod.commands()["reflection"], self.mod.commands()["restart"]
+
+        def spawn(argv, **_):
+            if not rc and stdout.startswith("queued:"):
+                with open(os.path.join(self.state, "spawn-queue.jsonl"), "a") as f:
+                    f.write(json.dumps({"role": "researcher", "reflection": {
+                        "window": argv[argv.index("--reflection") + 1], "run": argv[argv.index("--run-id") + 1]}}) + "\n")
+            return subprocess.CompletedProcess(argv, rc, stdout, "")
+        lookup = posted if callable(posted) else lambda *_: posted
+        with mock.patch.object(mod.subprocess, "run", side_effect=spawn) as run, \
+                mock.patch.object(restart, "reflection_posted", side_effect=lookup) as look:
+            outcome = mod.tick(self.REFLECT if values is None else values, self.state, now, self.project,
+                               read=lambda *a, **k: [{"number": n} for n in closed])
+        self.looked = [c[0][1] for c in look.call_args_list]
+        return outcome, run.call_args[0][0] if run.called else None
+
+    def ledger(self):
+        with open(os.path.join(self.state, "reflection", "ledger.json")) as f:
+            return json.load(f)
+
+    def hold(self, window, run="r1"):  # a live reflection run record carrying the window
+        with open(os.path.join(self.state, "runs", "ben-7.json")) as f:
+            rec = json.load(f)
+        rec["args"] = dict(rec.get("args") or {}, reflection={"window": window, "run": run, "log": None, "sha": None})
+        self.put("runs/riley-reflection.json", json.dumps(rec))
+
+    def test_reflection_timer_disabled_never_reads_or_spawns(self):  # #1521
+        for values in ({}, dict(self.REFLECT, **{"reflection.enabled": False})):
+            self.assertEqual(self.reflect(NOW, values=values), (None, None))
+        self.assertFalse(os.path.exists(os.path.join(self.state, "reflection")))
+
+    def test_reflection_timer_weekly_run_completes_only_on_its_posted_report(self):  # #1521
+        queued = "queued: researcher research reflection %s (researcher cap reached)\n" % self.W19
+        outcome, argv = self.reflect(NOW, stdout=queued)  # never ran: the last full week at once, at the cap
+        self.assertEqual(outcome, "queued")
+        self.assertEqual(argv[2:6], ["spawn", "researcher", "--reflection", self.W19])
+        self.assertEqual(argv[6:8], ["--run-id", self.W19 + "-20330518T033320Z"])
+        self.assertEqual(self.ledger()["closed"], [1])  # the first milestone read is a baseline only
+        self.assertEqual(self.reflect(NOW + 3600, posted="https://x/1#c"), (None, None))  # queued is not complete
+        self.assertEqual(self.looked, [])
+        os.remove(os.path.join(self.state, "spawn-queue.jsonl"))  # dequeued: the run starts and holds the window
+        self.hold(self.W19)
+        self.assertEqual(self.reflect(NOW + 7200, posted="https://x/1#c"), (None, None))  # started is not complete
+        self.assertEqual(self.looked, [])
+        os.remove(os.path.join(self.state, "runs", "riley-reflection.json"))  # done: reflection, reaped by route
+        self.assertEqual(self.reflect(NOW + 7260, posted="https://x/1#c"), ("completed: https://x/1#c", None))
+        self.assertEqual(self.looked, [{"window": self.W19, "log": None}])
+        led = self.ledger()
+        self.assertEqual((led["pending"], list(led["completed"]), "request" in led), ([], [self.W19], False))
+        self.assertEqual(self.reflect(NOW + 7320, posted="https://x/1#c"), (None, None))  # nothing re-runs
+        self.assertEqual(self.reflect(NOW + 5 * 86400)[1][5], self.W20)  # Monday 00:00: the next week
+        self.hold(self.W20)
+        self.assertEqual(self.reflect(NOW + 6 * 86400), (None, None))  # in flight: no second run
+
+    def test_reflection_timer_catches_up_once_and_coalesces_a_close(self):  # #1521
+        self.hold("close-0")  # another run in flight holds the pool's reflection slot
+        self.put("reflection/ledger.json", json.dumps({"slot": NOW - 60 * 86400, "closed": [1], "pending": [],
+                                                       "completed": {}, "request": {
+                                                           "window": "close-0", "run": "r0", "at": NOW, "outcome": "started"}}))
+        self.assertEqual(self.reflect(NOW + 5 * 86400, closed=(1, 2)), (None, None))  # woke two months late
+        self.assertEqual(self.ledger()["pending"], [self.W20, "close-2"])  # one week caught up, the close at once
+        os.remove(os.path.join(self.state, "runs", "riley-reflection.json"))
+        outcome, argv = self.reflect(NOW + 5 * 86400 + 60, closed=(1, 2), posted="https://x/0#c")
+        self.assertEqual((outcome, argv[5]), ("started", "close-2+" + self.W20))  # overlapping windows: one run
+        self.assertEqual(sorted(self.ledger()["completed"]), ["close-0"])
+        self.assertFalse(os.path.exists(os.path.join(self.state, "triage")))  # independent of triage's ledger
+
+    def test_reflection_timer_retries_a_failed_start_once_per_retry(self):  # #1521
+        self.assertEqual(self.reflect(NOW, rc=1, stdout="crew: session x not reachable\n")[0],
+                         "failed: crew: session x not reachable")
+        run = self.ledger()["request"]["run"]
+        self.assertEqual(self.reflect(NOW + 599), (None, None))
+        queued = "queued: researcher research reflection (researcher cap reached)\n"
+        outcome, argv = self.reflect(NOW + 600, stdout=queued)
+        self.assertEqual((outcome, argv[argv.index("--run-id") + 1]), ("queued", run))  # the same run ID
+        self.assertEqual(self.reflect(NOW + 1300, stdout=queued), (None, None))  # still queued: no second entry
+        with open(os.path.join(self.state, "spawn-queue.jsonl")) as f:
+            self.assertEqual(len(f.readlines()), 1)
+
+    def test_reflection_timer_reruns_a_run_that_ended_without_a_report(self):  # #1521
+        self.reflect(NOW)
+        self.assertEqual(self.reflect(NOW + 60), ("failed: run ended without a posted report", None))
+        self.assertEqual(self.reflect(NOW + 659)[1], None)
+
+        def unreadable(*_):
+            raise RuntimeError("crew: gh issue list: HTTP 502")
+        self.assertEqual(self.reflect(NOW + 660, posted=unreadable), (None, None))  # unverified: no second run
+        self.assertTrue(self.ledger()["request"]["outcome"].startswith("failed: cannot read the reflection log"))
+        self.assertEqual(self.reflect(NOW + 1260)[0], "started")
+        quiet = "https://x/2#quiet"  # a quiet window's proposals=0 report still completes it
+        self.assertEqual(self.reflect(NOW + 1320, posted=quiet)[0], "completed: " + quiet)
 
     def test_scan_ask_wakes_at_its_deadline_once(self):  # #287
         self.ask("12", "2033-05-17T20:33:20-07:00")  # == NOW

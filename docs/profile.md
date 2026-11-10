@@ -421,6 +421,21 @@ in `triage/sweep.json` ([mdstack watch](runtimes/tmux.md#mdstack-watch)).
 | `rules` | string: file path | none (built-in defaults) | The owner's class rules file (label maps, P0 signals, cooldowns); Riley never writes it |
 | `mode` | string: `shadow` or `apply` | `"shadow"` | `shadow` writes records and proposals only; the owner sets `apply` after [calibration](triage.md#shadow-mode-and-calibration) |
 
+### `[reflection]`
+
+Optional: scheduled [reflection](self-improve.md#reflection)
+([#1521](https://github.com/mw-ding/mdstack/issues/1521)). Off by default.
+When enabled, `mdstack watch` starts `mdstack spawn researcher --reflection`
+for the last full ISO week every Monday and for a milestone's window at once
+when it closes, one run at a time with overlapping windows coalesced. It is
+independent of `[triage]`; its pending, request and completed windows are in
+`<state-dir>/<owner>__<repo>/reflection/ledger.json`
+([mdstack watch](runtimes/tmux.md#mdstack-watch)).
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `enabled` | boolean | `false` | Run the reflection timer |
+
 ### `[docs]`
 
 Optional: the project [docs pass](project-docs.md#docs-pass)
