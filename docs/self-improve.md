@@ -372,7 +372,9 @@ runs in the triage window after a report posts.
 - **Build issue.** An accepted proposal becomes one normal issue per
   independent deliverable, reusing an open issue that covers it, with
   acceptance criteria, exact paths, the source proposal and one
-  [effect measure](#effect-measures). A protocol, template, gate, spec or
+  [effect measure](#effect-measures). A reused issue, such as a pending
+  threshold card, gains whichever of these it lacks before it is labelled
+  `crew:ready`. A protocol, template, gate, spec or
   profile-default change is marked `Owner OK: yes` and needs the owner's
   per-change merge-ok at head.
 - **Link.** The decision line names the issue, the issue names the

@@ -47,16 +47,19 @@ pack yourself here.
    - `route <owner>`: step 7.
 5. **Build issue.** One normal issue per independent deliverable. First
    search open and closed issues and PRs for the proposal ID and its target
-   paths. An open issue covers it: reuse it with one comment adding the
-   source proposal; file nothing. Otherwise file it in the repo the
-   [scope](../../../../../docs/self-improve.md#scope-repo-vs-crew) names:
+   paths. An open issue covers it (a pending threshold card included):
+   reuse it, file nothing, and add in one comment each field below it
+   lacks. Otherwise file it in the repo the
+   [scope](../../../../../docs/self-improve.md#scope-repo-vs-crew) names,
+   with these fields:
    - **Acceptance criteria** a builder can check;
    - **Named paths**: the exact files, as in the proposal's Targets;
    - **Source proposal**: the ID, the report link and its incident IDs;
    - **Effect metric**: one measure from
      [Effect measures](../../../../../docs/self-improve.md#effect-measures),
      or `unknown` and why.
-   Then label it `crew:ready` as any accepted card.
+   Only once the issue, new or reused, carries all four, label it
+   `crew:ready` as any accepted card.
 6. **Classify.** If the issue's paths change protocol, a template, a gate,
    a spec or a profile default, write `Owner OK: yes` and the merge
    permission line: it needs the owner's per-change merge-ok at head, and
