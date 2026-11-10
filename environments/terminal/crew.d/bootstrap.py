@@ -486,8 +486,8 @@ def bootstrap(args):
         return code
     human = report.getvalue().partition("Steps only a person can take:\n")[2].splitlines()
     pending = [line.removeprefix("- ") for line in human]
-    pending += (["Run mdstack up --project " + str(project)] if tmux else
-                ["Create the routines from the rendered files (docs/bootstrap.md Q4)"])
+    pending += (["Create the routines from the rendered files (docs/bootstrap.md Q4)"]
+                if values["runtime.name"] == "grok-bot" else ["Run mdstack up --project " + str(project)])
     manifest = state / "install.json"
     previous = json.loads(manifest.read_text()) if manifest.exists() else {}
     harnesses = args.harness if args.harness is not None else previous.get("harnesses", [])
