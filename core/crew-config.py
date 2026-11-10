@@ -705,7 +705,7 @@ def validate(profile, err, backends=BACKENDS, pack_dir=None, item=None):
                                              hosts=(dict, None), placement=(dict, None), sensitive=(dict, None), spec=(dict, None), tools=(dict, None),
                                              size_budget=(dict, None), builder=(dict, None), flavor=(dict, None),
                                              release=(dict, None), triage=(dict, None), install=(dict, None),
-                                             docs=(dict, None)))
+                                             docs=(dict, None), reflection=(dict, None)))
     if "flavor" in top:
         validate_flavor(profile, err)
     if "size_budget" in top:
@@ -756,6 +756,8 @@ def validate(profile, err, backends=BACKENDS, pack_dir=None, item=None):
                 err("triage.repos[%d]" % i, "expected owner/name, got %r" % repo)
         if "rules" in tri and not tri["rules"].strip():
             err("triage.rules", "expected a nonempty file path")
+    if "reflection" in top:  # scheduled protocol reflection (docs/self-improve.md#reflection, #1521)
+        check_table(err, "reflection", top["reflection"], {"enabled": (bool, False)})
     if "docs" in top:  # project docs pass opt-in (docs/project-docs.md Profile opt-in, #1024)
         fields = {k: (type(v), v) for k, v in DOCS_DEFAULTS.items()}
         doc = check_table(err, "docs", top["docs"], dict(fields, repos=("list[str]", None), homes=(dict, None)))
@@ -965,6 +967,7 @@ CORE_DEFAULTS = {"repo": {"default_branch": "main"},
                  "size_budget": {r: 16384 for r in ROLE_REGISTRY},
                  "builder": {"precheck": {"enabled": False, "max_fix_attempts": 2}},
                  "triage": {"enabled": False, "interval_hours": 6, "mode": "shadow"},
+                 "reflection": {"enabled": False},
                  "identities": {r["identity_key"].removeprefix("identities."): dict(r["identity_defaults"])
                                 for r in ROLE_REGISTRY.values()},
                  "engines": dict({"coordinator": "claude-code"}, **{t: {"effort": e} for t, e in TIER_EFFORT.items()})}

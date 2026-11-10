@@ -211,7 +211,8 @@ class Migrated(unittest.TestCase):
     def test_inventory(self):
         self.assertEqual(sorted(self.routines), [
             ("coordinator", "decision-log-status"), ("coordinator", "metrics-refresh"), ("coordinator", "stale-sweep"),
-            ("researcher", "docs-pass"), ("researcher", "milestone-close-sweep"), ("researcher", "triage-sweep")])
+            ("researcher", "docs-pass"), ("researcher", "milestone-close-sweep"), ("researcher", "protocol-reflection"),
+            ("researcher", "triage-sweep")])
 
     def test_triage_cadence(self):
         for name in ("triage-sweep", "milestone-close-sweep"):
@@ -231,6 +232,18 @@ class Migrated(unittest.TestCase):
         self.assertEqual(cr.interval(r, {"docs.interval_days": 2}), 2 * 86400)
         self.assertEqual(cr.seconds(r["retry"]), 600)
         self.assertFalse(cr.enabled(r, {}))
+
+    def test_reflection_cadence(self):  # #1521: weekly, Monday 00:00 owner time, off unless [reflection] enabled
+        r = self.routines[("researcher", "protocol-reflection")]
+        self.assertFalse(cr.enabled(r, {}))
+        self.assertFalse(cr.enabled(r, {"triage.enabled": True}))  # independent of [triage]
+        on = {"reflection.enabled": True, "runtime.timezone": "UTC"}
+        self.assertEqual(cr.due(r, on, None, 0), ("run", 0))
+        monday = 2_000_419_200  # 2033-05-23T00:00:00Z
+        self.assertEqual(cr.due(r, on, {"at": monday - 1}, monday + 60), ("run", monday))
+        self.assertEqual(cr.due(r, on, {"at": monday}, monday + 6 * 86400), (None, None))
+        self.assertEqual(cr.due(r, on, {"at": monday - 60 * 86400}, monday + 2 * 86400), ("run", monday))  # once
+        self.assertEqual((cr.seconds(r["retry"]), r["due_on"]), (600, ["dev.eng-crew.milestone.closed"]))
 
     def test_backstop_cadence(self):
         r = self.routines[("coordinator", "stale-sweep")]

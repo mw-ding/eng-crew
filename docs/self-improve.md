@@ -275,8 +275,14 @@ Intake handles one failure at a time. Reflection reads the window's
 learnings together and proposes protocol, brief or policy changes
 (#1403). This section is the contract. The evidence scan, the report
 procedure, the worker mode, the schedule, threshold cards, the coordinator
-handoff and effect measurement are #1403's later build issues, and until
-they land nothing runs a reflection.
+handoff and effect measurement are #1403's later build issues.
+
+**Schedule.** Off unless the owner sets `[reflection] enabled`
+([profile](profile.md#reflection)). Then `mdstack watch` starts one
+researcher run for the last full ISO week each Monday and one at once when a
+milestone closes, coalescing windows still pending at a start. Only the
+posted `pass=reflection` report completes a window; a started or queued run
+does not (#1521).
 
 **Windows.** Two kinds, each with a stable window ID:
 
