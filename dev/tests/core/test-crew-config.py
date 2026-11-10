@@ -1577,6 +1577,20 @@ class AsyncLandTest(unittest.TestCase):
             self.assertEqual(code, 1, lines)
             self.assertIn(expected, lines)
 
+    def test_session_runtime_accepts_async_land(self):
+        """#1351: the session runtime has an async land binding, so resolve accepts the full [land] table there."""
+        bound = VALID.replace('[backends.change]\nname = "github"', '[backends.change]\nname = "example"').replace(
+            'name = "tmux"\noptions = { builders = 3 }', 'name = "session"\noptions = { builders = 2, reviewers = 1 }')
+        manifest = self.ASYNC + 'change_placeholder = "change"\n[land.status]\n"^MERGED (?P<revision>[0-9a-f]{40})$" = ' \
+            '"landed"\n"^FAILED" = "failed"\n'
+        code, lines, meta = self.run_resolve(manifest, bound)
+        self.assertEqual(code, 0, lines)
+        self.assertEqual(meta["land.mode"], ("async", "external-pack"))
+        self.assertEqual(meta["land.change_placeholder"], ("change", "external-pack"))
+        self.assertEqual(meta["land.status"][0], {"^MERGED (?P<revision>[0-9a-f]{40})$": "landed", "^FAILED": "failed"})
+        for key in ('land.mode = "async"', 'land.change_placeholder = "change"', "land.status = "):
+            self.assertTrue(any(ln.startswith(key) for ln in lines), (key, lines))
+
     def test_land_timing_options(self):
         code, lines = resolve(VALID)
         self.assertEqual(code, 0, lines)

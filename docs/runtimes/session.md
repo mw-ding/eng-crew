@@ -35,11 +35,17 @@ no runtime sets them. The binding has no researcher brief:
 `researchers = 0` validates as a no-op, so a profile migrated from tmux keeps
 it, and any other value is refused.
 
-Session lands are sync and alone (#1041). `land.mode = "async"` is
-tmux-only: the validator refuses it on a session profile, and
-`mdstack land request|resume|done` resolve only tmux profiles. Merge trains
-are tmux-only too, since every `mdstack train` action refuses a session
-profile: the synthesizer brief lands each ready PR alone, one per run, and
+Session lands go alone, one per run (#1041). A sync backend lands under the
+brief's `mkdir` repo lock. A change backend that declares `land.mode =
+"async"` with its `[land]` table, change placeholder and `[land.status]` map
+is accepted on a session profile too (#1351): the synthesizer brief's step 3
+then runs `mdstack land request`, which polls the declared status map every
+`land_poll_interval` seconds up to `land_timeout` and exits 1 on `failed`, a
+stale head, a timeout or an unknown status, and each run starts with
+`mdstack land resume`. `mdstack land` resolves tmux and session profiles;
+`mdstack land-lock` stays tmux-only, so a non-serializing backend keeps the
+`mkdir` lock until the terminal status and the merge post. Merge trains are
+tmux-only, since every `mdstack train` action refuses a session profile:
 `train_min`, `train_window` and `train_local_checks` have no effect.
 
 A session profile may carry a `[hosts]` inventory, without `[placement]`.
@@ -92,7 +98,7 @@ or Codex coordinator conversation
 | Independence | The coordinator schedules and combines outputs; separate workers review and validate. Validation never receives the review. Reviewer identity and engine diversity remain subject to the existing rules and recorded waivers. |
 | Dispatch | Re-read ownership and live item/head, check markers and claims, then pass a brief pointer and refs. A native subagent must enter its assigned unique worktree before changing files. |
 | Concurrency | Profile caps remain ceilings, with the owner-present limits `present_builders` and `present_reviewers` as on tmux ([runtime options](../configuration/runtime-options.md#session-options)); dispatch only as many independent workers as the harness can track. No worker shares the coordinator checkout. |
-| Landing | The synthesizer remains the landing role and selects the land rule; it lands each ready PR alone, with no merge train or async land (above). The coordinator dispatches it; one repo lock covers the final gate through the merge post. |
+| Landing | The synthesizer remains the landing role and selects the land rule; it lands each ready PR alone, with no merge train; an async backend lands through `mdstack land` (above). The coordinator dispatches it; one repo lock covers the final gate through the merge post. |
 | Persistence | Claims, run identities, inbox refs, status, summaries and unlanded worktrees live on disk; evidence and markers live on GitHub. Transcript memory is not recovery state. |
 
 ## Harness adapters and session backends
