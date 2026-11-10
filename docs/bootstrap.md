@@ -589,7 +589,9 @@ slice B1), and install, upgrade and removal
 Decisions: Riley's
 [#649 ACs §12](https://github.com/mw-ding/eng-crew/issues/649#issuecomment-6643902567),
 accepted at triage: project-local targets only, and no executable registry
-mode. The Q4 and Q8 safety rules stay the contract; install code stays
+mode. The owner later accepted one declared home root
+([#1032](https://github.com/mw-ding/mdstack/issues/1032)): see
+[Home root](#home-root). The Q4 and Q8 safety rules stay the contract; install code stays
 security-sensitive, so each slice keeps the owner's per-change merge-ok.
 
 An org's harness sessions also need pointers mdstack cannot know: how to run
@@ -607,9 +609,10 @@ Without it, every command, output and record stays as today. Each
 | Key | File entry | Launch-note entry |
 |---|---|---|
 | `harness` | required | required: `codex` |
-| `target` | required: project-relative path | refused |
+| `target` | required: path relative to `root` | refused |
 | `source` | required: pack-relative file | refused |
 | `mode` | `copy` \| `pointer` (`copy`) | refused |
+| `root` | `project` \| `home` (`project`) | refused |
 | `launch_note` | refused | required: pack-relative file |
 
 ```toml
@@ -651,7 +654,7 @@ registry statically:
 - Known keys per shape; `harness` as above; `mode` is `copy` or `pointer`.
 - `target` is relative and normalized: no leading `/` or `~`, no `..` or
   `.` component, no `.git` component.
-- Targets are unique, and none equals a Q4 built-in target
+- Targets are unique within their root, and no project target equals a Q4 built-in target
   (`.claude/agents/crew-<role>.md`, `.claude/skills/crew-coordinator/SKILL.md`,
   `.claude/settings.local.json`).
 - `source` and `launch_note` resolve, with symlinks followed, to a regular
@@ -661,8 +664,25 @@ Bootstrap repeats the source checks at install, then checks every target
 with the Q4 rules: it refuses a tracked target, a symlinked target or parent
 inside the project, and a target that exists with a hash other than the
 recorded one (edited or unowned). It lists every refused target and writes
-nothing; there is no partial install. Targets are relative to the project
+nothing; there is no partial install. Project targets are relative to the project
 directory, the one that holds `config.toml`, as for the built-ins.
+
+### Home root
+
+`root = "home"` (#1032) puts a target under the agent home of the user who
+runs bootstrap (`$HOME`), for a pack whose agents read their instructions
+from a per-user home, such as one pointer line in a home rules file. It is
+a declared root, never an arbitrary path: `target` stays relative and
+normalized, and a leading `/` or `~` is still refused. A home target follows
+every rule below as a project target does: refusals listed before any write
+(tracked, a symlinked target or parent under `$HOME`, edited or unowned), a
+SHA-256 under `targets`, `drift:` on upgrade without writing, and removal by
+uninstall when unchanged. It differs in two ways: it gets no
+`.git/info/exclude` line, and the plan prints
+`Home operation: write <path> (pack.harness root = home; no exclude line)`.
+Its `harness_pointers` record adds `"root": "home"`; project entries keep
+their record unchanged. Applying the plan, and so writing into the owner's
+home, stays the owner's confirmation step.
 
 ### Install, dry-run and record
 
