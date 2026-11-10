@@ -1,7 +1,7 @@
 ---
 type: added
 issue: 1525
-pr: TBD
+pr: 1556
 date: 2026-11-09
 box-skill: none
 ---
