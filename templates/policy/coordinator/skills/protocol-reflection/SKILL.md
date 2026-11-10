@@ -42,7 +42,7 @@ pack yourself here.
    - `reject <reason>`: a triage reason (`duplicate of #<n>`, `one-off`,
      `not a harness problem`, `already fixed`, or the owner's words); the
      researcher's cooldown keys on the proposal ID and this reason;
-   - `correct <what>`: the owner changed the target, scope or layer; record
+   - `correct WHAT`: the owner changed the target, scope or layer; record
      the correction, then accept or reject the corrected proposal;
    - `route <owner>`: step 7.
 5. **Build issue.** One normal issue per independent deliverable. First
@@ -73,15 +73,16 @@ pack yourself here.
 ```text
 [<CoordinatorBot>/reflection-decision] <id>
 
-- <proposal ID>: accept → #<issue> (new | reused)
-- <proposal ID>: reject <reason>
-- <proposal ID>: correct <what>; accept → #<issue> | reject <reason>
-- <proposal ID>: route <memory capture | profile | org pack>
-Source: owner answer <link> | coordinator decision.
+- rp-ID: accept → #<n> (new | reused)
+- rp-ID: reject <reason>
+- rp-ID: correct WHAT; accept → #<n> | reject <reason>
+- rp-ID: route memory capture | profile | org pack
+Source: owner answer <url> | coordinator decision.
 
 — <CoordinatorEmoji> <CoordinatorBot> (<CoordinatorTitle>) · <harness> · <model>
 ```
 
-List only decided proposals; a later answer gets its own comment. The
+`rp-ID` is the proposal ID and WHAT the correction. List only decided
+proposals; a later answer gets its own comment. The
 link from proposal to issue is that line plus the issue's Source proposal;
-the PR's `Closes #<issue>` links on to the PR.
+the PR's `Closes #<n>` links on to the PR.
