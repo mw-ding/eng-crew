@@ -337,6 +337,79 @@ class Route(SpawnBase):
             self.assertEqual(self.windows(), [])
             self.assertEqual(self.pending(), [event, event])
 
+    def synthesizer_lead(self):
+        bindir = os.path.join(self.tmp, "bin")
+        os.rename(os.path.join(bindir, "tmux"), os.path.join(bindir, "tmux-base"))
+        for name, text in (("tmux", FAKE_TMUX_PANES), ("ps", FAKE_PS)):
+            with open(os.path.join(bindir, name), "w") as f:
+                f.write(text)
+            os.chmod(os.path.join(bindir, name), 0o755)
+        self.env.update(FAKE_PANES=os.path.join(self.tmp, "panes.json"), FAKE_PS=os.path.join(self.tmp, "ps.json"))
+        self.put("render/runtime/synthesizer-lead.md", "Land approved PRs.\n")
+
+    def land_queue(self):
+        path = os.path.join(self.state, "inbox", "sam-lead.jsonl")
+        if not os.path.exists(path):
+            return []
+        events = []
+        with open(path) as f:
+            for m in map(json.loads, f):
+                with open(m["refs"][0]) as event_file:
+                    events.append(json.load(event_file)["event"])
+        return events
+
+    def test_land_events_go_to_the_synthesizer_lead_not_the_coordinator(self):  # #1569
+        self.synthesizer_lead()
+        previous = self.approved_push()
+        self.queue(self.event("review-approved"), self.event("ci-passed"),
+                   dict(self.event("merge-up"), previous_head=previous, round=2))
+        self.route()
+        self.assertEqual(self.pending(), [])
+        self.assertIn("sam-lead", self.names())
+        self.assertEqual(self.land_queue(), ["review-approved", "ci-passed", "merge-up"])
+        self.live["reviews"] = [dict(body="<!-- crew:v1 role=builder pass=selfgate pr=12 sha=%s verdict=pass -->"
+                                          % self.sha)]
+        self.save()
+        self.queue(self.event("selfgate-passed"), self.event("ci-passed"))
+        self.route()
+        self.assertEqual(self.pending(), [])
+        self.assertEqual(self.land_queue(), ["review-approved", "ci-passed", "merge-up", "selfgate-passed"])
+
+    def test_unapproved_superseded_and_held_land_events(self):  # #1569
+        self.synthesizer_lead()
+        superseded = dict(event="review-approved", refs=["#12", "f" * 40])
+        self.queue(self.event("ci-passed"), superseded)
+        self.route()
+        self.assertEqual((self.pending(), self.land_queue()), ([], []))
+        self.put("ci/12-%s.json" % self.sha, "{}")  # held CI failure: the coordinator drops it on green
+        self.live["labels"] = []
+        self.save()
+        self.queue(self.event("ci-passed"))
+        self.route()
+        self.assertEqual(self.pending(), [self.event("ci-passed")])
+        self.live["labels"] = [{"name": "crew:hold"}]
+        self.save()
+        self.put("wake/queue.jsonl", "")
+        self.queue(self.event("review-approved"))
+        self.route()
+        self.assertEqual(self.pending(), [self.event("review-approved")])
+        self.assertEqual(self.land_queue(), [])
+
+    def test_synthesizer_lead_status_wakes_coordinator_only_for_exceptions(self):  # #1569
+        self.synthesizer_lead()
+        self.queue(self.event("review-approved"))
+        self.route()
+        url = "https://github.com/acme/widgets/pull/12#pullrequestreview-1"
+        gate = "blocked: #12 %s gate-status %s " % (self.sha, url)
+        quiet = [dict(reason="status", window="sam-lead", line=line) for line in (
+            "ack: m1", "done: #12 " + self.sha, "done: m1", gate + "wait=ci", gate + "wait=review,selfgate")]
+        loud = [dict(reason="status", window="sam-lead", line=line) for line in (
+            gate + "wait=ci,merge-ok", "blocked: #12 sensitive", "blocked: main red after #12 " + url)]
+        self.queue(*quiet, *loud)
+        self.route()
+        self.assertEqual(self.pending(), loud)
+        self.assertIn("sam-lead", self.names())
+
     def test_non_merge_fix_push_gets_normal_review(self):
         self.approved_push(merge=False)
         self.queue(dict(reason="status", window="ben-7", line="done: #7 #12 " + self.sha),

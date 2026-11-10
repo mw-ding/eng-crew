@@ -397,6 +397,55 @@ class BuilderLead(LivenessBase):
         self.assertFalse(os.path.exists(os.path.join(self.state, "runs", "ben-7.json")))
 
 
+class SynthesizerLead(LivenessBase):
+    """#1569: the long-lived synthesizer lead in window 1; its inbox is the land queue."""
+
+    def setUp(self):
+        super().setUp()
+        self.lead = self.mod.commands()["lead"]
+        self.args = argparse.Namespace(project=self.project, org_profile=None, timeout=1)
+        self.put("render/runtime/synthesizer-lead.md", "Land approved PRs; never build.\n")
+
+    def ensure(self):
+        with mock.patch.dict(os.environ, self.env):
+            return self.lead.ensure(self.args, "synthesizer")
+
+    def test_lead_takes_window_1_with_the_synthesizer_identity(self):
+        self.assertEqual(self.ensure(), 0)
+        rec = dict(self.lead.records(self.state))["sam-lead"]
+        self.assertEqual((rec["index"], rec["role"]), (1, "synthesizer-lead"))
+        call = next(c for c in self.calls() if c[0] == "new-window" and c[c.index("-n") + 1] == "sam-lead")
+        env = [call[i + 1] for i, arg in enumerate(call) if arg == "-e"]
+        self.assertIn("CREW_POOL=synthesizer", env)
+        self.assertIn("CREW_ROLE=synthesizer-lead", env)
+
+    def test_land_queue_survives_lead_restart(self):
+        self.assertEqual(self.ensure(), 0)
+        with mock.patch.dict(os.environ, self.env):
+            self.assertEqual(self.lead.event(self.args, "synthesizer", dict(event="review-approved",
+                                                                            refs=["#12", "a" * 40])), 0)
+            self.assertEqual(self.lead.event(self.args, "synthesizer", dict(event="selfgate-passed",
+                                                                            refs=["#13", "b" * 40])), 0)
+        queued = self.lead.pending(self.state, "sam-lead")
+        self.put("status/sam-lead.status", "ack: %s\ndone: #12 %s\ndone: %s\nack: %s\n" % (
+            queued[0]["id"], "a" * 40, queued[0]["id"], queued[1]["id"]))  # #13 acked, its land in flight
+        with mock.patch.dict(os.environ, self.env):
+            self.mod.tmux.kill_window("crew-acme-widgets", 1)
+        self.assertEqual(self.ensure(), 0)
+        self.assertEqual(dict(self.lead.records(self.state))["sam-lead"]["restarts"], 1)
+        self.assertEqual([m["id"] for m in self.lead.pending(self.state, "sam-lead")], [queued[1]["id"]])
+        with open(self.lead.pending(self.state, "sam-lead")[0]["refs"][0]) as f:
+            self.assertEqual(json.load(f)["refs"], ["#13", "b" * 40])
+        if TRANSCRIPT:
+            print("synthesizer lead restarted once; unsettled land #13 still queued")
+
+    def test_spawn_synthesizer_refuses_while_the_lead_is_installed(self):
+        r = self.spawn("synthesizer", "--pr", "12")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("the synthesizer lead owns lands", r.stdout)
+        self.assertFalse(os.path.exists(os.path.join(self.state, "runs", "sam.json")))
+
+
 class BuilderReports(SendBase):
     def report(self, reason, ref="#8", detail=""):
         return self.crew("lead", "report", "builder", reason, ref, "--detail", detail,

@@ -16,6 +16,11 @@ that reviewer's verdicts too.
 Synthesizers remain alive while land requests lack completion or other inbox messages lack acknowledgment, and through
 a merged PR's close-out while their own spawn PR lacks completion (its direct-land main CI check, #1339);
 the inbox check and reap share the queue lock with send's inbox append.
+With the synthesizer lead installed (#1569), `review-approved`, `selfgate-passed`, `ci-passed` with a passing verdict
+or self-gate at head, and approved merge-ups become durable `work` events in its land queue, never coordinator
+wakes; a superseded one is dropped, and an unapproved `ci-passed` is consumed unless held CI refs for that PR
+(`ci/<n>-*.json`) still wait on it. Its waiting gate-status blocks are consumed like a synthesizer's; its other
+`blocked:` lines (owner merge-ok, sensitive, holds, `main red`) stay queued for the coordinator.
 
 Usage: mdstack route --project FILE [--org-profile FILE] [--timeout SECS]
 """
@@ -37,6 +42,7 @@ WAITING = re.compile(r"blocked: #\d+ [0-9a-f]{40} gate-status \S+ wait=(?:ci|rev
 # A reviewer's finished pass; a trailing note after the verdict is allowed (#1343), as on a builder's done line (#695).
 # A reflection run's completion with its posted report (templates/policy/researcher/skills/protocol-reflection).
 REFLECTION_DONE = re.compile(r"done: reflection (\S+) (https?://\S+)")
+LAND_EVENTS = ("review-approved", "selfgate-passed", "ci-passed")
 REVIEW_DONE = re.compile(r"done: #(\d+) ([0-9a-f]{40}) (review|validate|recheck) (pass|changes|escalate)(?:\s.*)?")
 
 
@@ -299,7 +305,8 @@ def route_record(args, values, state, w):
     leader = dict(lead.records(state)).get(w.get("window"))
     if leader and w.get("reason") == "status" and line.startswith(("done:", "deferred:")):
         return True
-    if rec and rec["role"] == "synthesizer" and WAITING.fullmatch(line):
+    if (rec and rec["role"] == "synthesizer" or leader and leader["role"] == "synthesizer-lead") and \
+            WAITING.fullmatch(line):
         return True  # recorded in the status file and gate-status review; CI or a pass will wake it again (#578)
     if w.get("reason") == "lead-backstop":
         lead.retry_pending(args, w["window"])
@@ -349,7 +356,8 @@ def route_record(args, values, state, w):
     if done and done[4] in ("pass", "escalate") and rec is None and not getattr(args, "reviewer_lead", False):
         return True
     terminal = line.startswith("done:") and rec and rec["role"] in ("reviewer", "synthesizer")
-    if event not in ("new-head", "merge-up", "pr-merged", "pr-closed", "builder-message", "fix-at-head", "ci-failed") and not terminal and not built and not done:
+    landing = event in LAND_EVENTS and lead.enabled(state, "synthesizer")
+    if event not in ("new-head", "merge-up", "pr-merged", "pr-closed", "builder-message", "fix-at-head", "ci-failed") and not terminal and not built and not done and not landing:
         return False
     if built:
         n, head = int(built[2]), built[3]
@@ -393,13 +401,19 @@ def route_record(args, values, state, w):
                                                 run["args"].get("issue") in issues):
                     reap(args, name)
         return True
-    if event == "ci-failed" and pr["headRefOid"] != head:
-        return True  # superseded head: its new head gets its own CI (#578)
+    if (event == "ci-failed" or landing) and pr["state"] == "OPEN" and pr["headRefOid"] != head:
+        return True  # superseded head: its new head gets its own CI (#578) and its own land event (#1569)
     labels = {label["name"] for label in pr["labels"]}
     if pr["state"] != "OPEN" or pr["headRefOid"] != head or pr["isDraft"] or labels & {"crew:escalated", "crew:hold"}:
         if terminal:  # a finished reviewer frees its slot, keeping its verdict files, even when its PR moved on (#719)
             reap(args, w["window"], state)
         return False
+    if landing:
+        snapshot = commands()["poll"].pr_snapshot(own_view(values, pr))
+        if event == "ci-passed" and "pass" not in (snapshot["verdict"], snapshot["selfgate"]) and \
+                not commands()["poll"].express_lane(args, values, pr):  # poll gates an express ci-passed already
+            return not glob.glob(os.path.join(state, "ci", "%d-*.json" % n))  # held CI refs: the coordinator drops them
+        return lead.event(args, "synthesizer", w) == 0
     delta = merge_up_delta(pr, head)
     if event == "merge-up" and (open_rereview(pr, head) or delta) and lead.enabled(state, "reviewer") and not getattr(args, "reviewer_lead", False):
         return lead.event(args, "reviewer", w) == 0
@@ -466,7 +480,7 @@ def route_record(args, values, state, w):
         review(args, state, pr, head, "validate", round_)
     elif event in ("new-head", "merge-up", "fix-at-head"):
         if event == "merge-up" and not open_rereview(pr, head) and not delta:
-            return False
+            return lead.enabled(state, "synthesizer") and lead.event(args, "synthesizer", w) == 0
         snapshot = commands()["poll"].pr_snapshot(own_view(values, pr))
         if event != "merge-up" and snapshot["verdict"] and not snapshot["fixed"] and not open_rereview(pr, head):
             return True  # this head already has the newest round's verdict: a replayed event opens no round (#1124)
