@@ -385,7 +385,7 @@ def check_capabilities(err, path, table, concern, required):
             err("%s.%s" % (path, op), "expected supported or unsupported (an extension runs or does not)")
 
 
-# semver.org 2.0.0, no leading v; the same shape as changelog-cut.py's SEMVER, which installs do not ship.
+# semver.org 2.0.0, no leading v; the same shape as changelog-cut.py's SEMVER.
 SEMVER = re.compile(
     r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)"
     r"(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)"
