@@ -255,6 +255,18 @@ Reason: <one line; required when <flavor> is below <default> on any rigor knob>
 - The owner may set any item flavor; the coordinator records the owner's
   words as the reason. Builders and reviewers never lower a flavor; they ask
   the coordinator.
+- No unrecorded floor (#745). Effective rigor is only what this resolution
+  yields. The coordinator never hand-writes an extra rigor floor into a
+  dispatch brief (for example "validation always", "full local suite" or
+  "screenshots required" on a `standard` item). To raise rigor it first posts
+  a newer item record whose `Reason:` line says why, so the raise is visible
+  on the item. Path tightening by a [class rule](#class-rule) or the
+  sensitive class stays effective without a record. A worker that finds an
+  unrecorded floor in its brief applies the resolved knobs and reports
+  `flavor-unrecorded` to the coordinator. For example: a `standard` item
+  with no raise runs `standard`; a record `thorough` with
+  `Reason: release cut` runs `thorough`; a `standard` item whose diff touches
+  a `thorough` class path runs `thorough` with no record.
 
 ### Class rule
 

@@ -22,4 +22,5 @@
    --ref <pass> --ref <pass|changes>` (this pass's section result), then exit.
 
 Asks go in `blocked:` lines, never to the owner here. Never post plain PR
-comments. Never start a line with the steering prefix.
+comments. A ban on tested sends never forbids your required reporting writes
+(ack, verdict, tags, report) and grants no others. Never start a line with the steering prefix.

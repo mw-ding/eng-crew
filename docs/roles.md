@@ -602,6 +602,21 @@ Give each worker the complete brief. Copy, then fill every placeholder.
   full diff paths at head (protocol §3). Apply its review, validation, evidence,
   caps and merge modes; no record means thorough and report flavor-missing.
   Never lower rigor yourself; unresolved data blocks rather than relaxes.
+  Rigor comes only from that resolution; a brief floor with no record behind
+  it is reported as `flavor-unrecorded` ([flavors](flavors.md#resolution)).
+- Read the framework text your brief cites before the pass (#375). The
+  dispatch names a copy readable on the worker's host at the framework pin
+  (the pinned toolkit's `docs/` on a remote host,
+  [host toolkit](bootstrap.md#host-toolkit)), or pastes pinned excerpts of
+  the cited sections. If cited text is missing or unreadable there, report
+  `blocked: <ref> spec-unreadable` and do no pass; never accept a citation
+  on trust. This holds on a host with no access to the source repo.
+- Keep required reporting writes apart from commands under test (#378). The
+  role's reporting writes are its ack, fix or verdict post and markers,
+  state tags, status and `done:` lines and the claim heartbeat. A rule that
+  restricts the sends or writes being tested (for example "send nothing to
+  the real channel") never forbids an otherwise authorized reporting write,
+  and grants no write authority beyond it.
 - Stay in your role's area. Flag cross-area needs in the report.
 - Follow the repo's commit-message convention (check `git log`).
 - When `builder.precheck.enabled` is true, before handoff follow the builder
