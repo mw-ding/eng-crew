@@ -24,8 +24,8 @@ runtime. It adds no rule, gate, cap, marker field or label: the
 
 A profile selects the binding with `runtime.name = "session"`
 ([options](../configuration/runtime-options.md#session-options)):
-`max_active_milestones`, `session_backend` (`native` subagents or `cli`
-runs), the `builders` and `reviewers` pool limits, and the synthesizer's
+`max_active_milestones`, `session_backend` (`native` subagents, `cli`
+runs or `hosted` control-plane sessions), the `builders` and `reviewers` pool limits, and the synthesizer's
 land-policy options. `crew-render` writes five briefs from
 `templates/runtimes/session/`: the coordinator, and the builder, reviewer,
 synthesizer and researcher sweep worker briefs. Each worker brief carries the tmux role's
@@ -70,6 +70,14 @@ coordinator brief carries the ownership guard and the handoff steps. Without
 one, `mdstack ownership` always permits, so the render drops that inert text:
 one paragraph says there is no ownership record or handoff, and the worker
 briefs omit their ownership line.
+
+With `session_backend = "hosted"` (#1052), each worker is a hosted session
+that the coordinator creates through a control plane, addresses by the
+session id it returns and probes by a control-plane state read; it is never
+a local subagent or process. The coordinator and worker briefs then render
+that dispatch and liveness text in place of the subagent, task-handle and
+PID text, through `<session-backend:hosted>` and `<session-backend:local>`
+template blocks. `native` and `cli` profiles render as before.
 
 ## Starting the coordinator
 
@@ -170,7 +178,7 @@ uses the [gap declaration](README.md#gap-declaration) format.
 | C2 One consumer per event | Coordinator routes each live event to the protocol's one consumer, checking the pass/head marker and claim before dispatch; duplicate receipts do not create another pass. | None under this manual procedure; no shared event listener is claimed. |
 | C3 Messages by reference, proof of delivery | Brief pointers, item/PR/full SHA and finding links go through native task dispatch or the CLI prompt. The receiver re-reads live state and writes an ack in durable status. | C3 messages by reference: partial, compensated by checking the ack and applying the protocol's bounded retry/escalation on the next coordinator wake; residual risk: no independent timer detects a lost handoff while the session is idle. A dispatch handle alone is not delivery proof. |
 | C4 Status protocol | Each worker writes `ack`, then `done`, `blocked`, `paused` or `failed` with refs to its status file; coordinator reads these without the worker transcript. A missing final status goes to C5. | None under this manual procedure; native completion alone is not a pass result. |
-| C5 Liveness | Inspect native task state or the recorded CLI PID/start time externally; confirmed exit or absent identity means dead/missing. An unqueryable task, hung subagent or failed probe is ambiguous. | C5 liveness: partial, compensated by claim heartbeats, the §6 sweep and bounded re-check then escalation of ambiguous runs; residual risk: a native task lacking a probeable handle/start time cannot be proven alive or missing. Never restart it solely for stale progress. |
+| C5 Liveness | Inspect native task state, the recorded CLI PID/start time or, for `hosted`, the control plane's state for the recorded session id externally; confirmed exit or absent identity means dead/missing. An unqueryable task, hung subagent or failed probe is ambiguous. | C5 liveness: partial, compensated by claim heartbeats, the §6 sweep and bounded re-check then escalation of ambiguous runs; residual risk: a native task lacking a probeable handle/start time cannot be proven alive or missing. Never restart it solely for stale progress. |
 | C6 Isolation | Coordinator creates each unique worktree from a fresh remote base and assigns it explicitly; teardown follows both C6 landed/discard checks, recording and preserving unlanded work. | C6 isolation: partial, compensated by explicit worktree assignment and manual C6 checks before removal; residual risk: native subagents may inherit the coordinator's cwd and bypass the assignment. If the harness cannot keep writes in the assigned worktree, that worker configuration is unsupported. |
 | C7 Serial land | Synthesizer takes the repo's exclusive lock (an atomic `mkdir` of `$CREW_STATE/locks/merge.lock.d`, per the [synthesizer brief](../../templates/runtimes/session/synthesizer.md)) before the §7 re-check and holds it through head-bound land and merge post; inability to hold the lock blocks land. | None under this manual procedure; being in one chat is not a lock. |
 | C8 Owner channel and SLA | Coordinator's interactive chat plus matching GitHub asks, with the protocol's awake-hours SLA, recommended default and auto-apply time. | C8 owner channel and SLA: partial, compensated by GitHub notifications and checking due asks at the next coordinator wake; residual risk: no session deadline watcher enforces timely defaults while the session is idle or closed. |

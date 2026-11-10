@@ -336,6 +336,7 @@ class ValidateTest(unittest.TestCase):
     def test_session_runtime_selector_and_options(self):  # #914
         session = VALID.replace('name = "tmux"\noptions = { builders = 3 }', 'name = "session"\noptions = { %s }')
         for options in ("", 'session_backend = "cli", builders = 2, reviewers = 1, max_active_milestones = 2',
+                        'session_backend = "hosted"',  # #1052
                         'merge_grant = "none", lone_pr_land = "direct", train_min = 3, mirror = "none", notes = {}',
                         'researchers = 0',  # #1057: the documented no-researcher statement survives a tmux migration
                         'researchers = 1',  # #1404: the session triage sweep worker
@@ -344,7 +345,7 @@ class ValidateTest(unittest.TestCase):
             code, lines = validate(session % options)
             self.assertEqual(code, 0, lines)
         for options, expected in [
-                ('session_backend = "tmux"', "session_backend: unknown value 'tmux' (expected one of: native, cli)"),
+                ('session_backend = "tmux"', "session_backend: unknown value 'tmux' (expected one of: native, cli, hosted)"),
                 ('researchers = -1', "researchers: must be >= 0, got -1"),
                 ('researchers = "0"', "researchers: expected integer, got string"),
                 ('tmux_server = "default"', "tmux_server: unknown key"),

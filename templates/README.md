@@ -179,7 +179,7 @@ including file's, so a role's shared policy is authored once (#1184).
 | `<max-active-milestones>` | Maximum open milestones for new coordinator build dispatch, in milestone order | `runtime.options.max_active_milestones` |
 | `<builder-cap>`, `<reviewer-cap>` | session coordinator's concurrent builder runs and reviewer passes | `runtime.options.builders`, `runtime.options.reviewers` |
 | `<present-builder-cap>`, `<present-reviewer-cap>` | session coordinator's owner-present builder and reviewer limits | `runtime.options.present_builders`, `runtime.options.present_reviewers` |
-| `<session-backend>` | session coordinator's worker launcher: `native` subagents or `cli` runs | `runtime.options.session_backend` |
+| `<session-backend>` | session coordinator's worker launcher: `native` subagents or `cli` runs; `hosted` renders control-plane session text instead (#1052) | `runtime.options.session_backend` |
 | `<lone-pr-land>` | tmux lone-ready-PR landing policy | `runtime.options.lone_pr_land` |
 | `<train-min>`, `<train-window>` | tmux synthesizer batching threshold and maximum wait in seconds | `runtime.options.train_min`, `runtime.options.train_window` |
 | `<merge-grant>`, `<hold-label-blocks>` | tmux synthesizer's standing merge grant scope and whether `crew:hold` blocks | `runtime.options.merge_grant`, `runtime.options.hold_label_blocks` |

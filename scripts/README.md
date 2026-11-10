@@ -619,6 +619,14 @@ only when `repo.control_item` is set (a tracker-native item counts) or
 unset, respectively; the session briefs use it to drop inert ownership
 text (#914).
 
+Session-backend blocks: a template line exactly `<session-backend:hosted>`
+or `<session-backend:local>` opens a block that a line exactly
+`<session-backend:end>` closes. The block renders, without its marker
+lines, only when `runtime.options.session_backend` is or is not `hosted`,
+respectively, and may sit inside a control-item block; the session briefs
+use it to give hosted control-plane sessions their own dispatch and
+liveness text (#1052).
+
 Policy includes: a template line exactly `<include:policy/<dir>/<name>.md>`
 is replaced by `templates/policy/<dir>/<name>.md` (the pack overlay's copy
 first). The fragment's lines then render like the including file's, so

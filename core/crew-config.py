@@ -141,7 +141,7 @@ RUNTIME_OPTIONS = {"grok-bot": {"max_active_milestones": (int, 1)},
                                # mdstack up's coordinator launch (#1548): its tmux session, harness flags and topology
                                "session": (str, None), "permission_mode": (str, "bypass"), "launch": (dict, None),
                                "role_runtime": (dict, None)}}  # one role from another runtime's templates (#1055)
-SESSION_BACKENDS = {"tmux": sessions.CHOICES, "session": ["native", "cli"]}  # runtime.options.session_backend
+SESSION_BACKENDS = {"tmux": sessions.CHOICES, "session": ["native", "cli", "hosted"]}  # runtime.options.session_backend
 LAUNCH_SESSION_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}")  # launch.resume: a harness conversation id
 TRIAGE_MODES = ["shadow", "apply"]  # [triage] mode (docs/triage.md Shadow mode and calibration)
 DOCS_DEFAULTS = {"enabled": False, "interval_days": 7, "stale_days": 90, "size_budget": 500}  # [docs] (#1024)

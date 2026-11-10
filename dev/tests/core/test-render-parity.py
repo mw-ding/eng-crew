@@ -517,6 +517,8 @@ class Parity(unittest.TestCase):
                         self.assertIn(token, ("strategy:merge", "strategy:rebase"))
                     elif token.startswith("control-item:"):  # a block marker line, not a placeholder (#914)
                         self.assertIn(token, ("control-item:set", "control-item:none", "control-item:end"))
+                    elif token.startswith("session-backend:"):  # a block marker line, not a placeholder (#1052)
+                        self.assertIn(token, ("session-backend:hosted", "session-backend:local", "session-backend:end"))
                     elif not token.startswith("op:"):
                         used.add(token)
         self.assertEqual(sorted(used - set(rows)), [])
