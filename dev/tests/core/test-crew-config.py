@@ -1988,6 +1988,22 @@ class HostInventoryTest(unittest.TestCase):
         self.assertFails(VALID + HOSTS.replace("max_runs = 4", 'max_runs = 4\naddress = "host-b"'),
                          "crew.toml:hosts.host-b.address: unknown key")
 
+    def test_connect(self):
+        connect = 'max_runs = 4\nconnect = { alias = "b", transport = "mosh", proxy = "p %h %p", options = ["-v"] }'
+        self.assertEqual(validate(VALID + HOSTS.replace("max_runs = 4", connect)), OK)
+        self.assertFails(VALID + HOSTS.replace("max_runs = 4", connect.replace('"mosh"', '"telnet"')),
+                         "crew.toml:hosts.host-b.connect.transport: unknown value 'telnet' (expected one of: ssh, mosh, et)")
+        self.assertFails(VALID + HOSTS.replace("max_runs = 4", connect.replace('"mosh"', '"et"')),
+                         "crew.toml:hosts.host-b.connect.proxy: et takes its ProxyCommand from your SSH config; set "
+                         "proxy only for ssh or mosh")
+        self.assertFails(VALID + HOSTS.replace("max_runs = 4", connect.replace('"b"', '"B.x"')),
+                         "crew.toml:hosts.host-b.connect.alias: expected [a-z0-9-], 1-63 characters")
+        self.assertFails(VALID + HOSTS.replace("max_runs = 4", connect.replace('"b"', '"host-a"')),
+                         "crew.toml:hosts: connect alias 'host-a' names more than one host")
+        self.assertEqual(validate(VALID + HOSTS.replace("max_runs = 4", connect.replace('"b"', '"host-b"'))), OK)
+        self.assertFails(VALID + HOSTS.replace("max_runs = 4", 'max_runs = 4\nconnect = { port = 22 }'),
+                         "crew.toml:hosts.host-b.connect.port: unknown key")
+
     def test_required_keys_and_types(self):
         self.assertFails(VALID + HOSTS.replace("max_runs = 4\n", ""), "crew.toml:hosts.host-b.max_runs: missing required key")
         self.assertFails(VALID + HOSTS.replace('os = "linux", ', ""), "crew.toml:hosts.host-b.capabilities.os: missing required key")
