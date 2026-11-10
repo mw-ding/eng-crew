@@ -563,7 +563,7 @@ use `--project "$CREW_PROJECT"`.
 ### mdstack up
 
 ```sh
-cli/mdstack up [--project <config.toml>] [--org-profile <path>] [--inputs <inputs-dir>] [--coordinator-only]
+cli/mdstack up [--project <config.toml>] [--org-profile <path>] [--inputs <inputs-dir>] [--coordinator-only] [--resume <id>]
 cli/mdstack up --team <config-home>/teams/<team>.toml [--org-profile <path>] [--inputs <inputs-dir>]
 cli/mdstack up <role> [--project <config.toml>] [--org-profile <path>]
 ```
@@ -571,6 +571,11 @@ cli/mdstack up <role> [--project <config.toml>] [--org-profile <path>]
 `mdstack up <role>` starts one more instance of a role with a `lifecycle`
 whose `wake` has `manual`, up to its `max`, and the watcher scales idle
 instances back down to `min` ([role lifecycle](../roles-registry.md#lifecycle), #1231).
+
+`--resume <id>` (or `ask`) overrides `launch.resume` for one run
+([launch topology](../configuration/runtime-options.md#launch-topology)). On a
+`session` profile, `mdstack up` starts only the coordinator
+([session binding](session.md#starting-the-coordinator), #1548).
 
 `--team` starts one instance for every repo of a
 [team file](../profile.md#team-files) (#634): one session and coordinator,
