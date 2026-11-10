@@ -1048,6 +1048,12 @@ class SessionRuntime(unittest.TestCase):
                      "Exit 2 (a missing Item, Pass or Base) means do not dispatch."):
             self.assertIn(rule, coordinator)
 
+    def test_release_delegation_renders_in_coordinator(self):  # #1542: #1435 parity with the tmux coordinator
+        self.assertIn('Cut go: `release_delegation = "none"` (docs/release.md).', self.render()["runtime/coordinator.md"])
+        self.base = self.base.replace("reviewers = 1 }", 'reviewers = 1, release_delegation = "make releases https://x/985#c1" }')
+        coordinator = self.render()["runtime/coordinator.md"]
+        self.assertIn('Cut go: `release_delegation = "make releases https://x/985#c1"` (docs/release.md).', coordinator)
+
     def test_present_caps_render(self):  # #1053
         self.base = self.base.replace("builders = 2, reviewers = 1", "builders = 4, reviewers = 3, present_builders = 1")
         coordinator = " ".join(self.render()["runtime/coordinator.md"].split())

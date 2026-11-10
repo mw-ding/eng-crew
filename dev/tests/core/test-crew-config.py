@@ -354,6 +354,18 @@ class ValidateTest(unittest.TestCase):
                 ('max_active_milestones = 0', "max_active_milestones: must be >= 1, got 0")]:
             self.assertFails(session % options, "crew.toml:runtime.options." + expected)
 
+    def test_session_release_delegation_resolves_and_needs_a_link(self):  # #1542: #1435 parity
+        session = VALID.replace('name = "tmux"\noptions = { builders = 3 }', 'name = "session"\noptions = { %s }')
+        code, lines = resolve(session % "")
+        self.assertEqual(code, 0, lines)
+        self.assertIn('runtime.options.release_delegation = "none"  # core', lines)
+        code, lines = resolve(session % 'release_delegation = "make releases https://github.com/o/r/issues/985#c1"')
+        self.assertEqual(code, 0, lines)
+        self.assertIn('runtime.options.release_delegation = "make releases https://github.com/o/r/issues/985#c1"  # project',
+                      lines)
+        self.assertFails(session % 'release_delegation = "releases ok"', "crew.toml:runtime.options.release_delegation: "
+                         "expected the owner's recorded words with a https:// link to the record")
+
     def test_session_present_caps_bounded_by_full_caps(self):  # #1053
         session = VALID.replace('name = "tmux"\noptions = { builders = 3 }', 'name = "session"\noptions = { %s }')
         for options in ("present_builders = 5, present_reviewers = 2", "builders = 3, present_builders = 1",
