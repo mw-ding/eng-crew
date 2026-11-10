@@ -44,6 +44,14 @@ Window: 2026-11-08T21:00:00Z to 2026-11-09T13:00:00Z. Input SHA: <fixture-sha>. 
 
 - rp-session-loss-environments-terminal-sessions-tmux-adapter-py: fixed without recurrence. ri-mw-ding-mdstack-1474 confirmed <https://github.com/mw-ding/mdstack/issues/1474> (the card's first suspect is superseded by the research finding and the correction); fix #1475 merged in #1482, lesson 2026-11-09 applied, owner decision "no private socket for the crew server" followed. One incident, not two; live only after the next release install, per the coordinator's correction.
 
+## Effects
+
+Recommendations only: a before/after comparison, not a cause; nothing is reverted automatically.
+
+| Proposal | Issue → PR | Activation | Metric | Before | After | Cohort | Missing data | Status | Next evaluation | Recommendation |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| none | | | | | | | | | | |
+
 ## Gaps
 
 - Unresolved refs absent from the snapshot: #1053, #1472.

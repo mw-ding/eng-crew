@@ -105,7 +105,17 @@ template edit, no verdict or gate marker, and no message.
     Before each post, run the ownership check, dump the issues again and
     rerun both scripts; post only an action that still holds, so a retried
     run reconciles a card it already filed instead of filing it twice.
-11. **Post.** Write the report below to the body file. Run the ownership
+11. **Effects.** Run
+    `python3 <mdstack>/scripts/reflection-effects.py --forge <file>... --ledger <file> --observations <file> --incidents <file>`
+    with the step 4 dumps, the effect ledger that
+    `reflection-measures.py baseline` and `record` write
+    ([Effect measures](../../../../../docs/self-improve.md#effect-measures))
+    and the inputs that exist; omit a missing one, and with no ledger
+    `/dev/null`. Paste its table verbatim under Effects: one row per
+    accepted proposal, pending or insufficient until activation and enough
+    samples. Its keep, revise or revert is a recommendation, never a cause
+    or a revert.
+12. **Post.** Write the report below to the body file. Run the ownership
     check and the step 3 completion check again, then post it as one
     comment on the log issue. Append `done: reflection <id> <url>`
     to `$CREW_STATUS` and stop; the coordinator relays the digest.
@@ -136,6 +146,9 @@ Top three proposals by rank, one line each: ID, target, recommended default, lin
 
 ## Skipped
 Cooldown, cap and fixed-without-recurrence candidates, each with its reason.
+
+## Effects
+The step 11 table, verbatim, or its `| none |` row.
 
 ## Gaps
 The index's missing inputs and unresolved refs, sources not read, unknowns.
