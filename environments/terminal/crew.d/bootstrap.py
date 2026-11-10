@@ -93,8 +93,8 @@ def spec_scaffold(values, repo):
 
 def missing_briefs(rendered, runtime):
     """Roles with native discovery whose brief is not rendered: briefs/<role>.md, else runtime/<discovery name>.md.
-    Runtimes other than tmux use the grok-bot names."""
-    key = "tmux" if runtime == "tmux" else "grok-bot"
+    A session profile renders the tmux names (#1541); other runtimes use the grok-bot names."""
+    key = "tmux" if runtime in ("tmux", "session") else "grok-bot"
     return [role for role, v in crew_render.ROLES.items() if key in v.get("discovery", {}) and
             not (Path(rendered) / "briefs" / (role + ".md")).is_file() and
             not (Path(rendered) / "runtime" / (v["discovery"][key] + ".md")).is_file()]

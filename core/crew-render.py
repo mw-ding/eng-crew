@@ -3,7 +3,8 @@
 
 Usage: crew-render.py --project FILE [--org-profile FILE] [--inputs DIR] [--diff-paths FILE] --out DIR
 Inputs (default: the repo's templates/): core/<role>.md for each role, if core/ exists -> briefs/<role>.md;
-runtimes/<runtime>/** of the profile's runtime -> runtime/**; backends/<backend>.toml maps each
+runtimes/<runtime>/** of the profile's runtime -> runtime/** (runtime.options.role_runtime swaps one role's
+template for runtimes/<other>/<role>.md, #1055); backends/<backend>.toml maps each
 <op:concern.operation> to a command, and its [placeholders] kept list declares extra run-time placeholders.
 Pack overlay: a render/ directory in the org profile's directory (else paths.pack) is searched per file
 before the inputs. runtime.options.notes.render files are appended verbatim to that role's rendered brief.
@@ -391,7 +392,9 @@ class Renderer:
                     lines.append("   Pipe the changed paths, one per line, to `core/crew-config.py precheck-scope "
                                  "--project <file>` and append its `targets` to the test command. Exit 3 (unowned "
                                  "code) or 4 (owners query failed) stops the check; `tests=n/a` only when every "
-                                 "path is no-owner-ok, and list the `no_owner_ok` paths beside the marker.\n")
+                                 "path is no-owner-ok or removed, and list the `no_owner_ok` paths beside the marker. "
+                                 "Pipe every changed path, both rename paths included, from the worktree at head: "
+                                 "a path absent there is `removed`, with no owners query and no targets.\n")
             lines.append("\n```sh\n%s\n```\n\n" % commands[step] if commands[step] else
                          "\n%s: `n/a` (no configured command).\n\n" % label)
         lines += ["4. Self-review against the acceptance criteria and repo rules.\n",
@@ -435,10 +438,26 @@ def render(args, paths, normalize_paths):
         idle = [r for r in OPTIONAL_ROLES if values.get(ROLES[r]["cap_key"]) == 0]
         unused = {os.path.relpath(t, "templates")
                   for r in idle for t in ROLES[r]["templates"].get(values["runtime.name"], [])}
+        moved = []  # runtime.options.role_runtime: the role's own template swapped for <runtime>/<role>.md (#1055)
+        for r in ROLES:
+            other = values.get("runtime.options.role_runtime." + r)
+            if other is None or r in idle:
+                continue
+            own = ROLES[r]["templates"].get(values["runtime.name"], [])
+            src = os.path.join("runtimes", other, r + ".md")
+            if not own:
+                problems.append("%s:1: runtime.options.role_runtime.%s: role %s declares no %s template to replace"
+                                % (args.project, r, r, values["runtime.name"]))
+            elif not any(os.path.isfile(os.path.join(root, src)) for root in roots):
+                problems.append("%s:1: missing mapping: no %s template for role %s"
+                                % (os.path.join(args.inputs, src), other, r))
+            else:
+                unused |= {os.path.relpath(t, "templates") for t in own}
+                moved.append((src, os.path.join("runtime", r + ".md"), None))
         jobs = [job for job in jobs if job[2] not in idle]
         jobs += [(os.path.join(rt, rel), os.path.join("runtime", rel), None)
                  for rel in sorted(found, key=lambda rel: [(1, d) for d in rel.split(os.sep)[:-1]] + [(0, rel)])
-                 if os.path.join(rt, rel) not in unused]
+                 if os.path.join(rt, rel) not in unused] + moved
     renderer, rendered = Renderer(values, args.inputs, normalize_paths, overlay), {}
     for rel, dst, role in jobs:
         src = renderer.find(rel)

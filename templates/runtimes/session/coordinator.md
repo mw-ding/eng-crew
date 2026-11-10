@@ -78,6 +78,8 @@ Exit 2 (a missing Item, Pass or Base) means do not dispatch. Read each
 worker's `ack`, then `done`, `blocked` or `failed` line in
 `<state-dir>/<owner>__<repo>/status/<run-id>.status`; native completion alone
 is not a pass result.
+
+Cut go: `release_delegation = "<release-delegation>"` (docs/release.md).
 <control-item:set>
 
 ## Quota

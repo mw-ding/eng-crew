@@ -7,7 +7,8 @@ principle ([#676](https://github.com/mw-ding/eng-crew/issues/676)). It holds
 the `[runtime]` key table and the shared `max_active_milestones` option with
 its priority and default behavior, the
 [`tmux` options](#tmux-options) with the standing and render-time notes,
-the [`session` options](#session-options) and the `tmux`
+the [`session` options](#session-options), the
+[per-role runtime](#per-role-runtime) and the `tmux`
 [launch topology](#launch-topology).
 `control_item`, which `instance` is required with, stays in the profile's
 [`[repo]`](../profile.md#repo) table.
@@ -78,6 +79,7 @@ sessions; running workers drain naturally when the cap drops:
 | `sandbox_env` | string: `NAME=VALUE` | `""` | none: sandbox variable passed to every window by `mdstack up`, `mdstack spawn` and `mdstack restart`; `CREW_SANDBOX_ENV` in the launching environment overrides it. Windows also receive `CREW_SANDBOX_ENV` so subsequent launches keep the setting |
 | `notes` | table: role name → list of file paths | `{}` | Standing runtime notes appended at launch, in list order, under headings naming each file. Roles: `coordinator`, `builder`, `reviewer`, `synthesizer`; relative paths resolve from `<state-dir>/<owner>__<repo>`, absolute paths are used as given. Missing or unreadable files fail closed ([mdstack spawn](../runtimes/tmux.md#mdstack-spawn)). The `render` subtable holds render-time notes for any role, leads included (below) |
 | `launch` | table: `coordinator`, `roles`, `resume`, `reconcile` | none (today's topology) | The `mdstack up` launch topology; see [Launch topology](#launch-topology) ([mdstack up](../runtimes/tmux.md#mdstack-up)) |
+| `role_runtime` | table: role name → runtime name | none | Render that role's brief from another runtime's templates; see [Per-role runtime](#per-role-runtime) |
 
 Configure standing policy once; each launch reads the current file contents.
 Omitted roles and empty lists append nothing.
@@ -121,10 +123,34 @@ brief renders the land options as for `tmux`:
 | `present_reviewers` | integer, at least 1, at most `reviewers` | resolved `reviewers` | `<present-reviewer-cap>`: owner-present reviewer limit, as in `tmux`; a value above `reviewers` is refused |
 | `researchers` | `0` only | none | nothing: the binding has no researcher, so `0` keeps a migrated `tmux` profile's no-researcher statement as a no-op; any other value is refused, and `triage.enabled = true` is refused as for `tmux` |
 | `merge_grant`, `merge_grant_scope`, `lone_pr_land`, `train_min`, `train_window`, `train_local_checks`, `mirror_deferral`, `mirror`, `hold_label_blocks` | as in [`tmux` options](#tmux-options) | as in `tmux` | the same placeholders in the session builder, reviewer and synthesizer briefs; session lands have no merge train, so the `train_*` options have no effect ([binding](../runtimes/session.md#selector-options-and-briefs)) |
+| `release_delegation` | as in [`tmux` options](#tmux-options) | `"none"` | `<release-delegation>` in the session coordinator brief, as in the `tmux` one (#1542); set only by an owner account, a pack is refused ([release delegation](../release.md#release-delegation)) |
 | `notes` | table | `{}` | its `render` subtable holds render-time notes, as for `tmux`; `mdstack up` appends the `coordinator` list to the coordinator brief (#1548); no launcher reads worker notes |
 | `session` | string | `crew-<owner>-<repo>` | none: the tmux session `mdstack up` opens for the coordinator (#1548) |
 | `permission_mode` | as in [`tmux` options](#tmux-options) | `"bypass"` | none: the coordinator harness flags `mdstack up` launches with |
 | `launch` | table: `coordinator`, `resume` | none | `coordinator` and `resume` as in [Launch topology](#launch-topology); `roles` has no effect, since `mdstack up` never opens role windows on `session` and workers stay dispatched per pass |
+| `role_runtime` | table | none | as in `tmux`; see [Per-role runtime](#per-role-runtime) |
+
+## Per-role runtime
+
+`role_runtime` lets a crew adopt another runtime one role at a time (#1055).
+Each key is a registry role and each value a runtime other than
+`runtime.name`. The render drops the role's template for the selected
+runtime (its registry `templates` entry) and renders
+`templates/runtimes/<runtime>/<role>.md` to `runtime/<role>.md` in its place,
+with the profile's values and the usual placeholder checks. Every other brief
+renders unchanged, and a profile without the key, or with an empty table,
+renders byte-identically. A value equal to `runtime.name` or an unknown role is
+refused; a role with no template for the selected runtime, or a runtime
+with no `<role>.md`, fails the render. A role with a cap of 0 renders nothing,
+as before. Only the render changes: the launcher, poller and worker dispatch
+follow `runtime.name`, so the swapped brief must suit the runtime that starts
+it. For example, a `tmux` crew piloting the session coordinator:
+
+```toml
+[runtime]
+name = "tmux"
+options = { role_runtime = { coordinator = "session" } }
+```
 
 ## `merge_grant_scope`
 

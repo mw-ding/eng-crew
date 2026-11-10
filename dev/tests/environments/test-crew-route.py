@@ -1,5 +1,5 @@
 """Tests for zero-token routing with fake tmux and gh: review/validate lifecycle, caps and head deduplication,
-merged close-out and protected branches, dependency merges that wake the coordinator (#814), express changes skipped by the reviewer pool (#672), a queued researcher done: sparing a same-name respawn (#1092), ownership and judgement handoff, and watcher continuation.
+merged close-out and protected branches, dependency merges that wake the coordinator (#814), milestone-closing and release-cut merges that wake it too (#1559), express changes skipped by the reviewer pool (#672), a queued researcher done: sparing a same-name respawn (#1092), ownership and judgement handoff, and watcher continuation.
 Run in CI. --transcript and --inbox-transcript print reproducible CLI lifecycles with volatile fixture paths and
 SHAs scrubbed.
 """
@@ -32,6 +32,7 @@ class Route(SpawnBase):
                     "elif args[:2] == ['repo', 'view']: print(json.dumps({'defaultBranchRef': {'name': 'main'}}))\n"
                     "elif args[:2] == ['issue', 'view']: print(json.dumps(pr.get('_issue', {'labels': [{'name': 'crew:ready'}], 'state': 'CLOSED', 'stateReason': 'COMPLETED'})))\n"
                     "elif args[:1] == ['api'] and '/files' in args[1]: print(json.dumps(pr.get('_files', [])))\n"
+                    "elif args[:1] == ['api'] and '/milestones/' in args[1]: print(json.dumps(pr.get('_milestone', {})))\n"
                     "elif args[:1] == ['api'] and '/actions/jobs/' in args[1]: print(json.dumps(pr.get('_job', {})))\n"
                     "elif args[:1] == ['api'] and '--paginate' in args: sys.exit(1)\n"
                     "elif args[:1] == ['api'] and '/commits/' in args[1]: print(json.dumps({'parents': pr['_parents']}))\n"
@@ -611,6 +612,29 @@ class Route(SpawnBase):
         self.queue(self.event("pr-merged"))
         self.route()
         self.assertEqual(self.pending(), [])
+
+    def test_milestone_closing_or_release_cut_merge_reaches_coordinator(self):  # #1559
+        cut = [dict(filename="CHANGELOG.md", patch="@@ -8,2 +8,4 @@\n ## [Unreleased]\n+\n+## [7.5.0] - 2026-11-10\n")]
+        entry = [dict(filename="CHANGELOG.md", patch="@@ -8,2 +8,3 @@\n ## [Unreleased]\n+- A fix. (issue #7)\n")]
+        issue = dict(labels=[], state="CLOSED", stateReason="COMPLETED", milestone=dict(number=40, title="M40"))
+        for name, extra, woken in (
+                ("last open item", dict(_issue=issue, _milestone=dict(state="open", open_issues=0)), True),
+                ("release cut", dict(_files=cut), True),
+                ("items left", dict(_issue=issue, _milestone=dict(state="open", open_issues=2)), False),
+                ("milestone already closed", dict(_issue=issue, _milestone=dict(state="closed", open_issues=0)), False),
+                ("no milestone, changelog entry only", dict(_files=entry), False)):
+            with self.subTest(name):
+                self.live.pop("_issue", None)
+                self.live.update(dict(state="MERGED", _milestone={}, _files=[]), **extra)
+                self.save()
+                self.queue(self.event("pr-merged"))
+                self.route()
+                self.assertEqual(self.pending(), [self.event("pr-merged", consumer="coordinator",
+                                                             note="milestone-complete")] if woken else [])
+                self.assertIn(["api", "-X", "DELETE", "repos/acme/widgets/git/refs/heads/builder/7-feature"],
+                              self.gh_calls())
+                if os.path.exists(os.path.join(self.state, "wake", "queue.jsonl")):
+                    os.remove(os.path.join(self.state, "wake", "queue.jsonl"))
 
     def test_watcher_wakes_coordinator_on_dependency_merge(self):
         self.live.update(state="MERGED", _open=[dict(number=9, body="## Depends on\n\n#7\n")])

@@ -172,7 +172,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `scripts/campaign-report.py` | Internal | n/a | Maintainer tool: A31 campaign-history report from actual campaign records ([#1462](https://github.com/mw-ding/mdstack/issues/1462)) |
 | `scripts/campaign-run.py` | Internal | n/a | Guards and tests: M25 campaign scenario runner and durable results, not installed ([#784](https://github.com/mw-ding/eng-crew/issues/784)) |
 | `scripts/campaign-sandbox.py` | Internal | n/a | Guards and tests: M25 disposable sandbox setup, teardown and level-b plan, not installed ([#785](https://github.com/mw-ding/eng-crew/issues/785)) |
-| `scripts/changelog-cut.py` | Internal | n/a | Guards and tests: release tooling, run by the release workflow, not installed |
+| `scripts/changelog-cut.py` | Deliverable | all | Release helper: cut the CHANGELOG and fragments into a version section; the `release.cut` binding runs it from the installed bundle ([#1033](https://github.com/mw-ding/mdstack/issues/1033)) |
 | `scripts/check-changelog-pr.py` | Internal | n/a | Guards and tests: PR fragment requirement, run by CI, not installed |
 | `scripts/check-markdown.py` | Deliverable | all | Install CLI: local markdownlint parity; `check-repo.py` loads it for its `markdown` check ([#644](https://github.com/mw-ding/eng-crew/issues/644)) |
 | `scripts/check-repo.py` | Deliverable | all | Install CLI: the repo guard; `crew-config.py` imports its secret-scan patterns ([#275](https://github.com/mw-ding/eng-crew/issues/275)) |

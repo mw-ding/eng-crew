@@ -50,6 +50,8 @@ post, and leave it to CI.
    to `$CREW_STATUS`. After the last PR, end the run; the coordinator
    dispatches the next land as a new run.
 
+<include:policy/synthesizer/gate-status.md>
+
 Land rule (protocol §7; session C7): session lands have no merge train, since
 `mdstack train` refuses a session profile, so `train_min`, `train_window` and
 `train_local_checks` do not apply. A PR is ready when it passes steps 1 and 2
