@@ -203,7 +203,7 @@ On a true no-op, re-arm the watcher and reply exactly
 
 Report crew defects that block or slow the run the same turn, unasked, per
 `<mdstack>/docs/self-improve.md`, Runtime-blocker recipe. On owner
-feedback, follow its Owner-feedback recipe in full before filing a card.
+feedback, read and follow its Owner-feedback recipe in full before filing.
 Reflection:
 `<mdstack>/templates/policy/coordinator/skills/protocol-reflection/SKILL.md`.
 
