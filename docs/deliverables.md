@@ -146,6 +146,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `docs/verification.md` | Deliverable | all | Protocol bundle (core): the text roles load and cite |
 | `environments/README.md` | Deliverable | all | Module README: purpose, contents and how the module plugs in ([#1237](https://github.com/mw-ding/eng-crew/issues/1237)) |
 | `environments/terminal/README.md` | Deliverable | all | Module README: purpose, contents and how the module plugs in ([#1237](https://github.com/mw-ding/eng-crew/issues/1237)) |
+| `environments/terminal/copy-claim.py` | Deliverable | all | Runtime CLI: host-wide working-copy claims across crews, shared by spawn, the remote entrypoint and `mdstack copy-claim` ([#391](https://github.com/mw-ding/mdstack/issues/391)) |
 | `environments/terminal/crew-proc.py` | Deliverable | tmux | Runtime CLI: OS process helpers every session backend shares ([#1183](https://github.com/mw-ding/eng-crew/issues/1183)) |
 | `environments/terminal/crew-session.py` | Deliverable | tmux | Runtime CLI: session backend adapter discovery from `sessions/<backend>/adapter.py` ([#1183](https://github.com/mw-ding/eng-crew/issues/1183)) |
 | `environments/terminal/crew.d/**` | Deliverable | all | Runtime CLI: per-command modules ([#224](https://github.com/mw-ding/eng-crew/issues/224)) |

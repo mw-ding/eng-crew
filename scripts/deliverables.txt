@@ -108,6 +108,7 @@ docs/triage.md	deliverable	tmux	Protocol bundle (runtime binding): always-on tri
 docs/verification.md	deliverable	all	Protocol bundle (core): the text roles load and cite
 environments/README.md	deliverable	all	Module README: purpose, contents and how the module plugs in ([#1237](https://github.com/mw-ding/eng-crew/issues/1237))
 environments/terminal/README.md	deliverable	all	Module README: purpose, contents and how the module plugs in ([#1237](https://github.com/mw-ding/eng-crew/issues/1237))
+environments/terminal/copy-claim.py	deliverable	all	Runtime CLI: host-wide working-copy claims across crews, shared by spawn, the remote entrypoint and `mdstack copy-claim` ([#391](https://github.com/mw-ding/mdstack/issues/391))
 environments/terminal/crew-proc.py	deliverable	tmux	Runtime CLI: OS process helpers every session backend shares ([#1183](https://github.com/mw-ding/eng-crew/issues/1183))
 environments/terminal/crew-session.py	deliverable	tmux	Runtime CLI: session backend adapter discovery from `sessions/<backend>/adapter.py` ([#1183](https://github.com/mw-ding/eng-crew/issues/1183))
 environments/terminal/crew.d/**	deliverable	all	Runtime CLI: per-command modules ([#224](https://github.com/mw-ding/eng-crew/issues/224))
