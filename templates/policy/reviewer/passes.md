@@ -82,6 +82,10 @@
    script header line (`Proof R1 · ... · sha ... · cwd ...`), or whose
    `sh` block does not reproduce at head, is one finding; paste your exact
    re-run output (preferably from `<mdstack>/scripts/evidence-cli.py`) in it.
+   Apply verification Claim scope: a claim wider than its read, or a
+   fail-closed tool proved only by a function return, is `disagrees`.
+   Replay each guard's negative control (protocol §3); a missing one is
+   `disagrees` under `evidence = typed`, a 🟡 under `inline`.
 
    Round `<k>` per §5.
    Start on the new head without waiting for CI. Record the CI state observed
