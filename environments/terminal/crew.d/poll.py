@@ -430,8 +430,8 @@ def triage_scan(repo, open_items, closed_items, rules, owners, fields, coordinat
     for item in open_items:
         for c in item.get("comments") or []:
             if isinstance(c, dict) and triage_feedback(c, owners, coordinator):
-                for n in set(re.findall(r"(?<![\w/])#(\d+)\b", c.get("body") or "")) - {str(item.get("number"))}:
-                    relayed.setdefault(int(n), []).append(c.get("createdAt") or "")
+                for n in set(re.findall(r"(?<![\w/])#(\w[\w-]*\w|\w)\b", c.get("body") or "")) - {str(item.get("number"))}:
+                    relayed.setdefault(int(n) if n.isdigit() else n, []).append(c.get("createdAt") or "")
     for item in open_items + closed_items:
         try:
             keyed.append((item, *triage_keys(item, fields)))
@@ -505,13 +505,15 @@ def triage_items(data):
 def triage_native(values, project, org, tracker):
     """The non-GitHub tracker's `tracker.list-items` binding run for one tracker id: (open, closed). RuntimeError when
     unbound, failed or unreadable, so the scan records the tracker unreadable."""
+    renderer = crew_render.Renderer(values, os.path.join(ROOT, "templates"), overlay=crew_render.pack_overlay(
+        project, org, values))
     try:
-        cmd, _ = crew_render.Renderer(values, os.path.join(ROOT, "templates"), overlay=crew_render.pack_overlay(
-            project, org, values)).op("tracker", "list-items")
+        cmd, kept = renderer.op("tracker", "list-items")
+        renderer.kept = kept | {"tracker"}  # install-time placeholders filled as in a brief; <tracker> per read
+        cmd = renderer.line(cmd)
     except ValueError as e:
         raise RuntimeError("tracker.list-items unbound (%s)" % e) from e
-    fill = {"<owner>": values["repo.owner"], "<repo>": values["repo.name"], "<tracker>": tracker}
-    argv = [re.sub("|".join(map(re.escape, fill)), lambda m: fill[m.group(0)], a) for a in shlex.split(cmd)]
+    argv = [a.replace("<tracker>", tracker) for a in shlex.split(cmd)]
     try:
         r = subprocess.run(argv, stdin=subprocess.DEVNULL, capture_output=True, text=True)
     except OSError as e:

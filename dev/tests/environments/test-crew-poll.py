@@ -804,6 +804,8 @@ class NativeTriage(Base):
         import json, os, sys
         if sys.argv[1:3] == ["items", "DOWN"]:
             sys.exit("ex: no tracker DOWN")
+        with open(os.environ["EX_ITEMS"] + ".log", "a") as f:
+            f.write(json.dumps(sys.argv[1:]) + "\\n")
         print(open(os.environ["EX_ITEMS"]).read())
         """)
 
@@ -812,7 +814,7 @@ class NativeTriage(Base):
         self.write_profile(runtime="session")
         with open(os.path.join(SCRIPTS, "..", "templates", "backends", "github.toml")) as f:
             github = f.read()
-        mapping = re.sub(r"(?m)^list-items = .*$", 'list-items = "ex items <tracker> --json"', github)
+        mapping = re.sub(r"(?m)^list-items = .*$", 'list-items = "ex items <tracker> --json --root <state-dir>"', github)
         write_pack(os.path.join(self.project_dir, "pack"), mapping=mapping)
         with open(self.project, "a") as f:
             f.write('pack = "pack"\n[triage]\nenabled = true\ntrackers = ["OPS", "DOWN"]\n')
@@ -847,6 +849,9 @@ class NativeTriage(Base):
         self.assertEqual(items["OPS#OPS-3"]["reason"], "owner-feedback")
         self.assertEqual(queue["milestones"], [])
         self.assertFalse(os.path.exists(os.path.join(self.tmp, "gh.log")))  # gh never ran
+        with open(self.env["EX_ITEMS"] + ".log") as f:  # install-time <state-dir> filled, <tracker> per read
+            self.assertEqual(json.loads(f.readline()), ["items", "OPS", "--json", "--root",
+                                                        os.path.join(self.tmp, "state")])
         with open(os.path.join(self.state, "wake", "queue.jsonl")) as f:
             self.assertEqual([json.loads(line)["refs"] for line in f], [["OPS#OPS-1"]])
 
@@ -871,6 +876,19 @@ class NativeTriage(Base):
         self.assertEqual((closed[0]["number"], closed[0]["url"]), (12, ""))
         with self.assertRaises(ValueError):
             crew.triage_items({"items": []})
+
+    def test_relayed_decision_names_a_native_item(self):  # #1404 self-gate: `#OPS-3`, not only `#123`
+        crew = load_crew()
+        record = {"author": {"login": "acme-bot"}, "createdAt": "2026-11-01T00:00:00Z",
+                  "body": "<!-- crew:v1 role=researcher pass=triage issue=OPS-3 decision=classify mode=shadow -->"}
+        decision = {"author": {"login": "acme-bot"}, "createdAt": "2026-11-02T00:00:00Z",
+                    "body": "[Ash/decision] owner: accept #OPS-3 as P2"}
+        items = [{"number": "OPS-3", "title": "Recorded", "body": "", "labels": [], "comments": [record], "url": ""},
+                 {"number": "OPS-9", "title": "Decision log", "body": "", "labels": [], "comments": [decision],
+                  "url": "", "milestone": "M1"}]
+        entries = crew.triage_scan("OPS", items, [], crew.TRIAGE_RULES, {"acme-owner"}, crew.triage_card_fields(),
+                                   ("acme-bot", "Ash"))
+        self.assertEqual([(e["ref"], e["reason"]) for e in entries], [("OPS#OPS-3", "owner-feedback")])
 
 
 if __name__ == "__main__":
