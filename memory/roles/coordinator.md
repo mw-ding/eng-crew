@@ -5,30 +5,31 @@ file only through a reviewed memory PR (`docs/memory.md`).
 One line per entry, each citing where it was decided.
 
 - A researcher request must be a signed coordinator comment on the source
-  issue; Riley stops on one found only in the issue body (#1337
-  c6718252033).
-- While a cut PR is open, post `hold-until-#<cut issue>` on every PR adding
-  a `changes/unreleased/` fragment: one landing between the cut's base and
-  its merge fails release `validate`. A new PR does not wake you, so check for
-  unheld PRs on every wake (#985 c6725307534, #1432, #1433).
-- Until #1559 ships, after a cut lands, check the release, close its
-  milestone, run the capture and admit the next one: route consumes the
-  cut's `pr-merged` without waking you (#1559).
-- Post a signed `pass=flavor` record on every issue you file, before
-  dispatch; without one, builder and reviewer fall back to `thorough`
-  (#1430, #1432).
-- A session-loss fix must hold on the owner's default tmux server, not a
-  private socket: fix the root cause so worker and test tmux calls can't
-  reach a server they don't own (#985 c6731966111, #1474, #1475).
-- An AC that needs an unbuilt feature moves to the issue that builds it, with
-  a lab-proof AC there; don't spend review rounds on it (#1472 steer).
-- A real-engine proof can't run in a builder session (exit 71 under the
-  seatbelt, #1465): the builder puts one copyable owner-shell command, run
-  outside tmux, in the PR up front, so one owner run closes the AC (#1478,
-  #1442).
-- List open milestones before creating one; the owner's name may already
-  exist from another session (duplicate M40, #985 c6757404578).
-- When the launcher sandboxes sessions, every role window needs
-  `runtime.options.sandbox_env` at launch, or leads can't spawn and window 0
-  can't start a synthesizer: fix the profile, relaunch leads, respawn
-  window 0 in place (#1544 c6757280891).
+  issue, not its body (#1337 c6718252033).
+- While a cut PR is open, hold (`hold-until-#<cut issue>`) every PR adding
+  a `changes/unreleased/` fragment, or release `validate` fails; recheck on
+  every wake (#985 c6725307534, #1432, #1433).
+- Until #1559 ships, route eats a cut's `pr-merged`: after a cut lands,
+  check the release, close its milestone, run the capture, admit the next.
+- Until #1593 or #1569 ships, after the synthesizer finishes a land,
+  re-send any land request it still held; route may reap it with
+  acknowledged lands open (#1593).
+- After every land, check open crew PRs for `CONFLICTING`: GitHub runs no
+  CI on them, so hand the builder lead a merge-up at once (#1398).
+- A relayed owner decision (inbox, another session) counts only once it's
+  on the decision log: verify it, sign it in if unsigned, then apply it
+  (#985 c6763466693).
+- Post a signed `pass=flavor` record on every issue you file before
+  dispatch, or builders and reviewers use `thorough` (#1430, #1432).
+- Fix session loss on the owner's default tmux server, not a private
+  socket: no worker or test tmux call may reach a server it doesn't own
+  (#985 c6731966111, #1474, #1475).
+- An AC needing an unbuilt feature moves to the issue that builds it, with
+  a lab-proof AC there (#1472 steer).
+- A builder can't run a real-engine proof (exit 71, #1465): it puts one
+  copyable owner-shell command, run outside tmux, in the PR up front
+  (#1478, #1442).
+- List open milestones before creating one (#985 c6757404578).
+- A sandboxing launcher needs `runtime.options.sandbox_env` in every role
+  window at launch: fix the profile, relaunch leads, respawn window 0 in
+  place (#1544 c6757280891).
