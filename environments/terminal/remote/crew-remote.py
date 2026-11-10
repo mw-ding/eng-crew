@@ -8,7 +8,8 @@ Install on a host: the crew key's authorized_keys line is
 `command="python3 <bundle>/environments/terminal/remote/crew-remote.py --root <root>",restrict,pty <key>`. The client (`call`) runs
 `ssh <host> crew-host` with batch mode, strict host keys, no forwarding and bounded dead-peer timeouts. It takes only
 the host's auth and host-key settings from the SSH config (`ssh -G`) and then runs with `-F none`, so no SendEnv,
-SetEnv, forwarding or proxy from any config reaches the call; the entrypoint reads no environment but SSH_ORIGINAL_COMMAND.
+SetEnv, forwarding or proxy from any config reaches the call; the entrypoint reads no environment but SSH_ORIGINAL_COMMAND
+(and, for the host-wide working-copy claims, HOME, which sshd sets, or MDSTACK_COPY_CLAIMS, which it never forwards).
 A request is one JSON object {verb, version, request_id?, ...}, never a shell string, never evaluated. Every reply
 is {"result": "ok", ...}, {"result": "refused", "reason"} or {"result": "failed", "error"}, exit 0; only the client
 yields {"result": "unreachable"}, on a transport failure. Refused: a verb outside the closed set or not built yet, a
@@ -33,7 +34,8 @@ reports whether that project's pinned toolkit, its record and every file hash ma
 jobs/<job_id>/wt/ at head runs the closed command set in the background with a scrubbed env and writes
 jobs/<job_id>/result.json; a retried job_id returns the first job; jobs past JOB_RETENTION are removed) and `result`
 (`running`, or the result with capped log tails); `spawn` (needs the runner: fetch the run's ref into the mirror
-without moving its refs, refuse unless it is the given sha, add the detached worktree wt/<name>, write the brief and
+without moving its refs, refuse unless it is the given sha, claim wt/<name> host-wide (copy-claim.py, #391; another
+crew's claim refuses), add the detached worktree wt/<name>, write the brief and
 the PR's review files under state/<owner>__<repo>/, start the harness in the runner session's window <owner>__<repo>/<window> and keep
 the run record with its pane identity and the primary that spawned it; `relaunch` restarts a kept run in its own
 worktree), `probe` (C5 liveness on this host's clock) and `kill` (stop the window, then remove the worktree and run
@@ -192,6 +194,14 @@ def project_step(handler):
             reply["pruned"] = prune_toolkit(root)
         return dict(reply, result="ok", mirror=os.path.relpath(mirror, root))
     return run
+
+
+def copy_claim():
+    """The host-wide working-copy claims (environments/terminal/copy-claim.py, #391)."""
+    spec = importlib.util.spec_from_file_location("crew_copy_claim", os.path.join(ROOT, "environments", "terminal", "copy-claim.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def crew_install():
@@ -686,24 +696,35 @@ def spawn_verb(request, root):
                 not isinstance(verdicts, dict) or not all(VERDICT.fullmatch(str(n)) and isinstance(t, str) for n, t in verdicts.items()):
             return dict(result="refused", reason="spawn needs worktree_path=wt/<name>, sha, ref and verdicts")
         wt, mirror = os.path.join(root, os.path.normpath(wt_rel)), os.path.join(root, "mirrors", request["project"] + ".git")
+        try:  # host-wide, so another crew's run never shares the copy; released below on refusal, else by kill
+            copy_claim().acquire(wt, state, window, "from primary " + request["primary"])
+        except RuntimeError as e:
+            return dict(result="refused", reason=str(e))
+        reply = None
         if os.path.lexists(wt) or not os.path.isdir(mirror):
-            return dict(result="refused", reason="%s exists" % wt_rel if os.path.lexists(wt) else "project mirror not prepared")
-        try:  # --refmap= fetches without touching the mirror's refs, which run branches share
-            sh("fetch", "git", "-C", mirror, "fetch", "--quiet", "--refmap=", "origin", ref)
-            if sh("fetch", "git", "-C", mirror, "rev-parse", "FETCH_HEAD").strip() != sha:
-                return dict(result="refused", reason="stale spawn: %s is not %s" % (ref, sha))
-            sh("worktree", "git", "-C", mirror, "worktree", "add", "--quiet", "--detach", wt, sha)
-            sh("worktree", "git", "-C", mirror, "config", "remote.origin.mirror", "false")  # a run pushes refspecs
-        except Failed as e:
-            return e.reply
-        with open(os.path.join(wt, sh("worktree", "git", "-C", wt, "rev-parse", "--git-path", "info/exclude").strip()), "a") as f:
-            f.write("\n.crew/\n")  # step summaries never count as unlanded
+            reply = dict(result="refused", reason="%s exists" % wt_rel if os.path.lexists(wt) else "project mirror not prepared")
+        else:
+            try:  # --refmap= fetches without touching the mirror's refs, which run branches share
+                sh("fetch", "git", "-C", mirror, "fetch", "--quiet", "--refmap=", "origin", ref)
+                if sh("fetch", "git", "-C", mirror, "rev-parse", "FETCH_HEAD").strip() != sha:
+                    reply = dict(result="refused", reason="stale spawn: %s is not %s" % (ref, sha))
+                else:
+                    sh("worktree", "git", "-C", mirror, "worktree", "add", "--quiet", "--detach", wt, sha)
+                    sh("worktree", "git", "-C", mirror, "config", "remote.origin.mirror", "false")  # a run pushes refspecs
+            except Failed as e:
+                reply = e.reply
+        if reply:
+            copy_claim().release(wt, state, window)
+            return reply
         for d in ("runs", "status", "inbox", "verdicts"):
             os.makedirs(os.path.join(state, d), exist_ok=True)
+        rec = dict(window=window, primary=request["primary"], worktree=wt, copy_claim=wt)
+        save(path, rec)  # before any further setup: a failure from here leaves a run kill removes and releases
+        with open(os.path.join(wt, sh("worktree", "git", "-C", wt, "rev-parse", "--git-path", "info/exclude").strip()), "a") as f:
+            f.write("\n.crew/\n")  # step summaries never count as unlanded
         for name, text in verdicts.items():
             with open(os.path.join(state, "verdicts", name), "w", encoding="utf-8") as f:
                 f.write(text)
-        rec = dict(window=window, primary=request["primary"], worktree=wt)
     rec.update({k: request[k] for k in ("role", "engine", "model", "effort", "permission_mode", "identity")})
     brief = os.path.join(state, "runs", window + ".brief.md")
     with open(brief, "w", encoding="utf-8") as f:
@@ -784,6 +805,8 @@ def kill_verb(request, root):
     shutil.rmtree(wt, ignore_errors=True)
     subprocess.run(["git", "-C", mirror, "worktree", "prune"], capture_output=True)
     window = request["window"]
+    if rec.get("copy_claim"):  # the run is gone: its holder releases the working-copy claim (#391)
+        copy_claim().release(rec["copy_claim"], state, window)
     for p in (path, os.path.join(state, "runs", window + ".brief.md"), os.path.join(state, "status", window + ".status"),
               os.path.join(state, "inbox", window + ".jsonl")):
         if os.path.exists(p):
