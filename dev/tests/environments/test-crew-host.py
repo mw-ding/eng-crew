@@ -89,6 +89,20 @@ class Host(Base):
         self.assertFalse(call["request"]["fix"])
         self.assertNotIn("GH_TOKEN", json.dumps(call))
 
+    def test_address_is_the_ssh_destination(self):
+        """#1034: with an `address`, check and prepare connect to that DNS name; the label stays the key."""
+        with open(self.project) as f:
+            text = f.read().replace('root = "~/.crew"', 'root = "~/.crew"\naddress = "host-b.region.example.com"')
+        with open(self.project, "w") as f:
+            f.write(text)
+        r = self.prepare()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("host-b: ready", r.stdout)
+        self.assertEqual([(c["request"].get("verb"), c["argv"][-2]) for c in self.calls()],
+                         [("prepare", "host-b.region.example.com"), ("check", "host-b.region.example.com")])
+        r = self.crew("host", "check", "host-b.region.example.com")
+        self.assertEqual((r.returncode, r.stdout), (1, "crew host: unknown inventory host host-b.region.example.com\n"))
+
     def test_failure_human_unverified_and_missing_checks_block(self):
         for status in ("fail", "human", "unverified", "warn"):
             reply = self.reply()

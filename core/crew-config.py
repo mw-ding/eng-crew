@@ -152,6 +152,7 @@ CAPABILITY = re.compile(r"supported|unsupported|emulated \(.*\S.*\)")
 TYPE_NAMES = {str: "string", int: "integer", bool: "boolean", float: "float", list: "list", dict: "table"}
 # Host inventory and project affinity (docs/runtimes/multi-device.md, #204).
 HOST_NAME = re.compile(r"[a-z0-9-]{1,63}")
+HOST_ADDRESS = re.compile(r"(?=.{1,253}$)[a-z0-9-]{1,63}(\.[a-z0-9-]{1,63})*\.[a-z-][a-z0-9-]{0,62}")  # a DNS name, no IP
 HOST_OS, HOST_ARCH = ["linux", "macos"], ["x86_64", "arm64"]
 DEVICES = ["ios-simulator", "ios-device", "android-emulator", "android-device"]
 PLACED_PASSES = {r: v["placement"] for r, v in ROLE_REGISTRY.items() if "placement" in v}  # mdstack spawn passes
@@ -317,7 +318,7 @@ def check_platform(err, path, table, fields):
 
 
 def validate_hosts(profile, top, err):
-    """[hosts.<name>] and [placement]: hosts by overlay network name only, never an address (spec R1)."""
+    """[hosts.<name>] and [placement]: hosts by overlay network name, or a DNS `address`, never an IP (spec R1)."""
     hosts = {}
     for name, table in top.get("hosts", {}).items():
         path = "hosts." + name
@@ -325,7 +326,9 @@ def validate_hosts(profile, top, err):
             err(path, "expected an overlay network name ([a-z0-9-], 1-63 characters); no IP literal, user@ or :port")
         h = check_table(err, path, table, {"primary": (bool, False), "forge": (bool, True), "capabilities": (dict, REQUIRED),
                                             "max_runs": (int, REQUIRED), "roles": (list, None), "root": (str, None),
-                                            "toolchain_bin": (str, None)})
+                                            "toolchain_bin": (str, None), "address": (str, None)})
+        if "address" in h and not HOST_ADDRESS.fullmatch(h["address"]):
+            err(path + ".address", "expected a dotted DNS name ([a-z0-9-] labels); no IP literal, user@ or :port")
         forge = h.get("forge", True)
         caps = check_platform(err, path + ".capabilities", h["capabilities"], {"os": (str, REQUIRED), "arch": (str, REQUIRED),
                               "engines": ("list[str]", REQUIRED if forge else None)}) if "capabilities" in h else {}

@@ -1937,6 +1937,16 @@ class HostInventoryTest(unittest.TestCase):
             self.assertFails(VALID + text, "crew.toml:hosts.%s: expected an overlay network name ([a-z0-9-], "
                              "1-63 characters); no IP literal, user@ or :port" % bad)
 
+    def test_host_address_is_a_dns_name(self):
+        """#1034: a dotted DNS `address` beside the short label validates; an IP, user@, :port or bare label does not."""
+        for good in ["host-b.region.example.com", "host-b.tailnet.ts.net"]:
+            self.assertEqual(validate(VALID + HOSTS.replace('root = "/srv/crew"', 'address = "%s"' % good)), OK)
+        for bad in ["10.0.0.7", "fd7a::7", "ops@host-b.example.com", "host-b.example.com:22", "Host-B.example.com",
+                    "host-b", "host-b.example.com."]:
+            self.assertFails(VALID + HOSTS.replace('root = "/srv/crew"', 'address = "%s"' % bad),
+                             "crew.toml:hosts.host-b.address: expected a dotted DNS name ([a-z0-9-] labels); "
+                             "no IP literal, user@ or :port")
+
     def test_unknown_capability(self):
         self.assertFails(VALID + HOSTS.replace('arch = "arm64",', 'arch = "arm64", gpu = "a100",'),
                          "crew.toml:hosts.host-a.capabilities.gpu: unknown key")

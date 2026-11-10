@@ -109,6 +109,20 @@ class Runner(Base):
         self.assertEqual(r.returncode, 0, r.stdout)
         self.assertEqual(r.stdout, "== tests exit 0 (jobs/j/1-tests.log)\ntests tail\n\n")
 
+    def test_address_is_the_ssh_destination(self):
+        """#1034: every runner call goes to the host's `address`; the stored result keeps the label."""
+        with open(self.project) as f:
+            text = f.read().replace("[hosts.host-c]\n", '[hosts.host-c]\naddress = "host-c.region.example.com"\n')
+        with open(self.project, "w") as f:
+            f.write(text)
+        r = self.runner()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual({req["host"] for req in self.requests()}, {"host-c.region.example.com"})
+        job_id = self.requests("job")[0]["job_id"]
+        self.assertIn("runner:host-c/%s" % job_id, r.stdout)
+        self.assertEqual(self.runner("logs", job_id).returncode, 0)
+        self.assertEqual(self.requests()[-1]["host"], "host-c.region.example.com")
+
     def test_remote_red_is_a_red_run_not_a_fallback(self):
         self.script(result=[done(0, 1)])
         r = self.runner()

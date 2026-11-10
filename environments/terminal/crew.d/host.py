@@ -54,6 +54,11 @@ def setting(values, host, key, default=None):
     return values.get("hosts.%s.%s" % (host, key), default)
 
 
+def address(values, host):
+    """The SSH destination of an inventory host: its `address` (a DNS name), else its label (#1034)."""
+    return setting(values, host, "address", host)
+
+
 def ssh_port(host):
     """The SSH port the client resolves for host (`ssh -G`), sent so the host's adapter checks that listener."""
     try:
@@ -104,8 +109,8 @@ def inspect_host(args, values, session, state, host):
                                  ("os", "arch", "devices", "engines")},
                    identities={r: values["identities.%s.gh_user" % r] for r in roles},
                    toolchain_bin=setting(values, host, "toolchain_bin"), forge=forge, fix=getattr(args, "fix", False),
-                   ssh_port=ssh_port(host))
-    reply = load("crew_remote", REMOTE).call(host, "check", **request)
+                   ssh_port=ssh_port(address(values, host)))
+    reply = load("crew_remote", REMOTE).call(address(values, host), "check", **request)
     if reply["result"] == "unreachable":
         return dict(reachable=False, ready=False, report="fail reachable: SSH unavailable or timed out: %s\n"
                     % reply["error"], projects=[], load="?")
@@ -123,7 +128,7 @@ def inspect_host(args, values, session, state, host):
         required = {"tools", "logins", "project mirror"} if forge else {"tools", "project mirror"}
         pin = toolkit_pin(values, state)
         if pin is not None:
-            checks = checks + [toolkit_check(host, project, request["root"], pin)]
+            checks = checks + [toolkit_check(address(values, host), project, request["root"], pin)]
             required.add("toolkit")
         if not forge:
             logins = [c for c in checks if c["check"] == "logins"]
@@ -169,8 +174,8 @@ def prepare(args, values, host, state):
     if getattr(args, "prune", False):
         extra["prune"] = True
     if not primary and forge:
-        return load("crew_remote", REMOTE).call(host, "prepare", timeout=660, project=project, root=root,
-                                                          **extra)
+        return load("crew_remote", REMOTE).call(address(values, host), "prepare", timeout=660, project=project,
+                                                root=root, **extra)
     r = subprocess.run(["git", "-C", checkout_dir, "fetch", "-q", "origin"], capture_output=True, text=True)
     if r.returncode or primary:
         return dict(result="failed", step="fetch", error=r.stderr.strip()[-200:]) if r.returncode else \
@@ -183,8 +188,8 @@ def prepare(args, values, host, state):
             return dict(result="failed", step="bundle", error=r.stderr.strip()[-200:])
         with open(bundle, "rb") as f:
             data = base64.b64encode(f.read()).decode()
-    return load("crew_remote", REMOTE).call(host, "seed", timeout=660, project=project, root=root,
-                                                      branch=branch, bundle=data, **extra)
+    return load("crew_remote", REMOTE).call(address(values, host), "seed", timeout=660, project=project, root=root,
+                                            branch=branch, bundle=data, **extra)
 
 
 def register(sub):

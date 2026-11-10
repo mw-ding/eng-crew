@@ -102,7 +102,8 @@ needs = { devices = ["ios-simulator"] }
 
 | Key | Type | Default | Meaning |
 |---|---|---|---|
-| `hosts.<name>` | table; `<name>` is a DNS label (`[a-z0-9-]`, 1–63 characters) | none | The host's overlay name, also its SSH destination; user, port and key come from the primary's SSH config, by mechanism |
+| `hosts.<name>` | table; `<name>` is a DNS label (`[a-z0-9-]`, 1–63 characters) | none | The host's overlay name, also its SSH destination unless `address` is set; user, port and key come from the primary's SSH config, by mechanism |
+| `hosts.<name>.address` | string: a dotted DNS name (`[a-z0-9-]` labels, no IP literal, `user@` or `:port`) | the label | The SSH destination when the label is not reachable by itself, such as `host-a.region.example.com`; the label stays the key everywhere else (#1034) |
 | `hosts.<name>.primary` | boolean | `false` | Exactly one host is `true` |
 | `hosts.<name>.capabilities.os` | `linux` or `macos` | *required* | Checked against the host by `mdstack host check` |
 | `hosts.<name>.capabilities.arch` | `x86_64` or `arm64` | *required* | Same |
