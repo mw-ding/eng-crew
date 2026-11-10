@@ -338,14 +338,13 @@ class ValidateTest(unittest.TestCase):
         for options in ("", 'session_backend = "cli", builders = 2, reviewers = 1, max_active_milestones = 2',
                         'merge_grant = "none", lone_pr_land = "direct", train_min = 3, mirror = "none", notes = {}',
                         'researchers = 0',  # #1057: the documented no-researcher statement survives a tmux migration
+                        'researchers = 1',  # #1404: the session triage sweep worker
                         # #1548: mdstack up's coordinator launch; coordinator = none needs no roles value
                         'session = "ash-solo", permission_mode = "safe", launch = { coordinator = "none", resume = "abc-1" }'):
             code, lines = validate(session % options)
             self.assertEqual(code, 0, lines)
         for options, expected in [
                 ('session_backend = "tmux"', "session_backend: unknown value 'tmux' (expected one of: native, cli)"),
-                ('researchers = 1', "researchers: the session runtime has no researcher; only 0 (no researcher) "
-                                    "is accepted, got 1"),
                 ('researchers = -1', "researchers: must be >= 0, got -1"),
                 ('researchers = "0"', "researchers: expected integer, got string"),
                 ('tmux_server = "default"', "tmux_server: unknown key"),
@@ -881,10 +880,20 @@ class ResearcherProfile(unittest.TestCase):
         for bad, key in [("interval_hours = 0", "triage.interval_hours"), ('mode = "auto"', "triage.mode"),
                          ('repos = ["widgets"]', "triage.repos[0]"), ("repos = []", "triage.repos"),
                          ('rules = " "', "triage.rules"), ('enabled = "yes"', "triage.enabled"),
-                         ("cadence = 6", "triage.cadence")]:
+                         ("cadence = 6", "triage.cadence"), ("trackers = []", "triage.trackers"),
+                         ('trackers = ["OPS board"]', "triage.trackers[0]")]:
             code, lines = validate(VALID + "\n[triage]\n" + bad + "\n")
             self.assertEqual(code, 1, bad)
             self.assertTrue(any(key + ":" in ln for ln in lines), (bad, lines))
+
+    def test_triage_trackers_name_a_non_github_tracker(self):  # #1404
+        code, lines = validate(VALID + '\n[triage]\ntrackers = ["OPS"]\n')
+        self.assertEqual(code, 1)
+        self.assertTrue(any("triage.trackers: needs a non-GitHub tracker backend" in ln for ln in lines), lines)
+        native = VALID.replace('[backends.tracker]\nname = "github"', '[backends.tracker]\nname = "example"')
+        self.assertNotEqual(native, VALID)
+        code, lines = validate(native + '\n[triage]\ntrackers = ["OPS", "ops:intake"]\n')
+        self.assertFalse([ln for ln in lines if "triage." in ln], lines)
 
     def test_reflection_table_defaults_off_and_checks(self):  # #1521
         code, lines = resolve(VALID, default=VALID)

@@ -1,7 +1,7 @@
 # Always-on triage
 
 > - **Status:** built (M24); live in shadow mode on this repo's own crew
-> - **Applies to:** tmux: the `mdstack poll` scan, the watcher's sweep timer and Riley's sweep; not Grok Bot, which has no triage timer or sweep ([Out of scope](#out-of-scope), #777)
+> - **Applies to:** tmux: the `mdstack poll` scan, the watcher's sweep timer and Riley's sweep; session: `mdstack poll --triage-only`, a hosted routine trigger and the session sweep brief ([session binding](runtimes/session.md#triage-sweep-routine), #1404); not Grok Bot, which has no triage timer or sweep ([Out of scope](#out-of-scope), #777)
 > - **Current rules:** [protocol §4](protocol.md#4-marker-conventions) (`pass=triage` record); [`[triage]` profile keys](profile.md#triage); coordinator dispositions in [§6](protocol.md#6-duties-on-wake-all-roles)
 > - **Built:** T1–T7 in [Build issues](#build-issues) (#757, #767, #772–#776)
 > - **Mode:** `mode = "shadow"` is the default and this crew's setting since 2026-11-04 ([#110](https://github.com/mw-ding/eng-crew/issues/110#issuecomment-6638329797)): sweeps write records and proposals only; `apply` is not on, and only the owner sets it after [calibration](#shadow-mode-and-calibration)
@@ -84,7 +84,9 @@ placement only.
 
 ## Inputs
 
-One sweep reads, per tracker repo in `[triage] repos`:
+One sweep reads, per tracker repo in `[triage] repos` (per tracker id in
+`[triage] trackers` for a non-GitHub tracker backend, whose scan reads its
+`tracker.list-items` binding instead of `gh`, #1404):
 
 | Input | Source | Unreadable |
 |---|---|---|
