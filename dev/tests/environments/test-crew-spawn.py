@@ -645,8 +645,11 @@ class Spawn(SpawnBase):
         self.assertEqual(os.listdir(self.env["MDSTACK_COPY_CLAIMS"]), [])  # the failed launch released its copy claim
 
     def claims(self):
-        store = self.env["MDSTACK_COPY_CLAIMS"]
-        return [json.load(open(os.path.join(store, n))) for n in sorted(os.listdir(store))] if os.path.isdir(store) else []
+        store, found = self.env["MDSTACK_COPY_CLAIMS"], []
+        for n in sorted(os.listdir(store)) if os.path.isdir(store) else []:
+            with open(os.path.join(store, n)) as f:
+                found.append(json.load(f))
+        return found
 
     def test_worktree_claimed_by_spawn_and_released_by_kill(self):  # #391
         self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
