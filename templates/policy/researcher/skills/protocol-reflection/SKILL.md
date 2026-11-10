@@ -67,7 +67,9 @@ template edit, no verdict or gate marker, and no message.
      Skipped, no proposal;
    - an owner decision settles it: follow and cite the decision, no
      proposal against it.
-8. **Cooldown.** A proposal ID the coordinator rejected stays out until
+8. **Cooldown.** A proposal ID the coordinator rejected (a `reject` line
+   in a `[<CoordinatorBot>/reflection-decision]` comment on the log issue)
+   stays out until
    its reason's cooldown ends (triage rules `[cooldowns]`, default 30 days
    for a duplicate, 14 otherwise), unless a confirmed incident arrived after
    the rejection. List it as `skipped: cooldown`.
