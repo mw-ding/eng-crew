@@ -2392,7 +2392,8 @@ class SpecTest(unittest.TestCase):
 
 
 class PrecheckScopeTest(unittest.TestCase):
-    """#881: per-path test ownership; spaced paths, unowned code, query failure, docs only and a mixed change."""
+    """#881: per-path test ownership; spaced paths, unowned code, query failure, docs only and a mixed change.
+    #1345: paths absent at head (deletions, rename sources) are removed, never unowned."""
     OWNERS = """case "$1" in
   "src/my app.py") echo //src:app_test; echo //src:lib_test ;;
   src/lib.py) echo //src:lib_test ;;
@@ -2400,17 +2401,45 @@ class PrecheckScopeTest(unittest.TestCase):
 esac
 """
 
-    def scope(self, paths, extra='no_owner_ok = ["**/BUILD", "*.md", "**/*.md", "docs/**"]'):
+    def scope(self, paths, extra='no_owner_ok = ["**/BUILD", "*.md", "**/*.md", "docs/**"]', removed=()):
+        """Run precheck-scope from a fake worktree at head holding every stdin path except `removed`."""
         with tempfile.TemporaryDirectory() as d:
             with open(os.path.join(d, "owners.sh"), "w") as f:
                 f.write(self.OWNERS)
             project = os.path.join(d, "crew.toml")
             with open(project, "w") as f:
                 f.write(VALID + '\n[builder.precheck]\nowners = "sh %s/owners.sh"\n%s\n' % (d, extra))
-            out, err = io.StringIO(), io.StringIO()
-            with patch("sys.stdin", io.StringIO(paths)), contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-                code = cc.main(["precheck-scope", "--project", project])
+            head = os.path.join(d, "head")
+            for path in set(paths.splitlines()) - set(removed):
+                os.makedirs(os.path.dirname(os.path.join(head, path)), exist_ok=True)
+                open(os.path.join(head, path), "w").close()
+            os.makedirs(head, exist_ok=True)
+            out, err, cwd = io.StringIO(), io.StringIO(), os.getcwd()
+            try:
+                os.chdir(head)
+                with patch("sys.stdin", io.StringIO(paths)), contextlib.redirect_stdout(out), \
+                        contextlib.redirect_stderr(err):
+                    code = cc.main(["precheck-scope", "--project", project])
+            finally:
+                os.chdir(cwd)
         return code, json.loads(out.getvalue()) if out.getvalue() else None, err.getvalue()
+
+    def test_directory_rename_runs_destinations_and_lists_sources_removed(self):
+        code, result, _ = self.scope("old/lib.py\nold/my app.py\nsrc/lib.py\nsrc/my app.py\n",
+                                     removed=("old/lib.py", "old/my app.py"))
+        self.assertEqual((code, result["tests"], result["targets"]), (0, "run", ["//src:app_test", "//src:lib_test"]))
+        self.assertEqual((result["removed"], result["unowned"]), (["old/lib.py", "old/my app.py"], []))
+        self.assertEqual([e["class"] for e in result["paths"]], ["removed", "removed", "owned", "owned"])
+
+    def test_deletion_only_is_na_and_never_queried(self):
+        code, result, _ = self.scope("src/orphan.py\nboom/x.py\n", removed=("src/orphan.py", "boom/x.py"))
+        self.assertEqual((code, result["tests"], result["targets"]), (0, "n/a", []))
+        self.assertEqual((result["removed"], result["unowned"]), (["boom/x.py", "src/orphan.py"], []))
+
+    def test_new_unowned_file_still_fails_beside_a_removed_path(self):
+        code, result, _ = self.scope("src/gone.py\nsrc/orphan.py\n", removed=("src/gone.py",))
+        self.assertEqual((code, result["tests"], result["unowned"], result["removed"]),
+                         (3, "fail", ["src/orphan.py"], ["src/gone.py"]))
 
     def test_spaced_path_keeps_one_argument(self):
         code, result, _ = self.scope("src/my app.py\n")

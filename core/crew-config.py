@@ -13,7 +13,8 @@ prints them as ids.item and ids.change, plus the change map's ids.marker_key
 when declared (docs/handoff.md#id-declaration).
 Every problem prints as `file:key: reason`; exit 1 if any, else 0.
 `precheck-scope` classifies each changed path by builder.precheck.owners and
-prints JSON; exit 3 on unowned code, 4 on an owners query failure (stop).
+prints JSON; a path absent from the working directory is `removed`, never queried.
+Exit 3 on unowned code, 4 on an owners query failure (stop).
 `sensitive --diff` reads a `git diff --no-renames` unified diff and adds content rule matches (#879);
 `sensitive` exits 3 on incomplete input: a path list with content rules, or an unreadable diff.
 With a bound classify.sensitive extension it also runs that command on the same stdin and unions its matches,
@@ -1699,12 +1700,16 @@ def class_flavor(profile, paths, express=False):
 
 
 def precheck_scope(precheck, paths):
-    """Classify changed paths (#881): owned (owning test targets), no-owner-ok (reasoned n/a) or unowned code.
+    """Classify changed paths (#881): owned (owning test targets), no-owner-ok (reasoned n/a), unowned code,
+    or removed: absent at head under the working directory (deleted or a rename source; #1345), never queried.
 
     The owners command gets one path as a single shell argument, so spaces survive. Returns (result, exit code);
     a failed query raises RuntimeError, never n/a."""
     entries = []
     for path in sorted(set(p for p in paths if p)):
+        if not os.path.lexists(path):
+            entries.append({"path": path, "class": "removed", "targets": []})
+            continue
         run = subprocess.run(["sh", "-c", precheck["owners"] + ' "$1"', "sh", path], capture_output=True, text=True)
         if run.returncode:
             raise RuntimeError("owners query failed (exit %d) for %r: %s" % (run.returncode, path, run.stderr.strip()))
@@ -1717,7 +1722,8 @@ def precheck_scope(precheck, paths):
     tests = "fail" if unowned else "run" if owned else "n/a"
     return {"tests": tests, "targets": sorted({t for e in owned for t in e["targets"]}),
             "no_owner_ok": [e["path"] for e in entries if e["class"] == "no-owner-ok"],
-            "unowned": unowned, "paths": entries}, 3 if unowned else 0
+            "unowned": unowned, "removed": [e["path"] for e in entries if e["class"] == "removed"],
+            "paths": entries}, 3 if unowned else 0
 
 
 def main(argv=None):

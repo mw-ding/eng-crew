@@ -391,7 +391,9 @@ class Renderer:
                     lines.append("   Pipe the changed paths, one per line, to `core/crew-config.py precheck-scope "
                                  "--project <file>` and append its `targets` to the test command. Exit 3 (unowned "
                                  "code) or 4 (owners query failed) stops the check; `tests=n/a` only when every "
-                                 "path is no-owner-ok, and list the `no_owner_ok` paths beside the marker.\n")
+                                 "path is no-owner-ok or removed, and list the `no_owner_ok` paths beside the marker. "
+                                 "Pipe every changed path, both rename paths included, from the worktree at head: "
+                                 "a path absent there is `removed`, with no owners query and no targets.\n")
             lines.append("\n```sh\n%s\n```\n\n" % commands[step] if commands[step] else
                          "\n%s: `n/a` (no configured command).\n\n" % label)
         lines += ["4. Self-review against the acceptance criteria and repo rules.\n",
