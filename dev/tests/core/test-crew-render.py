@@ -783,6 +783,58 @@ class PackOverlay(unittest.TestCase):
             step3 = synth[synth.index("\n3. "):synth.index("\n4. ")]
             self.assert_crew_commands_parse(step3)
 
+    def test_session_async_land_polls_declared_status_within_bound(self):
+        """#1351: a session profile renders the async land step: the backend's placeholder and status map through
+        `mdstack land request`, bounded by land_timeout, refusing failed or unknown; sync renders stay unchanged."""
+        with open(os.path.join(os.path.dirname(SCRIPTS), "profiles", "session.toml")) as f:
+            session = self.project(f.read().replace('[runtime]\nname = "session"\n', ""))
+        with open(session) as f:
+            text = f.read().replace('name = "tmux"', 'name = "session"', 1)
+        with open(session, "w") as f:
+            f.write(text)
+        code, out, sync = self.render(session, "--org-profile", self.org)
+        self.assertEqual(code, 0, out)
+        sync = tree(sync)
+        self.assertIn("3. Serial land (session C7;", sync["runtime/synthesizer.md"])
+        self.assertNotIn("$CREW_BIN land", sync["runtime/synthesizer.md"])
+        self.async_pack('mode = "async"\nchange_placeholder = "change"\n[land.status]\n"^MERGED (?P<revision>[0-9a-f]{40})$" '
+                        '= "landed"\n"^FAILED" = "failed"\n"^PENDING$" = "queued"\n"^NONE$" = "none"\n')
+        mapping = os.path.join(self.tmp, "pack", "render", "backends", "example.toml")
+        with open(mapping) as f:
+            text = f.read().replace("ex land <n> --expect-head", "ex land <change> --expect-head").replace(
+                "ex land-status <n>", "ex land-status <change>")
+        with open(mapping, "w") as f:
+            f.write(text + '\n[placeholders]\nkept = ["change"]\n')
+        code, out, bare = self.render(session, "--org-profile", self.org)
+        self.assertEqual(code, 0, out)
+        bare = tree(bare)
+        self.assertEqual({k for k in bare if bare[k] != sync[k]}, {"runtime/synthesizer.md"})
+        synth = bare["runtime/synthesizer.md"]
+        step3 = synth[synth.index("\n3. "):synth.index("\n4. ")]
+        flat = " ".join(step3.split())
+        for rule in ('run `$CREW_BIN land request --project "$CREW_PROJECT" --pr <n> --head <head-sha>`',
+                     "fills the backend's change placeholder", "sends `ex land <change> --expect-head <head-sha>`",
+                     "only when `ex land-status <change> <head-sha>` reads `none` at an unmoved head",
+                     "maps each status read through the declared `land.status`",
+                     "polls every `land_poll_interval` seconds for at most `land_timeout` seconds",
+                     "On exit 1 (failed, stale head, timeout or unknown status) post no `merge`",
+                     "Hold it until the terminal status", 'release with `rmdir "$CREW_STATE/locks/merge.lock.d"`',
+                     "Tested with the default branch must hold at the request",
+                     'run `$CREW_BIN land resume --project "$CREW_PROJECT"`. It never requests a land again.',
+                     "Complete each landed intent it prints through (a) to (c)"):
+            self.assertIn(rule, flat)
+        self.assertNotIn("land-lock acquire", step3)  # mdstack land-lock stays tmux-only
+        self.assertNotIn("Backend queue", synth)
+        self.assert_crew_commands_parse(step3)
+        self.async_pack('mode = "async"\nserializes = true\ntests_against_tip = true\n')
+        code, out, queue = self.render(session, "--org-profile", self.org)
+        self.assertEqual(code, 0, out)
+        synth = " ".join(tree(queue)["runtime/synthesizer.md"].split())
+        for rule in ("(`land.serializes`, C7): take no repo lock.", "`Land rule: alone, backend queue`",
+                     "Backend queue (`land.tests_against_tip`): the two rules above do not apply."):
+            self.assertIn(rule, synth)
+        self.assertNotIn("mkdir -p", synth[synth.index("3. Serial land"):synth.index(" 4. ")])
+
     def assert_crew_commands_parse(self, text):
         """Every `$CREW_BIN ...` command in text parses with the crew CLI's own argument parser (#1008 review)."""
         loader = importlib.machinery.SourceFileLoader("crew_cli", os.path.join(os.path.dirname(SCRIPTS), "cli", "mdstack"))
@@ -1043,6 +1095,15 @@ class RoleRuntime(unittest.TestCase):
         for worker in ("builder", "reviewer", "synthesizer", "researcher"):
             self.assertTrue(got["runtime/%s.md" % worker].startswith("# "), worker)
             self.assertNotIn("(session)", got["runtime/%s.md" % worker].splitlines()[0], worker)
+
+    def test_session_synthesizer_keeps_its_own_land_step(self):
+        """#1351 merge-up: <land-step> follows the template's runtime, so a swapped-in session synthesizer keeps its
+        mkdir-lock land on a tmux profile and never gets the tmux land-lock step."""
+        code, out, got = self.render('{ synthesizer = "session" }')
+        self.assertEqual(code, 0, out)
+        synth = got["runtime/synthesizer.md"]
+        self.assertIn("3. Serial land (session C7;", synth)
+        self.assertNotIn("land-lock acquire", synth)
 
     def test_empty_override_renders_byte_identically(self):
         _, _, upstream = self.render()

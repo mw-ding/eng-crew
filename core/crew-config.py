@@ -111,7 +111,7 @@ LAND_FIELDS = {"mode": (str, "sync"), "opens_draft": (bool, False), "serializes"
                "status": (dict, None)}
 LAND_STATES = ["none", "queued", "landing", "landed", "failed"]
 STRATEGY_FIELDS = {"update_from_base": (str, "merge"), "retains_prior_heads": (bool, False)}
-ASYNC_RUNTIMES = ["tmux"]  # runtimes with an async land binding; others refuse land.mode = "async"
+ASYNC_RUNTIMES = ["tmux", "session"]  # runtimes with an async land binding; others refuse land.mode = "async"
 RELEASE_GATE_OPS = ["approve-check", "record-release"]  # a profile with [release] must keep these
 BACKENDS = ["github"]
 RUNTIME_OPTIONS = {"grok-bot": {"max_active_milestones": (int, 1)},
@@ -135,6 +135,7 @@ RUNTIME_OPTIONS = {"grok-bot": {"max_active_milestones": (int, 1)},
                                "present_reviewers": (int, None), "merge_grant": (str, "none"),
                                "merge_grant_scope": ("list[str]", None), "release_delegation": (str, "none"),
                                "lone_pr_land": (str, "train"), "train_min": (int, 2), "train_window": (int, 600),
+                               "land_poll_interval": (int, 60), "land_timeout": (int, 3600),  # async land (#1351)
                                "train_local_checks": (bool, False), "mirror_deferral": (str, "none"),
                                "mirror": (str, "live-copy"), "hold_label_blocks": (bool, True), "notes": (dict, {}),
                                # mdstack up's coordinator launch (#1548): its tmux session, harness flags and topology

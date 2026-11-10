@@ -143,6 +143,53 @@ LAND_TIP = {True: "The backend tests the landed patch on the tip (`land.tests_ag
                   "   with `Land rule: alone, backend queue`; never run\n"
                   "   `<op:change.update-from-base>` or a merge train (`mdstack train` refuses).",
             False: "Tested with the default branch must hold at the request, as for a sync land."}
+# Session binding (#1351): the session synthesizer's step 3 takes the repo lock by an atomic mkdir, since
+# `mdstack land-lock` is tmux-only; sync keeps today's text byte for byte, async runs `mdstack land` the same way.
+SESSION_LOCK = ("`mkdir -p \"$CREW_STATE/locks\" && mkdir \"$CREW_STATE/locks/merge.lock.d\"` takes\n"
+                "   the repo lock atomically. If it fails, the lock is held: append\n"
+                "   `blocked: #<n> land lock held` to `$CREW_STATUS` and stop; never remove a lock\n"
+                "   you did not create.")
+SESSION_LAND_SYNC = ("Serial land (session C7; `mdstack land-lock` serves tmux profiles only, never run it):\n"
+                     "   " + SESSION_LOCK + " Holding it, repeat the step 2 check at the live head, run\n"
+                     "   `<op:change.land>` bound to that head, post `[<SynthesizerBot>/merge]` naming\n"
+                     "   the merge-ok or grant used and its `Land rule:` line (`<op:markers.write>`), then\n"
+                     "   release with `rmdir \"$CREW_STATE/locks/merge.lock.d\"`. If the gate fails or the\n"
+                     "   head moved, release and stop.")
+SESSION_LAND_ASYNC = (
+    "Serial land, asynchronously (`land.mode = \"async\"`, protocol §7; session C7;\n"
+    "   `mdstack land-lock` serves tmux profiles only, never run it).\n"
+    "   %s\n"
+    "   Repeat the step 2 check at the live head; if it fails, release any lock you\n"
+    "   hold and stop. Then run\n"
+    "   `$CREW_BIN land request --project \"$CREW_PROJECT\" --pr <n> --head <head-sha>`:\n"
+    "   it records the intent, fills the backend's change placeholder, sends\n"
+    "   `<op:change.land>` only when `<op:change.land-status>` reads `none` at an\n"
+    "   unmoved head, maps each status read through the declared `land.status`, and\n"
+    "   polls every `land_poll_interval` seconds for at most `land_timeout` seconds.\n"
+    "   Never run either command yourself. On exit 1 (failed, stale head, timeout or\n"
+    "   unknown status) post no `merge`, release any lock you hold and report its\n"
+    "   `blocked:` line. On exit 0, complete the land: (a) post\n"
+    "   `[<SynthesizerBot>/merge]` naming the merge-ok or grant used, its `Land rule:`\n"
+    "   line and the printed `record:` line, with the printed `marker:` line as its\n"
+    "   marker (`<op:markers.write>`); (b) whatever `lone_pr_land` is, check\n"
+    "   default-branch CI as step 4 does, at the printed landed revision, reporting\n"
+    "   red with step 4's `blocked:` line; (c) once CI is green or red is reported, run\n"
+    "   `$CREW_BIN land done --project \"$CREW_PROJECT\" --pr <n> --head <head-sha>`.\n"
+    "   %s\n"
+    "   At the start of every run, before step 1, run\n"
+    "   `$CREW_BIN land resume --project \"$CREW_PROJECT\"`. It never requests a land\n"
+    "   again. Complete each landed intent it prints through (a) to (c) with that\n"
+    "   intent's PR and head, skipping only (a) when `<op:markers.read>` already shows\n"
+    "   `pass=merge` at that PR and head; on exit 1 report its `blocked:` lines and\n"
+    "   request no new land in this run.")
+SESSION_LAND_LOCK = {True: "The backend serializes lands (`land.serializes`, C7): take no repo lock.",
+                     False: SESSION_LOCK + " Hold it until the terminal status and, on landed, the\n"
+                            "   merge post, then release with `rmdir \"$CREW_STATE/locks/merge.lock.d\"`."}
+# The session Land rule's backend-queue line, appended after its two rules.
+SESSION_LAND_RULE = ("\n\nBackend queue (`land.tests_against_tip`): the two rules above do not apply.\n"
+                     "Land every ready PR alone through step 3, one per run, even behind the default\n"
+                     "branch, recording `Land rule: alone, backend queue`. Never run\n"
+                     "`<op:change.update-from-base>` or `mdstack train` (it refuses).")
 # <land-rule>: appended to the Land rule section's opening, before its train decision; only
 # land.tests_against_tip replaces that decision, so every other render adds nothing.
 LAND_RULE = ("\nBackend queue (`land.tests_against_tip`): the rules below and the merge train\n"
@@ -228,6 +275,7 @@ class Renderer:
     def __init__(self, values, inputs, normalize_paths=False, overlay=None):
         self.values, self.inputs, self.tables = values, inputs, {}
         self.normalize_paths, self.overlay, self.kept = normalize_paths, overlay, set()
+        self.template = None  # runtime of the runtimes/<runtime>/ template being rendered, set per job
 
     def find(self, *parts):
         """An input file: the pack overlay's copy when present, else the inputs' copy."""
@@ -343,12 +391,16 @@ class Renderer:
         if name == "mirror-gate":
             return self.line(MIRROR_GATE[self.values.get("runtime.options.mirror", "live-copy")])
         if name == "land-step":
+            session = self.session_template()
             if self.values.get("land.mode", "sync") == "sync":
-                return self.line(LAND_SYNC)
-            return self.line(LAND_ASYNC % (LAND_LOCK[bool(self.values.get("land.serializes"))],
-                                           LAND_TIP[bool(self.values.get("land.tests_against_tip"))]))
+                return self.line(SESSION_LAND_SYNC if session else LAND_SYNC)
+            lock = (SESSION_LAND_LOCK if session else LAND_LOCK)[bool(self.values.get("land.serializes"))]
+            text = SESSION_LAND_ASYNC if session else LAND_ASYNC
+            return self.line(text % (lock, LAND_TIP[bool(self.values.get("land.tests_against_tip"))]))
         if name == "land-rule":
-            return self.line(LAND_RULE) if self.values.get("land.tests_against_tip") else ""
+            if not self.values.get("land.tests_against_tip"):
+                return ""
+            return self.line(SESSION_LAND_RULE if self.session_template() else LAND_RULE)
         if name == "land-publish":
             return self.line(LAND_PUBLISH) if self.values.get("land.opens_draft") else ""
         if name == "TeamName":
@@ -372,6 +424,10 @@ class Renderer:
 
     def line(self, text):
         return TOKEN.sub(self.fill, text)
+
+    def session_template(self):
+        """True while rendering a session runtime template, whatever the profile's runtime (role_runtime, #1055)."""
+        return (self.template or self.values.get("runtime.name")) == "session"
 
     def precheck(self):
         if not self.values.get("builder.precheck.enabled", False):
@@ -463,6 +519,8 @@ def render(args, paths, normalize_paths):
     renderer, rendered = Renderer(values, args.inputs, normalize_paths, overlay), {}
     for rel, dst, role in jobs:
         src = renderer.find(rel)
+        parts = rel.split(os.sep)
+        renderer.template = parts[1] if parts[0] == "runtimes" and len(parts) > 2 else None
         try:
             with open(src, encoding="utf-8") as f:
                 lines = f.read().splitlines(keepends=True)

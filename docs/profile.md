@@ -686,7 +686,7 @@ An optional `[land]` table declares the
 `unsupported`, and any of the three booleans true under `sync`. `resolve`
 repeats both capability checks on the effective `change` capabilities of the
 backend bound to `change`, refuses `async` under a runtime without an async
-land binding (every runtime but `tmux`), and prints the declared keys after
+land binding (every runtime but `tmux` and `session`, #1351), and prints the declared keys after
 the profile as `land.<key> = <value>  # <pack layer>`, outside the profile.
 The schema is all that is in effect yet: no role reads it until the later
 slices of #873 land.

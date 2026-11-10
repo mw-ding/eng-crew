@@ -388,5 +388,26 @@ class NativeLand(LandFixture):
         self.assertEqual(self.calls(), [])
 
 
+
+class SessionNativeLand(NativeLand):
+    """#1351: the session runtime's async land binding runs every NativeLand case unchanged, plus its refusals."""
+    def setUp(self):
+        super().setUp()
+        self.write_profile(runtime="session")
+        with open(self.project, "a") as f:
+            f.write('[runtime.options]\nsession_backend = "native"\nland_poll_interval = 1\nland_timeout = 3\n')
+
+    def test_session_failed_and_unknown_refuse(self):
+        self.statuses("NOT_STARTED", "QUEUED", "FAILED: checks red")
+        r = self.land()
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("blocked: land #7 @ aaaaaaa: failed", r.stdout)
+        self.assertIsNone(self.intent())
+        self.statuses("WHATEVER")
+        r = self.land()
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("blocked: land #7 @ aaaaaaa: unknown", r.stdout)
+        self.assertEqual(len(self.calls("land")), 1)  # an unknown status never requests
+
 if __name__ == "__main__":
     unittest.main(argv=[a for a in sys.argv if a != "--owner-transcript"])
