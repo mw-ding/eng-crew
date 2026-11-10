@@ -15,11 +15,13 @@ replies to triage records and owner feedback on them (placed or not, relayed dec
 intake-card fields and P0 signals; a newly seen P0 candidate without a triage record queues one `triage-p0` wake for
 the coordinator; owner feedback on a recorded P0 item queues the item but no wake (#1093). The
 scan also lists the project repo's milestones closed since its baseline under `milestones` until a sweep takes them
-(milestone-close sweep, triage.md T6, #374).
+(milestone-close sweep, triage.md T6, #374). A non-GitHub tracker backend is read through its `tracker.list-items`
+binding, once per `triage.trackers` id (`<tracker>`), and has no milestone list. `--triage-only` runs one triage scan
+and nothing else, on a tmux or session profile, so a hosted routine can refresh the queue before a sweep (#1404).
 Each crew PR whose ready sample (head, CI, verdict, mergeable, hold) changed is one line in
 `metrics/observations.jsonl` with the poll's time and the previous poll's, its sampling bound (self-improve.md, #1524).
 
-Usage: mdstack poll [--once] --project FILE
+Usage: mdstack poll [--once | --triage-only] --project FILE
 """
 import functools
 import json
@@ -28,7 +30,8 @@ import re
 import subprocess
 import time
 import tomllib
-from crew_shared import commands, ownership_module, profile, queue_lock, ROLES, ROOT
+import shlex
+from crew_shared import commands, crew_render, ownership_module, profile, queue_lock, ROLES, ROOT
 
 
 # mdstack poll (tmux.md Q1, C2): one wake source. Read-only gh JSON for open crew PRs and crew:ready items is diffed
@@ -357,7 +360,7 @@ def poll_once(values, state, args):
         json.dump(new, f, indent=2)
     os.replace(path + ".tmp", path)
     if values.get("triage.enabled"):
-        triage_poll(values, state, args.project)
+        triage_poll(values, state, args.project, org=args.org_profile)
 
 
 # Always-on triage scan (triage.md T1, #747): deterministic, no model call. Skip rules per triage.md "Skip rules".
@@ -437,7 +440,7 @@ def triage_scan(repo, open_items, closed_items, rules, owners, fields, coordinat
                 entries.append({"ref": "%s#%s" % (repo, item.get("number")),
                                 "unreadable": "%s: %s" % (type(e).__name__, e)})
     for item, card, keys in keyed:
-        ref = "%s#%d" % (repo, item["number"])
+        ref = "%s#%s" % (repo, item["number"])
         if item["number"] not in open_numbers:
             continue
         try:
@@ -470,7 +473,7 @@ def triage_scan(repo, open_items, closed_items, rules, owners, fields, coordinat
         p0 = sorted({"label:" + n for n in labels if n in rules["p0"]["labels"]} |
                     {"keyword:" + k for k in rules["p0"]["keywords"]
                      if re.search(r"\b%s\b" % re.escape(k.lower()), text)})
-        dupes = [{"ref": "%s#%d" % (repo, other["number"]), "state": "open" if other["number"] in open_numbers
+        dupes = [{"ref": "%s#%s" % (repo, other["number"]), "state": "open" if other["number"] in open_numbers
                   else "closed", "keys": sorted(keys & other_keys)}
                  for other, _, other_keys in keyed if other is not item and keys & other_keys]
         entries.append({"ref": ref, "reason": reason, "title": item["title"], "card": card, "duplicates": dupes,
@@ -478,10 +481,54 @@ def triage_scan(repo, open_items, closed_items, rules, owners, fields, coordinat
     return entries
 
 
-def triage_poll(values, state, project, read=gh_json):
+def triage_items(data):
+    """(open, closed) from a `tracker.list-items` output (an array or pages): ids (`number` or `id`, digits as int),
+    label names or `{name}`, comment authors as a string or `{login}`, `created` or `createdAt`; only an absent or
+    `open` state is open."""
+    flat = [x for page in data for x in page] if isinstance(data, list) and data and all(
+        isinstance(p, list) for p in data) else data
+    if not isinstance(flat, list) or not all(isinstance(x, dict) for x in flat):
+        raise ValueError("printed no array of objects")
+    items = ([], [])
+    for i in flat:
+        n = i.get("number", i.get("id"))
+        n = int(n) if isinstance(n, str) and n.isdigit() else n
+        comments = [dict(c, author=c["author"] if isinstance(c.get("author"), dict) else {"login": c.get("author")},
+                         createdAt=c.get("createdAt") or c.get("created"), body=c.get("body") or "")
+                    for c in i.get("comments") or [] if isinstance(c, dict)]
+        labels = [lb if isinstance(lb, dict) else {"name": lb} for lb in i.get("labels") or []]
+        items[str(i.get("state") or "open").lower() != "open"].append(
+            dict(i, number=n, labels=labels, comments=comments, url=i.get("url") or ""))
+    return items
+
+
+def triage_native(values, project, org, tracker):
+    """The non-GitHub tracker's `tracker.list-items` binding run for one tracker id: (open, closed). RuntimeError when
+    unbound, failed or unreadable, so the scan records the tracker unreadable."""
+    try:
+        cmd, _ = crew_render.Renderer(values, os.path.join(ROOT, "templates"), overlay=crew_render.pack_overlay(
+            project, org, values)).op("tracker", "list-items")
+    except ValueError as e:
+        raise RuntimeError("tracker.list-items unbound (%s)" % e) from e
+    fill = {"<owner>": values["repo.owner"], "<repo>": values["repo.name"], "<tracker>": tracker}
+    argv = [re.sub("|".join(map(re.escape, fill)), lambda m: fill[m.group(0)], a) for a in shlex.split(cmd)]
+    try:
+        r = subprocess.run(argv, stdin=subprocess.DEVNULL, capture_output=True, text=True)
+    except OSError as e:
+        raise RuntimeError("tracker.list-items failed (%s)" % e) from e
+    if r.returncode:
+        raise RuntimeError("tracker.list-items failed: %s" % r.stderr.strip())
+    try:
+        return triage_items(json.loads(r.stdout))
+    except ValueError as e:
+        raise RuntimeError("tracker.list-items %s" % e) from e
+
+
+def triage_poll(values, state, project, read=gh_json, org=None, native=triage_native):
     """Scan every triage.repos tracker into triage/queue.json; queue one triage-p0 wake per newly seen P0 candidate.
     Only a `new` entry (no pass=triage record yet) wakes: a recorded P0 item re-queued by owner feedback was already
-    triaged (#1093). An unreadable repo or item is recorded in the queue, never dropped."""
+    triaged (#1093). An unreadable repo or item is recorded in the queue, never dropped. A non-GitHub tracker backend
+    scans each triage.trackers id (default the project, `<owner>/<repo>`) through native (#1404)."""
     rules_path = values.get("triage.rules")
     rules, note = triage_rules(rules_path and os.path.join(os.path.dirname(os.path.abspath(project)), rules_path))
     owners, fields = set(values.get("identities.owners") or []), triage_card_fields()
@@ -493,9 +540,11 @@ def triage_poll(values, state, project, read=gh_json):
     except (OSError, ValueError, KeyError, TypeError):
         seen = set()
     queue = {"scanned": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "rules": note, "repos": {}, "items": []}
-    for repo in values.get("triage.repos") or ["%s/%s" % (values["repo.owner"], values["repo.name"])]:
+    github = values.get("backends.tracker.name", "github") == "github"
+    project_repo = "%s/%s" % (values["repo.owner"], values["repo.name"])
+    for repo in values.get("triage.repos" if github else "triage.trackers") or [project_repo]:
         try:
-            items = [read("issue", "list", "-R", repo, "--state", s, "--limit", "500", "--json",
+            items = native(values, project, org, repo) if not github else [read("issue", "list", "-R", repo, "--state", s, "--limit", "500", "--json",
                           TRIAGE_FIELDS if s == "open" else "number,title,body", retry=RETRY_DELAYS)
                      for s in ("open", "closed")]
         except RateLimited:
@@ -505,7 +554,8 @@ def triage_poll(values, state, project, read=gh_json):
             continue
         queue["repos"][repo] = "ok"
         queue["items"] += triage_scan(repo, *items, rules, owners, fields, coordinator)
-    queue["milestones"] = triage_milestones(values, state, read)
+    queue["milestones"] = triage_milestones(values, state, read) if github else \
+        triage_load(state, "queue.json", "milestones", [])
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path + ".tmp", "w") as f:
         json.dump(queue, f, indent=2)
@@ -567,11 +617,36 @@ def triage_milestones(values, state, read=gh_json):
 def register(sub):
     p = sub.add_parser("poll")
     p.add_argument("--once", action="store_true", help="one poll, then exit (default: every poll_interval seconds)")
+    p.add_argument("--triage-only", action="store_true",
+                   help="one triage scan into triage/queue.json, then exit; tmux or session profile (#1404)")
     p.add_argument("--project")
     p.add_argument("--org-profile")
 
 
+def triage_only(args):
+    values, _, state = profile(args, runtimes=("tmux", "session"))
+    if not values.get("triage.enabled"):
+        print("crew: poll: triage.enabled is false; nothing to scan")
+        return 1
+    mode = ownership_module.status(values)
+    if mode != "active":
+        print("crew: ownership: %s; poll emits no work" % mode)
+        return 0
+    try:
+        triage_poll(values, state, args.project, org=args.org_profile)
+    except RuntimeError as e:
+        print(e)
+        return os.EX_TEMPFAIL if isinstance(e, Transient) else 1
+    with open(os.path.join(state, "triage", "queue.json")) as f:
+        queue = json.load(f)
+    print("crew: poll: triage queue %d items (%s)" % (len(queue["items"]), ", ".join(
+        "%s %s" % kv for kv in queue["repos"].items())))
+    return 0
+
+
 def run(args):
+    if args.triage_only:
+        return triage_only(args)
     values, _, state = profile(args)
     while True:
         until = 0
