@@ -253,7 +253,7 @@ class Host(Base):
         with open(os.path.join(self.tmp, "bin", "ssh"), "w") as f:
             f.write('#!/usr/bin/env python3\nimport os, subprocess, sys\n'
                     'if "-G" in sys.argv:\n    print("hostname " + sys.argv[-1])\n    sys.exit(0)\n'
-                    'env = {k: v for k, v in os.environ.items() if k == "PATH" or k.startswith("FAKE_TMUX_")}\n'
+                    'env = {k: v for k, v in os.environ.items() if k in ("PATH", "MDSTACK_COPY_CLAIMS") or k.startswith("FAKE_TMUX_")}\n'
                     'env["SSH_ORIGINAL_COMMAND"] = sys.argv[-1]\n'
                     'sys.exit(subprocess.run([sys.executable, %r, "--root", %r], env=env).returncode)\n'
                     % (os.path.join(os.path.dirname(os.path.dirname(CREW)), "environments", "terminal", "remote", "crew-remote.py"), root))
@@ -310,7 +310,7 @@ class Host(Base):
         with open(os.path.join(self.tmp, "bin", "ssh"), "w") as f:
             f.write('#!/usr/bin/env python3\nimport os, subprocess, sys\n'
                     'if "-G" in sys.argv:\n    print("hostname " + sys.argv[-1])\n    sys.exit(0)\n'
-                    'env = {k: v for k, v in os.environ.items() if k == "PATH" or k.startswith("FAKE_TMUX_")}\n'
+                    'env = {k: v for k, v in os.environ.items() if k in ("PATH", "MDSTACK_COPY_CLAIMS") or k.startswith("FAKE_TMUX_")}\n'
                     'env["SSH_ORIGINAL_COMMAND"] = sys.argv[-1]\n'
                     'sys.exit(subprocess.run([sys.executable, %r, "--root", %r], env=env).returncode)\n'
                     % (remote, root))

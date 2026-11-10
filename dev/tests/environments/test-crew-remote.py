@@ -51,7 +51,7 @@ with open(os.environ["FAKE_SSH_LOG"], "a") as f:
     f.write(json.dumps({"argv": sys.argv[1:], "request": request}) + "\\n")
 mode = os.environ.get("FAKE_SSH_MODE", "")
 if mode == "host":
-    env = {k: v for k, v in os.environ.items() if k == "PATH" or k.startswith("FAKE_TMUX_")}
+    env = {k: v for k, v in os.environ.items() if k in ("PATH", "MDSTACK_COPY_CLAIMS") or k.startswith("FAKE_TMUX_")}
     env["SSH_ORIGINAL_COMMAND"] = sys.argv[-1]
     sys.exit(subprocess.run([sys.executable, os.environ["FAKE_SSH_ENTRY"], "--root", os.environ["FAKE_SSH_ROOT"]],
                             input=data, text=True, env=env).returncode)
@@ -78,7 +78,8 @@ class Base(unittest.TestCase):
         env = {"PATH": self.bin + os.pathsep + os.environ["PATH"], "FAKE_SSH_LOG": self.log,
                "FAKE_SSH_ENTRY": SCRIPT, "FAKE_SSH_ROOT": self.root,
                "FAKE_TMUX_LOG": os.path.join(self.tmp, "tmux.log"),
-               "FAKE_TMUX_STATE": os.path.join(self.tmp, "tmux.json")}
+               "FAKE_TMUX_STATE": os.path.join(self.tmp, "tmux.json"),
+               "MDSTACK_COPY_CLAIMS": os.path.join(self.tmp, "copy-claims")}  # never the real host store (#391)
         patcher = mock.patch.dict(os.environ, env)
         patcher.start()
         self.addCleanup(patcher.stop)
@@ -996,6 +997,26 @@ class RunLifecycle(RunBase):
         self.assertEqual(self.kill(), dict(result="ok", unlanded=[], removed=True))
         self.assertFalse(os.path.exists(self.wt))
         self.assertEqual(self.kill(refs=["main"])["reason"], "kill needs refs, the default branch first")
+
+    def test_copy_claim_refuses_another_crew_and_kill_releases(self):  # #391: host-wide, across crew roots
+        claims = remote.copy_claim()
+        self.assertEqual(self.spawn(sha="0" * 40)["result"], "refused")
+        self.assertIsNone(claims.holder(self.wt))  # a refused spawn released its claim
+        claims.acquire(self.wt, "/other/state", "ben-7", "issue #7")
+        reply = self.spawn()
+        self.assertEqual(reply["result"], "refused")
+        self.assertIn("claimed by crew /other/state run ben-7", reply["reason"])
+        self.assertFalse(os.path.exists(self.wt))
+        self.assertEqual(self.windows(), {"0": "runner"})
+        claims.release(self.wt, "/other/state", "ben-7")
+        self.assertEqual(self.spawn()["result"], "ok")
+        self.assertEqual((claims.holder(self.wt)["crew"], claims.holder(self.wt)["run"]), (self.state, "ben-7"))
+        with open(os.path.join(self.wt, "a.txt"), "w") as f:
+            f.write("x\n")
+        self.assertEqual(self.kill()["removed"], False)
+        self.assertEqual(claims.holder(self.wt)["run"], "ben-7")  # kept work keeps the claim
+        self.assertEqual(self.kill(discard=True)["removed"], True)
+        self.assertIsNone(claims.holder(self.wt))
 
     def test_kill_never_touches_another_projects_run(self):  # review r1 P1: one runner session, many projects
         self.spawn()

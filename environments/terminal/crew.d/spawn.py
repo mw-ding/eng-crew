@@ -16,6 +16,8 @@ placement and rejections. --host H --reason TEXT overrides the host and posts th
 post spawns nothing. On a role host (#345, _remote.py) the host fetches the head into its mirror, adds the worktree and
 starts the harness in its runner's session; the brief (its Worktree line names the host's path) and the PR's review
 files travel in the call, and the run record (`remote`), claim and brief copy stay on the primary.
+Every worktree is claimed host-wide before it is added (copy-claim.py, docs/runtimes/multi-device.md#working-copy-claims,
+#391): another crew's claim refuses the spawn before any worktree or window, and mdstack kill releases it.
 
 Usage: mdstack spawn ROLE --issue N | --pr N | --sweep | --docs-pass | --reflection WINDOW [--log N] [--input-sha SHA]
        [--run-id ID] | --train N [--pass PASS] [--round K] [--tier T] [--host H --reason TEXT] --project FILE [--org-profile FILE]
@@ -27,7 +29,7 @@ import re
 import shlex
 import time
 from crew_shared import (
-    BANDS, brief_src, checkout, commands, ENGINE_CMD, fetch, git, harness, identity, kill_run, LAUNCH, NAMES, over_cap, PASSES, POINTER,
+    BANDS, brief_src, checkout, commands, copy_claim, ENGINE_CMD, fetch, git, harness, identity, kill_run, LAUNCH, NAMES, over_cap, PASSES, POINTER,
     load, profile, queue_lock, remote_run, role_notes, ROLES, runs, show_icon, tmux, wait_harness, window_env, open_trains,
     synthesizer_work)
 
@@ -337,6 +339,10 @@ def run(args):
         real, top = os.path.realpath(wt), os.path.realpath(repo)
         if not remote and (real == top or real.startswith(top + os.sep)):
             raise RuntimeError("crew: refusing spawn: %s is inside the primary checkout %s" % (wt, repo))
+        if not remote:  # host-wide, so another crew's run never shares the copy (#391); kill_run releases it
+            copy_claim.acquire(wt, state, name, item)
+            rec["copy_claim"] = wt
+            save()
         if not remote and os.path.lexists(wt):
             raise RuntimeError("crew: refusing spawn: %s exists" % wt)
         if not remote:

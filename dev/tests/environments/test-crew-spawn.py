@@ -12,6 +12,7 @@ no token in argv, `-e` or files, Codex `-s workspace-write --add-dir <state>`, `
 recorded. Run in CI.
 """
 import datetime
+import hashlib
 import importlib.machinery
 import importlib.util
 import json
@@ -641,6 +642,39 @@ class Spawn(SpawnBase):
         self.assertEqual(os.listdir(os.path.join(self.tmp, "state", "wt")), [])
         self.assertFalse(os.path.exists(os.path.join(self.state, "runs", "ben-7.json")))
         self.assertFalse(os.path.exists(os.path.join(self.state, "claims", "builder-issue7")))
+        self.assertEqual(os.listdir(self.env["MDSTACK_COPY_CLAIMS"]), [])  # the failed launch released its copy claim
+
+    def claims(self):
+        store = self.env["MDSTACK_COPY_CLAIMS"]
+        return [json.load(open(os.path.join(store, n))) for n in sorted(os.listdir(store))] if os.path.isdir(store) else []
+
+    def test_worktree_claimed_by_spawn_and_released_by_kill(self):  # #391
+        self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
+        wt = self.record("ben-7")["worktree"]
+        (held,) = self.claims()
+        self.assertEqual((held["path"], held["crew"], held["run"], held["item"]),
+                         (os.path.realpath(wt), self.state, "ben-7", "issue #7"))
+        self.assertEqual(self.record("ben-7")["copy_claim"], wt)
+        self.assertEqual(self.crew("kill", "ben-7", "--project", self.project).returncode, 0)
+        self.assertEqual(self.claims(), [])
+
+    def test_copy_claimed_by_another_crew_refused_before_launch(self):  # #391
+        sha = self.git("rev-parse", "HEAD")
+        wt = os.path.join(self.tmp, "state", "wt", "7-%s-builder-build" % sha[:7])
+        os.makedirs(self.env["MDSTACK_COPY_CLAIMS"])
+        other = {"host": "h", "path": os.path.realpath(wt), "crew": "/other/state", "run": "ben-7", "item": "issue #7",
+                 "since": "2000-01-01T00:00:00Z"}
+        name = hashlib.sha256(other["path"].encode()).hexdigest()[:32] + ".json"
+        with open(os.path.join(self.env["MDSTACK_COPY_CLAIMS"], name), "w") as f:
+            json.dump(other, f)
+        r = self.spawn("builder", "--issue", "7")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("claimed by crew /other/state run ben-7", r.stdout)
+        self.assertEqual(self.windows(), [])
+        self.assertFalse(os.path.lexists(wt))
+        self.assertFalse(os.path.exists(os.path.join(self.state, "runs", "ben-7.json")))
+        self.assertFalse(os.path.exists(os.path.join(self.state, "claims", "builder-issue7")))
+        self.assertEqual(self.claims(), [other])  # the other crew's claim is never touched
 
     def test_layout_pinned_on_spawn_and_ash_stays_0_after_kill(self):
         self.env["FAKE_TMUX_USER_CONF"] = "1"
@@ -853,7 +887,7 @@ class RemoteRun(KillLandedBase):  # #345: spawn, kill, restart, down and status 
                     "data = sys.stdin.read()\nif os.path.exists(%r):\n sys.exit(255)\n"
                     "if os.path.exists(%r):\n print(open(%r).read())\n sys.exit(0)\n"
                     "if json.loads(data)['verb'] == 'check':\n print(%r)\n sys.exit(0)\n"
-                    "env = {k: v for k, v in os.environ.items() if k == 'PATH' or k.startswith('FAKE_TMUX_')}\n"
+                    "env = {k: v for k, v in os.environ.items() if k in ('PATH', 'MDSTACK_COPY_CLAIMS') or k.startswith('FAKE_TMUX_')}\n"
                     "env['SSH_ORIGINAL_COMMAND'] = sys.argv[-1]\n"
                     "sys.exit(subprocess.run([sys.executable, %r, '--root', %r], input=data, text=True, env=env)"
                     ".returncode)\n" % (self.down_flag, self.answer_flag, self.answer_flag, json.dumps(ready), self.ENTRY,

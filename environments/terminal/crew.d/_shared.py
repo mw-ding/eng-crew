@@ -389,6 +389,8 @@ def kill_run(values, session, state, name, reason=None):
         subprocess.run(["git", "-C", rec["repo"], "worktree", "remove", "--force", wt], capture_output=True)
         shutil.rmtree(wt, ignore_errors=True)
         subprocess.run(["git", "-C", rec["repo"], "worktree", "prune"], capture_output=True)
+    if rec.get("copy_claim"):  # the run is gone: its holder releases the working-copy claim (#391)
+        copy_claim.release(rec["copy_claim"], state, name)
     scratch = [p for p in glob.glob(os.path.join(state, "runs", "**", glob.escape(name) + "[.-]*"), recursive=True)
                if os.path.isfile(p)]  # record, brief, PR body, also under subdirectories (#139 F7, N6)
     for p in scratch + [os.path.join(state, "inbox", name + ".jsonl"),
