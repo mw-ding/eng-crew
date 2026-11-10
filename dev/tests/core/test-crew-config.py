@@ -1345,6 +1345,47 @@ class TeamFileTest(unittest.TestCase):
             'repo = "acme/widgets"', 'repo = "acme/widgets"\ncheckout = "src/<repo>"')
         self.assertEqual(self.resolve(rooted, "#widgets")[0]["paths"]["checkout"], "/home/crew/src/widgets")
 
+    def test_explicit_team_name_keeps_identity_across_file_names(self):  # #1348
+        named = TEAM.replace("[team]\n", '[team]\nname = "md"\n')
+        with tempfile.TemporaryDirectory() as d:
+            saved, cc.DEFAULT_PROFILE = cc.DEFAULT_PROFILE, os.path.join(d, "absent.toml")
+            try:
+                os.makedirs(os.path.join(d, "teams"))
+                target = os.path.join(d, "teams", "md.toml")
+                with open(target, "w", encoding="utf-8") as f:
+                    f.write(named)
+                os.symlink(target, os.path.join(d, "link.toml"))
+                os.symlink(target, os.path.join(d, "config.toml"))
+                seen = set()
+                for ref in ("teams/md.toml", "config.toml", "link.toml"):
+                    merged, _, problems, _ = cc.resolve_profile(os.path.join(d, ref) + "#gadgets")
+                    self.assertEqual(problems, [], ref)
+                    seen.add((merged["paths"]["state_dir"], merged["runtime"]["options"]["session"]))
+                self.assertEqual(seen, {("/srv/crew-state/md", "crew-team-md")})
+            finally:
+                cc.DEFAULT_PROFILE = saved
+        merged, prov, problems, _ = self.resolve(TEAM, "#gadgets")  # a nameless file keeps its file-name identity
+        self.assertEqual((problems, merged["paths"]["state_dir"]), ([], "/srv/crew-state/ext"))
+        for bad in ('"MD"', '""', "7", '"%s"' % ("a" * 64)):
+            self.assertEqual(self.resolve(TEAM.replace("[team]\n", "[team]\nname = %s\n" % bad), "#gadgets")[2],
+                             ["ext.toml:team.name: expected [a-z0-9-] (1-63 characters)"], bad)
+
+    def test_explicit_team_name_lifts_the_file_name_rule(self):  # #1348: My Team.toml with team.name resolves
+        with tempfile.TemporaryDirectory() as d:
+            saved, cc.DEFAULT_PROFILE = cc.DEFAULT_PROFILE, os.path.join(d, "absent.toml")
+            try:
+                path = os.path.join(d, "My Team.toml")
+                with open(path, "w", encoding="utf-8") as f:
+                    f.write(TEAM)
+                problems = cc.resolve_profile(path + "#gadgets")[2]
+                self.assertTrue(any("team file name must be <team>.toml" in p for p in problems), problems)
+                with open(path, "w", encoding="utf-8") as f:
+                    f.write(TEAM.replace("[team]\n", '[team]\nname = "my-team"\n'))
+                merged, _, problems, _ = cc.resolve_profile(path + "#gadgets")
+                self.assertEqual((problems, merged["paths"]["state_dir"]), ([], "/srv/crew-state/my-team"))
+            finally:
+                cc.DEFAULT_PROFILE = saved
+
     def test_legacy_profile_is_a_one_repo_team(self):
         """VALID as a one-repo team file resolves to the same values; only the team state root and session differ."""
         team = TEAM[:TEAM.index("[repos.widgets]")].replace(

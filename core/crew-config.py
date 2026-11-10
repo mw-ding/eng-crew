@@ -1189,15 +1189,20 @@ def is_team(data):
 
 
 def team_layers(data, file, repo, err):
-    """(team profile, repo profile, repo name) in the legacy profile shape; err(layer, key, reason) on a problem."""
+    """(team profile, repo profile, repo name, team name) in the legacy profile shape; err(layer, key, reason) on a problem."""
     for key in sorted(data.keys() - {"team", "repos"}):
         err("team", key, "unknown key in a team file (team settings go in [team], repo settings in [repos.<name>])")
     team, repos = data.get("team", {}), data.get("repos", {})
     if not isinstance(team, dict) or not isinstance(repos, dict) or not repos:
         return err("team", "repos", "a team file needs a [team] table and at least one [repos.<name>] table")
-    name = os.path.splitext(os.path.basename(file))[0]
-    if not re.fullmatch(r"[a-z0-9-]{1,63}", name):
-        err("team", "(file)", "team file name must be <team>.toml with [a-z0-9-] (1-63 characters)")
+    name = team.get("name")  # explicit identity, else the file name (#1348)
+    if name is not None and not (isinstance(name, str) and re.fullmatch(r"[a-z0-9-]{1,63}", name)):
+        err("team", "team.name", "expected [a-z0-9-] (1-63 characters)")
+    elif name is None:
+        name = os.path.splitext(os.path.basename(file))[0]
+        if not re.fullmatch(r"[a-z0-9-]{1,63}", name):
+            err("team", "(file)", "team file name must be <team>.toml with [a-z0-9-] (1-63 characters), "
+                "or set team.name")
     if repo is None and len(repos) > 1:
         return err("team", "repos", "lists %d repos; select one as %s#<repo>" % (len(repos), file))
     repo = repo or next(iter(repos))
@@ -1205,7 +1210,7 @@ def team_layers(data, file, repo, err):
         return err("team", "repos", "names no repo %r (repos: %s)" % (repo, ", ".join(repos)))
     out = {}
     for key, value in team.items():
-        if key in ("pack", "personas", "accounts"):
+        if key in ("name", "pack", "personas", "accounts"):
             continue
         if key in TEAM_TABLES:
             out[key] = copy.deepcopy(value)
@@ -1247,7 +1252,7 @@ def team_layers(data, file, repo, err):
                 % ", ".join(REPO_KEYS))
     if "repo" not in section:
         err("team", "repos.%s.repo" % repo, "missing required key")
-    return out, mine, repo
+    return out, mine, repo, name
 
 
 def team_repos(file):
@@ -1391,9 +1396,8 @@ def resolve_profile(project, org_profile=None, pack_manifest=None, meta=None):
                 split = team_layers(data, project, repo, err)
                 if split is None:
                     continue
-                data, mine, repo = split
+                data, mine, repo, team = split
                 files["repo"] = "%s[repos.%s]" % (project, repo)
-                team = os.path.splitext(os.path.basename(project))[0]
                 layers += [("team", data), ("repo", mine)]
             else:
                 layers.append((name, data))
