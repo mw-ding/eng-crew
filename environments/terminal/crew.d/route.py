@@ -4,7 +4,8 @@ approved merge-ups stay queued for synthesizer dispatch. A change that resolves 
 Solo build wakes are consumed; solo builder findings stay queued for coordinator pickup.
 Passed reviews start validation, including after zero-step CI startup failures (ci-infra goes to the coordinator). Terminal
 reviewers/synthesizers are killed and dequeued; a finished relay = coordinator run (the researcher) is killed and its done: wakes
-the coordinator, and that queued done: never kills a later run reusing the window name (#1092); merged PRs are closed out,
+the coordinator, and that queued done: never kills a later run reusing the window name (#1092); a reflection run's
+`done: reflection <window> <url>` puts the report URL on the relayed wake and reaps only the run for that window (#1520); merged PRs are closed out,
 and a merge that an open issue's `Depends on` names stays queued so the coordinator dispatches the dependent (#814). Progress lines are ignored. Judgement records remain in the queue,
 including red CI, changes, stale heads, holds, failed commands, dialogs, blocked runs and owner asks. Red CI for a
 superseded head and synthesizer gate-status blocks that only wait (`wait=ci,review,validation,selfgate,train`) are consumed.
@@ -34,6 +35,8 @@ from crew_shared import commands, heartbeat, profile, queue_lock, require_owners
 WAITING = re.compile(r"blocked: #\d+ [0-9a-f]{40} gate-status \S+ wait=(?:ci|review|validation|selfgate|train)"
                      r"(?:,(?:ci|review|validation|selfgate|train))*")
 # A reviewer's finished pass; a trailing note after the verdict is allowed (#1343), as on a builder's done line (#695).
+# A reflection run's completion with its posted report (templates/policy/researcher/skills/protocol-reflection).
+REFLECTION_DONE = re.compile(r"done: reflection (\S+) (https?://\S+)")
 REVIEW_DONE = re.compile(r"done: #(\d+) ([0-9a-f]{40}) (review|validate|recheck) (pass|changes|escalate)(?:\s.*)?")
 
 
@@ -310,7 +313,10 @@ def route_record(args, values, state, w):
         lead.retry_pending(args)
     if rec and ROLES.get(rec["role"], {}).get("relay") == "coordinator" and line.startswith(("done:", "failed:")):
         run = commands()["watch"].run_identity(rec)
-        if w.get("run", run) == run:
+        report, mode = REFLECTION_DONE.fullmatch(line), rec.get("args", {}).get("reflection")
+        if report:
+            w["report"] = report.group(2)  # the coordinator relays the posted report
+        if w.get("run", run) == run and not (mode and report and report.group(1) != mode["window"]):
             reap(args, w["window"])  # one fresh session per request; the result is on the item (#584)
         # else a queued wake of an earlier run: a respawn under the same name stays alive (#1092)
         return False  # the coordinator relays the result

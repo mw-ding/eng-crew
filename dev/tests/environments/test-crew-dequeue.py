@@ -6,6 +6,7 @@ kill, bands capped separately. Run in CI.
 import json
 import os
 import sys
+import time
 import unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # dev/tests/: crew_testlib
 from crew_testlib import SpawnBase
@@ -54,6 +55,22 @@ class CapQueue(SpawnBase):
         self.assertTrue(self.spawn("researcher", "--docs-pass").stdout.startswith("queued: researcher research docs pass"))
         self.assertEqual(self.crew("kill", "riley-7", "--project", self.project).returncode, 0)
         self.assertEqual(self.record("riley-docs")["args"]["docs_pass"], True)
+        self.assertEqual(self.queue(), [])
+
+    def test_queued_reflection_keeps_its_request_through_dequeue(self):  # #1520
+        for n in ("7", "8"):
+            self.assertEqual(self.spawn("researcher", "--issue", n).returncode, 0)
+        r = self.spawn("researcher", "--reflection", "close-3", "--log", "5")
+        self.assertTrue(r.stdout.startswith("queued: researcher research reflection close-3"), r.stdout)
+        queued = self.queue()[0]["reflection"]
+        self.assertEqual((queued["window"], queued["log"], queued["sha"]), ("close-3", 5, self.git("rev-parse", "HEAD")))
+        self.assertTrue(queued["run"].startswith("close-3-"))
+        self.git("commit", "-q", "--allow-empty", "-m", "newer")  # the head moves while it waits
+        self.git("push", "-q", "origin", "main")
+        time.sleep(1)  # a re-minted run ID would differ
+        self.assertEqual(self.crew("kill", "riley-7", "--project", self.project).returncode, 0)
+        rec = self.record("riley-reflection")
+        self.assertEqual((rec["args"]["reflection"], rec["head"]), (queued, queued["sha"]))
         self.assertEqual(self.queue(), [])
 
     def test_idle_builders_do_not_count_toward_busy_cap(self):
