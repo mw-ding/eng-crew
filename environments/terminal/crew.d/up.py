@@ -4,7 +4,9 @@ whose adapter declares a host check, refuse before rendering on a failed one: fo
 config.toml hook that lacks stored trust. Never write Codex config. Also refuse when paths.checkout is a clone of another
 repo, or tmux briefs would cite docs under a missing paths.mdstack (#1323).
 
-`runtime.options.launch` picks the topology: coordinator tmux|none, roles tmux|hosted|none, resume fresh|ask|<id>.
+`runtime.options.launch` picks the topology: coordinator tmux|none, roles tmux|hosted|none, resume fresh|ask|<id>;
+`--resume` overrides launch.resume. A session profile (`runtime.name = "session"`, #1548) gets the coordinator only, in
+its own tmux session from the rendered runtime/coordinator.md; its workers stay dispatched per pass.
 `mdstack up ROLE` starts one instance of a running crew's role whose `lifecycle` has the `manual` wake, up to its `max`;
 `mdstack up` starts each lifecycle role's `min`, and the watcher scales idle instances down to it (#1231,
 docs/roles-registry.md#lifecycle). Each watcher scan also runs routine_tick: a due routine of a lifecycle role whose
@@ -12,6 +14,7 @@ docs/roles-registry.md#lifecycle). Each watcher scan also runs routine_tick: a d
 docs/routines.md#terminal).
 
 Usage: mdstack up [ROLE] (--project FILE[#REPO] | --team FILE) [--org-profile FILE] [--inputs DIR] [--coordinator-only]
+                 [--resume ID]
 """
 import argparse
 import contextlib
@@ -204,6 +207,7 @@ def register(sub):
     p.add_argument("--org-profile")
     p.add_argument("--inputs", default=TEMPLATES, help="render inputs dir (default: templates/)")
     p.add_argument("--coordinator-only", action="store_true", help="start no role windows (as launch.roles = none)")
+    p.add_argument("--resume", metavar="ID", help="resume this coordinator conversation, or ask (as launch.resume)")
 
 
 def slack_ok(values):
@@ -298,7 +302,14 @@ def run(args):
         return up_role(args)
     if args.team:
         return team(args)
-    values, session, state = profile(args)
+    values, session, state = profile(args, runtimes=("tmux", "session"))
+    if args.resume:
+        if args.resume not in ("fresh", "ask") and not crew_render.crew_config.LAUNCH_SESSION_ID.fullmatch(args.resume):
+            print("crew: refusing to start: --resume expects fresh, ask or a session id ([A-Za-z0-9._:-])")
+            return 2
+        values["runtime.options.launch.resume"] = args.resume
+    if values["runtime.name"] == "session":
+        return session_up(args, values, state)
     if not slack_ok(values):
         return 1
     if tmux.has_session(session):
@@ -341,6 +352,39 @@ def run(args):
         for _ in range(life["min"] - len(instances(state, role))):
             if start_instance(args, values, state, role):
                 return 1
+    return 0
+
+
+def session_up(args, values, state):
+    """mdstack up on a session profile (#1548): start, or report the attach line of, the interactive coordinator in its
+    own tmux session; no role windows, lead pools or lifecycle instances, and no tmux Stop-hook guard."""
+    session = values.get("runtime.options.session") or "crew-%s-%s" % (values["repo.owner"], values["repo.name"])
+    tmux.bind(session, "default")
+    if tmux.has_session(session):
+        print("crew: %s already running; attach with: %s" % (session, attach_hint(session)))
+        return 0
+    try:
+        notes = role_notes(values, state, "coordinator")
+    except RuntimeError as e:
+        print(e)
+        return 1
+    if not host_ok(values) or not resume_ok(values) or not install_ok(values, args.project):
+        return 1
+    if not render_briefs(args, args.project, state):
+        return 1
+    record_binding(values, args.project, args)
+    brief = brief_src(state, "coordinator")
+    if notes:
+        with open(brief, "a", encoding="utf-8") as f:
+            f.write(notes)
+    if launch(values, "coordinator") == "none":
+        print("crew: preflight ok; launch.coordinator = none, so no session started (render: %s)" %
+              os.path.join(state, "render"))
+        return 0
+    project_dir = os.path.dirname(os.path.abspath(args.project))
+    if start(values, session, state, project_dir, {"CREW_BRIEF": brief, "CREW_PROJECT": os.path.abspath(args.project)}):
+        return 1
+    print("crew: session runtime; workers are dispatched per pass (docs/runtimes/session.md)")
     return 0
 
 

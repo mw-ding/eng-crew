@@ -121,7 +121,10 @@ brief renders the land options as for `tmux`:
 | `present_reviewers` | integer, at least 1, at most `reviewers` | resolved `reviewers` | `<present-reviewer-cap>`: owner-present reviewer limit, as in `tmux`; a value above `reviewers` is refused |
 | `researchers` | `0` only | none | nothing: the binding has no researcher, so `0` keeps a migrated `tmux` profile's no-researcher statement as a no-op; any other value is refused, and `triage.enabled = true` is refused as for `tmux` |
 | `merge_grant`, `merge_grant_scope`, `lone_pr_land`, `train_min`, `train_window`, `train_local_checks`, `mirror_deferral`, `mirror`, `hold_label_blocks` | as in [`tmux` options](#tmux-options) | as in `tmux` | the same placeholders in the session builder, reviewer and synthesizer briefs; session lands have no merge train, so the `train_*` options have no effect ([binding](../runtimes/session.md#selector-options-and-briefs)) |
-| `notes` | table | `{}` | only its `render` subtable applies: render-time notes, as for `tmux`; no launcher reads standing notes |
+| `notes` | table | `{}` | its `render` subtable holds render-time notes, as for `tmux`; `mdstack up` appends the `coordinator` list to the coordinator brief (#1548); no launcher reads worker notes |
+| `session` | string | `crew-<owner>-<repo>` | none: the tmux session `mdstack up` opens for the coordinator (#1548) |
+| `permission_mode` | as in [`tmux` options](#tmux-options) | `"bypass"` | none: the coordinator harness flags `mdstack up` launches with |
+| `launch` | table: `coordinator`, `resume` | none | `coordinator` and `resume` as in [Launch topology](#launch-topology); `roles` has no effect, since `mdstack up` never opens role windows on `session` and workers stay dispatched per pass |
 
 ## `merge_grant_scope`
 
@@ -155,7 +158,7 @@ coordinator, tmux lead windows and a fresh coordinator conversation.
 |---|---|---|---|
 | `coordinator` | `tmux` or `none` | `"tmux"` | `none`: `mdstack up` runs its preflight (profile, Slack variable, Codex hook trust, render, coordinator notes) and starts no session |
 | `roles` | `tmux`, `hosted` or `none` | `"tmux"` | `tmux` starts the pool lead windows as today. `hosted`: the coordinator dispatches role passes as hosted sessions on remote worker hosts, so `mdstack up` opens no role windows. `none` starts no role windows (`mdstack up --coordinator-only` does the same for one run). `tmux` needs `coordinator = "tmux"` |
-| `resume` | `fresh`, `ask` or a session id (`[A-Za-z0-9._:-]`, up to 128 characters) | `"fresh"` | The coordinator's harness conversation. A session id resumes it with the brief pointer; `ask` opens the harness's resume picker, without the pointer. Claude Code and Codex only; another coordinator engine refuses `mdstack up` before any write |
+| `resume` | `fresh`, `ask` or a session id (`[A-Za-z0-9._:-]`, up to 128 characters) | `"fresh"` | The coordinator's harness conversation. A session id resumes it with the brief pointer; `ask` opens the harness's resume picker, without the pointer. `mdstack up --resume <id>` overrides it for one run (#1548). Claude Code and Codex only; another coordinator engine refuses `mdstack up` before any write |
 | `reconcile` | `backend` | `"backend"` | Reconciliation reads go through the configured backends' read operations, never a hard-coded GitHub call ([reconcile binding](../runtimes/tmux.md#launch-topology)) |
 
 The window name, `CREW_ROLE`, `CREW_PROJECT`, `CREW_STATE` and the other
