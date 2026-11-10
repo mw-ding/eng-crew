@@ -8,7 +8,7 @@ rebuilding `ash` from disk without respawning runs, the crew's tmux server (#132
 server kept until its next up, the default server named by path, never an inherited $TMUX, and a stopped lead orphaned by a lost server, never another process), and `mdstack up --team` (one session and coordinator for every
 repo of a team file, a render per repo under the team state root), and the #606 launch topology (hosted or no
 role windows, preflight-only coordinator, resume, schema refusals, the pack ownership read), and the #1323 refusals (a
-checkout of another repo, a missing paths.mdstack). Run in CI.
+checkout of another repo, a missing paths.mdstack), and the #1544 sandbox refusal. Run in CI.
 """
 import importlib.util
 import json
@@ -143,6 +143,22 @@ class Up(Base):
                       r.stdout)
         self.assertFalse(any(c[0] == "new-session" for c in self.calls()))
         os.makedirs(link)
+        r = self.up()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.new_session()
+
+    def test_up_refuses_a_sandbox_over_the_checkout_git(self):  # #1544
+        subprocess.run(["git", "init", "-q", self.project_dir], check=True)
+        git = os.path.realpath(os.path.join(self.project_dir, ".git"))  # git reports the resolved path
+        os.chmod(git, 0o500)
+        self.addCleanup(os.chmod, git, 0o755)
+        self.env.pop("CREW_SANDBOX_ENV", None)
+        r = self.up()
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("crew: refusing to start: sandbox: this session sandboxed with no writable root over %s; set "
+                      'runtime.options.sandbox_env = "<NAME>=%s"' % (git, git), r.stdout)
+        self.assertFalse(any(c[0] == "new-session" for c in self.calls()))
+        self.env["CREW_SANDBOX_ENV"] = "CREW_TEST_SANDBOX=" + git
         r = self.up()
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.new_session()

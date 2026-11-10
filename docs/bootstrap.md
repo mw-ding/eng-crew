@@ -309,7 +309,7 @@ default (real GitHub objects and quota on every re-run).
 
 ## Q8. Idempotency, upgrade and uninstall
 
-Implemented for tmux: run the new bundle’s `mdstack upgrade --project FILE
+Implemented for tmux and session: run the new bundle’s `mdstack upgrade --project FILE
 --dry-run`, then repeat with `--yes` after reviewing the diff. `--version`
 fetches and verifies the selected bundle through the existing bootstrap path.
 A version directory left by an earlier `--version` dry-run or timeout is
@@ -322,7 +322,9 @@ for terminal worker status, empty lead handoffs and idle panes before applying;
 timeout. Roles restart in their existing windows, retaining worktrees, claims,
 inboxes and run metadata; the coordinator restarts last. An unchanged render,
 pin, source and project profile writes nothing. Grok Bot routine reload is
-still manual; this command requires the tmux binding.
+still manual. A session profile applies the install with no wait or reload;
+its coordinator restarts by hand
+([session upgrading](runtimes/session.md#upgrading), #1541).
 
 | Case | Behaviour |
 |---|---|

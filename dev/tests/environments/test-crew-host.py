@@ -277,6 +277,68 @@ class Host(Base):
         self.assertRegex(r.stdout, r"ok capacity: [0-9.]+ GiB free, 0 running")
         self.assertEqual(self.crew("host", "check", "host-c").returncode, 0)
 
+    def test_checkout_command_requests_and_required_row(self):
+        """#1035: a checkout = "command" host sends checkout=command on prepare and check and needs `project checkout`;
+        a mirror host's requests carry no checkout field."""
+        with open(self.project, "a") as f:
+            f.write('[hosts.host-d]\ncheckout = "command"\nmax_runs = 1\nroles = ["reviewer"]\n'
+                    'capabilities = { os = "linux", arch = "x86_64", engines = ["codex"] }\n')
+        self.prepare("host-b")
+        self.env["FAKE_PREPARE_REPLY"] = json.dumps(dict(result="ok", step="checkout", path="/v/acme"))
+        r = self.prepare("host-d")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)  # the fake reply has project mirror, no checkout row
+        self.assertIn("ok prepare checkout: project checkout", r.stdout)
+        self.assertIn("host-d: not ready", r.stdout)
+        mirror_prepare, mirror_check, prepare, check = [c["request"] for c in self.calls()]
+        self.assertNotIn("checkout", mirror_prepare)
+        self.assertNotIn("checkout", mirror_check)
+        self.assertEqual((prepare["verb"], prepare["checkout"], check["checkout"]), ("prepare", "command", "command"))
+        reply = self.reply()
+        reply["checks"][2]["check"] = "project checkout"
+        self.env["FAKE_SSH_REPLY"] = json.dumps(reply)
+        self.assertIn("host-d: ready", self.crew("host", "check", "host-d").stdout)
+
+    def test_checkout_command_ready_through_the_real_entrypoint(self):
+        """#1035: a forge-less host with a declared checkout command prepares with no git mirror and checks ready."""
+        root = os.path.join(self.tmp, "host-root")
+        with open(self.project, "a") as f:
+            f.write('[hosts.host-c]\nforge = false\ncheckout = "command"\nroot = "%s"\nmax_runs = 4\n'
+                    'capabilities = { os = "%s", arch = "x86_64" }\n' % (root, OS))
+        os.remove(os.path.join(self.tmp, "bin", "git"))
+        remote = os.path.join(os.path.dirname(os.path.dirname(CREW)), "environments", "terminal", "remote",
+                              "crew-remote.py")
+        with open(os.path.join(self.tmp, "bin", "ssh"), "w") as f:
+            f.write('#!/usr/bin/env python3\nimport os, subprocess, sys\n'
+                    'if "-G" in sys.argv:\n    print("hostname " + sys.argv[-1])\n    sys.exit(0)\n'
+                    'env = {k: v for k, v in os.environ.items() if k == "PATH" or k.startswith("FAKE_TMUX_")}\n'
+                    'env["SSH_ORIGINAL_COMMAND"] = sys.argv[-1]\n'
+                    'sys.exit(subprocess.run([sys.executable, %r, "--root", %r], env=env).returncode)\n'
+                    % (remote, root))
+        subprocess.run([sys.executable, remote, "--root", root, "runner", "--once"], env=self.env, check=True)
+        r = self.prepare("host-c")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("fail prepare checkout: no valid checkout/acme__widgets.json under root", r.stdout)
+        os.makedirs(os.path.join(root, "checkout"))
+        decl = os.path.join(root, "checkout", "acme__widgets.json")
+        with open(decl, "w") as f:
+            json.dump(dict(argv=["false"], path="vfs/widgets"), f)
+        self.assertIn("fail prepare checkout: exit 1\nhost-c: not ready", self.prepare("host-c").stdout)
+        r = self.crew("host", "check", "host-c")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("fail project checkout: acme__widgets checkout command has not run; run mdstack host prepare",
+                      r.stdout)
+        with open(decl, "w") as f:
+            json.dump(dict(argv=["mkdir", "-p", "vfs/widgets"], path="vfs/widgets"), f)
+        r = self.prepare("host-c")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        for line in ("ok prepare checkout: project checkout",
+                     "ok project checkout: acme__widgets at %s" % os.path.join(root, "vfs", "widgets"),
+                     "n/a logins: forge-less host; runner jobs only", "ok runner: up", "host-c: ready"):
+            self.assertIn(line, r.stdout)
+        self.assertNotIn("project mirror", r.stdout)
+        self.assertFalse(os.path.exists(os.path.join(root, "mirrors")))
+        self.assertEqual(self.crew("host", "check", "host-c").returncode, 0)
+
     def test_prepare_primary_fetch_failure(self):
         with open(os.path.join(self.tmp, "bin", "git"), "w") as f:
             f.write("#!/bin/sh\necho 'fatal: could not read from remote' >&2\nexit 1\n")

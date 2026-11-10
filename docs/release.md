@@ -162,7 +162,12 @@ on the landed revision.
 
 `changelog-cut.py` works on any layout: paths come from flags or the
 profile, it needs no `check-repo.py`, and a fragment needs only `type`
-(`issue`, `pr`, `date` and `box-skill` are optional). mdstack's repo guard
+(`issue`, `pr`, `date` and `box-skill` are optional). It ships in the
+release bundle as a [Deliverable](deliverables.md#inventory)
+([#1033](https://github.com/mw-ding/mdstack/issues/1033)), so a pack on a
+host with only the installed bundle runs `cut` as
+`python3 <bundle>/scripts/changelog-cut.py X.Y.Z --project config.toml`
+from its own checkout; the other release scripts stay Internal. mdstack's repo guard
 still requires all five fields here
 ([CONTRIBUTING: CHANGELOG](../CONTRIBUTING.md#changelog)).
 
@@ -183,7 +188,8 @@ the GitHub binding of each term is in the table above.
 The owner may record a standing go for cuts once instead of a chat reply per
 cut ([#1435](https://github.com/mw-ding/mdstack/issues/1435)). The profile
 key `runtime.options.release_delegation`
-([runtime options](configuration/runtime-options.md#tmux-options)) holds the
+([runtime options](configuration/runtime-options.md#tmux-options), on `tmux`
+and `session`) holds the
 owner's recorded words and a `https://` link to the record; the default
 `none` keeps a per-cut owner merge-ok. It takes effect only when an owner
 account sets it in the owner's profile or team file; a pack is refused, and

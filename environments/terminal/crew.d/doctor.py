@@ -1,8 +1,8 @@
 """`mdstack doctor` checks whether this host can run the crew (docs/bootstrap.md Q5) and prints one line per check, ok,
 warn, fail or human, with its fix hint: Python, git, gh, tmux, each profile login in gh, engines, each harness
 adapter's host, coordinator and role checks (Codex hook trust, Claude Code folder trust for the project directory and
-for the checkout role worktrees come from, #408), placeholder paths, a state dir
-or worktree root inside a git checkout, the state dir layout, paths.checkout a clone of [repo], bootstrap's install.json
+for the checkout role worktrees come from, #408), placeholder paths, a session sandbox with no writable root over the
+checkout's .git and no sandbox_env (#1544), a state dir or worktree root inside a git checkout, the state dir layout, paths.checkout a clone of [repo], bootstrap's install.json
 and paths.mdstack link (#1323), the installed version against the latest release (not queried under a non-github [install] source), the
 launcher in the root's bin/ (missing or stale) and where PATH resolves its name (#1317, #1324), the
 recorded install source and the running/installed/minimum versions for [tools] in the profile, and the runtime
@@ -26,9 +26,10 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import tomllib
 from crew_shared import (checkout, commands, crew_render, HERE, harnesses, ownership_module, placeholder_paths,
-                         sessions, load as load_module)
+                         sandbox_env, sessions, load as load_module)
 
 repo_fixers = load_module("crew_repo", "connectors/github/crew-repo.py")
 
@@ -88,6 +89,39 @@ def engines(values):
     if sum(r[0] == "ok" for r in rows) < 2:
         rows.append(("fail", "engine diversity", "fewer than two working engines", "install a second engine"))
     return rows
+
+
+def sandbox(values, project):
+    """A launcher that sandboxes sessions with no writable root over the checkout's git directory (its common dir, for a
+    linked worktree whose .git is a file) fails, unless
+    runtime.options.sandbox_env or CREW_SANDBOX_ENV is set (#1544). Two signals: a create-and-remove probe in that .git
+    is denied to this process (it runs inside such a session), or a used engine's adapter declares
+    sandbox_roots(values), the writable roots its launcher grants a session by default (None: no sandbox)."""
+    if sandbox_env(values):
+        return [("ok", "sandbox", "sandbox_env set", "")]
+    repo = checkout(values, project)
+    code, out = sh("git", "-C", repo, "rev-parse", "--path-format=absolute", "--git-common-dir")
+    git = out.strip() if code == 0 and os.path.isdir(out.strip()) else os.path.join(repo, ".git")  # a linked worktree
+    used = {values["engines.coordinator"], values.get("engines.fallback_engine")} | {
+        e.split("/")[0] for k, order in values.items() if re.fullmatch(r"engines\.(roles\.)?\w+\.order", k) for e in order}
+    found = []
+    if os.path.isdir(git):
+        try:
+            fd, probe = tempfile.mkstemp(dir=git, prefix="mdstack-probe-")
+            os.close(fd)
+            os.remove(probe)
+        except PermissionError:
+            found.append("this session")
+    for engine in sorted(e for e in used if e in harnesses.ADAPTERS):
+        roots = getattr(harnesses.ADAPTERS[engine], "sandbox_roots", lambda v: None)(values)
+        if roots is not None and not any(os.path.commonpath([os.path.realpath(r), os.path.realpath(git)]) ==
+                                         os.path.realpath(r) for r in roots):  # git reports resolved paths
+            found.append(engine + "'s launcher")
+    if not found:
+        return [("ok", "sandbox", "no session sandbox over %s" % git, "")]
+    return [("fail", "sandbox", "%s sandboxed with no writable root over %s" % (" and ".join(found), git),
+             'set runtime.options.sandbox_env = "<NAME>=%s" with the launcher\'s writable-roots variable '
+             "(or export CREW_SANDBOX_ENV), then rerun" % git)]
 
 
 def in_checkout(values):
@@ -344,7 +378,7 @@ def run(args):
         values, args.fix and not args.dry_run)
     if not bad and github:
         rows += repo_fixers.checks(values, args.fix, args.dry_run, args.milestone)
-    rows += checkout_repo(values, args.project) + install(values)
+    rows += checkout_repo(values, args.project) + install(values) + (sandbox(values, args.project) if tmux else [])
     rows += handoff(values) + triage(values) + version(values) + launcher(values) + pack(values) + install_source(values)
     rows += tool_drift(values)
     for status, check, detail, hint in rows:

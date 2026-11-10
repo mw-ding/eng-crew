@@ -7,9 +7,12 @@ prepare creates the host's project mirror with its own gh login, or fetches it, 
 directories (the hardened `prepare` call, crew-remote.py), then runs check. On the primary it fetches the project
 checkout. On a forge-less host it fetches the primary's checkout and seeds the host's mirror with a full bundle of
 the default branch (the `seed` call); the host never reaches the forge. A failed step prints `fail prepare <step>`
-and the host stays not ready. With an [install] table, prepare on a non-primary host also sends the primary's
-install.json (tag, bundle digest, transport) as the toolkit pin, and the host installs that release from the same
-source with the shared verifier (docs/bootstrap.md Host toolkit); no primary release install fails `toolkit`.
+and the host stays not ready. A host with checkout = "command" sends `prepare` with checkout=command instead,
+forge-less or not: the host runs the checkout command declared in its own root (never sent over SSH) in place of the
+mirror steps, and check then requires a `project checkout` row in place of `project mirror` (#1035). With an
+[install] table, prepare on a non-primary host also sends the primary's install.json (tag, bundle digest, transport)
+as the toolkit pin, and the host installs that release from the same source with the shared verifier
+(docs/bootstrap.md Host toolkit); no primary release install fails `toolkit`.
 --prune then removes the host's toolkit versions and staging leftovers that no project there pins, and lists them.
 With [install], check on a non-primary host adds a required `toolkit` row (the `version` call with the pin): it
 fails when the project pins no toolkit or another tag there, or the version's record or a file hash differs.
@@ -109,7 +112,7 @@ def inspect_host(args, values, session, state, host):
                                  ("os", "arch", "devices", "engines")},
                    identities={r: values["identities.%s.gh_user" % r] for r in roles},
                    toolchain_bin=setting(values, host, "toolchain_bin"), forge=forge, fix=getattr(args, "fix", False),
-                   ssh_port=ssh_port(address(values, host)))
+                   ssh_port=ssh_port(address(values, host)), **command_checkout(values, host))
     reply = load("crew_remote", REMOTE).call(address(values, host), "check", **request)
     if reply["result"] == "unreachable":
         return dict(reachable=False, ready=False, report="fail reachable: SSH unavailable or timed out: %s\n"
@@ -125,7 +128,8 @@ def inspect_host(args, values, session, state, host):
         for c in checks:
             if c["status"] not in ("ok", "warn", "fail", "human", "unverified"):
                 raise ValueError("unknown check status")
-        required = {"tools", "logins", "project mirror"} if forge else {"tools", "project mirror"}
+        required = {"tools", "project checkout" if request.get("checkout") else "project mirror"} \
+            | ({"logins"} if forge else set())
         pin = toolkit_pin(values, state)
         if pin is not None:
             checks = checks + [toolkit_check(address(values, host), project, request["root"], pin)]
@@ -160,6 +164,11 @@ def toolkit_pin(values, state):
     return dict(tag=record.get("tag"), bundle_sha256=record.get("bundle_sha256"), transport=record.get("transport"))
 
 
+def command_checkout(values, host):
+    """{checkout: command} for a host whose checkout comes from its declared command, else {} (requests unchanged)."""
+    return dict(checkout="command") if setting(values, host, "checkout") == "command" else {}
+
+
 def prepare(args, values, host, state):
     """Primary: fetch its checkout. Forge-less: fetch, then seed the default branch as a git bundle. Else `prepare`.
     A non-primary host also gets the toolkit pin when the profile has [install]."""
@@ -173,7 +182,8 @@ def prepare(args, values, host, state):
     extra = dict(os=setting(values, host, "capabilities.os"), **(dict(toolkit=pin) if pin else {}))
     if getattr(args, "prune", False):
         extra["prune"] = True
-    if not primary and forge:
+    extra.update(command_checkout(values, host))
+    if not primary and (forge or "checkout" in extra):
         return load("crew_remote", REMOTE).call(address(values, host), "prepare", timeout=660, project=project,
                                                 root=root, **extra)
     r = subprocess.run(["git", "-C", checkout_dir, "fetch", "-q", "origin"], capture_output=True, text=True)
@@ -217,7 +227,7 @@ def run(args):
                                           reply.get("error") or reply.get("reason", "")))
             print("%s: not ready" % args.host)
             return 1
-        print("ok prepare %s: project mirror" % reply["step"])
+        print("ok prepare %s: project %s" % (reply["step"], "checkout" if reply["step"] == "checkout" else "mirror"))
         if reply.get("toolkit"):
             print("ok prepare toolkit: mdstack %s %s" % (reply["toolkit"]["tag"], reply["toolkit"]["state"]))
         if "pruned" in reply:

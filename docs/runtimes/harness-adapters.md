@@ -53,6 +53,7 @@ them names a harness. A module states:
 | `coordinator_argv(project_dir, state, flags)`, `RESUME` | with a launch | coordinator launch line, and its `launch.resume` verb (none: refused) |
 | `coordinator_setup(project_dir, state)` | no | turn-end guard `mdstack up` installs for this coordinator (C1) |
 | `host_checks()`, `coordinator_checks(values, project_dir)`, `role_checks(values, checkout)` | no | trust and preflight rows: `mdstack up` refuses on a failed host check; `mdstack doctor` prints all three, role checks against the checkout role worktrees come from (C5) |
+| `sandbox_roots(values)` | no | the writable roots its launcher grants a session by default, or `None` when it sandboxes none: `mdstack doctor`'s `sandbox` row and `mdstack up` refuse when none covers the checkout's `.git` and no `sandbox_env` is set ([mdstack doctor](tmux.md#mdstack-doctor), #1544) |
 | `PROCESS`, `foreground_tty(tty)` | no | other foreground names, or a tty signature, that count as the harness (C5) |
 | `PROMPTS`, `FATAL` | no | blocking-dialog heading and footer pairs, and the fatal API error line (C5) |
 | `BUSY`, `COMPOSER` | no | mid-turn screen text `mdstack upgrade` waits out, and the composer's prompt glyph (C1) |
