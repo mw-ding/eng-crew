@@ -18,7 +18,8 @@ a merged PR's close-out while their own spawn PR lacks completion (its direct-la
 the inbox check and reap share the queue lock with send's inbox append.
 With the synthesizer lead installed (#1569), `review-approved`, `selfgate-passed`, `ci-passed` with a passing verdict
 or self-gate at head, and approved merge-ups become durable `work` events in its land queue, never coordinator
-wakes (a merge-up head's `ci-passed` counts its approved previous head); a superseded one is dropped, and an
+wakes (a merge-up head's `ci-passed` counts its approved previous head, and a head-pinned coordinator `merge-ok`
+steer counts as the §7 approval override); a superseded one is dropped, and an
 unapproved `ci-passed` is consumed unless held CI refs for that PR
 (`ci/<n>-*.json`) still wait on it. Its waiting gate-status blocks are consumed like a synthesizer's; its other
 `blocked:` lines (owner merge-ok, sensitive, holds, `main red`) stay queued for the coordinator; a clean
@@ -450,7 +451,9 @@ def route_record(args, values, state, w):
     if landing:
         own = own_view(values, pr)
         snapshot = commands()["poll"].pr_snapshot(own)
-        if event == "ci-passed" and "pass" not in (snapshot["verdict"], snapshot["selfgate"]) and \
+        merge_ok = any(m.get("role") == "coordinator" and m.get("pass") == "steer" and m.get("cmd") == "merge-ok" and
+                       m.get("sha") == head for m in markers("\n".join(r["body"] for r in pr["reviews"])))
+        if event == "ci-passed" and "pass" not in (snapshot["verdict"], snapshot["selfgate"]) and not merge_ok and \
                 not approved_merge_up(own, repo, values["repo.default_branch"]) and \
                 not commands()["poll"].express_lane(args, values, pr):  # poll gates an express ci-passed already
             return not glob.glob(os.path.join(state, "ci", "%d-*.json" % n))  # held CI refs: the coordinator drops them

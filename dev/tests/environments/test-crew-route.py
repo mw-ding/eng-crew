@@ -374,6 +374,14 @@ class Route(SpawnBase):
         self.route()
         self.assertEqual(self.pending(), [])
         self.assertEqual(self.land_queue(), ["review-approved", "ci-passed", "merge-up", "selfgate-passed"])
+        self.live["reviews"] = [dict(body="[Ash/steer] merge-ok\n<!-- crew:v1 role=coordinator pass=steer pr=12 sha=%s "
+                                          "round=n/a verdict=n/a cmd=merge-ok cmd-id=chat -->" % self.sha)]
+        self.save()
+        self.queue(dict(self.event("ci-passed"), id="merge-ok"))  # the §7 approval override counts too
+        self.route()
+        self.assertEqual(self.pending(), [])
+        self.assertEqual(self.land_queue()[-1], "ci-passed")
+        self.assertEqual(len(self.land_queue()), 5)
 
     def test_unapproved_superseded_and_held_land_events(self):  # #1569
         self.synthesizer_lead()

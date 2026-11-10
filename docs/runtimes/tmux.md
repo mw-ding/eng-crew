@@ -550,7 +550,8 @@ land procedure and never spawns synthesizer workers. With it installed,
 `mdstack spawn synthesizer` refuses, and nothing reaps it after a land.
 
 `mdstack route` writes `review-approved`, `selfgate-passed`, `ci-passed`
-with a passing verdict or self-gate at head, or on an approved merge-up head
+with a passing verdict, self-gate or coordinator `merge-ok` steer at head,
+or on an approved merge-up head
 (an express `ci-passed` is already gated by `mdstack poll`), and approved
 `merge-up` events as durable `work` events into its inbox. They no longer stay queued for the
 coordinator. A land event for a superseded head is dropped; an unapproved
