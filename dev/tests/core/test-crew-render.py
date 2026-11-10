@@ -1051,10 +1051,13 @@ class RoleRuntime(unittest.TestCase):
         self.assertEqual(got, upstream)
 
     def test_missing_template_fails_closed(self):
-        code, out, _ = self.render('{ researcher = "session" }')
+        code, out, _ = self.render('{ builder = "grok-bot" }')
         self.assertEqual(code, 1)
-        self.assertRegex(out, r"templates/runtimes/session/researcher\.md:1: missing mapping: no session template "
-                              r"for role researcher\n")
+        self.assertRegex(out, r"templates/runtimes/grok-bot/builder\.md:1: missing mapping: no grok-bot template "
+                              r"for role builder\n")
+        code, out, _ = self.render('{ researcher = "session" }')  # #1404: the session brief is sweep-only
+        self.assertEqual(code, 1)
+        self.assertIn("role_runtime.researcher: the session researcher brief runs only the triage sweep", out)
         code, out, _ = self.render('{ coordinator = "tmux" }')
         self.assertEqual(code, 1)
         self.assertIn("role_runtime.coordinator: unknown value 'tmux'", out)

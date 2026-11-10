@@ -140,7 +140,8 @@ runtime (its registry `templates` entry) and renders
 with the profile's values and the usual placeholder checks. Every other brief
 renders unchanged, and a profile without the key, or with an empty table,
 renders byte-identically. A value equal to `runtime.name` or an unknown role is
-refused; a role with no template for the selected runtime, or a runtime
+refused, as is `researcher = "session"`, since the session researcher brief
+runs only the triage sweep (#1404); a role with no template for the selected runtime, or a runtime
 with no `<role>.md`, fails the render. A role with a cap of 0 renders nothing,
 as before. Only the render changes: the launcher, poller and worker dispatch
 follow `runtime.name`, so the swapped brief must suit the runtime that starts

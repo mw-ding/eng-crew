@@ -855,6 +855,9 @@ def validate(profile, err, backends=BACKENDS, pack_dir=None, item=None):
                                        {r: (str, None) for r in ROLE_REGISTRY})
             for role, other in role_runtime.items():
                 check_choice(err, "runtime.options.role_runtime." + role, other, [n for n in RUNTIME_OPTIONS if n != rt["name"]])
+                if role == "researcher" and other == "session":  # a sweep-only brief, not a full researcher (#1404)
+                    err("runtime.options.role_runtime.researcher", "the session researcher brief runs only the "
+                        "triage sweep; it cannot replace the %s researcher brief" % rt["name"])
             if "launch" in opts:
                 launch = check_table(err, "runtime.options.launch", opts["launch"], {
                     "coordinator": (str, "tmux"), "roles": (str, "tmux"), "resume": (str, "fresh"), "reconcile": (str, "backend")})
