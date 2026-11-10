@@ -127,6 +127,7 @@ RUNTIME_OPTIONS = {"grok-bot": {"max_active_milestones": (int, 1)},
                                         "mirror": (str, "live-copy"),
                                         "hold_label_blocks": (bool, True), "permission_mode": (str, "bypass"),
                                         "sandbox_env": (str, ""), "notes": (dict, {}), "launch": (dict, None),
+                                        "role_runtime": (dict, None),
                                         "slack_webhook_env": (str, None), "slack_digest_interval": (int, 3600)},
                    # Hosted or hand-started coordinator with native-subagent or CLI workers (docs/runtimes/session.md, #914).
                    "session": {"max_active_milestones": (int, 1), "session_backend": (str, "native"), "builders": (int, 5),
@@ -137,7 +138,8 @@ RUNTIME_OPTIONS = {"grok-bot": {"max_active_milestones": (int, 1)},
                                "train_local_checks": (bool, False), "mirror_deferral": (str, "none"),
                                "mirror": (str, "live-copy"), "hold_label_blocks": (bool, True), "notes": (dict, {}),
                                # mdstack up's coordinator launch (#1548): its tmux session, harness flags and topology
-                               "session": (str, None), "permission_mode": (str, "bypass"), "launch": (dict, None)}}
+                               "session": (str, None), "permission_mode": (str, "bypass"), "launch": (dict, None),
+                               "role_runtime": (dict, None)}}  # one role from another runtime's templates (#1055)
 SESSION_BACKENDS = {"tmux": sessions.CHOICES, "session": ["native", "cli"]}  # runtime.options.session_backend
 LAUNCH_SESSION_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,127}")  # launch.resume: a harness conversation id
 TRIAGE_MODES = ["shadow", "apply"]  # [triage] mode (docs/triage.md Shadow mode and calibration)
@@ -840,6 +842,10 @@ def validate(profile, err, backends=BACKENDS, pack_dir=None, item=None):
                     for i, path in enumerate(paths):
                         if not isinstance(path, str) or not path.strip():
                             err("%s%s[%d]" % (prefix, role, i), "expected a nonempty file path")
+            role_runtime = check_table(err, "runtime.options.role_runtime", opts.get("role_runtime", {}),
+                                       {r: (str, None) for r in ROLE_REGISTRY})
+            for role, other in role_runtime.items():
+                check_choice(err, "runtime.options.role_runtime." + role, other, [n for n in RUNTIME_OPTIONS if n != rt["name"]])
             if "launch" in opts:
                 launch = check_table(err, "runtime.options.launch", opts["launch"], {
                     "coordinator": (str, "tmux"), "roles": (str, "tmux"), "resume": (str, "fresh"), "reconcile": (str, "backend")})
