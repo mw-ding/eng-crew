@@ -17,6 +17,11 @@ through a reviewed memory PR (`docs/memory.md`).
   apply it, record it on #985 and report, rather than asking. Only
   `crew:sensitive` still needs the owner's per-change reason (#985
   c6729351370).
+- Batch the asks only the owner can answer (sensitive or gate-contract
+  merge-oks, owner-shell runs) into one list, each with a proposed one-line
+  reason; the owner answers in bulk, and a per-PR merge-ok is recorded at
+  each listed head from that reply. A merge-ok never supplies missing AC
+  evidence (#985 c6729351370, c6746709060).
 
 ## Work
 
