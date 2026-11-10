@@ -198,6 +198,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `scripts/release-trigger.py` | Internal | n/a | Guards and tests: release tooling, run by the release workflow, not installed |
 | `scripts/required-docs.txt` | Internal | n/a | Guards and tests: required docs and sections, run by CI |
 | `scripts/run-tests.py` | Internal | n/a | Guards and tests: parallel test runner, run by CI, not installed |
+| `scripts/run-usage.py` | Deliverable | all | Role helper: a pass's usage line, wall-clock time, tokens from the harness session log, and model ([#1557](https://github.com/mw-ding/mdstack/issues/1557)) |
 | `scripts/step-summary.py` | Deliverable | all | Role helpers: builder and coordinator helpers |
 | `scripts/triage-clusters.py` | Deliverable | all | Role helper: triage clusters of related open issues with stable slugs and cap-counted proposals ([#1298](https://github.com/mw-ding/mdstack/issues/1298)) |
 | `scripts/triage-metrics.py` | Deliverable | all | Role helper: triage shadow-mode spot check, precision bar, metrics and eval set ([#750](https://github.com/mw-ding/eng-crew/issues/750)) |

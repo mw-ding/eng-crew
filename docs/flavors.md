@@ -332,7 +332,7 @@ no result; never use a partial match to relax rigor.
 | Rework | `reopened`, or changes verdicts at the cap (the [rework proxy](metrics/decisions.md#rework-proxy-and-its-limits)) | In `prs.csv` |
 | Flavor per change | An optional `flavor=<effective>` field on the `pass=verdict` marker | New (follow-up A) |
 | Escaped defects | A bug item or intake card with `Escaped from: <owner>/<repo>#<pr>`, which the coordinator adds at triage | New (follow-up C) |
-| Quota spend | Engine runs per change: distinct `Engine:` trailers per round, plus the reviewer and validator runs named in verdict signatures. Token and quota-% figures stay local to the runtime, off the record, so they are not inputs | New (follow-up C) |
+| Quota spend | Engine runs per change: distinct `Engine:` trailers per round, plus the reviewer and validator runs named in verdict signatures. Quota-% figures stay local to the runtime. Since #1557 (owner direction, 2026-11-10) each pass-reporting role post carries an informational [usage line](roles.md#usage-line) with its tokens; it is still not an input | New (follow-up C) |
 | Owner feedback | An [intake card](self-improve.md#triggers) with trigger `owner-feedback` and class `too-slow`, `too-costly` or `missed-bug` | New trigger (follow-up D) |
 
 ### Thresholds

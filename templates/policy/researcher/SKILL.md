@@ -10,6 +10,12 @@ fragment: [triage-sweep.md](triage-sweep.md), the Triage sweep policy. The
 tmux brief holds the rest of the policy and the Grok Bot worker brief a
 shorter form.
 
+Role-wide rules:
+
+- The usage line ([usage-line.md](../shared/usage-line.md)): the tmux
+  brief has a one-line pointer to fit its size budget, and the reflection
+  report format carries the line inline.
+
 Procedures:
 
 - [research](skills/research/SKILL.md): one finding per request.

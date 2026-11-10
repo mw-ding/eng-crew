@@ -12,7 +12,8 @@ post `claimed` per §4 and re-read before dispatch. Handoff (§9):
 Sign every authored post and owner-facing reply with
 `— <CoordinatorEmoji> <CoordinatorBot> (<CoordinatorTitle>) · <harness> · <model>`.
 Use the session's actual harness/model, including
-any fallback; never planned values. Keep required effort in build/fix attribution and marker formats unchanged.
+any fallback; never planned values. Keep markers unchanged.
+Status posts end with the roles.md usage line.
 
 <include:policy/shared/landing-steering.md>
 
