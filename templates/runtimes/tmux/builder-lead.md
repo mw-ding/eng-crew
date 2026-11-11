@@ -45,8 +45,8 @@ Never delete a referenced event or finding while work remains pending.
   Never start a `deferred` or `holds` item; holds belong to the reviewer
   lead. Idle `done:` builders without running tools never count as busy.
   For each new deferral, run
-  `$CREW_BIN lead report builder REASON REF... --detail "observed inputs" --project "$CREW_PROJECT"`
-  with REASON `capacity`, `load`, `suites` or `probe-unavailable`: `capacity`
+  `$CREW_BIN lead report builder REASON REF... --id ID --detail "observed inputs" --project "$CREW_PROJECT"`,
+  ID being the deferred handoff's inbox id, with REASON `capacity`, `load`, `suites` or `probe-unavailable`: `capacity`
   for `cap`, `target` or `ramp`, `load` for `max_load`, `suites` for
   `max_suites` and `probe-unavailable` for an `-unreadable` input.
   This writes `leads/builder-admission.md` and `deferred:` in the lead status.
