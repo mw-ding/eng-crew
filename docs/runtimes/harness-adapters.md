@@ -51,6 +51,7 @@ them names a harness. A module states:
 | `ENGINE_RANK`, `LAUNCH_RANK` | no | position in the engine and coordinator choice lists; unranked adapters follow, by engine id |
 | `LOGIN_STATUS` | no (default `auth status`) | the read-only login check `mdstack host check` runs |
 | `PERMISSION`, `PERMISSION_REFUSAL` | with a launch | flags per supported `permission_mode`; an absent mode is refused with the message |
+| `launch_refusal(mode, uid)` | no | why a role window cannot launch in `mode` on a host whose effective uid is `uid`, or `None`; the core asks before the window opens, on the execution host (Claude Code: `bypass` as root, #738) |
 | `role_argv(model, effort, wt, state, flags)` | with a launch | role launch line (C3); without it the engine is schema-only and `mdstack spawn` skips it |
 | `coordinator_argv(project_dir, state, flags)`, `RESUME` | with a launch | coordinator launch line, and its `launch.resume` verb (none: refused) |
 | `coordinator_setup(project_dir, state)` | no | turn-end guard `mdstack up` installs for this coordinator (C1) |

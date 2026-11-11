@@ -600,7 +600,8 @@ Route consumes the lead's `ack:`, `done:` and waiting gate-status lines
 `blocked:` lines stay queued for the coordinator: owner merge-ok,
 `crew:sensitive`, holds and `main red`; lead faults arrive as `stale` or
 `dialog` wakes. Merged-PR close-out stays in route (labels, closing the
-issue, branch deletion under the existing rules, builder reclaim through the
+issue, a fallback branch deletion under the existing rules when the land
+left the branch, builder reclaim through the
 builder lead), so a land needs no coordinator turn. With a Slack owner
 channel, route also queues the away-only `land` notification through
 `mdstack notify` (stable id `land-<n>`, the train number or `direct`, the
@@ -1072,6 +1073,12 @@ step 1, the band cap queue, is under [mdstack dequeue](#mdstack-dequeue) (#136):
   outside the worktree, so a host that wraps Codex in an external sandbox
   writable only under the working directory and `--add-dir` paths would
   otherwise block `git branch`, `commit` and `push` (#384).
+  Claude Code exits at once on `bypass` as root, before any session, so
+  spawn, restart and lead launches refuse a Claude Code role window in
+  `bypass` when the launching process's effective uid is 0, before the
+  window opens, naming the cause and the two fixes: run the crew as a
+  non-root user, or use `auto` or `safe`. A remote run is checked on its
+  execution host, by that host's uid (#738).
 - Pre-trust: Codex gets one `-c 'projects={"<worktree>"={trust_level="trusted"},"<repo-root>"={trust_level="trusted"}}'`
   (real paths), a `projects` table for that process only;
   `~/.codex/config.toml` is never edited. For a linked worktree Codex
@@ -1972,11 +1979,14 @@ Merged-PR close-out (the coordinator brief points here, #1635): remove
 `crew:approved`, `crew:hold`, `crew:in-review` and `crew:changes` (each if
 present) from the PR, remove `crew:ready` from the issue it closed, and close
 that issue with a note if GitHub left it open (never a reopened one, #846).
-Delete the head branch with `change.delete-branch` only when ALL of these
-hold, read from `change.read-state` and `change.read-default-branch`: the PR
-is merged; `isCrossRepository` is false; `<branch>` is read only from
-`headRefName`; the branch differs from both the default branch and
-`baseRefName`. Otherwise skip deletion and say why in the close-out note.
+The land deletes an eligible head branch itself where the change backend maps
+`change.land-delete-arg` (#395), so an ordinary land leaves nothing to delete.
+Only if the head branch outlived the land, delete it with
+`change.delete-branch`, and only when ALL of these hold, read from
+`change.read-state` and `change.read-default-branch`: the PR is merged;
+`isCrossRepository` is false; `<branch>` is read only from `headRefName`; the
+branch differs from both the default branch and `baseRefName`. Otherwise skip
+deletion and say why in the close-out note.
 
 Spawns are deduplicated by PR/head/pass/round against live and queued runs,
 section files and posted pass markers. An expected `--head` travels through

@@ -35,11 +35,18 @@ The runtime side (wake, one consumer, liveness, serial land) is the
 | Read state (`read-state`) | Returns a change's state, head branch, head repository, cross-repository flag and base branch | none |
 | Read default branch (`read-default-branch`) | Returns the repository's default branch | none |
 | Delete branch (`delete-branch`) | Deletes a landed change's head branch | none |
+| Delete on land (`land-delete-arg`) | Brief text: the argument added to Land so the land also deletes the change's head branch; added only for a same-repository head that is neither the default nor the base branch | none |
 | CLI conventions (`cli-name`, `cli-repo-flag`, `cli-unscoped`) | Brief text: the backend's command-line tool, its per-repository scope flag and the call that takes no scope flag | none |
 
 `read-diff` is conditional (#879): `resolve` requires it only when the
 resolved profile declares content rules; a manifest without it stays valid
 otherwise.
+
+`land-delete-arg` is conditional (#395): with it mapped, the sync tmux and
+session synthesizer briefs add it to an eligible land, so the land itself
+deletes the head branch; `mdstack train land` does the same for each member
+on GitHub. Without it, the land keeps the branch and close-out's guarded
+`delete-branch` removes it.
 
 A backend whose VCS forbids merge commits declares a rebase update, with
 every earlier head kept readable in place of the no-rewrite guarantee

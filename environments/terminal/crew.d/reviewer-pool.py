@@ -106,8 +106,14 @@ def run(args):
                 out.write("ack: " + message["id"] + "\n")
             refs = message["refs"]
             if message["kind"] == "work":
-                with open(refs[0]) as f:
-                    wake = json.load(f)
+                wake, error = commands()["schedule"].work_event(refs[0])
+                if error:
+                    # A durable disposition for the coordinator; the rest of the queue still drains (#1020).
+                    print("crew: reviewer work %s: invalid ref %s: %s" % (message["id"], refs[0], error))
+                    with open(status, "a") as out:
+                        out.write("blocked: %s invalid-work-ref %s %s\ndone: %s\n" % (
+                            message["id"], refs[0], error.replace("\n", " "), message["id"]))
+                    continue
                 rec = dict(runs(state)).get(wake.get("window"))
                 current = rec and (wake.get("reason") in ("stale", "dialog") or wake.get("reason") == "lifecycle" and
                                    (wake.get("start"), wake.get("head")) == (rec.get("start"), rec.get("head")))

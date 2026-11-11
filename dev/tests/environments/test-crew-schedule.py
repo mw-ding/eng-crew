@@ -139,8 +139,24 @@ class Snapshot(Fixture):
                          [("review", "#31"), ("review", "#32"), ("validate", "#33"), ("review", "#34"),
                           ("work", "/w4.json"), ("validate", "#36")])
 
-    def test_failed_reads_are_unknown_per_input(self):
+    def test_malformed_work_ref_is_classified_without_hiding_other_demand(self):  # #1020
+        self.put("hold-note.md", "# hold #1001\n")
+        self.put("leads/reviewer-events/list.json", "[1]")
         os.remove(self.event)
+        self.put("inbox/vera-lead.jsonl", "".join(json.dumps(m) + "\n" for m in [
+            {"id": "r1", "kind": "review", "refs": ["#601", "a" * 40, "1"]},
+            {"id": "r2", "kind": "work", "refs": [self.event]},
+            {"id": "r3", "kind": "work", "refs": [os.path.join(self.state, "hold-note.md")]},
+            {"id": "r4", "kind": "work", "refs": [os.path.join(self.state, "leads", "reviewer-events", "list.json")]}]))
+        reviewer = self.snapshot()["demand"]["reviewer"]
+        self.assertEqual([(d["id"], d["kind"]) for d in reviewer],
+                         [("r1", "review"), ("r2", "invalid-work"), ("r3", "invalid-work"), ("r4", "invalid-work")])
+        self.assertTrue(reviewer[1]["error"].startswith("FileNotFoundError"))
+        self.assertTrue(reviewer[2]["error"].startswith("JSONDecodeError"))
+        self.assertEqual(reviewer[3]["error"], "not a JSON object")
+
+    def test_failed_reads_are_unknown_per_input(self):
+        self.put("inbox/vera-lead.jsonl", "{not json\n")
         snap = self.snapshot(FAKE_GH_FAIL="1")
         self.assertEqual(snap["demand"]["reviewer"], "unknown")
         self.assertEqual(len(snap["demand"]["builder"]), 2)
@@ -287,6 +303,10 @@ class Rank(unittest.TestCase):
         self.snap["workers"] = "unknown"
         self.snap["demand"] = {"builder": [item("build", 20), item("work", 5)], "reviewer": "unknown"}
         self.assertEqual([(r["class"], r["ref"]) for r in self.schedule.rank(self.snap)], [(7, "#20")])
+
+    def test_invalid_work_is_unranked_beside_valid_review(self):  # #1020
+        bad = dict(id="w1", kind="invalid-work", refs=["/state/hold-note.md"], error="JSONDecodeError: x")
+        self.assertEqual(self.ranked(reviewer=[bad, item("review", 43)]), [(5, "#43")])
 
 
 T0 = datetime.datetime(2026, 11, 3, 8, 0, tzinfo=datetime.timezone.utc)
@@ -606,7 +626,7 @@ class DecideCommand(Fixture):
         self.assertIn("demand", self.saved(day[0])[0]["snapshot"])
 
     def test_unreadable_demand_defers_only_that_pool(self):
-        os.remove(self.event)
+        self.put("inbox/vera-lead.jsonl", "{not json\n")
         self.assertEqual(self.call("decide", "--pool", "reviewer")["deferred"][0]["reasons"], ["demand-unreadable"])
         self.assertEqual(self.call("decide", "--pool", "builder")["admit"][0]["ref"], "#9")
 

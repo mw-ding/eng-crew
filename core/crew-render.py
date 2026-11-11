@@ -117,6 +117,20 @@ LAND_SYNC = ("If it holds, run `$CREW_BIN land-lock acquire --project \"$CREW_PR
              "   `Land rule:` line (`<op:markers.write>`), then\n"
              "   `$CREW_BIN land-lock release --project \"$CREW_PROJECT\"`. If the head moved, release\n"
              "   and stop.")
+# <land-step> when the change backend maps change.land-delete-arg (#395): the land itself deletes an eligible head
+# branch, so close-out needs no separate delete (docs/interfaces.md#change); otherwise the sync text renders unchanged.
+LAND_DELETE = [("`<op:change.land>`, post\n   `[<SynthesizerBot>/merge]` naming the merge-ok or grant used and its\n"
+                 "   `Land rule:` line",
+                 "`<op:change.land>`, add\n   `<op:change.land-delete-arg>` if same-repo, not default/base, post\n"
+                 "   `[<SynthesizerBot>/merge]` naming merge-ok or grant used, its `Land rule:`\n"
+                 "   line and `Head branch: deleted|retained (<reason>)|delete failed` (exit>0,\n"
+                 "   `MERGED`)"),
+               ("`<op:change.land>` bound to that head, post `[<SynthesizerBot>/merge]` naming\n"
+                "   the merge-ok or grant used and its `Land rule:` line",
+                "`<op:change.land>` bound to that head, add `<op:change.land-delete-arg>` if\n"
+                "   same-repo, not default/base, post `[<SynthesizerBot>/merge]` naming merge-ok\n"
+                "   or grant used, its `Land rule:` line and `Head branch: deleted|retained\n"
+                "   (<reason>)|delete failed` (exit>0, `MERGED`)")]
 LAND_ASYNC = (
     "If it holds, land asynchronously (`land.mode = \"async\"`, protocol §7).\n"
     "   %s\n"
@@ -440,7 +454,14 @@ class Renderer:
         if name == "land-step":
             session = self.session_template()
             if self.values.get("land.mode", "sync") == "sync":
-                return self.line(SESSION_LAND_SYNC if session else LAND_SYNC)
+                text = SESSION_LAND_SYNC if session else LAND_SYNC
+                try:
+                    self.op("change", "land-delete-arg")
+                    for old, new in LAND_DELETE:
+                        text = text.replace(old, new)
+                except ValueError:  # unsupported or unmapped: the land keeps the branch for close-out
+                    pass
+                return self.line(text)
             lock = (SESSION_LAND_LOCK if session else LAND_LOCK)[bool(self.values.get("land.serializes"))]
             text = SESSION_LAND_ASYNC if session else LAND_ASYNC
             return self.line(text % (lock, LAND_TIP[bool(self.values.get("land.tests_against_tip"))]))

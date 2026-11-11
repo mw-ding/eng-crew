@@ -30,6 +30,8 @@ never `/tmp` or outside the state dir.
 
 <include:policy/coordinator/plan-gate.md>
 
+<include:policy/coordinator/spec-bookends.md>
+
 <include:policy/coordinator/memory-capture.md>
 
 <include:policy/coordinator/secret-retrieval.md>

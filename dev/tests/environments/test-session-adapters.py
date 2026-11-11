@@ -163,6 +163,37 @@ class ShippedBackends(unittest.TestCase):
             self.assertEqual(a.server(), ["-S", os.path.join(folder, "default")])
         self.assertEqual(stat.S_IMODE(os.stat(folder).st_mode), 0o700)
 
+    def test_tmux_new_session_raises_when_exit_0_leaves_no_session(self):  # #1480: `error creating …`, rc 0
+        a = load("crew_tmux_liar", os.path.join(os.path.dirname(SCRIPTS), "environments", "terminal", "sessions", "tmux",
+                                                "adapter.py"))
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        liar = os.path.join(tmp, "tmux")
+        with open(liar, "w") as f:
+            f.write('#!/bin/sh\ncase "$3" in new-session) echo "error creating /x (No such file or directory)" >&2;;'
+                    ' has-session) exit 1;; esac\nexit 0\n')
+        os.chmod(liar, 0o755)
+        with mock.patch.dict(os.environ, {"TMUX_TMPDIR": tmp, "PATH": tmp + os.pathsep + os.environ["PATH"]}):
+            with self.assertRaisesRegex(RuntimeError, r"no session crew-host after exit 0: error creating /x"):
+                a.new_session("crew-host", "runner", tmp, {}, "tail -f /dev/null")
+
+    @unittest.skipUnless(shutil.which("tmux"), "tmux not installed")
+    def test_tmux_new_session_on_a_fresh_private_socket_directory(self):  # #1480: tmux-<uid>/ absent beforehand
+        a = load("crew_tmux_fresh_live", os.path.join(os.path.dirname(SCRIPTS), "environments", "terminal", "sessions",
+                                                      "tmux", "adapter.py"))
+        tmp = tempfile.mkdtemp(prefix="t1480.", dir="/tmp")  # short: socket paths are length-limited
+        self.addCleanup(shutil.rmtree, tmp, True)
+        env = {k: v for k, v in os.environ.items() if k not in ("TMUX", "TMUX_PANE")}
+        env["TMUX_TMPDIR"] = tmp
+        folder = os.path.join(tmp, "tmux-%d" % os.getuid())
+        self.assertFalse(os.path.exists(folder))
+        self.addCleanup(subprocess.run, ["tmux", "-S", os.path.join(folder, "default"), "kill-server"],
+                        capture_output=True)
+        with mock.patch.dict(os.environ, env, clear=True):
+            a.new_session("crew-host", "runner", tmp, {}, "tail -f /dev/null")
+            self.assertTrue(a.has_session("crew-host"))
+        self.assertEqual(stat.S_IMODE(os.stat(folder).st_mode), 0o700)
+
 
 class FakeBackend(SpawnBase):
     """The fake adapter, added as one file, through the schema, doctor and every capability branch."""

@@ -5,7 +5,8 @@ harness is then an engine and coordinator choice, `mdstack up` launches and resu
 launches a worker with it, `mdstack upgrade` reloads it, the probe, watcher wake, dialog, transient-error and composer
 rules use its declarations, bootstrap installs its pointer, and `mdstack doctor` and remote readiness check its CLI.
 The shipped tables keep their order, each shipped adapter's title, CLI, login check and screen rules match its spec
-section (#1443), and the contributor-tier check stays in the core. Run in CI.
+section (#1443), and the contributor-tier check stays in the core; Claude's transient text matches connection loss and the gateway capacity
+line, never tool output or quoted text (#1633). Run in CI.
 """
 from argparse import ArgumentParser, Namespace
 import importlib.util
@@ -119,6 +120,32 @@ class ShippedTables(unittest.TestCase):
         self.assertRegex('■ {"type":"error","status":503,"message":"x"}', codex.FATAL)
         self.assertNotRegex('■ {"type":"error","status":503}', claude.FATAL)
         self.assertNotRegex('⎿  API Error: 400 {"type":"error"}', codex.FATAL)
+        for line in ["  ⎿  API Error (529 …) · Retrying in 2 seconds…", "  ⎿  API Error: Connection lost mid-response",
+                     "429 The shared model capacity behind AI Gateway is temporarily exhausted upstream",
+                     "  ⎿  API Error: 429 The shared model capacity behind AI Gateway is temporarily exhausted upstream"]:
+            self.assertRegex(line, claude.TRANSIENT)  # #1633: connection loss and the gateway capacity line
+        for line in ["     ⎿  API Error: Connection lost mid-response", "> 429 The shared model capacity is exhausted",
+                     "  ⎿  title: API Error: Connection lost mid-response", "• 429 capacity exhausted, quoted"]:
+            self.assertNotRegex(line, claude.TRANSIENT)  # tool output, a quoted prompt or issue text (#1366)
+
+    def test_claude_root_bypass_refused_locally_not_for_remote(self):
+        """#738: Claude Code bypass as euid 0 refuses before any argv; other modes, uids and engines are unchanged, and a
+        remote launch leaves the uid check to its host."""
+        shared = cli().harness.__globals__
+        claude = shared["harnesses"].ADAPTERS["claude-code"]
+        self.assertIsNone(claude.launch_refusal("bypass", 501))
+        self.assertIsNone(claude.launch_refusal("auto", 0))
+        self.assertIsNone(claude.launch_refusal("safe", 0))
+        with mock.patch.object(shared["os"], "geteuid", return_value=0):
+            with self.assertRaisesRegex(RuntimeError, r"Claude Code refuses permission_mode=bypass when running as root"):
+                shared["harness"]("claude-code", "m", "high", "/wt", "/state", "bypass", {})
+            self.assertEqual(shared["harness"]("claude-code", "m", "high", "/wt", "/state", "bypass", {}, False)[0], "claude")
+            self.assertEqual(shared["harness"]("claude-code", "m", "high", "/wt", "/state", "auto", {})[-1], "auto")
+            with mock.patch.object(shared["subprocess"], "run", return_value=Namespace(returncode=0, stdout='{"private": false}')):
+                values = {"repo.owner": "acme", "repo.name": "widgets"}
+                for engine in ("codex", "pi", "cursor", "muse"):  # no launch_refusal: the default launches as root
+                    self.assertFalse(hasattr(shared["harnesses"].ADAPTERS[engine], "launch_refusal"), engine)
+                    self.assertTrue(shared["harness"](engine, "m", "high", "/wt", "/state", "bypass", values), engine)
 
     def test_quota_lines_per_adapter(self):
         """Claude Code's, Codex's and Cursor's own usage-limit lines (#631); quoted or indented text never matches."""

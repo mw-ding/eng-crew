@@ -5,7 +5,9 @@ and retries pending lead admission every 60 s, then exits with one reason line; 
 wakes while their record mtime is less than 60 s
 old. Verified panes with a live tool session or recent output get a supervisor heartbeat instead of a stale wake; a
 working run whose tmux pane printed nothing for `--idle-stall` (default 1800 s) is idle at its prompt and wakes stale with
-liveness `idle` even while its claim or status file keeps being refreshed (#1283). Each new stale wake opens a stall
+liveness `idle` even while its claim or status file keeps being refreshed (#1283). An alive builder holding acked
+unfinished work whose claim heartbeat is older than 900 s wakes stale with liveness `claim` for its lead, however fresh
+the supervisor heartbeat on its status file, unless its item is held or its harness is mid-turn (#1633). Each new stale wake opens a stall
 in `metrics/observations.jsonl` keyed by run, and that run's next status line closes it (self-improve.md, #1524).
 Each live run's screen is matched against its harness adapter's transient-error text; each new match is a line in
 `schedule/errors.jsonl` (docs/scheduling.md#inputs). A run whose harness shows its adapter's usage-limit line probes
@@ -62,7 +64,7 @@ import signal
 import subprocess
 import sys
 import time
-from crew_shared import checkout, commands, CREW_BIN, dialog, ownership_module, ENGINE_CMD, foreground_matches, finished, GLYPHS, PROMPTS, gateway_error, HERE, heartbeat, idle_builder, probe, proc, profile, queue_lock, remember_pr, remote_run, ROOT, runs, TRANSIENT, tmux, transient_lines
+from crew_shared import BUSY, checkout, commands, CREW_BIN, dialog, ownership_module, ENGINE_CMD, foreground_matches, finished, GLYPHS, PROMPTS, gateway_error, HERE, heartbeat, idle_builder, probe, proc, profile, queue_lock, remember_pr, remote_run, ROOT, runs, TRANSIENT, tmux, transient_lines
 
 # Fields route adds to a record it leaves queued; a kept record still matches its candidate and wakes window 0 (#814).
 ROUTE_NOTES = ("at", "route_error", "consumer", "dependents")
@@ -70,6 +72,7 @@ RATE_LIMITED = re.compile(r"rate-limited until (\S+Z)")  # mdstack poll's exit-7
 HELD_BACKSTOP = 4 * 3600  # seconds; the shortest backstop while every run is held or owner-blocked (#394)
 LOCK_ENV = "MDSTACK_WATCH_LOCK"  # "<pid>:<fd>" of the held wake/watcher.lock, kept across a re-exec (#399)
 RATE_HOLD_MAX = 3600  # seconds; GitHub's primary quota window, so a bad reset time never parks the sources for longer
+CLAIM_STALE = 900  # seconds; a builder refreshes its claim heartbeat at least every 5 min (#1633)
 
 def asks(state):
     """Open owner asks, asks/<n>.json {"deadline": ISO 8601 with UTC offset}: (n, deadline, epoch); an unreadable
@@ -180,6 +183,38 @@ def pull_hosts(values, state, seen, now, stale):
     return wakes
 
 
+def acked_work(state, name):
+    """Whether a run's status acknowledges an inbox message with no done:, blocked: or failed: after it (#1633)."""
+    try:
+        with open(os.path.join(state, "status", name + ".status")) as f:
+            lines = [line for line in f.read().splitlines() if line.strip() and not line.startswith("heartbeat:")]
+    except FileNotFoundError:
+        return False
+    for line in reversed(lines):
+        if line.startswith(("done:", "blocked:", "failed:")):
+            return False
+        if line.startswith("ack:"):
+            return True
+    return False
+
+
+def silent_claim(state, session, name, rec, cls, now):
+    """An alive builder's claim heartbeat time when it is older than CLAIM_STALE while the builder holds acknowledged
+    unfinished work, its item is not held and its harness is not mid-turn; else None. A supervisor heartbeat on the
+    status file never refreshes the claim, so this catches a worker idle after an API error (#1633)."""
+    if rec["role"] != "builder" or cls != "alive" or not rec.get("claim") or not acked_work(state, name):
+        return None
+    try:
+        beat = os.path.getmtime(rec["claim"])
+    except OSError:
+        return None
+    ref = re.fullmatch(r"(?:issue|pr) (#\d+)", str(rec.get("item", "")).split(",")[0], re.I)
+    if now - beat <= CLAIM_STALE or ref and ref.group(1) in held(state):
+        return None
+    screen = tmux.capture(session, rec["index"]).lower()
+    return None if any(b.search(screen) for b in BUSY) else beat
+
+
 def utc(t):
     return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(t))
 
@@ -280,6 +315,15 @@ def scan(state, session, now, stale, seen, idle_ttl=1800, stuck_after=1800, idle
                 wakes.append({"reason": "stale", "window": name, "liveness": "idle", "silent": int(quiet),
                               "action": "escalate"})
                 stall(state, seen, name, now, utc(float(p["activity"])), "idle")
+            continue
+        claim = silent_claim(state, session, name, rec, cls, now)
+        if claim is not None:
+            key = "claim %s" % claim  # once per claim silence, whatever the status file's supervisor heartbeat
+            if seen["keys"].get(name) != key:
+                seen["keys"][name] = key
+                wakes.append({"reason": "stale", "window": name, "liveness": "claim", "silent": int(now - claim),
+                              "run": identity, "action": "escalate"})
+                stall(state, seen, name, now, utc(claim), "claim")
             continue
         if finished(rec, last) or (cls in ("alive", "ambiguous") and (last.startswith("done:") or now - beat <= stale)):
             continue  # a live builder after done: waits for its inbox; a dead one is restartable (#139 F4)

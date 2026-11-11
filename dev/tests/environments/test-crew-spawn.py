@@ -785,6 +785,30 @@ class LaunchPolicy(SpawnBase):
     def test_safe(self):
         self.assert_launches("safe", "safe")
 
+    def as_root(self):
+        """Every spawned interpreter reads euid 0, without root: a sitecustomize on PYTHONPATH (#738)."""
+        site = os.path.join(self.tmp, "fake-root")
+        os.makedirs(site, exist_ok=True)
+        with open(os.path.join(site, "sitecustomize.py"), "w") as f:
+            f.write("import os\nos.geteuid = lambda: 0\n")
+        self.env["PYTHONPATH"] = site
+
+    def test_root_bypass_refuses_claude_before_its_window(self):
+        self.as_root()
+        self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)  # Codex as root + bypass: unaffected
+        self.pr(9, "codex gpt-6.1-sol medium")
+        r = self.spawn("reviewer", "--pr", "9")  # Claude Code
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("Claude Code refuses permission_mode=bypass when running as root (uid 0)", r.stdout)
+        self.assertIn("run the crew as a non-root user, or set runtime.options.permission_mode to auto or safe", r.stdout)
+        self.assertEqual(len(self.windows()), 1)
+        self.assertFalse(os.path.exists(os.path.join(self.state, "runs", "vera-9-r1-review.json")))
+        self.assertEqual([c for c in os.listdir(os.path.join(self.state, "claims")) if "reviewer" in c or "pr9" in c], [])
+
+    def test_root_auto_and_safe_still_launch_claude(self):
+        self.as_root()
+        self.assert_launches("auto", "auto")
+
     def test_unknown_mode_refused_before_any_window(self):
         with open(self.project, "a") as f:
             f.write('[runtime.options]\npermission_mode = "yolo"\n')

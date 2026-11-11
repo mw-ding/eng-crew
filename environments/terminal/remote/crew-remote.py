@@ -675,6 +675,9 @@ def spawn_verb(request, root):
     adapter = load_harnesses().ADAPTERS.get(request.get("engine"))
     if not hasattr(adapter, "role_argv") or request.get("permission_mode") not in adapter.PERMISSION:
         return dict(result="refused", reason="engine or permission_mode not launchable on this host")
+    refusal = getattr(adapter, "launch_refusal", lambda *_: None)(request["permission_mode"], os.geteuid())
+    if refusal:  # this host's uid, never the primary's (#738)
+        return dict(result="refused", reason=refusal)
     if not all(isinstance(request.get(k), str) and WORD.fullmatch(request[k]) for k in ("role", "model", "effort", "identity")) \
             or not isinstance(request.get("brief"), str):
         return dict(result="refused", reason="spawn needs role, model, effort, identity and brief")

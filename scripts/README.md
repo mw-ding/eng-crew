@@ -60,7 +60,7 @@ From the repo root:
 
 ```sh
 python3 scripts/check-repo.py            # all checks
-python3 scripts/check-repo.py --only secrets   # or docs / links / markers / blockers / shapes / denylist / deliverables / spec-status / fragments / script-docs / index / evidence / markdown (repeatable)
+python3 scripts/check-repo.py --only secrets   # or docs / links / markers / blockers / shapes / denylist / deliverables / spec-status / design-headers / fragments / script-docs / index / evidence / markdown (repeatable)
 python3 scripts/check-repo.py --fix      # also rewrite the generated inventory table in docs/deliverables.md
 python3 dev/tests/scripts/test-check-repo.py       # fixture and structural tests
 python3 scripts/check-markdown.py        # markdown lint on changed *.md files (--all: every tracked one)

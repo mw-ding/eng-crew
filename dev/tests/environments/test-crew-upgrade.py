@@ -361,8 +361,14 @@ class Upgrade(bootstrap_tests.Bootstrap):
         values, _ = cli.crew_render.resolve(self.project, None)
         installs = []
 
-        def apply(a):
-            installs.append(a.dry_run or holder.poll())  # the real install runs only once the watcher exited
+        def apply(a):  # the real install runs only once the watcher exited
+            if a.dry_run:
+                installs.append(True)
+                return 0
+            try:  # the lock frees before the exiting holder is reapable, so poll() can still see it (#1654)
+                installs.append(holder.wait(timeout=5))
+            except subprocess.TimeoutExpired:
+                installs.append(None)  # never stopped: it sleeps 60 s
             return 0
         with mock.patch.object(upgrade, "profile", return_value=(values, "session", self.state)), \
                 mock.patch.object(upgrade, "require_ownership", return_value=True), \

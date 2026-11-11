@@ -105,8 +105,9 @@ KNOWLEDGE_OPERATIONS = {"knowledge": ["read", "propose-edit"]}
 # (docs/interfaces.md#change, #879).
 # read-landed: only an async land whose status mapping names `landed` without a revision group (#1042).
 # land-stack and stack-status: only a backend declaring land.stack, the session stack land (#1605).
+# land-delete-arg: the land argument that also deletes an eligible head branch (#395); without it, close-out deletes.
 CONDITIONAL_OPERATIONS = {"change": ["publish", "land-status", "read-branch-head", "read-diff", "read-landed",
-                                     "land-stack", "stack-status"],
+                                     "land-stack", "stack-status", "land-delete-arg"],
                           "tracker": ["unlabel"]}
 LAND_FIELDS = {"mode": (str, "sync"), "opens_draft": (bool, False), "serializes": (bool, False),
                "tests_against_tip": (bool, False), "change_placeholder": (str, "n"), "head_guard": (bool, True),
@@ -744,7 +745,7 @@ def validate(profile, err, backends=BACKENDS, pack_dir=None, item=None):
                                              hosts=(dict, None), placement=(dict, None), sensitive=(dict, None), spec=(dict, None), tools=(dict, None),
                                              size_budget=(dict, None), builder=(dict, None), flavor=(dict, None),
                                              release=(dict, None), triage=(dict, None), install=(dict, None),
-                                             docs=(dict, None), reflection=(dict, None)))
+                                             docs=(dict, None), reflection=(dict, None), ci=(dict, None)))
     if "flavor" in top:
         validate_flavor(profile, err)
     if "size_budget" in top:
@@ -801,6 +802,12 @@ def validate(profile, err, backends=BACKENDS, pack_dir=None, item=None):
             err("triage.trackers", "needs a non-GitHub tracker backend; name GitHub repositories in triage.repos")
         if "rules" in tri and not tri["rules"].strip():
             err("triage.rules", "expected a nonempty file path")
+    if "ci" in top:  # the expected-check baseline a green CI read needs at head (#1536)
+        ci = check_table(err, "ci", top["ci"], {"required_checks": ("list[str]", None)})
+        names = ci.get("required_checks", [])
+        for i, name in enumerate(names):
+            if not name.strip() or name in names[:i]:
+                err("ci.required_checks[%d]" % i, "expected a nonempty, unique check name, got %r" % name)
     if "reflection" in top:  # scheduled protocol reflection (docs/self-improve.md#reflection, #1521)
         check_table(err, "reflection", top["reflection"], {"enabled": (bool, False)})
     if "docs" in top:  # project docs pass opt-in (docs/project-docs.md Profile opt-in, #1024)

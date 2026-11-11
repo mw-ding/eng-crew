@@ -38,6 +38,15 @@
       "environments/test-crew-spawn.py:test_reviewer_engine_differs_from_builder_engine"
      ]
     },
+    "launch_refusal": {
+     "oracle": true,
+     "tests": [
+      "harnesses/test-harness-adapters.py:test_claude_root_bypass_refused_locally_not_for_remote",
+      "environments/test-crew-spawn.py:test_root_bypass_refuses_claude_before_its_window",
+      "environments/test-crew-spawn.py:test_root_auto_and_safe_still_launch_claude",
+      "environments/test-crew-remote.py:test_spawn_root_bypass_refused_by_the_host_uid"
+     ]
+    },
     "coordinator_argv": {
      "oracle": true,
      "tests": [
@@ -144,6 +153,12 @@
      "oracle": true,
      "tests": [
       "environments/test-crew-spawn.py:test_builder_spawn_unique_worktree_identity_engine"
+     ]
+    },
+    "launch_refusal": {
+     "default": true,
+     "tests": [
+      "harnesses/test-harness-adapters.py:test_claude_root_bypass_refused_locally_not_for_remote"
      ]
     },
     "coordinator_argv": {
@@ -255,6 +270,12 @@
       "environments/test-crew-spawn.py:test_pi_launches_each_worker_with_provider_model_and_effort"
      ]
     },
+    "launch_refusal": {
+     "default": true,
+     "tests": [
+      "harnesses/test-harness-adapters.py:test_claude_root_bypass_refused_locally_not_for_remote"
+     ]
+    },
     "coordinator_argv": {
      "oracle": true,
      "tests": [
@@ -340,6 +361,12 @@
      "oracle": true,
      "tests": [
       "environments/test-crew-spawn.py:test_cursor_launches_each_worker_with_model_and_no_effort_flag"
+     ]
+    },
+    "launch_refusal": {
+     "default": true,
+     "tests": [
+      "harnesses/test-harness-adapters.py:test_claude_root_bypass_refused_locally_not_for_remote"
      ]
     },
     "coordinator_argv": {
@@ -433,6 +460,12 @@
       "harnesses/test-harness-adapters.py:test_contributor_tier_is_core_policy"
      ]
     },
+    "launch_refusal": {
+     "default": true,
+     "tests": [
+      "harnesses/test-harness-adapters.py:test_claude_root_bypass_refused_locally_not_for_remote"
+     ]
+    },
     "coordinator_argv": {
      "oracle": true,
      "tests": [
@@ -513,6 +546,9 @@
      "unsupported": "with no interactive launch"
     },
     "role_argv": {
+     "unsupported": "with no interactive launch"
+    },
+    "launch_refusal": {
      "unsupported": "with no interactive launch"
     },
     "coordinator_argv": {
