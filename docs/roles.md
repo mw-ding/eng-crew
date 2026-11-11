@@ -57,6 +57,22 @@ For a bug issue or intake card traced to a merged PR, add a whole-line
 PR). Omit it when the source is unknown; a soft finding before merge is not
 an escaped defect. The metrics refresh counts these explicit links.
 
+**Spec bookends (#259).** Every milestone opens with a spec slice: the first
+item adds or updates the milestone in `docs/specs/` (scope, slice rows with a
+`Status` cell and dependencies, and each decision or open question it
+settles). The milestone's other items depend on it and are not dispatched
+before it merges. Every milestone closes with a status-sync slice, its last
+item: it sets the spec's Status cells, the README Status and the runtime and
+binding headers ("design" to shipped, checked by `check-repo.py --only
+design-headers`), records the open questions the milestone settled and its
+lessons, and confirms every landed or superseded item is closed in the
+tracker. The milestone closes only after that slice merges. Mid-milestone
+scope (a new sub-milestone or an added item) gets a one-row spec amendment in
+the next change that touches the spec, at the latest in the status-sync slice.
+Refreshing open items' criteria after an owner decision follows the
+[plan gate](protocol.md#6-duties-on-wake-all-roles). This adds no merge
+permission: spec changes keep the merge gate's existing rules.
+
 **Dispatch independence.** Never send a builder or reviewer a change back
 solely because it is behind the default branch: synchronize at land under
 protocol §7's verdict portability rule. File or subsystem overlap is a risk

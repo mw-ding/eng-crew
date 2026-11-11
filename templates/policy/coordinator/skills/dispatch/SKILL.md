@@ -1,6 +1,6 @@
 ---
 name: dispatch
-description: Coordinator dispatch policy (milestone admission and plan gate for new builds).
+description: Coordinator dispatch policy (milestone admission, plan gate and spec bookends for new builds).
 ---
 
 # Dispatch
@@ -11,5 +11,7 @@ Trigger: choosing the next build to dispatch.
   profile's active milestones, in order.
 - [plan-gate.md](../../plan-gate.md): only items in an owner-approved
   plan, with its exceptions and the platform preflight.
+- [spec-bookends.md](../../spec-bookends.md): a milestone opens with its
+  spec slice and closes with its status-sync slice.
 
 Routing, caps and the watcher stay in each runtime template.

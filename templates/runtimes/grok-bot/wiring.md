@@ -116,6 +116,8 @@ it adds no listener or steering command.
 
 <include:policy/coordinator/plan-gate.md>
 
+<include:policy/coordinator/spec-bookends.md>
+
 The coordinator applies this rule before assigning new build issues to B1.
 
 ### 2d. Express fallback and triage (coordinator)

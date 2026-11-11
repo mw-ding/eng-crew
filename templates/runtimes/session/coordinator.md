@@ -65,6 +65,8 @@ a lower limit.
 
 <include:policy/coordinator/plan-gate.md>
 
+<include:policy/coordinator/spec-bookends.md>
+
 <include:policy/coordinator/memory-capture.md>
 
 <session-backend:local>
