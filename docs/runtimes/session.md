@@ -69,6 +69,25 @@ default branch, but only when the readback names the check, which each
 member's record then cites. Without `land.stack` the brief renders no stack
 recipe and lands stay one per run; tmux renders and trains are unchanged.
 
+The stack land lab (#1614) runs that recipe end to end with a real
+synthesizer session. Run
+`python3 dev/tests/scripts/fixtures/stack-land/run.py [--scenario NAME] [--model M]`
+from a checkout, in a shell where `claude` starts. For each scenario it
+renders the production session briefs against a fixture pack that binds
+`change.land-stack` and `change.stack-status` to a stub. It appends the
+`mdstack brief` run block for a two-member stack and runs one `claude -p`
+synthesizer session in the checkout. A stub `gh` comes first on `PATH`, and
+no forge token or `CREW_*` variable is passed. The stub serves each member's
+head, markers, labels and CI, and it logs every call. The lab then counts
+the stub's `land-stack` requests, per-PR merges and merge posts. Scenarios:
+`held`, `red-ci` and `unapproved` (one member fails, so zero requests),
+`pass` (exactly one request), `malformed` (an incomplete readback, so no
+merge post) and `lost-ack` (one request, read back, never resent). Exit 0
+means every scenario met its expectation and 1 means one did not. Exit 2
+means unverified: the session never acknowledged the run.
+`dev/tests/scripts/test-stack-land-lab.py` checks the lab's plumbing in CI
+with a scripted engine. It never stands in for the live run.
+
 A session profile may carry a `[hosts]` inventory, without `[placement]`.
 `mdstack host check` and `mdstack host prepare` then run as for tmux: the
 primary gets `mdstack doctor`'s session rows, the engine login rows and the
