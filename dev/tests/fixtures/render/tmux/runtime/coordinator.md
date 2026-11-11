@@ -153,8 +153,10 @@ On every wake (watcher, owner, start), run
 - `pr-merged` close-out: remove `crew:approved`, `crew:hold`, `crew:in-review`
   and `crew:changes` (each if present) from the PR, remove `crew:ready` from
   the issue it closed, and close that issue with a note if GitHub left it
-  open (never a reopened one). Delete the head branch with
-  `gh api -X DELETE repos/<owner>/<repo>/git/refs/heads/<branch>` only when
+  open (never a reopened one). The land deletes an eligible head branch
+  itself where the backend supports it, so an ordinary land needs no delete.
+  Only when the branch still exists after the merge, delete it with
+  `gh api -X DELETE repos/<owner>/<repo>/git/refs/heads/<branch>`, and only when
   ALL of these hold, read from `gh pr view <n> -R <owner>/<repo> --json
   state,headRefName,headRepositoryOwner,headRepository,isCrossRepository,baseRefName`
   and `gh repo view <owner>/<repo> --json defaultBranchRef`: the PR is

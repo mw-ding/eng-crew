@@ -580,7 +580,8 @@ Route consumes the lead's `ack:`, `done:` and waiting gate-status lines
 `blocked:` lines stay queued for the coordinator: owner merge-ok,
 `crew:sensitive`, holds and `main red`; lead faults arrive as `stale` or
 `dialog` wakes. Merged-PR close-out stays in route (labels, closing the
-issue, branch deletion under the existing rules, builder reclaim through the
+issue, a fallback branch deletion under the existing rules when the land
+left the branch, builder reclaim through the
 builder lead), so a land needs no coordinator turn. With a Slack owner
 channel, route also queues the away-only `land` notification through
 `mdstack notify` (stable id `land-<n>`, the train number or `direct`, the
@@ -1910,8 +1911,9 @@ without a coordinator wake; other gate-status blocks still wake it. A lead's
 files after cleanup. Merged PRs get the
 close-out in the coordinator brief: crew labels cleared, the closed issue's
 `crew:ready` removed, a closed issue that GitHub left open closed with a note
-(one that was reopened stays open, #846), and that PR's head branch deleted
-only for a same-repo head that is neither default nor base. Item windows are cleaned up too.
+(one that was reopened stays open, #846), and, if the land did not already
+delete it (#395), that PR's head branch deleted only for a same-repo head
+that is neither default nor base. Item windows are cleaned up too.
 `pr-closed` reaps the assigned builder without merged-PR label or branch cleanup.
 A `fix` or `ci-red` send to a missing `ben-<issue>` with PR/head refs queues a
 `builder-message` wake. Route checks the live PR, linkage and head, spawns the

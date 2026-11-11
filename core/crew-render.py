@@ -117,6 +117,12 @@ LAND_SYNC = ("If it holds, run `$CREW_BIN land-lock acquire --project \"$CREW_PR
              "   `Land rule:` line (`<op:markers.write>`), then\n"
              "   `$CREW_BIN land-lock release --project \"$CREW_PROJECT\"`. If the head moved, release\n"
              "   and stop.")
+# <land-step> when the change backend maps change.land-delete-arg (#395): the land itself deletes an eligible head
+# branch, so close-out needs no separate delete (docs/interfaces.md#change); otherwise the sync text renders unchanged.
+LAND_DELETE = [("`<op:change.land>`, post", "`<op:change.land>`, plus\n"
+                "   `<op:change.land-delete-arg>` if same-repo, not default or base, post"),
+               ("`<op:change.land>` bound to that head, post", "`<op:change.land>` bound to that head, plus\n"
+                "   `<op:change.land-delete-arg>` if same-repo, not default or base,\n   post")]
 LAND_ASYNC = (
     "If it holds, land asynchronously (`land.mode = \"async\"`, protocol §7).\n"
     "   %s\n"
@@ -440,7 +446,14 @@ class Renderer:
         if name == "land-step":
             session = self.session_template()
             if self.values.get("land.mode", "sync") == "sync":
-                return self.line(SESSION_LAND_SYNC if session else LAND_SYNC)
+                text = SESSION_LAND_SYNC if session else LAND_SYNC
+                try:
+                    self.op("change", "land-delete-arg")
+                    for old, new in LAND_DELETE:
+                        text = text.replace(old, new)
+                except ValueError:  # unsupported or unmapped: the land keeps the branch for close-out
+                    pass
+                return self.line(text)
             lock = (SESSION_LAND_LOCK if session else LAND_LOCK)[bool(self.values.get("land.serializes"))]
             text = SESSION_LAND_ASYNC if session else LAND_ASYNC
             return self.line(text % (lock, LAND_TIP[bool(self.values.get("land.tests_against_tip"))]))
