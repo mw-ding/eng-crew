@@ -15,8 +15,11 @@ the decoy is gone FAILs, the rest are NOT RUN and the run stops (#817: an inheri
 outside the sandbox).
 
 Statuses stay distinct: PASS (every step met), FAIL (a step's command exit differed or a wait timed out),
-BLOCKED (a required tool is missing), LIMITATION (the scenario declares a known gap and is not run) and NOT RUN
-(a manifest scenario not selected or without a spec). Each step records the command's own exit, stdout and stderr
+BLOCKED (a required tool is missing), LIMITATION (the scenario declares a known gap and is not run), NOT RUN
+(a manifest scenario not selected or without a spec), and EXPECTED FAIL or ACCEPTED (a step carrying that
+`disposition` and its reason failed; it never counts as PASS). A disposition step that passes FAILs, so a stale
+record is dropped. Before a step runs, campaign-lint.py checks it (#1412): an unhandled assertion, a step that
+does not parse or a malformed disposition FAILs the scenario without running the step. Each step records the command's own exit, stdout and stderr
 apart from whether the capture itself worked. The seed (random unless given) fixes the scenario order and
 CAMPAIGN_SEED, so `--rerun RESULTS` replays the same selection, seed, events and failure. The guard check
 (campaign-guard.py) runs first; a refusal writes nothing and exits 2. It reruns before every `run` step; a refusal
@@ -41,6 +44,10 @@ from pathlib import Path
 spec = importlib.util.spec_from_file_location("campaign_guard", Path(__file__).with_name("campaign-guard.py"))
 guard = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(guard)
+spec = importlib.util.spec_from_file_location("campaign_lint", Path(__file__).with_name("campaign-lint.py"))
+lint = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(lint)
+DISPOSED = {"expected-fail": "EXPECTED FAIL", "accepted": "ACCEPTED"}
 
 
 def expand(text, m, seed):
@@ -118,11 +125,23 @@ def run_scenario(sid, sdir, m, seed, base=os.environ):
         if problems:
             res.update(status="BLOCKED", reason="refused: " + "; ".join(problems), refused=True)
             break
+        bad = lint.step_problems(step)
+        if bad:
+            res.update(status="FAIL", reason="step %s refused: %s" % (step["name"], "; ".join(bad)))
+            break
         ok, event, rec = run_step(step, m, seed, env)
         res["events"].append(event)
         res["steps"].append(rec)
+        disp = step.get("disposition")
+        if disp:
+            rec["disposition"] = disp
+        if disp and ok:
+            res.update(status="FAIL", reason="%s, but the step is recorded %s: drop the disposition" % (
+                event, disp["state"]))
+            break
         if not ok:
-            res.update(status="FAIL", reason=event)
+            res.update(status=DISPOSED[disp["state"]] if disp else "FAIL",
+                       reason="%s; %s: %s" % (event, disp["state"], disp["reason"]) if disp else event)
             break
     return res
 

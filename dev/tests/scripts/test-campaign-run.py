@@ -2,7 +2,7 @@
 """Fixture test for scripts/campaign-run.py (offline, temp dirs only).
 
 Covers scenario selection, the five distinct statuses, the per-step guard recheck, the command exit captured apart from the capture, explicit
-completion waits (matched and deadline), the {source} placeholder and stub env, no operator forge or SSH agent credentials in a step (#1106), the guard refusal, the committed A03/A05 fixture steps failing closed on an earlier assertion, the A12 reproduction helper agreeing only with a capture at head, the A22 duplicate-key oracle passing on a run id with capitals (#1177), the A23 fake SSH transport's loopback and fault modes, the A19 ledger matching every shipped adapter and declared row and failing a gap claimed as conformant (#1443), a seeded rerun reproducing events and failure, and the
+completion waits (matched and deadline), the {source} placeholder and stub env, no operator forge or SSH agent credentials in a step (#1106), the guard refusal, the committed A03/A05 fixture steps failing closed on an earlier assertion, a step with an unhandled assertion refused before it runs while explicit refusal oracles still pass, expected-fail and accepted dispositions reported apart from PASS (a passing one FAILs; #1412), the A12 reproduction helper agreeing only with a capture at head, the A22 duplicate-key oracle passing on a run id with capitals (#1177), the A23 fake SSH transport's loopback and fault modes, the A19 ledger matching every shipped adapter and declared row and failing a gap claimed as conformant (#1443), a seeded rerun reproducing events and failure, and the
 decoy sentinel failing a run whose step reaches an inherited TMUX (#817; throwaway sockets only, with the runner's TMUX_TMPDIR restored after, #818). Run in CI.
 """
 import contextlib
@@ -230,6 +230,45 @@ class CampaignRunTest(unittest.TestCase):
         self.assertEqual((res["A01"]["status"], res["A01"]["reason"]),
                          ("FAIL", "decoy: a tmux server outside the sandbox was killed"))
         self.assertEqual((res["A02"]["status"], res["A02"]["reason"]), ("NOT RUN", "run stopped: decoy killed"))
+
+    def one(self, *steps):
+        """Run A01 with STEPS; return its result."""
+        self.write(os.path.join(self.sdir, "A01.json"), json.dumps({"steps": list(steps)}))
+        self.run_cmd("--scenario", "A01", "--seed", "0")
+        return self.results()[1]["A01"]
+
+    def test_failed_assertion_chain_before_a_passing_tail_fails(self):
+        # #1412: plain `sh -c` exits 0 here, since only the last command's exit counts.
+        masked = "test 1 -eq 2 && grep -q x /dev/null; echo tail"
+        self.assertEqual(subprocess.run(["sh", "-c", masked], capture_output=True).returncode, 0)
+        res = self.one({"name": "ok", "run": "true"}, {"name": "masked", "run": masked})
+        self.assertEqual(res["status"], "FAIL")
+        self.assertTrue(res["reason"].startswith("step masked refused: unhandled assertion"), res["reason"])
+        self.assertEqual(res["events"], ["run ok: exit 0 (want 0)"], "the refused step does not run")
+        self.assertEqual(self.one({"name": "lone", "run": "test 1 -eq 2; echo tail"})["status"], "FAIL")
+
+    def test_explicit_refusal_oracles_still_pass(self):
+        capture = "sh -c 'echo no >&2; exit 1' 2> o.txt; rc=$?; cat o.txt; test $rc -eq 1 && grep -qx no o.txt"
+        res = self.one({"name": "rc", "run": "cd {state_dir} && " + capture},
+                       {"name": "exit", "run": "echo refused; exit 3", "exit": 3},
+                       {"name": "guarded", "run": "test 1 -eq 1 && grep -q . /etc/hosts || exit 1; echo tail"})
+        self.assertEqual((res["status"], len(res["events"])), ("PASS", 3), res)
+        res = self.one({"name": "rc", "run": "cd {state_dir} && " + capture.replace("exit 1", "exit 0")})
+        self.assertEqual(res["status"], "FAIL", "a wrong refusal still fails")
+
+    def test_dispositions_are_reported_apart_from_pass(self):
+        for state, status in (("expected-fail", "EXPECTED FAIL"), ("accepted", "ACCEPTED")):
+            disp = {"state": state, "reason": "waits for #9"}
+            res = self.one({"name": "known", "run": "exit 2", "disposition": disp}, {"name": "after", "run": "true"})
+            self.assertEqual((res["status"], res["reason"]), (status, "run known: exit 2 (want 0); %s: waits for #9" % state))
+            self.assertEqual(res["steps"][0]["disposition"], disp)
+        self.assertEqual(self.run_cmd("--scenario", "A01", "--seed", "0")[0], 1, "never counted as PASS")
+        res = self.one({"name": "fixed", "run": "true", "disposition": {"state": "expected-fail", "reason": "x"}})
+        self.assertEqual((res["status"], res["reason"]),
+                         ("FAIL", "run fixed: exit 0 (want 0), but the step is recorded expected-fail: drop the disposition"))
+        res = self.one({"name": "bare", "run": "exit 2", "disposition": {"state": "expected-fail", "reason": " "}})
+        self.assertEqual((res["status"], res["events"]), ("FAIL", []))
+        self.assertIn("disposition needs a state", res["reason"])
 
 
 # A fake `crew` for the committed fixture steps: FAKE_UP_RC, FAKE_SPAWN_RC and FAKE_ADOPT (restart rewrites the record

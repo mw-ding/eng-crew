@@ -122,6 +122,9 @@ def main(argv=None):
             problems = cr.guard.refusals(m)
             if problems:
                 return "refused: " + "; ".join(problems)
+            unsafe = cr.lint.step_problems(step)
+            if unsafe:
+                return "step %s refused: %s" % (step["name"], "; ".join(unsafe))
             ok, event, rec = cr.run_step(step, m, 0, env)
             doc["steps"].append(rec)
             print(event)
