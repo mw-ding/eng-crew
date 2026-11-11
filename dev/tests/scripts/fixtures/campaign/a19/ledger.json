@@ -85,6 +85,12 @@
       "environments/test-crew-watch.py:test_scan_records_adapter_transient_text_once"
      ]
     },
+    "QUOTA": {
+     "oracle": true,
+     "tests": [
+      "harnesses/test-harness-adapters.py:test_quota_lines_per_adapter"
+     ]
+    },
     "install_targets": {
      "oracle": true,
      "tests": [
@@ -188,6 +194,14 @@
       "environments/test-crew-watch.py:test_scan_records_adapter_transient_text_once"
      ]
     },
+    "QUOTA": {
+     "oracle": true,
+     "tests": [
+      "harnesses/test-harness-adapters.py:test_quota_lines_per_adapter",
+      "environments/test-crew-watch.py:test_scan_quota_screen_wakes_once_for_restart",
+      "environments/test-crew-restart.py:test_quota_run_restarts_once_on_the_next_engine"
+     ]
+    },
     "install_targets": {
      "oracle": true,
      "tests": [
@@ -274,6 +288,10 @@
      "gap": "Gap: none declared, so the watcher records no gateway errors from this harness's pane.",
      "tests": []
     },
+    "QUOTA": {
+     "gap": "Gap: none declared, so a usage-limit screen on this harness's pane never probes quota and gets no next-engine restart.",
+     "tests": []
+    },
     "install_targets": {
      "gap": "Gap: `mdstack bootstrap --harness pi` is not implemented.",
      "tests": []
@@ -357,6 +375,12 @@
     "TRANSIENT": {
      "gap": "Gap: none declared, so the watcher records no gateway errors from this harness's pane.",
      "tests": []
+    },
+    "QUOTA": {
+     "oracle": true,
+     "tests": [
+      "harnesses/test-harness-adapters.py:test_quota_lines_per_adapter"
+     ]
     },
     "install_targets": {
      "gap": "Gap: `mdstack bootstrap --harness cursor` is not implemented.",
@@ -443,6 +467,10 @@
      "gap": "Gap: none declared, so the watcher records no gateway errors from this harness's pane.",
      "tests": []
     },
+    "QUOTA": {
+     "gap": "Gap: none declared, so a usage-limit screen on this harness's pane never probes quota and gets no next-engine restart.",
+     "tests": []
+    },
     "install_targets": {
      "gap": "Gap: `mdstack bootstrap --harness muse` is unimplemented.",
      "tests": []
@@ -506,6 +534,9 @@
      "unsupported": "with no interactive launch"
     },
     "TRANSIENT": {
+     "unsupported": "with no interactive launch"
+    },
+    "QUOTA": {
      "unsupported": "with no interactive launch"
     },
     "install_targets": {
