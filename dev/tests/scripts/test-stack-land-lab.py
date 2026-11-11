@@ -89,7 +89,7 @@ class StackLandLab(unittest.TestCase):
 
     def test_per_pr_merge_fails(self):
         r, _ = self.lab("red-ci", "per-pr")
-        self.assertEqual(r.returncode, 1)
+        self.assertEqual(r.returncode, 1, r.stdout)
         self.assertIn("1 per-PR merge requests, expected 0", r.stdout)
 
     def test_passing_stack_one_request_and_one_merge_post_per_member(self):
@@ -129,8 +129,8 @@ class StackLandLab(unittest.TestCase):
         self.assertIn("- Item: #7, #8\n- Pass: land\n", brief)
         with open(os.path.join(lab, "env.txt")) as f:
             env = dict(line.split("=", 1) for line in f.read().splitlines() if "=" in line)
-        self.assertNotIn("GH_TOKEN", env)
-        self.assertFalse([k for k in env if k.startswith("CREW_")])
+        leaked = sorted(k for k in env if k == "GH_TOKEN" or k.startswith("CREW_"))
+        self.assertEqual(leaked, [], "the session env leaks %s" % leaked)  # names only, never values
         self.assertTrue(env["PATH"].startswith(os.path.join(lab, "bin") + os.pathsep))
         with open(os.path.join(lab, "files.txt")) as f:
             during = f.read().split()
@@ -139,7 +139,7 @@ class StackLandLab(unittest.TestCase):
 
     def test_unacknowledged_run_is_unverified(self):
         r, _ = self.lab("held", "refuse", engine="true")
-        self.assertEqual(r.returncode, 2)
+        self.assertEqual(r.returncode, 2, r.stdout)
         self.assertIn("verdict: UNVERIFIED (the session never acknowledged the run)", r.stdout)
         r, _ = self.lab("held", "refuse", engine="/nonexistent/harness")
         self.assertEqual(r.returncode, 2)
