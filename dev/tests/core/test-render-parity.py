@@ -398,6 +398,40 @@ class Parity(unittest.TestCase):
                                      "In-flight PRs in any milestone still finish"):
                             self.assertIn(rule, text)
 
+    def test_coordinator_plan_gate(self):  # #444, #396
+        with tempfile.TemporaryDirectory() as tmp:
+            for runtime, brief in (("tmux", "coordinator.md"), ("grok-bot", "wiring.md"), ("session", "coordinator.md")):
+                with self.subTest(runtime=runtime):
+                    project = os.path.join(tmp, "crew.toml")
+                    with open(project, "w") as f:
+                        f.write('[runtime]\nname = "%s"\n' % runtime)
+                    out = os.path.join(tmp, "out-" + runtime)
+                    code, output = render(project, INPUTS, out)
+                    self.assertEqual(code, 0, output)
+                    with open(os.path.join(out, "runtime", brief)) as f:
+                        text = " ".join(f.read().split())
+                    for rule in ("Plan gate (protocol §6): new `crew:ready` or builds only for items in an "
+                                 "owner-approved milestone or project with a signed `cmd=plan-ok` record;",
+                                 '"start building" means propose a plan and wait.',
+                                 "Exempt: fix, CI and follow-ups on approved work; owner-requested trivial docs.",
+                                 "Platform items need the §6 preflight."):
+                        self.assertIn(rule, text)
+        with open(os.path.join(ROOT, "docs", "protocol.md"), encoding="utf-8") as f:
+            protocol = f.read()
+        gate = protocol[protocol.index("**Plan gate (#444, #396).**"):protocol.index("**Metrics gate.**")]
+        self.assertIn("`[<CoordinatorBot>/steer] plan approved: <plan>`", gate)
+        self.assertIn("`<!-- crew:v1 role=coordinator pass=steer cmd=plan-ok plan=<milestone-or-project-id> "
+                      "cmd-id=<source-id> sha=<default-branch-head> round=n/a verdict=n/a -->`", gate)
+        flat = " ".join(gate.split())
+        for rule in ("is a request to propose a plan, never approval", "adding an item needs a new record",
+                     "An unreadable record means no approval", "items come only from settled decisions",
+                     "An unknown or incompatible fact blocks readiness"):
+            self.assertIn(rule, flat)
+        with open(os.path.join(ROOT, "templates", "spec.md"), encoding="utf-8") as f:
+            spec = f.read()
+        self.assertIn("## Target environment (verified on <YYYY-MM-DD>)", spec)
+        self.assertIn("## Owner prerequisites", spec)
+
     def test_tmux_lone_land_contract(self):
         with tempfile.TemporaryDirectory() as tmp:
             with open(os.path.join(TESTS, "core", "fixtures", "parity", "lone-land.json")) as f:
