@@ -105,8 +105,9 @@ KNOWLEDGE_OPERATIONS = {"knowledge": ["read", "propose-edit"]}
 # (docs/interfaces.md#change, #879).
 # read-landed: only an async land whose status mapping names `landed` without a revision group (#1042).
 # land-stack and stack-status: only a backend declaring land.stack, the session stack land (#1605).
+# land-delete-arg: the land argument that also deletes an eligible head branch (#395); without it, close-out deletes.
 CONDITIONAL_OPERATIONS = {"change": ["publish", "land-status", "read-branch-head", "read-diff", "read-landed",
-                                     "land-stack", "stack-status"],
+                                     "land-stack", "stack-status", "land-delete-arg"],
                           "tracker": ["unlabel"]}
 LAND_FIELDS = {"mode": (str, "sync"), "opens_draft": (bool, False), "serializes": (bool, False),
                "tests_against_tip": (bool, False), "change_placeholder": (str, "n"), "head_guard": (bool, True),

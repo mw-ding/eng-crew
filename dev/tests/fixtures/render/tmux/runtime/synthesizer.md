@@ -81,9 +81,11 @@ For each PR:
    Missing, stale, malformed or failed results block unless the
    owner's recorded per-change merge-ok is at head; standing grants never waive it.
 3. If it holds, run `$CREW_BIN land-lock acquire --project "$CREW_PROJECT"`
-   (absolute repo profile, never relative `config.toml`), run `gh pr merge <n> --squash --match-head-commit <head-sha>`, post
-   `[Sam/merge]` naming the merge-ok or grant used and its
-   `Land rule:` line (`gh pr review <n> --comment --body-file <file>`), then
+   (absolute repo profile, never relative `config.toml`), run `gh pr merge <n> --squash --match-head-commit <head-sha>`, add
+   `--delete-branch` if same-repo, not default/base, post
+   `[Sam/merge]` naming merge-ok or grant used, its `Land rule:`
+   line and `Head branch: deleted|retained (<reason>)|delete failed` (exit>0,
+   `MERGED`) (`gh pr review <n> --comment --body-file <file>`), then
    `$CREW_BIN land-lock release --project "$CREW_PROJECT"`. If the head moved, release
    and stop.
 4. After a direct land under `lone_pr_land = "direct"`, read the merge commit
@@ -175,9 +177,6 @@ Recorded urgency takes precedence over batching below; an open stop still blocks
   re-checking each minute (or sooner at the deadline), at most
   `train_window` seconds after the first became ready, then train two or more ready PRs, or land the only one alone.
   A single ready PR with none close merges alone immediately.
-
-Each `[Sam/merge]` post names the rule in one `Land rule:` line,
-for example `Land rule: alone, none close`.
 
 Merge train (tmux doc, mdstack train):
 

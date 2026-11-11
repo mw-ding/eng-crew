@@ -43,6 +43,7 @@ class Route(SpawnBase):
                     "elif args[:1] == ['api'] and '--paginate' in args: sys.exit(1)\n"
                     "elif args[:1] == ['api'] and '/commits/' in args[1]: print(json.dumps({'parents': pr['_parents']}))\n"
                     "elif args[:1] == ['api'] and '/compare/' in args[1]: print(json.dumps({'status': pr['_comparison']}))\n"
+                    "elif args[:1] == ['api'] and '/git/refs/heads/' in args[1] and '-X' not in args and pr.get('_branch_gone'): sys.exit('gh: Not Found (HTTP 404)')\n"
                     "elif args[:1] == ['api'] and '/issues/' in args[1]: n = args[1].rsplit('/', 1)[1]; "
                     "item = pr.get('_issues', {}).get(n, {'state': 'open'}); print(json.dumps(item)) if item else sys.exit(1)\n"
                     "elif args[:1] == ['api'] and '-X' not in args: print('{}')\n"
@@ -1146,6 +1147,15 @@ class Route(SpawnBase):
                 self.queue(dict(reason="status", window="sam", line="done: #12 " + self.sha))
                 self.route()
                 self.assertNotIn("sam", self.names())
+
+    def test_branch_deleted_by_the_land_needs_no_closeout_delete(self):  # #395
+        self.live.update(state="MERGED", _branch_gone=True)
+        self.save()
+        self.queue(self.event("pr-merged"))
+        self.route()
+        self.assertIn(["api", "repos/acme/widgets/git/refs/heads/builder/7-feature"], self.gh_calls())
+        self.assertFalse(any(c[:3] == ["api", "-X", "DELETE"] for c in self.gh_calls()))
+        self.assertEqual(self.pending(), [])
 
     def test_merged_protected_branches_are_retained(self):
         for change in (dict(isCrossRepository=True), dict(headRefName="main"),
