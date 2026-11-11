@@ -948,6 +948,19 @@ class RunLifecycle(RunBase):
         self.assertEqual(self.windows(), {"0": "runner"})
         self.assertFalse(os.path.exists(self.wt))
 
+    def test_spawn_root_bypass_refused_by_the_host_uid(self):
+        """#738: the execution host's euid decides, never the primary's; nothing starts on refusal."""
+        request = dict(project="acme__widgets", window="ben-7", primary="host-a", role="builder", engine="claude-code",
+                       model="opus", effort="high", permission_mode="bypass", identity="acme-bot", brief="# Brief\n",
+                       worktree_path="wt/" + os.path.basename(self.wt), sha=self.sha, ref="refs/heads/main", verdicts={})
+        with mock.patch.object(remote.os, "geteuid", return_value=0):
+            reply = remote.spawn_verb(request, self.root)
+            self.assertEqual(reply["result"], "refused")
+            self.assertIn("Claude Code refuses permission_mode=bypass when running as root (uid 0)", reply["reason"])
+            self.assertEqual(self.windows(), {"0": "runner"})
+            self.assertFalse(os.path.lexists(self.wt))
+            self.assertEqual(remote.spawn_verb(dict(request, permission_mode="auto"), self.root)["result"], "ok")
+
     def test_probe_classes(self):
         self.assertEqual(self.probe()["liveness"], "missing")
         self.spawn()

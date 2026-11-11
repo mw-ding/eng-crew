@@ -120,6 +120,21 @@ class ShippedTables(unittest.TestCase):
         self.assertNotRegex('■ {"type":"error","status":503}', claude.FATAL)
         self.assertNotRegex('⎿  API Error: 400 {"type":"error"}', codex.FATAL)
 
+    def test_claude_root_bypass_refused_locally_not_for_remote(self):
+        """#738: Claude Code bypass as euid 0 refuses before any argv; other modes, uids and engines are unchanged, and a
+        remote launch leaves the uid check to its host."""
+        shared = cli().harness.__globals__
+        claude = shared["harnesses"].ADAPTERS["claude-code"]
+        self.assertIsNone(claude.launch_refusal("bypass", 501))
+        self.assertIsNone(claude.launch_refusal("auto", 0))
+        self.assertIsNone(claude.launch_refusal("safe", 0))
+        with mock.patch.object(shared["os"], "geteuid", return_value=0):
+            with self.assertRaisesRegex(RuntimeError, r"Claude Code refuses permission_mode=bypass when running as root"):
+                shared["harness"]("claude-code", "m", "high", "/wt", "/state", "bypass", {})
+            self.assertEqual(shared["harness"]("claude-code", "m", "high", "/wt", "/state", "bypass", {}, False)[0], "claude")
+            self.assertEqual(shared["harness"]("claude-code", "m", "high", "/wt", "/state", "auto", {})[-1], "auto")
+            self.assertEqual(shared["harness"]("codex", "m", "high", "/wt", "/state", "bypass", {})[0], "codex")
+
     def test_contributor_tier_is_core_policy(self):
         """Muse declares only CONTRIBUTOR_TIER; the core reads visibility and refuses before the adapter runs."""
         shared = cli().harness.__globals__

@@ -1071,6 +1071,12 @@ step 1, the band cap queue, is under [mdstack dequeue](#mdstack-dequeue) (#136):
   outside the worktree, so a host that wraps Codex in an external sandbox
   writable only under the working directory and `--add-dir` paths would
   otherwise block `git branch`, `commit` and `push` (#384).
+  Claude Code exits at once on `bypass` as root, before any session, so
+  spawn, restart and lead launches refuse a Claude Code role window in
+  `bypass` when the launching process's effective uid is 0, before the
+  window opens, naming the cause and the two fixes: run the crew as a
+  non-root user, or use `auto` or `safe`. A remote run is checked on its
+  execution host, by that host's uid (#738).
 - Pre-trust: Codex gets one `-c 'projects={"<worktree>"={trust_level="trusted"},"<repo-root>"={trust_level="trusted"}}'`
   (real paths), a `projects` table for that process only;
   `~/.codex/config.toml` is never edited. For a linked worktree Codex

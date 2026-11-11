@@ -15,6 +15,9 @@ LOGIN_STATUS = ["auth", "status"]
 PERMISSION = {"bypass": ["--permission-mode", "bypassPermissions",  # no warning screen, set per process only
                          "--settings", '{"skipDangerousModePermissionPrompt":true}'],
               "auto": ["--permission-mode", "auto"], "safe": ["--permission-mode", "acceptEdits"]}
+ROOT_BYPASS = ("crew: Claude Code refuses permission_mode=bypass when running as root (uid 0) and exits before "
+               "starting a session (#738); run the crew as a non-root user, or set "
+               "runtime.options.permission_mode to auto or safe for Claude Code roles")
 RESUME = ["--resume"]
 # Blocking prompts (#289): permission (proceed, make this edit, create) and folder trust, old and current.
 PROMPTS = [(r"Do you want to .+\?", r"Esc to cancel"),
@@ -34,6 +37,12 @@ def role_argv(model, effort, wt, state, flags):
     """--add-dir state: every pass reads its brief and writes $CREW_STATUS, verdicts/ (#234 F15). Claude's --add-dir
     takes several values, so a flag must end it before the prompt."""
     return ["claude", "--model", model, "--effort", effort, "--add-dir", state, *flags]
+
+
+def launch_refusal(mode, uid):
+    """Why a role window cannot launch on a host whose effective uid is uid, or None: Claude Code exits at once on
+    bypass as root, which would surface only as missing probes (#738)."""
+    return ROOT_BYPASS if mode == "bypass" and uid == 0 else None
 
 
 def coordinator_argv(project_dir, state, flags):
