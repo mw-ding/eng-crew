@@ -68,7 +68,8 @@ def recorded_project(manifest, record):
     """The project file an install.json names: `project`, else (a record from before #1317) the path in its
     `Run mdstack up --project` step whose bytes still equal the state's config.toml copy; None when neither holds."""
     if record.get("project"):
-        return record["project"] if Path(record["project"]).is_file() else None
+        file = crew_render.crew_config.split_ref(record["project"])[0]  # FILE or FILE#<repo> (#1344)
+        return record["project"] if Path(file).is_file() else None
     copy = manifest.parent / "config.toml"
     for step in record.get("pending_human_steps", []):
         path = Path(step.removeprefix(UP_STEP))
