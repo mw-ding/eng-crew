@@ -622,17 +622,18 @@ def attach(lab, s):
         s.obs["kill"] = lab.call("kill", refs=["refs/heads/lab"], discard=True, **scope)
 
 
-STUB = """import select, sys
-n = 0
+STUB = """import os, select, sys
+n, typed = 0, b""
 while True:
     n += 1
     with open(sys.argv[1], "a") as f:
         f.write("step: %d\\n" % n)
-    if select.select([sys.stdin], [], [], 0.5)[0]:
-        line = sys.stdin.readline().strip()
-        if line.startswith("inbox: "):
-            with open(sys.argv[1], "a") as f:
-                f.write("ack: %s\\n" % line[7:])
+    if select.select([0], [], [], 0.5)[0]:
+        *lines, typed = (typed + os.read(0, 4096)).split(b"\\n")
+        for line in lines:
+            if line.strip().startswith(b"inbox: "):
+                with open(sys.argv[1], "a") as f:
+                    f.write("ack: %s\\n" % line.strip()[7:].decode())
 """
 
 
