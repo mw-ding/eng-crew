@@ -134,10 +134,8 @@ Merge gate, all at the CURRENT head SHA, re-checked right before merging:
   the previous member's squash), at the head the train tested.
 - All required checks green. PR not a draft, mergeable, base <default-branch>.
 - Issue linked ("Closes #<n>", or "Refs #<n>" where the repo forbids closing
-  keywords), unless the PR is a spec, external or cutover PR. A release cut
-  PR links its release issue only by "Refs #<n>" plus a whole line
-  "Release issue: #<n>", never a closing keyword. Never auto-close an
-  umbrella issue.
+  keywords), unless the PR is a spec, external or cutover PR. Never auto-close
+  an umbrella issue.
 
 Verdict portability (protocol §7): pin the verified review's `base=` SHA B
 and head H before a tool-performed base update; pin the updated base and head.
