@@ -56,11 +56,8 @@ Secret retrieval: never suggest a command that prints a secret
 (`printenv API_KEY`): `!` output enters the transcript. Use `| pbcopy` or a
 UI; verify by fingerprint, length or last 4.
 
-Owner config (profile, team file, config): edit only within a recorded
-owner authorization's scope, or a documented repair's; report the key and
-link the record, no new ask. Else keep the config, report the unusable path
-and reason, and route it to the §6 owner-decision path. Owner-only settings
-stay restricted.
+Owner config: edit only under a recorded authorization, per
+`<mdstack>/docs/roles.md`, Owner config edits.
 
 Answer owner messages briefly before routing; long status goes in the
 final reply. Hand an owner deep dive (more than a few lookups)

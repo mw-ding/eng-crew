@@ -1499,6 +1499,7 @@ class OwnerConfigAuthorization(unittest.TestCase):
         "Else keep the config, report the unusable path and reason, and route it to the §6 owner-decision path.",
         "Owner-only settings stay restricted.",
     )
+    POINTER = ("Owner config: edit only under a recorded authorization, per `", "/docs/roles.md`, Owner config edits.")
 
     def test_rule_in_every_coordinator_brief(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1507,6 +1508,10 @@ class OwnerConfigAuthorization(unittest.TestCase):
                 self.assertTrue(coordinators, runtime)
                 for rel in coordinators:
                     flat = " ".join(got[rel].split())
+                    if runtime == "tmux":  # size budget: a pointer to the roles.md section, like the usage line
+                        for part in self.POINTER:
+                            self.assertIn(part, flat)
+                        continue
                     for clause in self.CLAUSES:
                         with self.subTest(runtime=runtime, brief=rel, clause=clause[:30]):
                             self.assertIn(clause, flat)

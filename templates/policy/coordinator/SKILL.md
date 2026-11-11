@@ -25,7 +25,8 @@ Role-wide rules:
   (tmux, session and the Grok Bot routines).
 - [owner-config.md](owner-config.md): edit owner profile, team or config
   only under a recorded authorization and its scope, else keep it and route
-  the choice to the owner (tmux, session and the Grok Bot routines).
+  the choice to the owner (session and the Grok Bot routines; the tmux brief
+  has a one-line pointer to the roles.md section to fit its size budget).
 
 Procedures:
 
