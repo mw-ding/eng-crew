@@ -915,9 +915,9 @@ prints:
   reference to an old directory resolves as the checkout before the home (a
   run record's `repo`); a path under it as the state, worktree root, live dir
   or bundle before the home.
-- `move` of the project's state directory, the live dir and each builder
-  run copy under the old worktree root (its own clone borrowing the
-  checkout's objects, [confinement](#confinement));
+- `move` of the project's state directory and the live dir; `copy-move`
+  of each builder run copy under the old worktree root (its own clone
+  borrowing the checkout's objects, [confinement](#confinement));
   `worktree-move` of each registered worktree there;
   `keep` of each other directory there; `archive` of the old lead and
   watcher process identities.
@@ -938,8 +938,9 @@ prints:
 `--apply` runs the same plan and refuses while anything is blocked. It moves
 the state directory, archives the process identities and saves each file's
 original before rewriting it, all under `<new state>/migration/<stamp>/`,
-moves each builder run copy as a directory and each registered worktree with
-`git worktree move`, rewrites the
+moves each builder run copy as a directory and repairs its own linked
+worktrees (a nested evidence tree) with `git worktree repair`, moves each
+registered worktree with `git worktree move`, rewrites the
 operational files and copies the settings (the mdstack guard is re-quoted
 argument by argument; any other hook keeps its shell text with only the paths
 replaced). Message ids and `ack:`/`done:` lines are kept, and each status
