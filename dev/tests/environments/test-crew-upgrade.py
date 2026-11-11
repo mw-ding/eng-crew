@@ -332,10 +332,11 @@ class Upgrade(bootstrap_tests.Bootstrap):
                 mock.patch.object(bootstrap, "run", return_value=0) as apply, \
                 mock.patch.object(upgrade, "busy", side_effect=["ben-7", None]) as busy, \
                 mock.patch.object(upgrade, "reload") as reload, \
-                mock.patch.object(upgrade.time, "sleep") as sleep, \
+                mock.patch.object(upgrade, "time", mock.Mock(wraps=upgrade.time, sleep=mock.Mock())) as clock, \
                 mock.patch.object(cli.commands()["down"], "stop_watcher", return_value=None) as stop, \
                 mock.patch.object(cli.commands()["up"], "watcher") as start, \
                 mock.patch.dict(os.environ, self.env):
+            sleep = clock.sleep  # upgrade's own wait only: render's git calls poll the real time.sleep (#1537)
             calls = mock.Mock()
             calls.attach_mock(stop, "stop"), calls.attach_mock(reload, "reload"), calls.attach_mock(start, "start")
             self.assertEqual(upgrade.run(args), 0)
