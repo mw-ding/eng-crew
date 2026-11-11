@@ -283,12 +283,24 @@ class Upgrade(bootstrap_tests.Bootstrap):
                 mock.patch.object(upgrade, "busy", side_effect=["ben-7", None]) as busy, \
                 mock.patch.object(upgrade, "reload") as reload, \
                 mock.patch.object(upgrade.time, "sleep") as sleep, \
+                mock.patch.object(cli.commands()["down"], "stop_watcher", return_value=None) as stop, \
+                mock.patch.object(cli.commands()["up"], "watcher") as start, \
                 mock.patch.dict(os.environ, self.env):
+            calls = mock.Mock()
+            calls.attach_mock(stop, "stop"), calls.attach_mock(reload, "reload"), calls.attach_mock(start, "start")
             self.assertEqual(upgrade.run(args), 0)
             self.assertEqual(busy.call_count, 2)
             sleep.assert_called_once_with(0.2)
             self.assertEqual(apply.call_count, 2)
             reload.assert_called_once()
+            # #1346: the watcher is stopped before the install and started again after the reload
+            self.assertEqual([c[0] for c in calls.mock_calls], ["stop", "reload", "start"])
+            apply.reset_mock(), start.reset_mock()
+            stop.return_value = 4242
+            busy.side_effect = [None]
+            self.assertEqual(upgrade.run(args), 1)  # a watcher outliving its grace: nothing installed
+            self.assertEqual(apply.call_count, 1)  # the dry run only
+            start.assert_not_called()
 
     def test_active_pane_waits_after_terminal_status(self):
         self.put("status/ben-7.status", "done: #7 #9 head\n")

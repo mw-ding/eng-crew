@@ -6,8 +6,8 @@ Runs on a role host (#345) stop through the host's kill, which keeps unlanded wo
 (unlanded work, or the host unreachable) keeps its record, and down exits 1 naming it. Remote runs are stopped even
 when the primary's session is gone.
 
---preserve is the maintenance stop before a migration (#1178): it stops the armed watcher (SIGTERM; refuses if it
-outlives the grace) and every pane's processes, but keeps each run's worktree, record, claim, inbox and status file.
+Both modes first stop the armed watcher (SIGTERM; refuses if it outlives the grace), also with no session left (#1346).
+--preserve is the maintenance stop before a migration (#1178): it stops the watcher and every pane's processes, but keeps each run's worktree, record, claim, inbox and status file.
 """
 import fcntl
 import os
@@ -55,22 +55,23 @@ def run(args):
     preserve = getattr(args, "preserve", False)
     live = tmux.has_session(session)
     remote = any(remote_run.host_of(rec) for _, rec in runs(state))  # they outlive the primary's session
-    if not live and not preserve and not remote:
+    watching = commands()["watch"].armed(os.path.join(state, "wake", "watcher.pid"))
+    if not live and not preserve and not remote and not watching:
         print("crew: %s not running" % session)
         return 0
     lock = land_locked(state)
     if lock:
         print("crew: refusing down: the land lock %s is held" % lock)
         return 1
+    pid = stop_watcher(state)  # first: a persistent watcher would restart what down stops (#1346)
+    if pid:
+        print("crew: refusing down: the watcher (pid %d) is still armed" % pid)
+        return 1
     if preserve:
         args.keep_work = True
-        pid = stop_watcher(state)
-        if pid:
-            print("crew: refusing down: the watcher (pid %d) is still armed" % pid)
-            return 1
-        if not live and not remote:
-            print("crew: %s not running; watcher stopped" % session)
-            return 0
+    if not live and not remote:
+        print("crew: %s not running; watcher stopped" % session)
+        return 0
     windows = tmux.list_windows(session) if live else []
     if getattr(args, "keep_work", False):  # Offboarding stops writers before checking and archiving their work.
         held = [name for index, name in sorted(windows, reverse=True)
