@@ -240,6 +240,35 @@ class HostEngineTest(unittest.TestCase):
         self.assertEqual(Path(d, "wip.txt").read_text(), "wip\n")
 
 
+class StatusPullStubTest(unittest.TestCase):  # #1493: two typed lines in one write both get acked
+    def test_the_status_pull_stub_acks_each_line_of_a_burst_and_completes_a_partial_line(self):
+        d = tempfile.mkdtemp()
+        self.addCleanup(subprocess.run, ["rm", "-rf", d])
+        status = Path(d, "s.status")
+        p = subprocess.Popen([sys.executable, "-c", sc.STUB, str(status)], stdin=subprocess.PIPE)
+        self.addCleanup(p.wait)
+        self.addCleanup(p.kill)
+        acks = lambda: [x for x in (status.read_text().splitlines() if status.exists() else [])
+                        if not x.startswith("step: ")]
+
+        def wait_for(want):
+            for _ in range(40):
+                if acks() == want:
+                    return
+                time.sleep(0.1)
+            self.assertEqual(acks(), want)
+
+        os.write(p.stdin.fileno(), b"inbox: one\ninbox: two\ninbox: thr")
+        wait_for(["ack: one", "ack: two"])
+        time.sleep(1.2)
+        self.assertEqual(acks(), ["ack: one", "ack: two"])
+        os.write(p.stdin.fileno(), b"ee\n")
+        wait_for(["ack: one", "ack: two", "ack: three"])
+        steps = [int(x.split()[1]) for x in status.read_text().splitlines() if x.startswith("step: ")]
+        self.assertEqual(steps, list(range(1, len(steps) + 1)))
+        self.assertGreaterEqual(len(steps), 3)
+
+
 class RecreateTest(Base):
     def test_a_resource_without_the_runs_labels_refuses_with_nothing_removed(self):
         calls = []
