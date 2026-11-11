@@ -967,6 +967,43 @@ closed with a reason. Resolve conflicting triage state tags. Include the
 sweeper's report of open tracker items with no `crew:*` state tag older than
 one awake day in the next window.
 
+**Plan gate (#444, #396).** The coordinator creates implementation items,
+adds a new `crew:ready` or dispatches a new build only for an item listed in
+an owner-approved plan: a milestone (its description gives scope and order)
+or a project. Ambiguous encouragement such as "start building" or "in
+parallel we can start" is a request to propose a plan, never approval.
+
+- **Plan.** The proposal lists the items, their order and dependencies, the
+  engine and tier, the executor (which runtime builds it) and the owner-only
+  prerequisites. Before items are derived from it, the coordinator walks the
+  plan's open decisions and records each owner answer; items come only from
+  settled decisions.
+- **Approval record.** The owner's OK is recorded once, as a signed comment
+  on the milestone's or project's tracking issue: a first line
+  `[<CoordinatorBot>/steer] plan approved: <plan>`, a link to (or exact quote
+  and time of) the owner's message, a link to the approved plan text, then
+  the marker
+  `<!-- crew:v1 role=coordinator pass=steer cmd=plan-ok plan=<milestone-or-project-id> cmd-id=<source-id> sha=<default-branch-head> round=n/a verdict=n/a -->`
+  and the coordinator signature. `cmd-id` is the owner's source comment id or
+  a unique chat message id; only profile owner logins count, and ignore
+  records from anyone else. It covers the items the plan listed at approval;
+  adding an item needs a new record. An unreadable record means no approval.
+- **Later owner change.** One recorded steer on the tracking issue lists
+  every affected unmerged item and its acceptance-criteria change, and the
+  coordinator applies them together.
+- **Exceptions.** Fix rounds, CI fixes and follow-ups on already-approved
+  work (including the soft-finding follow-up below), and a trivial single
+  docs item the owner explicitly asks to be built now.
+- **Environment preflight.** A platform or device item (host toolchain,
+  target device or OS) becomes `crew:ready` only when its spec's Target
+  environment section cites dated, observed host model, OS, architecture and
+  toolchain facts and the target device model and OS, with the command that
+  showed each. An unknown or incompatible fact blocks readiness. The spec's
+  Owner prerequisites list names every owner-only step (accounts, admin
+  password, device trust, signing) with owner and deadline, and the
+  coordinator asks for them in one batch. A non-platform spec states N/A
+  with a reason ([spec template](../templates/spec.md)).
+
 **Metrics gate.** When `scripts/metrics-decide.py` trips on the rollup, the
 coordinator opens a `metrics-gate` tracker item in the control-plane repo and
 holds new `M*` feature work (no `crew:ready`, `crew:hold` with

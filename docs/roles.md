@@ -36,6 +36,9 @@ at least once per awake half-day (the user's awake hours in PT). Every open
 issue leaves the window with exactly one disposition: `crew:ready`, `crew:spec`,
 `crew:needs-md`, moved to the next milestone (deferred), or closed with a reason.
 Resolve conflicting triage labels so each issue has only one disposition.
+A new `crew:ready` needs the item to sit in an owner-approved plan with a
+`cmd=plan-ok` record, or one of its exceptions
+([plan gate](protocol.md#6-duties-on-wake-all-roles)).
 At install/intake the owner confirms the project flavor in the profile.
 At each triage window, record every item's flavor using
 [the triage template](../templates/triage-flavor.md): class default for named
