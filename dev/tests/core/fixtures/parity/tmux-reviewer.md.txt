@@ -139,6 +139,8 @@ synthesizer's portability check with no new reviewer session.
    Set the state tags as in step 6, then append
    `done: #<n> <head-sha> recheck <pass|changes>` and exit; no separate
    validation session runs. Every §7 merge gate still applies at the new head.
+   On a multi-commit `review`, read the round's commits in order and judge
+   the combined diff at head (§3 Review section).
    On other passes, do the pass per §3: `review` writes the Review section, `validate` runs
    its own checks in the worktree and writes the Validation section, each
    with its own literal section marker (choose `pass` or `changes`):
