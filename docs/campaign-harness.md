@@ -155,14 +155,16 @@ after a scenario, that scenario is `FAIL` (`decoy: ...`), the rest are
 `NOT RUN` and the run stops: an inherited `TMUX` reached a server outside
 the sandbox.
 
-Results keep five statuses apart:
+Results keep seven statuses apart:
 
 - `PASS`: every step met its expected exit or match;
 - `FAIL`: a command exit differed or a wait hit its deadline;
 - `BLOCKED`: a tool the scenario requires is missing;
 - `LIMITATION`: the scenario declares a known gap and is not run; only the
   owner can accept it;
-- `NOT RUN`: a manifest scenario not selected or without a spec.
+- `NOT RUN`: a manifest scenario not selected or without a spec;
+- `EXPECTED FAIL` and `ACCEPTED`: a step recorded with that disposition
+  failed (see Fail-closed steps below); neither counts as a pass.
 
 Each step records the command's own exit, stdout and stderr apart from the
 capture outcome, so a working capture never reads as a pass. The results
@@ -171,6 +173,41 @@ The seed (random unless `--seed` is given) fixes the scenario order and
 `CAMPAIGN_SEED`; `--rerun RESULTS` replays the same selection and seed, so
 the same events and failure recur. The runner exits 0 only when every
 result is `PASS`.
+
+Fail-closed steps (#1412): a `run` step runs under `sh -c`, so its result
+is its last command's exit. `scripts/campaign-lint.py` refuses a step with
+an unhandled assertion: a `test`, `[`, `grep -q` or `!` pipeline whose exit
+is neither the step's result, nor captured by a following `rc=$?`, nor
+handled by a `||` after it, nor guarded by a trailing `|| exit 1`. An
+assertion in a loop body must carry its own `|| exit 1`. A call to a
+function defined in the step counts as an assertion when the function's
+return can carry a failure (a nonzero `return`, `false`, or an unguarded
+assertion at its tail); a helper that runs `exit 1` itself ends the step.
+The lint is an allowlist (#1677): simple commands, pipelines and
+`&&`/`||` chains; a `|| exit N` handler or a `|| { ...; exit N; }` group
+ending in an unconditional `exit N`; `if`/`case`; loops; `name() { ...; }`
+functions; subshells with no assertion, `exit` or `return`. Anything else
+is refused by name, including other brace groups, a subshell that can fail,
+a backgrounded compound command or assertion, `eval`, `trap` and an
+`exit` in a pipeline. In a condition list only the final item is the
+predicate; an earlier assertion there is refused.
+Restructure such a step into the allowed forms. The runner checks
+each step before it runs and `FAIL`s a refused one unrun, and so does a
+step that does not parse. A deliberate refusal keeps its explicit oracle:
+capture the exit with `rc=$?` and assert it in the final chain, or declare
+the step's `exit`.
+
+Required cases: every step of a committed scenario, `<Axx>/<step name>`, is
+a required case. A case that fails today carries
+`"disposition": {"state": "expected-fail", "reason": "..."}` (waiting for a
+fix) or `"state": "accepted"` (accepted as is). The reason is required. A
+disposition step that passes `FAIL`s, so the record is dropped once the fix
+lands. `check-repo.py` (rule `campaign`) compares the committed cases with
+the merge base of `origin/main`: a case there that is gone at head must be
+listed with a reason in `retired-cases.json` beside the scenarios. Deleting
+a case together with its disposition, renaming a step or deleting a
+scenario is caught. A reason never waives CI, an approval or acceptance
+evidence.
 
 Each scenario's notes follow under its own heading, in ID order.
 

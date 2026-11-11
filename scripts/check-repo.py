@@ -7,12 +7,13 @@ per-script docs, index files (inventory fresh, entries sorted, docs index
 complete), no committed evidence directory, union merge for append-only docs
 (`.gitattributes`), markdown lint (check-markdown.py on every tracked *.md
 file), tests per module, and the team spec's dependency rules with the
-runtime-word lint, core memory (layout, size limits, no personal data) and role routines.
+runtime-word lint, core memory (layout, size limits, no personal data), role routines and
+campaign scenarios (campaign-lint.py: unhandled assertions, required cases kept against origin/main).
 In a git work tree it also warns on stderr, naming them, about non-ignored
 untracked files, which the path checks skip (exit code unchanged).
 Python 3 stdlib only, no network.
 
-Usage: check-repo.py [--root DIR] [--config FILE] [--fix] [--only secrets|docs|links|markers|blockers|shapes|denylist|deliverables|spec-status|design-headers|fragments|script-docs|index|evidence|attributes|markdown|test-layout|deps|memory|routines]...
+Usage: check-repo.py [--root DIR] [--config FILE] [--fix] [--only secrets|docs|links|markers|blockers|shapes|denylist|deliverables|spec-status|design-headers|fragments|script-docs|index|evidence|attributes|markdown|test-layout|deps|memory|routines|campaign]...
 Every failure prints `file:line: [rule] reason`; exit 1 if any, else 0.
 """
 import argparse
@@ -1053,18 +1054,42 @@ def check_routines(root, fail):
         fail(rel, 1, "routines", "%s: %s (docs/routines.md)" % (key, reason))
 
 
+CAMPAIGN = "dev/tests/scripts/fixtures/campaign"
+
+
+def check_campaign(root, fail):
+    """Issue #1412: every committed campaign step fails closed on an assertion and
+    every required case at the merge base with origin/main is kept, given a
+    disposition or retired with a reason (scripts/campaign-lint.py). A missing
+    scenario directory is still compared with the base."""
+    d = os.path.join(root, CAMPAIGN)
+    base = subprocess.run(["git", "-C", root, "rev-parse", "--verify", "-q", "origin/main"], capture_output=True)
+    if not os.path.isdir(d) and base.returncode:
+        return  # no scenarios and no base to have deleted them from: not a campaign checkout
+    spec = importlib.util.spec_from_file_location(
+        "campaign_lint", os.path.join(os.path.dirname(os.path.abspath(__file__)), "campaign-lint.py"))
+    lint = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(lint)
+    try:
+        problems = lint.check(d, "origin/main", root)
+    except (ValueError, subprocess.CalledProcessError) as e:
+        problems = ["cannot check retained cases: %s" % e]
+    for p in problems:
+        fail(CAMPAIGN, 1, "campaign", p)
+
+
 def main(argv=None):
     here = os.path.dirname(os.path.abspath(__file__))
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--root", default=os.path.dirname(here), help="repo root (default: parent of scripts/)")
     ap.add_argument("--config", help="required-docs config (default: <script dir>/required-docs.txt)")
-    ap.add_argument("--only", action="append", choices=["secrets", "docs", "links", "markers", "blockers", "shapes", "denylist", "deliverables", "spec-status", "design-headers", "fragments", "script-docs", "index", "evidence", "attributes", "markdown", "test-layout", "deps", "memory", "routines"],
+    ap.add_argument("--only", action="append", choices=["secrets", "docs", "links", "markers", "blockers", "shapes", "denylist", "deliverables", "spec-status", "design-headers", "fragments", "script-docs", "index", "evidence", "attributes", "markdown", "test-layout", "deps", "memory", "routines", "campaign"],
                     help="run only these checks (repeatable)")
     ap.add_argument("--fix", action="store_true", help="rewrite the generated inventory table (index check) in place")
     args = ap.parse_args(argv)
     root = os.path.abspath(args.root)
     config = os.path.abspath(args.config or os.path.join(here, "required-docs.txt"))
-    checks = set(args.only or ["secrets", "docs", "links", "markers", "blockers", "shapes", "denylist", "deliverables", "spec-status", "design-headers", "fragments", "script-docs", "index", "evidence", "attributes", "markdown", "test-layout", "deps", "memory", "routines"])
+    checks = set(args.only or ["secrets", "docs", "links", "markers", "blockers", "shapes", "denylist", "deliverables", "spec-status", "design-headers", "fragments", "script-docs", "index", "evidence", "attributes", "markdown", "test-layout", "deps", "memory", "routines", "campaign"])
 
     failures = []
 
@@ -1111,6 +1136,8 @@ def main(argv=None):
         check_memory(root, fail)
     if "routines" in checks:
         check_routines(root, fail)
+    if "campaign" in checks:
+        check_campaign(root, fail)
 
     untracked = git_paths(root, "--others", "--exclude-standard")
     if untracked:

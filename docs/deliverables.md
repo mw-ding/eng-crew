@@ -170,6 +170,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `scripts/README.md` | Deliverable | all | Script usage: script guide and guard rules; each script's own usage is its module docstring, printed by `--help` |
 | `scripts/campaign-attended.py` | Internal | n/a | Guards and tests: M25 attended owner-channel and sleep run driver, not installed ([#1463](https://github.com/mw-ding/mdstack/issues/1463)) |
 | `scripts/campaign-guard.py` | Internal | n/a | Guards and tests: M25 campaign run-manifest and isolation guard, not installed ([#783](https://github.com/mw-ding/eng-crew/issues/783)) |
+| `scripts/campaign-lint.py` | Internal | n/a | Guards and tests: campaign step assertion lint and required-case retention, not installed ([#1412](https://github.com/mw-ding/mdstack/issues/1412)) |
 | `scripts/campaign-report.py` | Internal | n/a | Maintainer tool: A31 campaign-history report from actual campaign records ([#1462](https://github.com/mw-ding/mdstack/issues/1462)) |
 | `scripts/campaign-run.py` | Internal | n/a | Guards and tests: M25 campaign scenario runner and durable results, not installed ([#784](https://github.com/mw-ding/eng-crew/issues/784)) |
 | `scripts/campaign-sandbox.py` | Internal | n/a | Guards and tests: M25 disposable sandbox setup, teardown and level-b plan, not installed ([#785](https://github.com/mw-ding/eng-crew/issues/785)) |
