@@ -1418,5 +1418,44 @@ class SessionRuntime(unittest.TestCase):
         self.assertIn("otherwise edit that review body in place with gh api --method PUT", flat)
 
 
+class SecretRetrieval(unittest.TestCase):
+    """#397: every coordinator brief carries the secret-retrieval rule; no rendered brief prints a secret."""
+
+    RULE = "Secret retrieval: never suggest a command that prints a secret"
+    PRINTS = re.compile(r"printenv \w+\b(?! \|)|echo \$\w*(?:KEY|TOKEN|SECRET|PASS)\b(?! \|)|cat \S*\.env\b(?! \|)"
+                        r"|(?<!\$\()gh auth token\b")
+
+    def renders(self, tmp):
+        for runtime in ("tmux", "session", "grok-bot"):
+            project = os.path.join(tmp, "%s.toml" % runtime)
+            with open(project, "w") as f:
+                f.write('[runtime]\nname = "%s"\n' % runtime)
+            out = os.path.join(tmp, runtime)
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(cr.main(["--project", project, "--out", out]), 0)
+            yield runtime, tree(os.path.join(out, "runtime"))
+
+    def test_rule_in_coordinators_and_no_secret_print(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for runtime, got in self.renders(tmp):
+                coordinators = sorted(rel for rel in got if rel.startswith("coordinator") and rel != "coordinator-wiring.md")
+                self.assertTrue(coordinators, runtime)
+                for rel, text in got.items():
+                    flat = " ".join(text.split())
+                    with self.subTest(runtime=runtime, brief=rel):
+                        if rel in coordinators:
+                            self.assertTrue(self.RULE in flat, "no secret-retrieval rule in %s/%s" % (runtime, rel))
+                        start = flat.find(self.RULE)
+                        if start >= 0:
+                            flat = flat[:start] + flat[flat.index("length or last 4.", start):]
+                        self.assertEqual(self.PRINTS.findall(flat), [])
+
+    def test_lint_catches_a_secret_print(self):
+        for bad in ("run `printenv TODO_API_KEY`", "`echo $API_KEY`", "`cat .env`", "`gh auth token`"):
+            self.assertTrue(self.PRINTS.search(bad), bad)
+        for ok in ("`printenv API_KEY | pbcopy`", 'GH_TOKEN="$(gh auth token --user x)"', "`cat .env | pbcopy`"):
+            self.assertFalse(self.PRINTS.search(ok), ok)
+
+
 if __name__ == "__main__":
     unittest.main()
