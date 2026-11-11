@@ -910,6 +910,19 @@ class ResearcherProfile(unittest.TestCase):
             self.assertEqual(code, 1, bad)
             self.assertTrue(any(key + ":" in ln for ln in lines), (bad, lines))
 
+    def test_ci_required_checks_resolve_and_check(self):  # #1536
+        code, lines = resolve(VALID + '\n[ci]\nrequired_checks = ["markdownlint", "links", "repo-guard"]\n', default=VALID)
+        self.assertEqual(code, 0, lines)
+        self.assertIn('ci.required_checks = ["markdownlint", "links", "repo-guard"]  # project', lines)
+        code, lines = validate(VALID + "\n[ci]\n")
+        self.assertEqual(code, 0, lines)
+        for bad, key in [("required_checks = []", "ci.required_checks:"), ('required_checks = "links"', "ci.required_checks:"),
+                         ('required_checks = ["links", " "]', "ci.required_checks[1]:"),
+                         ('required_checks = ["links", "links"]', "ci.required_checks[1]:"), ("optional = true", "ci.optional:")]:
+            code, lines = validate(VALID + "\n[ci]\n" + bad + "\n")
+            self.assertEqual(code, 1, bad)
+            self.assertTrue(any(key in ln for ln in lines), (bad, lines))
+
     def test_docs_table_defaults_and_checks(self):  # #1024
         code, lines = resolve(VALID, default=VALID)
         self.assertEqual(code, 0, lines)

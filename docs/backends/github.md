@@ -212,7 +212,7 @@ signals, the author identity for everything else.
 | markers | Write item | `gh issue comment <n> --body-file <file>` on the repo control issue |
 | markers | Read item | `gh api --paginate --slurp repos/<owner>/<repo>/issues/<n>/comments`, preserving post order and login |
 | markers | Edit status | `gh api --method PUT repos/<o>/<r>/pulls/<n>/reviews/REVIEW_ID -F body=@<f>` |
-| CI | Required-check status at head | `gh pr checks <n> --required --json name,state,link`, after confirming the head SHA |
+| CI | Required-check status at head | `gh pr checks <n> --required --json name,state,link`, after confirming the head SHA; with no branch protection the required set is the profile's [`[ci] required_checks`](../profile.md#ci), each of which must be present at head (#1536) |
 | CI | Failing job names | `gh pr checks <n> --json name,state,link`, then `gh run view <run-id> --log-failed` |
 | events | Subscribe or poll | Webhooks: `issues` assigned, `pull_request` opened / review_requested / closed (merged or not), `check_suite` completed, `pull_request_review` submitted, `issue_comment` and `pull_request_review_comment` for steering; on Grok Bot, routine triggers ([wake wiring](../runtimes/grok-bot.md#wake-wiring-event-to-consuming-role)). Poll: `gh api repos/<o>/<r>/issues/events` plus the reads above |
 | owner channel | Ask with default and deadline | Asked over the runtime's owner channel ([C8](../runtimes/README.md#c8-owner-channel-and-sla)), recorded with `gh issue edit <n> --add-label crew:needs-md` and `gh pr review <n> --comment --body-file <f>` (default and deadline); the answer is recorded as a `steer` post the same way |
