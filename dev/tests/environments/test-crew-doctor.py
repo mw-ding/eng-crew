@@ -700,3 +700,49 @@ if __name__ == "__main__":
         label_evidence()
     else:
         unittest.main()
+
+
+class SessionServer(unittest.TestCase):
+    """A shared session server's sandbox, which its runs inherit, from the backend's server_pids() (#1469)."""
+
+    @classmethod
+    def setUpClass(cls):
+        loader = importlib.machinery.SourceFileLoader("crew_cli", CREW)
+        mod = importlib.util.module_from_spec(importlib.util.spec_from_loader("crew_cli", loader))
+        loader.exec_module(mod)
+        cls.doctor = mod.commands()["doctor"]
+
+    def row(self, pids, sandboxed=None):
+        def server_pids():
+            if isinstance(pids, Exception):
+                raise pids
+            return pids
+        adapter = mock.Mock(EXECUTABLE="herdr", server_pids=server_pids)
+        with mock.patch.object(self.doctor.proc, "sandboxed", lambda pid: (sandboxed or {}).get(pid)):
+            return self.doctor.session_server(adapter)
+
+    def test_absent_sandboxed_clean_and_unknown(self):
+        start = ("start `herdr server` from an ordinary terminal opened outside any agent session: its runs inherit "
+                 "that terminal's environment and sandbox")
+        self.assertEqual(self.row([]), [("human", "session server", "herdr server not running", start)])
+        status, _, detail, hint = self.row([7], {7: True})[0]
+        self.assertEqual((status, detail), ("fail", "pid 7 runs sandboxed; every run inherits it"))
+        self.assertEqual(hint, "in an idle window for all its users, stop it with `herdr server stop`, then " + start)
+        self.assertEqual(self.row([7, 8], {7: False, 8: False})[0][:3], ("ok", "session server", "pid 7, 8 not sandboxed"))
+        for pids, found in ([7], {}), ([7, 8], {7: True, 8: False}):  # unreadable (non-macOS) or mixed holders
+            status, _, detail, hint = self.row(pids, found)[0]
+            self.assertEqual(status, "warn", detail)
+            self.assertIn("sandbox unknown or mixed", detail)
+            self.assertTrue(hint.startswith("if it was started from an agent session, restart it with `herdr server`"))
+        status, _, detail, _ = self.row(RuntimeError("no process holds /s"))[0]
+        self.assertEqual((status, detail), ("warn", "sandbox unknown: no process holds /s"))
+
+    def test_backend_without_a_shared_server_has_no_row(self):
+        self.assertEqual(self.doctor.session_server(mock.Mock(spec=["EXECUTABLE"])), [])
+
+    def test_os_sandbox_read(self):
+        """macOS reads launchd as unsandboxed and a gone pid as unknown; other platforms are unknown."""
+        dead = subprocess.Popen(["true"])
+        dead.wait()
+        expected = (False, None) if sys.platform == "darwin" else (None, None)
+        self.assertEqual((self.doctor.proc.sandboxed(1), self.doctor.proc.sandboxed(dead.pid)), expected)

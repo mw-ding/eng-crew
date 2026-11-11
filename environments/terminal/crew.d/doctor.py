@@ -2,7 +2,7 @@
 warn, fail or human, with its fix hint: Python, git, gh, tmux, each profile login in gh, engines, each harness
 adapter's host, coordinator and role checks (Codex hook trust, Claude Code folder trust for the project directory and
 for the checkout role worktrees come from, #408), placeholder paths, a session sandbox with no writable root over the
-checkout's .git and no sandbox_env (#1544), a state dir or worktree root inside a git checkout, the state dir layout, paths.checkout a clone of [repo], bootstrap's install.json
+checkout's .git and no sandbox_env (#1544), a shared session server whose runs inherit its sandbox (#1469), a state dir or worktree root inside a git checkout, the state dir layout, paths.checkout a clone of [repo], bootstrap's install.json
 and paths.mdstack link (#1323), the installed version against the latest release (not queried under a non-github [install] source), the
 launcher in the root's bin/ (missing or stale) and where PATH resolves its name (#1317, #1324), the
 recorded install source and the running/installed/minimum versions for [tools] in the profile, and the runtime
@@ -29,7 +29,7 @@ import sys
 import tempfile
 import tomllib
 from crew_shared import (checkout, commands, crew_render, HERE, harnesses, ownership_module, placeholder_paths,
-                         sandbox_env, sessions, load as load_module)
+                         proc, sandbox_env, sessions, load as load_module)
 
 repo_fixers = load_module("crew_repo", "connectors/github/crew-repo.py")
 
@@ -122,6 +122,32 @@ def sandbox(values, project):
     return [("fail", "sandbox", "%s sandboxed with no writable root over %s" % (" and ".join(found), git),
              'set runtime.options.sandbox_env = "<NAME>=%s" with the launcher\'s writable-roots variable '
              "(or export CREW_SANDBOX_ENV), then rerun" % git)]
+
+
+def session_server(adapter):
+    """A backend whose runs inherit a shared server's environment and sandbox declares server_pids(): human when no
+    server runs, fail when every pid holding it reads sandboxed, ok when none does, warn when that is unknown. The
+    caller's own sandbox says nothing about the server's (#1469); mdstack never starts or restarts it."""
+    if not hasattr(adapter, "server_pids"):
+        return []
+    start = ("start `%s server` from an ordinary terminal opened outside any agent session: its runs inherit that "
+             "terminal's environment and sandbox" % adapter.EXECUTABLE)
+    try:
+        pids = adapter.server_pids()
+    except RuntimeError as e:
+        return [("warn", "session server", "sandbox unknown: %s" % e, "if it was started from an agent session, " +
+                 start.replace("start", "restart it with", 1))]
+    if not pids:
+        return [("human", "session server", "%s server not running" % adapter.EXECUTABLE, start)]
+    found = {pid: proc.sandboxed(pid) for pid in pids}
+    held = "pid " + ", ".join(map(str, pids))
+    if all(found.values()):
+        return [("fail", "session server", "%s runs sandboxed; every run inherits it" % held, "in an idle window for "
+                 "all its users, stop it with `%s server stop`, then %s" % (adapter.EXECUTABLE, start))]
+    if not any(v is None or v for v in found.values()):
+        return [("ok", "session server", "%s not sandboxed" % held, "")]
+    return [("warn", "session server", "%s sandbox unknown or mixed: %s" % (held, found), "if it was started from an "
+             "agent session, " + start.replace("start", "restart it with", 1))]
 
 
 def in_checkout(values):
@@ -379,6 +405,7 @@ def run(args):
     if not bad and github:
         rows += repo_fixers.checks(values, args.fix, args.dry_run, args.milestone)
     rows += checkout_repo(values, args.project) + install(values) + (sandbox(values, args.project) if tmux else [])
+    rows += session_server(sessions.ADAPTERS[backend]) if tmux else []
     rows += handoff(values) + triage(values) + version(values) + launcher(values) + pack(values) + install_source(values)
     rows += tool_drift(values)
     for status, check, detail, hint in rows:

@@ -1,8 +1,11 @@
 """OS process helpers for cli/mdstack, shared by every session backend: start time, parent pid and the process
-tree beneath a session object's first process, read from ps. Python 3.11+ stdlib only."""
+tree beneath a session object's first process, read from ps, and whether a process runs sandboxed. Python 3.11+ stdlib
+only."""
+import ctypes
 import os
 import shutil
 import subprocess
+import sys
 
 
 def proc_start(pid):
@@ -14,6 +17,20 @@ def proc_parent(pid):
     """Parent pid of a process, or None when it is gone: 1 marks an orphan whose tmux server died (#818)."""
     out = subprocess.run(["ps", "-o", "ppid=", "-p", str(pid)], capture_output=True, text=True).stdout.strip()
     return int(out) if out.isdigit() else None
+
+
+def sandboxed(pid):
+    """Whether a process runs under the OS sandbox its children inherit, read with macOS libSystem's
+    sandbox_check(pid, NULL, 0); None where the platform offers no such read or the process is gone (#1469)."""
+    if sys.platform != "darwin":
+        return None
+    try:
+        check = ctypes.CDLL("/usr/lib/libSystem.dylib").sandbox_check
+    except (OSError, AttributeError):
+        return None
+    check.restype, check.argtypes = ctypes.c_int, [ctypes.c_int, ctypes.c_char_p, ctypes.c_int]
+    found = check(int(pid), None, 0)
+    return bool(found) if proc_start(pid) else None  # a missing pid also reads as sandboxed
 
 
 def live_child(pid, harness):
