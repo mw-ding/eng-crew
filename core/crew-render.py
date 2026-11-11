@@ -119,10 +119,18 @@ LAND_SYNC = ("If it holds, run `$CREW_BIN land-lock acquire --project \"$CREW_PR
              "   and stop.")
 # <land-step> when the change backend maps change.land-delete-arg (#395): the land itself deletes an eligible head
 # branch, so close-out needs no separate delete (docs/interfaces.md#change); otherwise the sync text renders unchanged.
-LAND_DELETE = [("`<op:change.land>`, post", "`<op:change.land>`, plus\n"
-                "   `<op:change.land-delete-arg>` if same-repo, not default or base, post"),
-               ("`<op:change.land>` bound to that head, post", "`<op:change.land>` bound to that head, plus\n"
-                "   `<op:change.land-delete-arg>` if same-repo, not default or base,\n   post")]
+LAND_DELETE = [("`<op:change.land>`, post\n   `[<SynthesizerBot>/merge]` naming the merge-ok or grant used and its\n"
+                 "   `Land rule:` line",
+                 "`<op:change.land>`, add\n   `<op:change.land-delete-arg>` if same-repo, not default/base, post\n"
+                 "   `[<SynthesizerBot>/merge]` naming merge-ok or grant used, its `Land rule:`\n"
+                 "   line and `Head branch: deleted|retained (<reason>)|delete failed` (exit>0,\n"
+                 "   `MERGED`)"),
+               ("`<op:change.land>` bound to that head, post `[<SynthesizerBot>/merge]` naming\n"
+                "   the merge-ok or grant used and its `Land rule:` line",
+                "`<op:change.land>` bound to that head, add `<op:change.land-delete-arg>` if\n"
+                "   same-repo, not default/base, post `[<SynthesizerBot>/merge]` naming merge-ok\n"
+                "   or grant used, its `Land rule:` line and `Head branch: deleted|retained\n"
+                "   (<reason>)|delete failed` (exit>0, `MERGED`)")]
 LAND_ASYNC = (
     "If it holds, land asynchronously (`land.mode = \"async\"`, protocol §7).\n"
     "   %s\n"
