@@ -28,5 +28,5 @@ Away interval: <entry time> → <return time>.
 
 <Next action or owner ask; state when no action is needed.>
 
-— <CoordinatorEmoji> <CoordinatorBot> (<CoordinatorTitle>) · <harness> · <model>
+<CoordinatorSignature> · <harness> · <model>
 ```

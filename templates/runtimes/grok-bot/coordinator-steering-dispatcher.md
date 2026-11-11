@@ -30,6 +30,8 @@ read/report only. Draining: in-flight writes only, no new pass or land.
 
 <include:policy/coordinator/signing.md>
 
+<include:policy/shared/report.md>
+
 <include:policy/shared/landing-authority.md>
 
 <include:policy/coordinator/secret-retrieval.md>

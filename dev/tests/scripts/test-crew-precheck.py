@@ -57,6 +57,14 @@ class Gate(unittest.TestCase):
         record["headRefOid"] = "c" * 40
         self.assertEqual(precheck.check(record, BUILDER), "stale marker")
 
+    def test_signature_with_emoji_off_or_team_still_authorizes(self):  # #431, #1291: marker reading unchanged
+        for signature in ("— Ben (Builder) · Codex · model", "— 🧰 Ben (Builder) · md · Codex · model"):
+            record = dict(body="", headRefOid=HEAD, reviews=[dict(body=marker() + "\n" + signature,
+                                                                   author=dict(login="author"), submittedAt="1")])
+            self.assertEqual(precheck.check(record, BUILDER), "pass", signature)
+        record["reviews"][0]["body"] = marker() + "\n— Bob (Builder) · Codex · model"
+        self.assertEqual(precheck.check(record, BUILDER), "missing marker")
+
     def test_selfgate_missing_stale_malformed_changes_and_rules(self):
         cases = [("", "missing marker"), (marker(), "missing marker"), (selfgate(sha="c" * 40), "stale marker"),
                  (selfgate(), "pass"), (selfgate(verdict="changes", open="1"), "verdict changes"),

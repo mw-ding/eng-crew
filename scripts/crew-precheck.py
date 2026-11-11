@@ -59,7 +59,7 @@ def builder_markers(record, builder, name):
     texts += [review.get("body", "") for review in
               sorted(record.get("reviews", []), key=lambda r: r.get("submittedAt", ""))
               if review.get("author", {}).get("login") == builder["gh_user"]
-              and re.search(r"(?m)^— .* " + re.escape(builder["name"]) + r" \(", review.get("body", ""))]
+              and re.search(r"(?m)^— (?:.* )?" + re.escape(builder["name"]) + r" \(", review.get("body", ""))]
     at_head, seen = [], False
     for text in texts:
         for raw in re.findall(r"<!-- crew:v1\s+(.*?)\s*-->", text, re.DOTALL):

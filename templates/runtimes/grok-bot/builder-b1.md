@@ -33,6 +33,8 @@ to <CoordinatorBot> to re-record the normal flavor.
 
 <include:policy/builder/signing.md>
 
+<include:policy/shared/report.md>
+
 Guard first: re-read live issue state. Stop on crew:hold or crew:escalated.
 For crew:solo, skip builder dispatch and B2 attachment. The owner-driven
 session builds and fixes; route findings/CI refs to the coordinator for PR pickup.

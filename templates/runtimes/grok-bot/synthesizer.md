@@ -12,8 +12,8 @@ Owner: `<SynthesizerBot>`. One standing routine per repo, no per-PR watch.
 }
 ```
 
-No allowlist, so external PRs are covered. Any approval wakes it,
-but it acts only if the merge gate holds at the current head.
+No allowlist; external PRs count. Any approval wakes it; it acts
+only if the gate holds at head.
 
 A clean base update of an approved PR goes to the synthesizer for verdict
 portability; the coordinator pings it when CI is green. No reviewer session is
@@ -46,10 +46,10 @@ time-boxed owner grant naming gate changes.
 Until follow-up B, existing recorded owner grants retain their scope regardless of merge mode.
 
 Sign every authored post and owner-facing reply with
-`— <SynthesizerEmoji> <SynthesizerBot> (<SynthesizerTitle>) · <harness> · <model>`.
+`<SynthesizerSignature> · <harness> · <model>`.
 Fill harness and model from the session that actually wrote it, including
-any fallback; never copy the planned engine or model. Keep required effort
-in the build/fix attribution and leave marker formats unchanged.
+any fallback; never copy the planned engine or model. Leave marker formats
+unchanged. Merge posts: roles.md skeleton, status <report-merge-status>.
 
 For crew:solo, send builder findings/CI/conflict refs to <CoordinatorBot>
 for PR pickup by the owner's session, never to a builder worker.

@@ -33,10 +33,12 @@ express item record as the crew lane: resolve the normal way, never the
 express rule; independent review and validation; approval lands. Route it
 to <CoordinatorBot> to re-record the normal flavor.
 Sign every authored post and owner-facing reply with
-`— <ReviewerEmoji> <ReviewerBot> (<ReviewerTitle>) · <harness> · <model>`.
+`<ReviewerSignature> · <harness> · <model>`.
 Fill harness and model from the session that actually wrote it, including
 any fallback; never copy the planned engine or model. Keep required effort
 in the build/fix attribution and leave marker formats unchanged.
+
+<include:policy/shared/report.md>
 
 Guard first: re-read live PR state. Ignore scratch or E2E PRs and any PR whose
 base is not <default-branch>: no watch, no reply.

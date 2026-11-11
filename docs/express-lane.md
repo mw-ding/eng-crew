@@ -228,7 +228,7 @@ Effective knobs: <review, validation, evidence, caps, merge, selfgate_engine>.
 | 1 | 🔴 | <finding> | fixed in <sha7> / rejected: <reason> / follow-up #<n> |
 
 <!-- crew:v1 role=builder pass=selfgate pr=<n> sha=<40-char head sha> base=<40-char merge-base sha> round=n/a verdict=<pass|changes> mode=<same|different> builder-engine=<engine>/<model> reviewer-engine=<engine>/<model> reviews=<k> findings=<f> open=<o> checks=<pass|fail> -->
-— <BuilderEmoji> <BuilderBot> (<BuilderTitle>) · <harness> · <model>
+<BuilderSignature> · <harness> · <model>
 ```
 
 | Field | Meaning |

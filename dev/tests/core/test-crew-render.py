@@ -138,6 +138,23 @@ class Render(unittest.TestCase):
         self.assertEqual(cr.Renderer(dict(values, **{"identities.team": "mdp-m4"}), self.inputs).line("[<TeamName>]"),
                          "[mdp-m4]")
 
+    def test_signature_and_status_placeholders(self):  # #431, #1291: team, legacy, emoji off and custom cases
+        values = cr.resolve(PROJECT, None)[0]
+        line = "<BuilderSignature> · <harness> | <report-status> | [<ReviewerEmoji>]"
+        status = "✅ pass, 🔁 changes, 🚢 landed, ⛔ escalated, 🚧 blocked"
+        cases = [({}, "— 🛠️ %s (%s) · <harness> | %s | [🔎]" % ("%s", "%s", status)),
+                 ({"team.name": "md"}, "— 🛠️ %s (%s) · md · <harness> | %s | [🔎]" % ("%s", "%s", status)),
+                 ({"identities.team": "mdp-m4"}, "— 🛠️ %s (%s) · mdp-m4 · <harness> | %s | [🔎]" % ("%s", "%s", status)),
+                 ({"report.emoji": False, "team.name": "md"},
+                  "— %s (%s) · md · <harness> | pass, changes, landed, escalated, blocked | []"),
+                 ({"identities.builder.emoji": "B", "report.status.pass": "P", "report.status.blocked": ""},
+                  "— B %s (%s) · <harness> | %s | [🔎]" % ("%s", "%s", status.replace("✅", "P").replace("🚧 ", "")))]
+        for extra, want in cases:
+            got = cr.Renderer(dict(values, **{"identities.builder.emoji": "🛠️", **extra}), self.inputs).line(line)
+            self.assertEqual(got, want % (values["identities.builder.name"], values["identities.builder.title"]), extra)
+        researcher = cr.Renderer(values, self.inputs).line("<ResearcherSignature>")
+        self.assertEqual(researcher, "— 🔬 Riley (Researcher)")
+
     def test_precheck_enabled_disabled_and_missing_commands(self):
         with open(PROJECT, encoding="utf-8") as f:
             profile = f.read()

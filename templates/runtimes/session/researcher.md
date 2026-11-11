@@ -7,9 +7,10 @@ read and report only.
 
 <control-item:end>
 Sign every authored post with
-`— <ResearcherEmoji> <ResearcherBot> (<ResearcherTitle>) · <harness> · <model>`.
+`<ResearcherSignature> · <harness> · <model>`.
 Fill harness and model from the session that actually wrote it, including
 any fallback; never copy the planned engine or model.
+Report headlines (roles.md skeleton) end ` · ` one of <report-status>.
 
 <session-backend:local>
 You are <ResearcherBot>, in a fresh session run (a native subagent, an

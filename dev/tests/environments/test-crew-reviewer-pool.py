@@ -318,12 +318,16 @@ class ReviewerPool(route_tests.Route):
                 "<!-- crew:v1 role=builder pass=fix pr=12 sha=%s round=1 verdict=n/a -->\n"
                 "— 🛠️ Ben (Builder) · codex · gpt-6.1-sol")
         self.live["reviews"] = [dict(body=note % self.sha)]
-        self.assertTrue(route.merge_up_delta(self.live, self.sha))
+        self.assertTrue(route.merge_up_delta(self.live, self.sha, "Ben"))
+        for signed in ("— Ben (Builder) · codex · gpt-6.1-sol", "— 🧰 Ben (Builder) · md · codex · gpt-6.1-sol"):  # #431
+            self.live["reviews"] = [dict(body=(note % self.sha).replace("— 🛠️ Ben (Builder) · codex · gpt-6.1-sol", signed))]
+            self.assertTrue(route.merge_up_delta(self.live, self.sha, "Ben"), signed)
+        self.assertFalse(route.merge_up_delta(self.live, self.sha, "Bo"))
         for body in (note % ("f" * 40), (note % self.sha).split("—")[0],
                      (note % self.sha).replace("Resolved conflict.", "Identical merge-up; no conflicts."),
                      (note % self.sha).replace("Resolved conflict.", "No differing patch.")):
             self.live["reviews"] = [dict(body=body)]
-            self.assertFalse(route.merge_up_delta(self.live, self.sha))
+            self.assertFalse(route.merge_up_delta(self.live, self.sha, "Ben"))
 
     def test_full_cap_then_completed_slot_admits_validation(self):
         self.env["CREW_POOL"] = "reviewer"

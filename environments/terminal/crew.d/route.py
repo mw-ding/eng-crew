@@ -122,11 +122,14 @@ def own_view(values, pr):
                              not any(m.get("role") == "reviewer-validator" for m in markers(r["body"]))])
 
 
-def merge_up_delta(pr, head):
-    """A signed, head-pinned builder fix recording a resolved conflict or differing patch needs delta review."""
+def merge_up_delta(pr, head, builder):
+    """A signed, head-pinned builder fix recording a resolved conflict or differing patch needs delta review.
+
+    builder: the builder's display name; the signature may carry any emoji, none, or a team (#431, #1291)."""
+    sign = re.compile(r"^— (?:.* )?%s \(" % re.escape(builder), re.M)
     for review in pr["reviews"]:
         body = review["body"]
-        if not re.search(r"^\[[^]\n]+/(?:fix|ci-fix)\]", body) or "— 🛠️" not in body:
+        if not re.search(r"^\[[^]\n]+/(?:fix|ci-fix)\]", body) or not sign.search(body):
             continue
         if not any(m.get("role") == "builder" and m.get("pass") in ("fix", "ci-fix") and
                    m.get("pr") == str(pr["number"]) and m.get("sha") == head for m in markers(body)):
@@ -592,7 +595,7 @@ def route_record(args, values, state, w):
             return not glob.glob(os.path.join(state, "ci", "%d-*.json" % n))  # held CI refs: the coordinator drops them
         reconcile_approval(values, repo, pr, own)
         return lead.event(args, "synthesizer", w) == 0
-    delta = merge_up_delta(pr, head)
+    delta = merge_up_delta(pr, head, values["identities.builder.name"])
     if event == "merge-up" and (open_rereview(pr, head) or delta) and lead.enabled(state, "reviewer") and not getattr(args, "reviewer_lead", False):
         return lead.event(args, "reviewer", w) == 0
     if built and lead.enabled(state, "reviewer") and not getattr(args, "reviewer_lead", False):

@@ -96,6 +96,12 @@ for knob in ("name", "review", "validation", "evidence", "caps", "merge", "build
 MAPPED["flavor-validation-scope"] = ["flavor.validation_scope"]
 MAPPED["flavor-selfgate-engine"] = ["flavor.selfgate_engine"]
 MAPPED["TeamName"] = ["identities.team"]  # optional; empty when unset (#1329)
+# <RoleSignature>: `— <emoji> <name> (<title>) · <team>`, harness and model follow it in the template (#431, #1291);
+# <report-status>: the profile's fixed status set (docs/roles.md Report skeleton); <report-merge-status>: its landed and
+# blocked statuses, for synthesizer merge posts. All read [report]; no marker changes.
+for role, metadata in ROLES.items():
+    MAPPED[role.title() + "Signature"] = [metadata["identity_key"] + ".name"]
+MAPPED["report-status"] = MAPPED["report-merge-status"] = ["report.emoji"]
 # <mirror-gate>: the tmux synthesizer's mirror-gate paragraph by runtime.options.mirror (#877, docs/runtimes/tmux.md).
 MIRROR_GATE = {
     "live-copy": "Mirror deferral: read the recorded owner decision named by `mirror_deferral`\n"
@@ -328,6 +334,8 @@ def resolve(project, org, paths=None):
     values.update({"flavor." + k: v for k, v in knobs.items()})
     values["flavor.name"] = name
     values["flavor.selfgate_engine"] = flavor.get("selfgate_engine", "different")  # read only for express changes
+    if "team.name" in meta:  # a team file's resolved name, for signatures (#1291)
+        values["team.name"] = meta["team.name"][0]
     if "strategy.update_from_base" in meta:  # undeclared: merge (docs/interfaces.md#rebase-update-from-base)
         values["strategy.update_from_base"] = meta["strategy.update_from_base"][0]
     values.setdefault("runtime.options.merge_grant_scope", ["approved"])  # absent keys keep today's scope (§7 spec change)
@@ -481,6 +489,19 @@ class Renderer:
             return self.line(LAND_PUBLISH) if self.values.get("land.opens_draft") else ""
         if name == "TeamName":
             return str(self.values.get("identities.team", ""))
+        if name == "report-status":
+            return ", ".join(self.emoji("report.status." + k, mark) + k
+                             for k, mark in crew_config.REPORT_STATUS.items())
+        if name == "report-merge-status":
+            return " or ".join(self.emoji("report.status." + k, crew_config.REPORT_STATUS[k]) + k
+                               for k in ("landed", "blocked"))
+        if name.endswith("Signature") and name[:-len("Signature")].lower() in ROLES:
+            key = ROLES[name[:-len("Signature")].lower()]["identity_key"]
+            team = self.values.get("team.name") or self.values.get("identities.team")
+            return "— %s%s (%s)%s" % (self.emoji(key + ".emoji", ""), self.values[key + ".name"],
+                                      self.values[key + ".title"], " · " + team if team else "")
+        if name.endswith("Emoji") and self.values.get("report.emoji") is False:
+            return ""
         if name == "runtime-id":
             return self.values["runtime.name"] + "@" + self.values.get("runtime.instance", "unconfigured")
         keys = MAPPED[name]
@@ -500,6 +521,11 @@ class Renderer:
 
     def line(self, text):
         return TOKEN.sub(self.fill, text)
+
+    def emoji(self, key, fallback):
+        """The profile emoji at key (else fallback) plus a space; nothing with report.emoji = false (#431)."""
+        mark = "" if self.values.get("report.emoji") is False else self.values.get(key, fallback)
+        return mark + " " if mark else ""
 
     def session_template(self):
         """True while rendering a session runtime template, whatever the profile's runtime (role_runtime, #1055)."""

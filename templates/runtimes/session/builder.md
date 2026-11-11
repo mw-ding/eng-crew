@@ -12,6 +12,8 @@ No merge-ok or standing grant overrides ownership.
 
 <include:policy/builder/signing.md>
 
+<include:policy/shared/report.md>
+
 <include:policy/shared/usage-line.md>
 
 <session-backend:local>
