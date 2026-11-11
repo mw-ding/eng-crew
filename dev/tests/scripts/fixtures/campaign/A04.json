@@ -14,7 +14,7 @@
     },
     {
       "name": "idle-backoff-no-model-turns",
-      "run": "C=\"python3 {source}/cli/mdstack\"; P=\"--project $CREW_PROJECT\"; S={state_dir}/campaign__sandbox-{run_id}; T=crew-campaign-{run_id}; G={state_dir}/gh; for i in 1 2 3; do t0=$(date +%s); $C watch --source \"$C poll --once $P\" --interval 0.5 --backstop 1 --idle 0 $P | grep -q \"backstop: due (nothing in flight)\" || exit 1; echo \"wake $i after $(( $(date +%s)-t0 ))s idle=$(python3 -c \"import json,sys;print(json.load(open(sys.argv[1]))['idle'])\" $S/wake/watch-state.json)\"; done | tee /dev/stderr | grep -q \"wake 3 .* idle=3$\" && test \"$(grep -c \"^got ash: \" {state_dir}/stub.log)\" -eq 3 && grep -c \"^got ash: wake: watcher$\" {state_dir}/stub.log | grep -qx 3",
+      "run": "C=\"python3 {source}/cli/mdstack\"; P=\"--project $CREW_PROJECT\"; S={state_dir}/campaign__sandbox-{run_id}; T=crew-campaign-{run_id}; G={state_dir}/gh; for i in 1 2 3; do t0=$(date +%s); $C watch --source \"$C poll --once $P\" --interval 0.5 --backstop 1 --idle 0 $P | grep -q \"backstop: due (nothing in flight)\" || exit 1; echo \"wake $i after $(( $(date +%s)-t0 ))s idle=$(python3 -c \"import json,sys;print(json.load(open(sys.argv[1]))['idle'])\" $S/wake/watch-state.json)\"; done > {state_dir}/a04-wakes.txt; cat {state_dir}/a04-wakes.txt >&2; grep -q \"wake 3 .* idle=3$\" {state_dir}/a04-wakes.txt && test \"$(grep -c \"^got ash: \" {state_dir}/stub.log)\" -eq 3 && grep -c \"^got ash: wake: watcher$\" {state_dir}/stub.log | grep -qx 3",
       "exit": 0,
       "deadline": 120
     },
