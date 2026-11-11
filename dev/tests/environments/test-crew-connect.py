@@ -63,6 +63,31 @@ class Connect(Base):
         _, argv = self.connect("host-a")
         self.assertEqual(argv[1:], ["-o", "ProxyCommand=corp-proxy %h %p", "host-a"])
 
+    def test_address_is_the_destination_for_every_transport(self):
+        with open(self.project) as f:
+            text = f.read()
+        for host in ("host-a", "host-b", "host-c"):
+            text = text.replace("[hosts.%s]\n" % host, '[hosts.%s]\naddress = "%s.region.example.com"\n' % (host, host))
+        with open(self.project, "w") as f:
+            f.write(text)
+        _, argv = self.connect("host-a")
+        self.assertEqual(argv[1:], ["host-a.region.example.com"])
+        _, argv = self.connect("host-a", "work", "--", "-L", "8080:localhost:8080")
+        self.assertEqual(argv[1:], ["-L", "8080:localhost:8080", "-t", "host-a.region.example.com",
+                                    "tmux", "new-session", "-A", "-s", "work"])
+        _, argv = self.connect("b", "work")
+        self.assertEqual(argv[1:], ["--ssh=ssh -o ProxyCommand='corp-proxy %h %p'", "--experimental-remote-ip=remote",
+                                    "--predict=always", "host-b.region.example.com",
+                                    "--", "tmux", "new-session", "-A", "-s", "work"])
+        _, argv = self.connect("host-b")
+        self.assertEqual(argv[-1], "host-b.region.example.com")
+        _, argv = self.connect("c", "work")
+        self.assertEqual(argv[1:], ["-p", "2022", "host-c.region.example.com", "-c", "tmux new-session -A -s work"])
+        _, argv = self.connect("c")
+        self.assertEqual(argv[1:], ["-p", "2022", "host-c.region.example.com"])
+        r, _ = self.connect("host-c.region.example.com")
+        self.assertEqual(r.returncode, 1)  # the address is the destination, never a lookup key
+
     def test_unknown_alias_lists_known(self):
         r, _ = self.connect("nope")
         self.assertEqual(r.returncode, 1)
