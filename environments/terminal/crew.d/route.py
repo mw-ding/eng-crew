@@ -246,10 +246,11 @@ def land_open(state, name, n):
 
 def branch_retained(values, pr, default):
     """Why a PR's head branch must not be deleted (fork, default or base branch), or None when it may be."""
-    if pr["isCrossRepository"] or pr["headRepositoryOwner"]["login"] != values["repo.owner"] or \
-            not pr["headRepository"] or pr["headRepository"]["name"] != values["repo.name"]:
-        return "fork"
-    if pr["headRefName"] in (default, pr["baseRefName"]):
+    if pr.get("isCrossRepository") is not False or \
+            (pr.get("headRepositoryOwner") or {}).get("login") != values["repo.owner"] or \
+            (pr.get("headRepository") or {}).get("name") != values["repo.name"]:
+        return "fork"  # an unreadable head repository counts as a fork: never deleted
+    if not pr.get("headRefName") or pr["headRefName"] in (default, pr.get("baseRefName")):
         return "default or base branch"
     return None
 
@@ -277,10 +278,10 @@ def close_out(args, values, state, pr):
         r = subprocess.run(["gh", "api", ref], capture_output=True, text=True)
         if r.returncode and "404" not in r.stderr:
             raise RuntimeError("crew: branch lookup: " + r.stderr.strip())
-        if not r.returncode:
+        if not r.returncode:  # fallback (#395): the land deletes an eligible branch; this one was left
             gh("api", "-X", "DELETE", ref)
     else:
-        print("crew: close-out #%d: branch retained (fork, default or base branch)" % pr["number"])
+        print("crew: close-out #%d: branch retained (%s)" % (pr["number"], branch_retained(values, pr, default)))
     for name, rec in list(runs(state)):
         item = rec.get("args", {})
         done = heartbeat(state, name)[0].split()
