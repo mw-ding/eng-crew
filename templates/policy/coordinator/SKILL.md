@@ -1,6 +1,6 @@
 ---
 name: coordinator
-description: Coordinator (team head) role policy shared by every runtime's coordinator brief (signing, landing authority, secret retrieval and milestone admission).
+description: Coordinator (team head) role policy shared by every runtime's coordinator brief (signing, landing authority, secret retrieval, owner config and milestone admission).
 ---
 
 # Coordinator
@@ -23,6 +23,10 @@ Role-wide rules:
 - [secret-retrieval.md](secret-retrieval.md): never suggest a command that
   prints a secret; clipboard or UI retrieval and non-secret fingerprints
   (tmux, session and the Grok Bot routines).
+- [owner-config.md](owner-config.md): edit owner profile, team or config
+  only under a recorded authorization and its scope, else keep it and route
+  the choice to the owner (session and the Grok Bot routines; the tmux brief
+  has a one-line pointer to the roles.md section to fit its size budget).
 
 Procedures:
 
