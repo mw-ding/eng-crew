@@ -2,7 +2,9 @@
 """Fixture test for scripts/campaign-lint.py (offline, temp dirs only; #1412).
 
 Covers the unhandled-assertion rule (a failed chain before a passing tail, a lone assertion, loop bodies,
-groups and functions, and a dropped call to a function whose return can carry a failure) and what stays allowed (the step's own result, a `VAR=$?` capture, `|| exit`, a `||`
+groups and functions, and a dropped call to a function whose return can carry a failure); the fail-closed
+refusal of constructs it cannot prove (a dropped subshell that can fail, non-brace function bodies, eval, a
+exiting trap, top-level return, an assertion before `|`, a backgrounded assertion, a dropped `|| false`) and what stays allowed (the step's own result, a `VAR=$?` capture, `|| exit`, a `||`
 handler, `&& break`-style control flow, if conditions, quotes, `$()` and here-documents); a step that does not
 parse; the disposition shape; every committed campaign scenario linting clean; and the base/head retention
 check: a deleted case, a case deleted with its disposition and a deleted scenario fail unless retired with a
@@ -51,7 +53,6 @@ class StepLintTest(unittest.TestCase):
         self.bad("f() if true; then test 1 -eq 2; fi; f; echo tail")
         self.bad("f() case x in x) test -e a ;; esac; f; true")
         self.bad("f() if true; then test -e a; echo b; fi; f")
-        self.good("f() if true; then test -e a || exit 1; fi; f; true")
         # #1677 review r3: an `exit` in a subshell ends only the subshell; a bare `return` keeps the failure.
         self.bad("f() (test 1 -eq 2 || exit 1); f; echo tail")
         self.bad("f() { test 1 -eq 2 || return; }; f; echo tail")
@@ -60,7 +61,7 @@ class StepLintTest(unittest.TestCase):
         self.good("(cd d && git status); true")
         self.good("f() { (cd d && make); }; f; true")
         self.good("f() { test 1 -eq 2 || return 0; }; f; true")
-        self.good("f() (test 1 -eq 2 || exit 1); f || exit 1; echo tail")
+        self.good("f() { (test 1 -eq 2 || exit 1); }; f || exit 1; echo tail")
         self.bad("f() { false; }; for x in a; do f; done; true")
         self.good("f() { test 1 -eq 2; }; f")
         self.good("f() { test 1 -eq 2; }; f || exit 1; echo tail")
@@ -84,6 +85,31 @@ class StepLintTest(unittest.TestCase):
         self.good("cat > s.py <<'PY'\nimport os; test = 1 && x\nPY\npython3 s.py <<< \"x\"; test -s s.py")
         self.good("case $x in a) test -e a ;; *) true ;; esac")
         self.good("echo 'a && test 1 = 2; b' # test -e c; true\ntrue")
+
+    def test_unsupported_constructs_fail_closed(self):
+        # #1677 r4 and the coordinator's fail-closed steer: what the lint cannot prove is refused, by name.
+        for src, what in (
+                ("test 1 -eq 2 || (exit 1); echo tail", "subshell"),
+                ("f() { test 1 -eq 2 || (exit 1); }; f; echo tail", None),
+                ("(test -e a || exit 1) | cat", "subshell"),
+                ("f() if true; then test -e a; fi; f", "function f"),
+                ("f() ( test -e a ); f", "function f"),
+                ("eval 'test 1 = 2'; true", "`eval`"),
+                ("trap 'exit 0' EXIT; test 1 = 2", "`trap` whose action exits"),
+                ("test 1 = 2 || return 1", "`return` outside a function"),
+                ("grep -q x f | cat", "before `|`"),
+                ("test -e a &", "backgrounded"),
+                ("test 1 -eq 2 || false; echo tail", None)):
+            found = cl.lint_step(src)
+            self.assertTrue(found, src)
+            if what:
+                self.assertTrue(any(f.startswith("unsupported: ") and what in f for f in found), (src, found))
+        self.good("trap 'kill $L 2>/dev/null' EXIT; test 1 = 1")
+        self.good("test 1 -eq 2 || exit 0; echo tail")  # an explicit swallow, like `|| true`
+        self.good("mk() { (cd d && for e in a; do git add $e || exit 1; done); }; mk x || exit 1; echo tail")
+        self.good("(cd d && test -e a || exit 1)")
+        self.good("test 1 -eq 1 || { echo bad; exit 1; }; echo tail")
+        self.bad("mk() { (cd d && test -e a || exit 1); }; mk x; echo tail")
 
     def test_unparseable_step_refused(self):
         for src in ("echo 'open", "if true; then echo", "echo $(open", "for x in a; do true"):

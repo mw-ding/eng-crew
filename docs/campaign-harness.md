@@ -182,7 +182,12 @@ handled by a `||` after it, nor guarded by a trailing `|| exit 1`. An
 assertion in a loop body must carry its own `|| exit 1`. A call to a
 function defined in the step counts as an assertion when the function's
 return can carry a failure (a nonzero `return`, `false`, or an unguarded
-assertion at its tail); a helper that runs `exit 1` itself ends the step. The runner checks
+assertion at its tail); a helper that runs `exit 1` itself ends the step.
+What the lint cannot prove is refused by name (#1677): a function body
+other than `name() { ...; }`, a subshell holding an assertion, `exit` or
+`return` whose own exit is dropped, `eval`, a `trap` whose action exits,
+`return` outside a function, an assertion before `|` and a backgrounded
+assertion. Restructure such a step into the supported forms. The runner checks
 each step before it runs and `FAIL`s a refused one unrun, and so does a
 step that does not parse. A deliberate refusal keeps its explicit oracle:
 capture the exit with `rc=$?` and assert it in the final chain, or declare

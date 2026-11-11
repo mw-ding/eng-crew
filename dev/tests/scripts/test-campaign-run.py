@@ -250,9 +250,12 @@ class CampaignRunTest(unittest.TestCase):
         self.assertEqual((res["status"], res["events"]), ("FAIL", []), "a dropped failing function call (#1677 review)")
         res = self.one({"name": "fn-if", "run": "f() if true; then test 1 -eq 2; fi; f; echo tail"})
         self.assertEqual((res["status"], res["events"]), ("FAIL", []), "an if-bodied function (#1677 review r2)")
-        for src in ("f() (test 1 -eq 2 || exit 1); f; echo tail", "f() { test 1 -eq 2 || return; }; f; echo tail"):
+        for src in ("f() (test 1 -eq 2 || exit 1); f; echo tail", "f() { test 1 -eq 2 || return; }; f; echo tail",
+                    "test 1 -eq 2 || (exit 1); echo tail", "f() { test 1 -eq 2 || (exit 1); }; f; echo tail"):
             res = self.one({"name": "local-exit", "run": src})
-            self.assertEqual((res["status"], res["events"]), ("FAIL", []), "%s (#1677 review r3)" % src)
+            self.assertEqual((res["status"], res["events"]), ("FAIL", []), "%s (#1677 review r3, r4)" % src)
+        res = self.one({"name": "guarded", "run": "test 1 -eq 1 || exit 1; echo tail"})
+        self.assertEqual(res["status"], "PASS", "the supported `|| exit 1` guard")
 
     def test_explicit_refusal_oracles_still_pass(self):
         capture = "sh -c 'echo no >&2; exit 1' 2> o.txt; rc=$?; cat o.txt; test $rc -eq 1 && grep -qx no o.txt"

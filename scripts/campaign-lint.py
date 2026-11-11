@@ -3,13 +3,20 @@
 
 A `run` step's result is its shell's last exit, so an assertion whose exit is dropped can fail without
 failing the step (A03, A05). This lint parses each step and refuses an unhandled assertion: a `test`, `[`,
-`grep -q` (or `--quiet`/`--silent`) or `!` pipeline whose exit is neither the step's result, nor captured
+`false`, `grep -q` (or `--quiet`/`--silent`) or `!` pipeline whose exit is neither the step's result, nor captured
 by a following `VAR=$?`, nor handled by a `||` after it, nor guarded by a trailing `|| exit`. A
 non-final list item, any item in a loop body and an item in a group whose own exit is dropped all drop
 their exit. A `COND && break` (or continue, return, exit, or an assignment) is control flow, not an
 assertion. A call to a function defined in the step is an assertion when that function's return can carry
 a failure (a nonzero `return`, `false`, or an unguarded assertion at its tail); a helper that runs `exit 1`
 itself ends the step. A step that does not parse is refused too. campaign-run.py refuses such a step at run time.
+
+Fail closed (#1677): a construct whose failure propagation the lint does not prove is refused by name, and
+the step is restructured: a function body other than `name() { ...; }`; a subshell holding an assertion,
+`false`, `exit` or `return` whose own exit is dropped (an `exit` there leaves only the subshell; one whose
+exit reaches the step or function result is allowed and counts as an assertion); `eval`; a `trap` whose
+action exits; `return` outside a function; an assertion before `|`; a backgrounded (`&`) assertion. `|| false`
+and `|| exit 0` are not failure handlers. Nested interpreters (`sh -c`, `python3 -c`) are opaque commands.
 
 A step may carry `"disposition": {"state": "expected-fail" | "accepted", "reason": TEXT}`: a required
 case that fails today and is either waiting for a fix (expected-fail) or accepted as is. The reason is
@@ -151,7 +158,7 @@ class Parser:
     an item is [(pipeline, "&&" | "||" | None)]; a pipeline is {"bang", "cmds"}."""
 
     def __init__(self, src):
-        self.t, self.i = tokens(src), 0
+        self.t, self.i, self.bg = tokens(src), 0, set()
 
     def peek(self):
         return self.t[self.i] if self.i < len(self.t) else (None, None)
@@ -190,6 +197,8 @@ class Parser:
                 self.i += 1
                 self.skip("\n")
             out.append([tuple(x) for x in item])
+            if self.peek() == ("op", "&"):
+                self.bg.add(id(out[-1]))
 
     def pipeline(self, stops):
         bang = self.word("!")
@@ -283,11 +292,8 @@ def _words(pipe):
 
 def is_assertion(pipe, fns=()):
     w = _words(pipe)
-    if pipe["bang"] or (w and (w[0] in ("test", "[") or w[0] in fns)):
+    if pipe["bang"] or (w and (w[0] in ("test", "[", "false") or w[0] in fns)):
         return True
-    c = pipe["cmds"][-1]
-    if c.get("subshell"):
-        return _can_fail(c["body"], fns, ("exit", "return"))
     return bool(w) and w[0] in ("grep", "egrep", "fgrep") and any(
         a in ("--quiet", "--silent") or re.match(r"-[A-Za-z]*q", a) for a in w[1:])
 
@@ -309,23 +315,6 @@ def _pipes(items):
                     yield from _pipes(b)
 
 
-def _can_fail(items, fns, stops):
-    """Whether ITEMS can end their context (a subshell or function) with a failure: an assertion or `false`
-    anywhere, or one of STOPS (`exit`, `return`) that is nonzero, or bare right after `||`, where it keeps the
-    failed status. A bare one after `&&` keeps a success."""
-    for item in items:
-        for n, (p, _) in enumerate(item):
-            w = _words(p) or [""]
-            if is_assertion(p, fns) or w[0] == "false" or (w[0] in stops and (
-                    w[1:2] not in ([], ["0"]) or (not w[1:] and n and item[n - 1][1] == "||"))):
-                return True
-            for c in p["cmds"]:
-                for b in [c["body"]] if c["type"] in ("group", "loop") else c.get("bodies", []):
-                    if _can_fail(b, fns, stops):
-                        return True
-    return False
-
-
 def _tail_fails(items, fns):
     """Whether the exit of ITEMS (a body whose result is kept) can be an assertion's failure."""
     if not items:
@@ -334,8 +323,10 @@ def _tail_fails(items, fns):
     if len(item) > 1 and item[-2][1] == "||" and _exits(item[-1][0]):
         return False
     c = item[-1][0]["cmds"][-1]
+    if c.get("subshell"):
+        return any(_fails(q, fns) for q in _pipes(c["body"]))
     bodies = [c["body"]] if c["type"] == "group" else c["bodies"] if c["type"] == "branch" else []
-    return any(is_assertion(p, fns) for p, _ in item) or any(_tail_fails(b, fns) for b in bodies)
+    return any(op != "||" and is_assertion(p, fns) for p, op in item) or any(_tail_fails(b, fns) for b in bodies)
 
 
 def _returns_failure(items):
@@ -373,10 +364,12 @@ def fallible(items):
 
 
 def _exits(pipe):
+    """Whether PIPE ends the step (or, for `return`, the function) with a failure: a bare or nonzero `exit`
+    or `return`, possibly at the end of a `{ }` group. `false`, `exit 0` and a subshell's `exit` do not."""
     c = pipe["cmds"][-1]
     if c["type"] == "group":
-        return bool(c["body"]) and _exits(c["body"][-1][-1][0])
-    return c["type"] == "simple" and c["words"][:1] in (["exit"], ["false"], ["return"])
+        return not c.get("subshell") and bool(c["body"]) and _exits(c["body"][-1][-1][0])
+    return c["type"] == "simple" and c["words"][:1] in (["exit"], ["return"]) and c["words"][1:2] != ["0"]
 
 
 def _control(item):
@@ -408,7 +401,10 @@ def _lint(items, kept, found, fns):
         for p, _ in item:
             for k, c in enumerate(p["cmds"]):
                 kept_here = ok and k == len(p["cmds"]) - 1
-                if c["type"] == "group":
+                if c.get("subshell") and not kept_here and any(_fails(q, fns) for q in _pipes(c["body"])):
+                    found.append("unsupported: a subshell with an assertion, `false`, `exit` or `return` whose "
+                                 "exit is dropped (its failure stays local); use `{ ...; }`: " + _show(item))
+                elif c["type"] == "group":
                     _lint(c["body"], kept_here, found, fns)
                 elif c["type"] == "branch":
                     for b in c["bodies"]:
@@ -419,12 +415,46 @@ def _lint(items, kept, found, fns):
                     _lint(_wrap(c["body"]), True, found, fns)
 
 
+def _unsupported(items, fns, bg, found, in_func=False):
+    """Constructs whose failure propagation the lint does not model, refused instead (fail closed, #1677)."""
+    for item in items:
+        if id(item) in bg and any(is_assertion(p, fns) for p, _ in item):
+            found.append("unsupported: a backgrounded (`&`) assertion: " + _show(item))
+        for p, _ in item:
+            for k, c in enumerate(p["cmds"]):
+                w = c.get("words") or []
+                cmd = [x for x in w if not ASSIGN.match(x)]
+                if k < len(p["cmds"]) - 1 and is_assertion({"bang": False, "cmds": [c]}, fns):
+                    found.append("unsupported: an assertion before `|` loses its exit: " + _show(item))
+                trap_exit = cmd[:1] == ["trap"] and len(cmd) > 1 and re.search(r"\bexit\b", cmd[1])
+                if cmd[:1] == ["eval"] or trap_exit or (cmd[:1] == ["return"] and not in_func):
+                    found.append("unsupported: `%s`%s: %s" % (cmd[0], {"return": " outside a function", "trap":
+                                                                       " whose action exits"}.get(cmd[0], ""), _show(item)))
+                if c["type"] == "func":
+                    if c["body"]["type"] != "group" or c["body"].get("subshell"):
+                        found.append("unsupported: function %s: only a `%s() { ...; }` body is supported"
+                                     % (c["name"], c["name"]))
+                    _unsupported(_wrap(c["body"]), fns, bg, found, True)
+                    continue
+                for b in [c["body"]] if c["type"] in ("group", "loop") else c.get("bodies", []):
+                    _unsupported(b, fns, bg, found, in_func)
+
+
+def _fails(pipe, fns):
+    w = _words(pipe) or [""]
+    return is_assertion(pipe, fns) or w[0] in ("false", "exit", "return")
+
+
 def lint_step(src):
-    """The unhandled assertions in one step's shell, as short text; raises ValueError if it does not parse."""
+    """Unhandled assertions and unsupported constructs in one step's shell, as short text; raises ValueError
+    if it does not parse."""
     found = []
     try:
-        tree = Parser(src).parse()
-        _lint(tree, True, found, fallible(tree))
+        parser = Parser(src)
+        tree = parser.parse()
+        fns = fallible(tree)
+        _unsupported(tree, fns, parser.bg, found)
+        _lint(tree, True, found, fns)
     except (IndexError, AttributeError) as e:
         raise ValueError("unterminated quote, substitution or here-document (%s)" % type(e).__name__)
     return found
@@ -435,7 +465,8 @@ def step_problems(step):
     out = []
     if "run" in step:
         try:
-            out += ["unhandled assertion (chain it into the step's result or add `|| exit 1`): " + f
+            out += [f if f.startswith("unsupported: ") else
+                    "unhandled assertion (chain it into the step's result or add `|| exit 1`): " + f
                     for f in lint_step(step["run"])]
         except ValueError as e:
             out.append("step does not parse: %s" % e)
