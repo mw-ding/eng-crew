@@ -128,7 +128,9 @@ class ReleaseTriggerTest(unittest.TestCase):
                  (BODY.replace("Release issue: #4", "Release issue: #4 and #5"), "not a same-repository"),
                  (BODY.replace("Refs #4", "Refs #45"), "no `Refs #4`"),
                  (BODY + "Fixes #4\n", "closing keyword names release issue #4"),
-                 (BODY + "closes: https://github.com/owner/repo/issues/4\n", "closing keyword names release issue #4")]
+                 (BODY + "closes: https://github.com/owner/repo/issues/4\n", "closing keyword names release issue #4"),
+                 (BODY + "Closes owner/repo#4\n", "closing keyword names release issue #4"),
+                 (BODY + "resolves Owner/Repo#4\n", "closing keyword names release issue #4")]
         for body, error in cases:
             with self.subTest(body=body), self.assertRaisesRegex(rt.rc.Failed, error) as caught:
                 rt.release_issue(body, "owner/repo")
@@ -136,6 +138,7 @@ class ReleaseTriggerTest(unittest.TestCase):
         with self.assertRaisesRegex(rt.rc.Failed, "closing keyword"):
             rt.release_issue(BODY, "owner/repo", [4])
         self.assertEqual(rt.release_issue(BODY, "owner/repo", [9]), "4")
+        self.assertEqual(rt.release_issue(BODY + "Closes other/repo#4\n", "owner/repo"), "4")
 
     def test_linkage_mode_reads_pr_body(self):
         env = {"GITHUB_REPOSITORY": "owner/repo"}
@@ -145,6 +148,10 @@ class ReleaseTriggerTest(unittest.TestCase):
         with patch.dict(os.environ, dict(env, PR_BODY="Closes #4\n")), contextlib.redirect_stderr(io.StringIO()) as err:
             self.assertEqual(rt.main(["linkage"]), 1)
         self.assertIn("refused: no `Release issue: #N` line", err.getvalue())
+        qualified = BODY + "Closes owner/repo#4\n"
+        with patch.dict(os.environ, dict(env, PR_BODY=qualified)), contextlib.redirect_stderr(io.StringIO()) as err:
+            self.assertEqual(rt.main(["linkage"]), 1)
+        self.assertIn("closing keyword names release issue #4", err.getvalue())
 
     def test_publish_posts_release_url_before_closing_and_failure_leaves_issue_open(self):
         """#1416: the issue closes only after the release exists and its notice posts."""
@@ -256,6 +263,7 @@ class ReleaseTriggerTest(unittest.TestCase):
                      ('pull_request', 'CHANGELOG.md', '', '', BODY, 0, 'version=1.2.3'),
                      ('pull_request', 'CHANGELOG.md', 'v1.2.3', '', BODY, 1, ''),
                      ('pull_request', 'CHANGELOG.md', '', '', 'Closes #4', 1, 'version=1.2.3'),
+                     ('pull_request', 'CHANGELOG.md', '', '', BODY + 'Closes owner/repo#4\n', 1, 'version=1.2.3'),
                      ('pull_request', '', '', '', 'Closes #4', 0, 'simulated=true')]
             for event, diff, tags, version, body, code, expected in cases:
                 with self.subTest(event=event, diff=diff, tags=tags, body=body):

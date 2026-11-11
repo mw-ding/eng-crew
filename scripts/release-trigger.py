@@ -83,7 +83,8 @@ def release_issue(body, repo, closing=()):
     n = m.group(1)
     if not re.search(r"(?<![\w/])Refs #%s\b" % n, body):
         raise rc.Failed("no `Refs #%s`; %s" % (n, LINKAGE_FIX))
-    keyword = r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?):? +(?:#|https://github\.com/%s/issues/)%s\b" % (re.escape(repo), n)
+    keyword = (r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?):? +(?:(?:%s)?#|https://github\.com/%s/issues/)%s\b"
+               % (re.escape(repo), re.escape(repo), n))
     if n in [str(c) for c in closing] or re.search(keyword, body, re.I):
         raise rc.Failed("a closing keyword names release issue #%s, so merge would close it before publish; %s"
                         % (n, LINKAGE_FIX))
