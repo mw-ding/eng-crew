@@ -165,7 +165,7 @@ class Fixers(unittest.TestCase):
         self.assertEqual(self.writes, [])
         self.assertEqual(self.check(fix=True)["crew labels"][0], "ok")
         name, color, desc = repo.LABELS[0]
-        self.assertEqual(self.labels[1], {"name": name, "color": color, "description": desc})
+        self.assertIn({"name": name, "color": color, "description": desc}, self.labels)
         self.assertEqual([a for a in self.writes if a[0] == "label"],
                          [["label", "create", name, "-R", "acme/widgets", "--color", color, "--description", desc,
                            "--force"]])

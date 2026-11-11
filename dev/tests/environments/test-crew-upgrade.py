@@ -240,8 +240,8 @@ class Upgrade(bootstrap_tests.Bootstrap):
         result = self.upgrade("--yes")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("adopted the v2.1.0 install", result.stdout)
-        record = json.loads(self.manifest.read_text())
-        self.assertEqual((record["tag"], record["status"], record["adopted"]), ("v2.1.0", "installed", True))
+        record = json.loads(self.manifest.read_text())  # the upgrade's bootstrap rewrote the adopted record
+        self.assertEqual((record["tag"], record["status"], record["source"]), ("v2.1.0", "installed", str(self.bundle.resolve())))
         self.assertIn("New reviewed rule.", (Path(self.state) / "render/runtime/builder.md").read_text())
         self.assertIn("crew upgrade: no changes", self.upgrade("--yes").stdout)  # no refuse/bootstrap loop
 
