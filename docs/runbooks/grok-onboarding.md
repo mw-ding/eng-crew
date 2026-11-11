@@ -68,8 +68,7 @@ output and the installed version in the wiring doc.
 ### Filled-in wiring.md (derived from the template)
 
 This is what the doc looks like after steps 1 to 6, with placeholders still in
-place for your values. A real, dated one is in
-[../examples/agentconnect/wiring-summary.md](../../examples/agentconnect/wiring-summary.md).
+place for your values.
 
 ````markdown
 # `<owner>/<repo>` wiring: event-driven PR pipeline

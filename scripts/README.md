@@ -679,8 +679,7 @@ templates table known to the renderer, and the parity test keeps every
 placeholder in the real inputs in that table with its profile key.
 
 Parity (`test-render-parity.py`): renders `templates/` from
-`profiles/default.toml`, alone and layered with the
-[agentconnect](../examples/agentconnect/README.md) example values
+`profiles/default.toml`, alone and layered with the parity project values
 (`fixtures/parity/crew.toml`), and diffs each `runtime/*.md` against the
 pre-conversion template text (`fixtures/parity/pre/*.md.txt`) filled in by
 plain string replacement, with trailing whitespace normalized. Any diff fails.

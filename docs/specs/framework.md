@@ -83,7 +83,6 @@ Historical: the bootstrap layout. Current layout: [team.md §4](team.md#4-target
 | `docs/protocol.md` | stage protocol (port of `eng-pr-pipeline`) | B |
 | `docs/roles.md` | roles, tiers, engines, quota routing, worktree rules, worker brief template (port of `eng-crew-roles`) | C |
 | `templates/` | routine/listener prompt templates per role with trigger JSON, `wiring.md` template, reviewer-engine and V2 templates | D |
-| `examples/agentconnect/` | sanitized worked example | D |
 | `docs/runbook-new-repo.md` | onboarding runbook and verification checklist | E |
 | `docs/lessons/` | dated lessons log, starting with `2026-10-19-bottlenecks.md` | F |
 | `CHANGELOG.md`, `CONTRIBUTING.md` | change record and iteration process | F |
