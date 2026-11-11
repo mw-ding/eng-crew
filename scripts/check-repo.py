@@ -8,6 +8,8 @@ complete), no committed evidence directory, union merge for append-only docs
 (`.gitattributes`), markdown lint (check-markdown.py on every tracked *.md
 file), tests per module, and the team spec's dependency rules with the
 runtime-word lint, core memory (layout, size limits, no personal data) and role routines.
+In a git work tree it also warns on stderr, naming them, about non-ignored
+untracked files, which the path checks skip (exit code unchanged).
 Python 3 stdlib only, no network.
 
 Usage: check-repo.py [--root DIR] [--config FILE] [--fix] [--only secrets|docs|links|markers|blockers|shapes|denylist|deliverables|spec-status|design-headers|fragments|script-docs|index|evidence|attributes|markdown|test-layout|deps|memory|routines]...
@@ -1110,6 +1112,11 @@ def main(argv=None):
     if "routines" in checks:
         check_routines(root, fail)
 
+    untracked = git_paths(root, "--others", "--exclude-standard")
+    if untracked:
+        print("check-repo: warning: %d untracked file%s not checked (path checks read `git ls-files`; "
+              "`git add` new files before claiming a pass): %s"
+              % (len(untracked), "" if len(untracked) == 1 else "s", ", ".join(untracked)), file=sys.stderr)
     for f in failures:
         print(f)
     if failures:
