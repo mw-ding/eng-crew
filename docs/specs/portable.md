@@ -569,10 +569,60 @@ One cutover and a major release.
 | 34.2 | #1238 | Getting-started, pack-author and migration guides | 34.1 | open |
 | 34.3 | #1239 | Major release cut with release notes for M29–M34 | 34.1, 34.2 | open |
 
+### M45: recover runs and preserve queue state
+
+Added by its status-sync slice #1670, part of
+[#1644](https://github.com/mw-ding/mdstack/issues/1644). M45 opened before
+the spec bookends (#259) landed, so this section is a one-time amendment
+made at close. Scope comes from
+[Riley's readiness pass](https://github.com/mw-ding/mdstack/issues/1644#issuecomment-6788963909):
+nine builds from ten members, plus two follow-ups. Every row has shipped.
+
+| ID | Issue | Scope | Depends on | Status |
+|---|---|---|---|---|
+| B1 | #1536 | A missing expected CI check never reads as green (PR #1658) | — | done |
+| B2 | #1633 | Wake the lead for a builder idle after an API error (PR #1655) | — | done |
+| B3 | #1639 | Reviewer notify refusal: diagnosis only, caller error, no PR | — | done |
+| B4 | #1020 | Isolate malformed reviewer work refs in the pool and scheduler (PR #1660) | — | done |
+| B5 | #1005 | Count reviewer rounds after the canonical steer resume (PR #1656) | — | done |
+| B6 | #631, #1074 | Select the next eligible engine; quota-stopped runs restart on it (PR #1657) | — | done |
+| B7 | #738 | Refuse Claude Code bypass as root before the worker window (PR #1652) | — | done |
+| B8 | #1480 | tmux `new_session` raises when new-session exits 0 without a session (PR #1650) | — | done |
+| B9 | #1082 | `mdstack up` ensures leads on a running session after the handoff ack (PR #1651) | — | done |
+| F1 | #1654 | Deflake the upgrade lost-PID-file and persistent-watcher tests (PR #1664) | — | done |
+| F2 | #1665 | M44 close capture (PR #1667) | — | done |
+| — | #1003 | Reviewer verdict dedupe: closed as covered by PR #1163 | — | dropped |
+
+Open questions M45 settled:
+
+- **B1's required-check baseline.** The repo has no branch protection or
+  ruleset to read, so the expected set is an explicit profile setting:
+  `markdownlint`, `links` and `repo-guard` required, `lab` optional
+  ([owner decision](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6789266394)).
+- **#1639 was a caller error.** The reviewer passed window index `0` to
+  `action notify --to`, which resolves window names; no socket or lookup
+  defect, so no code PR
+  ([diagnosis](https://github.com/mw-ding/mdstack/issues/1639#issuecomment-6789247738)).
+- **#1003 needed no build.** A current-path reproduction started no
+  duplicate review at the same head and round.
+
+Lessons:
+
+- **Flaky default-branch tests.** A timing-dependent watcher test from
+  #1620 failed main CI once and passed on rerun (#1654); F1 deflaked it.
+  Rerun a flaky job, never waive it, and file the flake as an item.
+- **Environment-dependent bootstrap smoke.** Inherited host probes can fail
+  the bootstrap smoke before its intended assertion (#1668); fixture
+  isolation is a follow-up outside M45.
+
+Merge permission for M45 gate-contract and spec text was the owner's
+[M45–M48 grant](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6789266394).
+M45 closes, and v7.8.0 is cut, after this slice merges.
+
 ### M46: verification exercises the real path
 
 Opened by the spec slice #1669, part of
-[#1645](https://github.com/mw-ding/mdstack/issues/1645). M35–M45 were
+[#1645](https://github.com/mw-ding/mdstack/issues/1645). M35–M44 were
 tracked as GitHub milestones only. Scope comes from
 [Riley's readiness pass](https://github.com/mw-ding/mdstack/issues/1645#issuecomment-6793843567):
 seven survivor items and one follow-up, so that each check runs the path
