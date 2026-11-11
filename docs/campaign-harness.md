@@ -188,7 +188,9 @@ The lint is an allowlist (#1677): simple commands, pipelines and
 ending in an unconditional `exit N`; `if`/`case`; loops; `name() { ...; }`
 functions; subshells with no assertion, `exit` or `return`. Anything else
 is refused by name, including other brace groups, a subshell that can fail,
-a backgrounded compound command or assertion, `eval` and `trap`.
+a backgrounded compound command or assertion, `eval`, `trap` and an
+`exit` in a pipeline. In a condition list only the final item is the
+predicate; an earlier assertion there is refused.
 Restructure such a step into the allowed forms. The runner checks
 each step before it runs and `FAIL`s a refused one unrun, and so does a
 step that does not parse. A deliberate refusal keeps its explicit oracle:

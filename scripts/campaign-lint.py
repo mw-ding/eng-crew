@@ -17,8 +17,10 @@ explicitly nonzero `exit N` (or `return N`); `if`/`case` with allowed branches; 
 (each body assertion carries `|| exit N`); `name() { ...; }` functions under the return analysis above; and
 subshells holding no assertion, `false`, `exit` or `return`. Everything else is refused by name: other brace
 groups, a subshell that can fail, a backgrounded (`&`) assertion or compound command, `eval`, `trap`, `return`
-outside a function, a non-brace function body and an assertion before `|`. `|| false` and `|| exit 0` are not
-failure handlers. Nested interpreters (`sh -c`, `python3 -c`) are opaque commands.
+outside a function, a non-brace function body, an assertion before `|` and an `exit`/`return` (or handler
+group) inside a multi-command pipeline, which runs in a child. In an `if`/`while`/`until` condition only the
+final item is the predicate; an earlier assertion there is dropped and refused. `|| false` and `|| exit 0` are
+not failure handlers. Nested interpreters (`sh -c`, `python3 -c`) are opaque commands.
 
 A step may carry `"disposition": {"state": "expected-fail" | "accepted", "reason": TEXT}`: a required
 case that fails today and is either waiting for a fix (expected-fail) or accepted as is. The reason is
@@ -368,7 +370,10 @@ def fallible(items):
 
 def _exits(pipe):
     """Whether PIPE ends the step (or, for `return`, the function) with a failure: a bare or nonzero `exit`
-    or `return`, or a handler group (`_handler`). `false`, `exit 0` and a subshell's `exit` do not."""
+    or `return`, or a handler group (`_handler`), alone in its pipeline. `false`, `exit 0`, a subshell's
+    `exit` and an `exit` inside a multi-command pipeline (a child) do not."""
+    if len(pipe["cmds"]) != 1:
+        return False
     c = pipe["cmds"][-1]
     if c["type"] == "group":
         return _handler(c)
@@ -419,11 +424,13 @@ def _lint(items, kept, found, fns):
                                  "exit is dropped (its failure stays local); use `{ ...; }`: " + _show(item))
                 elif c["type"] == "group":
                     _lint(c["body"], kept_here, found, fns)
-                elif c["type"] == "branch":
-                    for b in c["bodies"]:
+                elif c["type"] in ("branch", "loop"):
+                    for cond in c.get("conds", []):
+                        _lint(cond, True, found, fns)  # the final item is the predicate; earlier ones drop
+                    for b in c["bodies"] if c["type"] == "branch" else []:
                         _lint(b, kept_here, found, fns)
-                elif c["type"] == "loop":
-                    _lint(c["body"], False, found, fns)
+                    if c["type"] == "loop":
+                        _lint(c["body"], False, found, fns)
                 elif c["type"] == "func":
                     _lint(_wrap(c["body"]), True, found, fns)
 
@@ -444,6 +451,8 @@ def _unsupported(items, fns, bg, found, in_func=False):
                 cmd = [x for x in c.get("words") or [] if not ASSIGN.match(x)]
                 if k < len(p["cmds"]) - 1 and is_assertion({"bang": False, "cmds": [c]}, fns):
                     refuse("an assertion before `|` loses its exit", item)
+                if len(p["cmds"]) > 1 and cmd[:1] in (["exit"], ["return"]):
+                    refuse("`%s` in a pipeline runs in a child and does not end the step" % cmd[0], item)
                 if cmd[:1] in (["eval"], ["trap"]) or (cmd[:1] == ["return"] and not in_func):
                     refuse("`%s`%s" % (cmd[0], " outside a function" if cmd[0] == "return" else ""), item)
                 if c["type"] == "func":
@@ -457,7 +466,7 @@ def _unsupported(items, fns, bg, found, in_func=False):
                     refuse("a subshell with an assertion, `false`, `exit` or `return` (its failure stays local; "
                            "use `git -C`, `cd -` or a plain command)", item)
                 elif c["type"] == "group" and not c.get("subshell") and not (
-                        n and item[n - 1][1] == "||" and k == 0 and _handler(c)):
+                        n and item[n - 1][1] == "||" and len(p["cmds"]) == 1 and _handler(c)):
                     refuse("a brace group other than a `|| { ...; exit N; }` handler", item)
                 for b in ([c["body"]] if c["type"] in ("group", "loop") else c.get("bodies", [])) + c.get("conds", []):
                     _unsupported(b, fns, bg, found, in_func)

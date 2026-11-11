@@ -252,11 +252,13 @@ class CampaignRunTest(unittest.TestCase):
         self.assertEqual((res["status"], res["events"]), ("FAIL", []), "an if-bodied function (#1677 review r2)")
         for src in ("f() (test 1 -eq 2 || exit 1); f; echo tail", "f() { test 1 -eq 2 || return; }; f; echo tail",
                     "test 1 -eq 2 || (exit 1); echo tail", "f() { test 1 -eq 2 || (exit 1); }; f; echo tail",
-                    "test 1 -eq 2 || { true || exit 1; }; echo tail", "{ test 1 -eq 2; } &"):
+                    "test 1 -eq 2 || { true || exit 1; }; echo tail", "{ test 1 -eq 2; } &",
+                    "if test 1 -eq 2; true; then echo tail; fi", "test 1 -eq 2 || true | exit 1; echo tail",
+                    "test 1 -eq 2 || { echo bad; exit 1; } | cat; echo tail"):
             res = self.one({"name": "local-exit", "run": src})
-            self.assertEqual((res["status"], res["events"]), ("FAIL", []), "%s (#1677 review r3-r5)" % src)
+            self.assertEqual((res["status"], res["events"]), ("FAIL", []), "%s (#1677 review r3-r6)" % src)
         for src in ("test 1 -eq 1 || exit 1; echo tail", "test 1 -eq 1 || { echo bad; exit 1; }; echo tail",
-                    "test -e / && echo foreground"):
+                    "test -e / && echo foreground", "if test 1 -eq 2; then echo yes; fi; echo tail"):
             self.assertEqual(self.one({"name": "supported", "run": src})["status"], "PASS", src)
         res = self.one({"name": "handler", "run": "test 1 -eq 2 || { echo bad; exit 1; }; echo tail"})
         self.assertEqual((res["status"], res["steps"][0]["exit"]), ("FAIL", 1), "an unconditional handler fails the step")

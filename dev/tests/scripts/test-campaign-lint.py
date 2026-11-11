@@ -108,6 +108,12 @@ class StepLintTest(unittest.TestCase):
                 ("mk() { (cd d && for e in a; do git add $e || exit 1; done); }; mk x || exit 1", "subshell"),
                 ("(cd d && test -e a || exit 1)", "subshell"),
                 ("if ! { test -e a && test -e b; }; then exit 1; fi", "brace group"),
+                ("test 1 -eq 2 || true | exit 1; echo tail", "pipeline"),
+                ("test 1 -eq 2 || { echo bad; exit 1; } | cat; echo tail", "brace group"),
+                ("f() { test 1 -eq 2 || echo x | return 1; }; f; true", "pipeline"),
+                ("if test 1 -eq 2; true; then echo tail; fi", None),
+                ("while test -e a; true; do break; done; true", None),
+                ("until test -e a; false; do sleep 1; done; true", None),
                 ("test 1 = 2 || return 1", "`return` outside a function"),
                 ("grep -q x f | cat", "before `|`"),
                 ("test -e a &", "backgrounded"),
@@ -122,6 +128,9 @@ class StepLintTest(unittest.TestCase):
         self.good("mk() { git -C d add a || return 1; }; mk x || exit 1; echo tail")
         self.good("sh -c 'sleep 1; exec \"$@\"' sh echo x & wait")
         self.good("test -e / && echo foreground")
+        self.good("if test 1 -eq 2; then echo yes; fi; true")  # the final predicate is control flow
+        self.good("if cd d && test -e a; then echo yes; fi; true")
+        self.good("while ! grep -q done f; do sleep 1; done; true")
         self.good("if git merge x; then false; else test $? -eq 1; fi && echo conflicted")
         self.bad("mk() { (cd d && test -e a || exit 1); }; mk x; echo tail")
 
