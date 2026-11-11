@@ -182,6 +182,9 @@ class CapQueue(SpawnBase):
         with open(os.path.join(retained, "summaries", "issue-7", "build", "summary.md")) as f:
             self.assertEqual(f.read(), "build: ok\n")
         self.assertTrue(os.path.exists(os.path.join(retained, "status.txt")))
+        with open(os.path.join(retained, "run.json")) as f:  # the reclaim identity route matches (#1552)
+            self.assertEqual(json.load(f), {"window": "ben-7", "run": [rec.get(k) for k in (
+                "start", "pane_id", "pane_pid", "pane_start", "worktree")]})
         if TRANSCRIPT:
             print("idle-only: ttl=0 retains builder; ttl=30 reclaims without queued work")
             print("after expiry: builder worktree absent; status, output and build summary retained")

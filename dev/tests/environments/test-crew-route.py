@@ -29,6 +29,12 @@ class Route(SpawnBase):
                     "args = sys.argv[1:]\nopen(%r, 'a').write(json.dumps(args) + '\\n')\n"
                     "pr = json.load(open(%r))\n"
                     "if args[:2] == ['pr', 'view']: print(json.dumps(pr))\n"
+                    "elif args[:2] == ['pr', 'edit'] and 'crew:approved' in args:\n"  # a tag edit lands, except _sticky ones
+                    "    names = [l['name'] for l in pr['labels']]\n"
+                    "    for flag, name in zip(args, args[1:]):\n"
+                    "        if flag == '--add-label' and name not in names: names.append(name)\n"
+                    "        if flag == '--remove-label' and name not in pr.get('_sticky', []): names.remove(name)\n"
+                    "    pr['labels'] = [{'name': n} for n in names]; json.dump(pr, open(%r, 'w'))\n"
                     "elif args[:2] == ['repo', 'view']: print(json.dumps({'defaultBranchRef': {'name': 'main'}}))\n"
                     "elif args[:2] == ['issue', 'view']: print(json.dumps(pr.get('_issue', {'labels': [{'name': 'crew:ready'}], 'state': 'CLOSED', 'stateReason': 'COMPLETED'})))\n"
                     "elif args[:1] == ['api'] and '/files' in args[1]: print(json.dumps(pr.get('_files', [])))\n"
@@ -37,9 +43,11 @@ class Route(SpawnBase):
                     "elif args[:1] == ['api'] and '--paginate' in args: sys.exit(1)\n"
                     "elif args[:1] == ['api'] and '/commits/' in args[1]: print(json.dumps({'parents': pr['_parents']}))\n"
                     "elif args[:1] == ['api'] and '/compare/' in args[1]: print(json.dumps({'status': pr['_comparison']}))\n"
+                    "elif args[:1] == ['api'] and '/issues/' in args[1]: n = args[1].rsplit('/', 1)[1]; "
+                    "item = pr.get('_issues', {}).get(n, {'state': 'open'}); print(json.dumps(item)) if item else sys.exit(1)\n"
                     "elif args[:1] == ['api'] and '-X' not in args: print('{}')\n"
                     "elif args[:2] == ['issue', 'list']: print(json.dumps(pr.get('_open', [])))\n"
-                    "elif args[1:2] == ['list']: print('[]')\n" % (self.gh_log, self.data))
+                    "elif args[1:2] == ['list']: print('[]')\n" % (self.gh_log, self.data, self.data))
         self.transcript = []
 
     def save(self):
@@ -101,6 +109,46 @@ class Route(SpawnBase):
                     events.append(json.load(event_file))
         self.assertEqual([e["event"] for e in events], ["builder-message", "builder-queued"])
         self.assertEqual(self.pending(), [])
+
+    def test_replayed_blocks_for_terminal_or_superseded_items_are_consumed(self):  # #1476
+        old, done = "b" * 40, {"state": "closed"}
+        self.live["_issues"] = {"1316": done, "1322": done, "1363": done, "1400": done, "1427": done,
+                                "1365": dict(done, pull_request={}), "12": {"state": "open", "pull_request": {}},
+                                "7": {"state": "open"}, "999": None}
+        self.live["reviews"] = [self.signed("<!-- crew:v1 role=reviewer-validator pass=verdict pr=12 sha=%s round=2 "
+                                            "verdict=pass -->" % self.sha)]
+        self.save()
+        stale = ["blocked: ben-1316 ben-1322 #1316 #1322 spawn-failure /leads/builder-blocks/a.md",
+                 "blocked: #1363 owner-decision /leads/builder-blocks/b.md",
+                 "blocked: #12 %s vera-12-r1-review done line has trailing text" % old,
+                 "blocked: #12 %s approved but mergeable=CONFLICTING" % old,
+                 "blocked: 20261108T192515Z-7e128c #1365 %s r1 validate spawn failed twice" % self.sha,
+                 "blocked: 20261108T201245Z-4ea3e6 #12 %s r1 review pass; validation held" % self.sha,
+                 "blocked: 20261108T221424Z-ac8e6e #1400 %s scheduler target held at 3" % old,
+                 "blocked: 20261109T031344Z-3d6a98 #1427 %s recheck r4 was not run" % old,
+                 "blocked: #1363 #12 %s closed issue, moved PR" % old]
+        current = ["blocked: 20261110T233207Z-f07dc4 #12 %s r2 review changes; needs coordinator" % self.sha,
+                   "blocked: #7 hold", "blocked: #7 #12 %s issue #7 still needs owner decision" % old, "blocked: main red after #1365 https://example.invalid/run",
+                   "blocked: #999 owner-decision /leads/builder-blocks/c.md"]
+        self.spawn("builder", "--issue", "7")
+        worker = dict(reason="status", window="ben-7", line="blocked: #1363 needs the owner")
+        self.queue(*[dict(reason="status", window="ben-lead", line=line) for line in stale + current], worker)
+        r = self.route()
+        self.assertEqual([w["line"] for w in self.pending()], current + [worker["line"]])
+        self.assertIn("gh api issue #999", self.pending()[4]["route_error"])  # unreadable: kept for reconciliation
+        self.assertEqual(r.stdout.count("terminal or superseded item; consumed"), 9)
+
+    def test_stale_wake_for_a_reclaimed_run_is_consumed(self):  # #1552
+        reclaimed, replacement = [1, "%1", 101, "t1", "/w/ben-7"], [2, "%2", 202, "t2", "/w/ben-7"]
+        self.put("retained/builders/ben-7-100/run.json", json.dumps({"window": "ben-7", "run": reclaimed}))
+        wake = dict(reason="stale", window="ben-7", liveness="missing", silent=1900, action="restart")
+        self.queue(dict(wake, run=reclaimed), dict(wake, run=replacement), dict(wake, liveness="idle", run=reclaimed),
+                   dict(wake, window="ben-8", run=reclaimed))
+        r = self.route()
+        self.assertIn("ben-7 was reclaimed idle; its stale wake is consumed", r.stdout)
+        self.assertEqual([(w["window"], w["liveness"], w["run"]) for w in self.pending()],
+                         [("ben-7", "missing", replacement), ("ben-7", "idle", reclaimed),
+                          ("ben-8", "missing", reclaimed)])
 
     def test_lifecycle(self):
         self.queue(self.event())
@@ -439,6 +487,72 @@ class Route(SpawnBase):
         self.route()
         self.assertEqual(self.pending(), [self.event("review-approved")])
         self.assertEqual(self.land_queue(), [])
+
+    def passed_after_changes(self, *extra, login="acme-reviewer", name="Vera", sha=None):
+        verdict = "<!-- crew:v1 role=reviewer-validator pass=verdict pr=12 sha=%s round=%d verdict=%s -->"
+        self.live.update(labels=[{"name": "crew:changes"}, {"name": "crew:in-review"}], reviews=[
+            self.signed(verdict % ("0" * 40, 1, "changes")),
+            dict(body="<!-- crew:v1 role=builder pass=fix pr=12 sha=%s round=1 verdict=n/a -->" % self.sha),
+            self.signed(verdict % (sha or self.sha, 2, "pass"), login=login, name=name), *extra])
+        self.save()
+
+    def tags(self):
+        with open(self.data) as f:
+            return sorted(label["name"] for label in json.load(f)["labels"])
+
+    def test_passing_verdict_reconciles_superseded_tags_before_land(self):  # #1464
+        self.synthesizer_lead()
+        self.passed_after_changes()
+        self.queue(self.event("review-approved"))
+        self.route()
+        self.assertEqual((self.pending(), self.land_queue()), ([], ["review-approved"]))
+        self.assertEqual(self.tags(), ["crew:approved"])
+        self.assertIn(["pr", "edit", "12", "-R", "acme/widgets", "--add-label", "crew:approved",
+                       "--remove-label", "crew:changes", "--remove-label", "crew:in-review"], self.gh_calls())
+        self.queue(self.event("review-approved"), self.event("ci-passed"))  # a replay edits nothing
+        self.route()
+        self.assertEqual(self.pending(), [])
+        self.assertEqual(sum(c[:2] == ["pr", "edit"] for c in self.gh_calls()), 1)
+        self.assertEqual(self.land_queue(), ["review-approved", "ci-passed"])  # the lead dedupes the replay
+
+    def test_non_live_or_superseded_pass_keeps_the_changes_tag(self):  # #1464
+        self.synthesizer_lead()
+        verdict = "<!-- crew:v1 role=reviewer-validator pass=verdict pr=12 sha=%s round=2 verdict=changes -->"
+        steer = "<!-- crew:v1 role=coordinator pass=steer pr=12 sha=%s round=2 verdict=n/a cmd=rereview cmd-id=r1 -->"
+        for case, kw, extra in (
+                ("foreign runtime", dict(name="Rex"), ()), ("other login", dict(login="someone"), ()),
+                ("stale head", dict(sha="f" * 40), ()),
+                ("later changes verdict", {}, (self.signed(verdict % self.sha),)),
+                ("formal changes request", {}, (dict(self.signed("Needs work."), state="CHANGES_REQUESTED"),)),
+                ("open rereview", {}, (dict(body=steer % self.sha),)),
+                ("foreign verdict after rereview", {}, (dict(body=steer % self.sha),
+                                                         self.signed(verdict.replace("changes", "pass") % self.sha,
+                                                                     name="Rex")))):
+            with self.subTest(case=case):
+                self.passed_after_changes(*extra, **kw)
+                self.queue(self.event("review-approved"))
+                self.route()
+                self.assertEqual(self.tags(), ["crew:changes", "crew:in-review"])
+        self.assertFalse(any(c[:2] == ["pr", "edit"] for c in self.gh_calls()))
+        self.passed_after_changes()
+        self.live["labels"].append({"name": "crew:hold"})
+        self.save()
+        self.put("wake/queue.jsonl", "")
+        self.queue(self.event("review-approved"))
+        self.route()  # a hold keeps the event for the coordinator and its tags
+        self.assertEqual(self.pending(), [self.event("review-approved")])
+        self.assertEqual(self.tags(), ["crew:changes", "crew:hold", "crew:in-review"])
+
+    def test_failed_tag_readback_never_forwards_land_work(self):  # #1464
+        self.synthesizer_lead()
+        self.passed_after_changes()
+        self.live["_sticky"] = ["crew:changes"]
+        self.save()
+        self.queue(self.event("review-approved"))
+        self.route()
+        self.assertEqual(self.land_queue(), [])
+        [left] = self.pending()
+        self.assertIn("tag readback after approval: crew:approved,crew:changes", left["route_error"])
 
     def test_synthesizer_lead_status_wakes_coordinator_only_for_exceptions(self):  # #1569
         self.synthesizer_lead()
