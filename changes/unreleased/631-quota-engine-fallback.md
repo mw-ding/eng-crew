@@ -1,7 +1,7 @@
 ---
 type: fixed
 issue: 631
-pr: TBD
+pr: 1657
 date: 2026-11-10
 box-skill: pending the coordinator's mirror of templates/runtimes/tmux/builder-lead.md
 ---
