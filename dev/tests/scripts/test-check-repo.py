@@ -12,7 +12,8 @@ Covers: bad fixtures per pattern, a good fixture,
 fence/link/section/file-selection cases, denylist hit/miss/unset with a temp
 denylist, deliverables match/unclassified/double match/bad row/missing manifest
 in temp git repos and the current tree, spec-status valid/empty/unknown/missing
-cell/no Status column/fenced/no tables and the current tree, fragments
+cell/no Status column/fenced/no tables and the current tree, design-headers
+open/closed/unknown/allowlisted/stale allowlist and the current tree (#259), fragments
 valid/`pr: TBD`/each malformed case with its line and the current tree,
 script-docs (#325) each kind with and without its docstring or `Usage:` line,
 an unparsable file and the current tree, `--help` printing the `Usage:` line
@@ -391,6 +392,41 @@ with tempfile.TemporaryDirectory() as d:
 
 rc, out = run(os.path.dirname(SCRIPTS), "--only", "spec-status")
 expect("spec-status: the current tree passes", rc == 0, out)
+
+# Design headers (#259): a '(design)' or 'in design' H1 names an open spec milestone.
+DESIGN_SPEC = (SPEC_HEAD + "| ID | Issue | Status |\n|---|---|---|\n| 1.1 | #11 | done |\n| 1.2 | #12 | open |\n"
+               "\n### M2: later\n\n| ID | Issue | Status |\n|---|---|---|\n| 2.1 | #21 | done |\n| 2.2 | #22 | dropped |\n"
+               + SPEC_TAIL)
+ALLOW = "scripts/design-headers.txt"
+
+for label, files, want in [
+    ("open milestone via banner issue passes", {"docs/a.md": "# A (design)\n\n> - **Built:** #11\n\nBody.\n"}, 0),
+    ("closed milestone fails", {"docs/a.md": "# A (design)\n\n> - **Built:** #21, #22\n"}, 1),
+    ("closed milestone by name fails", {"docs/a.md": "# A in design (M2)\n"}, 1),
+    ("open milestone by name passes", {"docs/a.md": "# A (design, M1)\n"}, 0),
+    ("first known reference decides", {"docs/a.md": "# A (design)\n\n> #999 then #21 then #12\n"}, 1),
+    ("no reference is unknown and fails", {"docs/a.md": "# A (design)\n\nBody names #12.\n"}, 1),
+    ("unknown issue only fails", {"docs/a.md": "# A (design)\n\n> #999\n"}, 1),
+    ("plain header is ignored", {"docs/a.md": "# A\n\n> #21\n", "docs/b.md": "# B\n\n## Part (design)\n"}, 0),
+    ("changes/ and dev/ are skipped", {"changes/unreleased/x.md": "# X (design)\n", "dev/y.md": "# Y (design)\n"}, 0),
+    ("allowlisted doc passes", {"docs/a.md": "# A (design)\n\n> #21\n", ALLOW: "# c\n\ndocs/a.md\tkept on purpose\n"}, 0),
+    ("allowlist entry without reason fails", {"docs/a.md": "# A (design)\n\n> #21\n", ALLOW: "docs/a.md\n"}, 1),
+    ("stale allowlist entry fails", {"docs/a.md": "# A\n", ALLOW: "docs/a.md\tno longer design\n"}, 1),
+]:
+    with tempfile.TemporaryDirectory() as d:
+        write(d, "docs/specs/portable.md", DESIGN_SPEC)
+        for rel, text in files.items():
+            write(d, rel, text)
+        rc, out = run(d, "--only", "design-headers")
+        expect("design-headers: " + label, out.count("[design-headers]") == want and rc == (1 if want else 0), out)
+
+with tempfile.TemporaryDirectory() as d:
+    write(d, "docs/a.md", "# A (design)\n")
+    rc, out = run(d, "--only", "design-headers")
+    expect("design-headers: spec absent is skipped", rc == 0, out)
+
+rc, out = run(os.path.dirname(SCRIPTS), "--only", "design-headers")
+expect("design-headers: the current tree passes", rc == 0, out)
 
 # CHANGELOG fragments (#264): every file under changes/ is a valid fragment.
 FRAG = "---\ntype: added\nissue: 7\npr: 9\ndate: 2026-10-31\nbox-skill: none\n---\n\nA change,\nwrapped.\n"

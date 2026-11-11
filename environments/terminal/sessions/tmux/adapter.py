@@ -59,6 +59,8 @@ def new_session(name, window, cwd, env, command, private_env=None):
     r = tmux(*args, "sleep 60" if private_env else command)
     if r.returncode:
         raise RuntimeError("tmux new-session failed: " + r.stderr.strip())
+    if not has_session(name):  # tmux can print `error creating …` and still exit 0, so a caller never runs sessionless (#1480)
+        raise RuntimeError("tmux new-session failed: no session %s after exit 0: %s" % (name, r.stderr.strip()))
     pin_layout(name)
     tmux("move-window", "-s", "=" + name, "-t", "=%s:0" % name)  # window 0 even with a user base-index
     if private_env:

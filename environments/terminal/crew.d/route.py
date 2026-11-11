@@ -630,7 +630,7 @@ def route_record(args, values, state, w):
             with open(os.path.join(state, "runs", w["window"] + ".json"), "w") as f:
                 json.dump(rec, f, indent=2)
         own = own_view(values, pr)
-        snapshot = commands()["poll"].pr_snapshot(own, values)
+        snapshot = commands()["poll"].pr_snapshot(own, values=values)
         pending = open_rereview(pr, head)
         if not pending and not delta and approved_merge_up(own, repo, values["repo.default_branch"]):
             return True
@@ -641,7 +641,7 @@ def route_record(args, values, state, w):
         if rec:
             reap(args, w["window"], state)
         return False  # findings stay queued, with their section files retained for the builder
-    round_ = rec["args"]["round"] if rec else w.get("round", commands()["poll"].pr_snapshot(own_view(values, pr), values)["round"])
+    round_ = rec["args"]["round"] if rec else w.get("round", commands()["poll"].pr_snapshot(own_view(values, pr), values=values)["round"])
     if terminal and done and getattr(args, "reviewer_lead", False):
         steer = rereview_id(pr, head)
         if steer and rec.get("rereview_id") != steer:

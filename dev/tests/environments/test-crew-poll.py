@@ -102,6 +102,31 @@ class PollDecide(unittest.TestCase):
         self.assertEqual(self.only("prs-pending.json", "prs-ci-failed.json"),
                          [("ci-failed", "builder", ["#171", HEAD])])
 
+    def test_missing_expected_check_never_reads_green(self):  # #1536
+        required = ("markdownlint", "links", "repo-guard")
+        green = fixture("prs-ci-passed.json")
+        partial = json.loads(json.dumps(green))
+        partial[0]["statusCheckRollup"] = [c for c in green[0]["statusCheckRollup"] if c["name"] == "links"]
+        _, before = self.crew.decide({}, fixture("prs-pending.json"), [], required=required)
+        events, state = self.crew.decide(before, partial, [], required=required)
+        self.assertEqual((events, state["prs"]["171"]["ci"]), ([], "pending"))
+        self.assertEqual(self.crew.missing_checks(partial[0]["statusCheckRollup"], required), ["markdownlint", "repo-guard"])
+        self.assertEqual(self.crew.decide(before, partial, [])[1]["prs"]["171"]["ci"], "passed")  # no baseline: legacy
+        events, _ = self.crew.decide(state, green, [], required=required)  # late registration completes the set
+        self.assertEqual([(e["event"], e["refs"]) for e in events], [("ci-passed", ["#171", HEAD])])
+        optional = json.loads(json.dumps(green))  # a check outside the baseline (lab) stays optional
+        optional[0]["statusCheckRollup"].append({"__typename": "CheckRun", "name": "lab", "status": "COMPLETED",
+                                                  "conclusion": "SKIPPED"})
+        self.assertEqual(self.crew.pr_snapshot(optional[0], required)["ci"], "passed")
+        self.assertEqual(self.crew.pr_snapshot(green[0], required + ("lab",))["ci"], "pending")
+        partial[0]["statusCheckRollup"][0]["conclusion"] = "FAILURE"
+        self.assertEqual(self.crew.pr_snapshot(partial[0], required)["ci"], "failed")
+        context = {"headRefOid": HEAD, "reviews": [], "statusCheckRollup": [
+            {"__typename": "StatusContext", "context": "repo-guard", "state": "SUCCESS"}]}
+        self.assertEqual(self.crew.pr_snapshot(context, ("repo-guard",))["ci"], "passed")
+        self.assertEqual(self.crew.required_checks({"ci.required_checks": list(required)}), required)
+        self.assertEqual(self.crew.required_checks({}), ())
+
     def test_zero_step_failure_emits_infra_once_and_never_green(self):
         prs = fixture("prs-ci-failed.json")
         for check in prs[0]["statusCheckRollup"]:

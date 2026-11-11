@@ -352,6 +352,9 @@ Incoming coordinator, in order:
    Otherwise post `acked`, and retry until it is posted. Then, before any
    dispatch, apply the holds planned in step 3 (`crew:hold` with a
    coordinator note), so no diverged set is adopted with the others.
+   On tmux, then run `mdstack up` again: before the ack it started
+   only window 0 and refused the leads, and now that this runtime owns
+   the repo it starts each enabled lead that is missing (#1082).
 7. **Lift holds.** Remove `crew:hold` from the `holds_added` items only
    once the outgoing runtime has posted `stopped`, or the owner confirms
    its wake sources are gone, or its guard reads the record (the
@@ -424,7 +427,8 @@ before its ack:
 Both checklists, stop and return, are in the Grok Bot
 [wiring template](../templates/runtimes/grok-bot/wiring.md#handoff-stop-and-return).
 
-A tmux incoming runtime starts with `mdstack up`. Its `mdstack poll` first run
+A tmux incoming runtime starts with `mdstack up`, and runs it again after
+its ack and holds (step 6) to start its leads. Its `mdstack poll` first run
 records a baseline and emits nothing, so the reconcile is its sweep; the
 coordinator re-creates `asks/<n>.json` for each owner ask in the manifest
 so the deadline wakes fire.

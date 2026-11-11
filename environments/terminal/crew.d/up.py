@@ -331,7 +331,7 @@ def run(args):
         return 1
     if tmux.has_session(session):
         print("crew: %s already running; attach with: %s" % (session, attach_hint(session)))
-        return 0
+        return start_roles(args, values, state)
     try:
         notes = role_notes(values, state, "coordinator")
     except RuntimeError as e:
@@ -359,6 +359,13 @@ def run(args):
         return 1
     reconcile(state)
     watcher(args, state)
+    return start_roles(args, values, state)
+
+
+def start_roles(args, values, state):
+    """Ensure the enabled leads and each lifecycle role's min, also when the session already runs: the mdstack up an
+    incoming tmux runtime runs after its handoff ack starts the leads that ownership refused before it (#1082).
+    lead.ensure keeps its ownership gate and is a no-op for a live lead; the floors count running instances."""
     roles = "none" if args.coordinator_only else launch(values, "roles")
     if roles != "tmux":
         print("crew: launch.roles = %s; started no role windows" % roles)

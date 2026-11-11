@@ -213,7 +213,10 @@ pure text moves may be larger). Child issues say "Part of #110" and never
 close the umbrella. Project board:
 <https://github.com/users/md-mt/projects/10>. **Status** is the issue's
 state: `open`, `done` or `dropped` (closed without landing); CI checks every
-row has one (`check-repo.py --only spec-status`).
+row has one (`check-repo.py --only spec-status`). A doc whose H1 says
+"(design)" or "in design" names, in that H1 or its banner, an issue or
+milestone here that is still open, or is listed with a reason in
+`scripts/design-headers.txt` (`check-repo.py --only design-headers`).
 
 **Superseded plan (v0.4).** The M15–M21 tables below are the v0.3 plan
 and keep their v0.3 Status values; they are not re-synced here. M22–M28

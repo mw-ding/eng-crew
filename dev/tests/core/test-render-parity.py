@@ -432,6 +432,31 @@ class Parity(unittest.TestCase):
         self.assertIn("## Target environment (verified on <YYYY-MM-DD>)", spec)
         self.assertIn("## Owner prerequisites", spec)
 
+    def test_coordinator_spec_bookends(self):  # #259
+        with tempfile.TemporaryDirectory() as tmp:
+            for runtime, brief in (("tmux", "coordinator.md"), ("grok-bot", "wiring.md"), ("session", "coordinator.md")):
+                with self.subTest(runtime=runtime):
+                    project = os.path.join(tmp, "crew.toml")
+                    with open(project, "w") as f:
+                        f.write('[runtime]\nname = "%s"\n' % runtime)
+                    out = os.path.join(tmp, "out-" + runtime)
+                    code, output = render(project, INPUTS, out)
+                    self.assertEqual(code, 0, output)
+                    with open(os.path.join(out, "runtime", brief)) as f:
+                        text = " ".join(f.read().split())
+                    for rule in ("Spec bookends (roles.md): a milestone opens with its spec slice",
+                                 "its other items wait for that to merge.",
+                                 "It closes with a status-sync slice:",
+                                 "every landed or superseded item closed.",
+                                 "The milestone closes after that merges."):
+                        self.assertIn(rule, text)
+        with open(os.path.join(ROOT, "docs", "roles.md"), encoding="utf-8") as f:
+            roles = " ".join(f.read().split())
+        for rule in ("**Spec bookends (#259).** Every milestone opens with a spec slice",
+                     "The milestone closes only after that slice merges.",
+                     "This adds no merge permission"):
+            self.assertIn(rule, roles)
+
     def test_tmux_lone_land_contract(self):
         with tempfile.TemporaryDirectory() as tmp:
             with open(os.path.join(TESTS, "core", "fixtures", "parity", "lone-land.json")) as f:

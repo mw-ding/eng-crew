@@ -42,3 +42,6 @@ through a reviewed memory PR (`docs/memory.md`).
 - Express is an available item flavor, used only when the owner names it
   for an item or milestone; items default to the project flavor
   (standard) (#985 c6777665345).
+- Grok Bot work is deprioritized: nothing Grok Bot-specific is admitted or
+  dispatched until the owner asks; this install sets `mirror = "none"` (#985
+  c6787615719).

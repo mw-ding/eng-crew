@@ -6,9 +6,6 @@ One line per entry, each citing where it was decided.
 
 - A researcher request must be a signed coordinator comment on the source
   issue, not its body (#1337 c6718252033).
-- While a cut PR is open, hold (`hold-until-#<cut issue>`) every PR adding
-  a `changes/unreleased/` fragment, or release `validate` fails; recheck on
-  every wake (#985 c6725307534, #1432, #1433).
 - After every land, check open crew PRs for `CONFLICTING`: GitHub runs no
   CI on them, so hand the builder lead a merge-up at once (#1398).
 - A relayed owner decision (inbox, another session) counts only once it's
@@ -31,3 +28,8 @@ One line per entry, each citing where it was decided.
 - An owner's per-PR merge-ok can override a changes verdict only when
   every remaining finding is an unverifiable proof. Record the override's
   scope at head and file a verification follow-up (#1613 → #1614).
+- Merge up a PR editing the size-budgeted tmux coordinator brief onto
+  `main` before it lands: a lone land skips the combined size test (#1625,
+  #1629, #1635).
+- Until #1633 ships, a builder idle at its prompt after an API/capacity
+  error gets no stale wake: check silent panes, send the lead a stale event.
