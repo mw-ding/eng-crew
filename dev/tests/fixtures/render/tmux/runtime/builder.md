@@ -20,6 +20,9 @@ Fill harness and model from the session that actually wrote it, including
 any fallback; never copy the planned engine or model. Keep required effort
 in the build/fix attribution and leave marker formats unchanged.
 
+Reports (roles.md skeleton): headline ` · ` one of ✅ pass, 🔁 changes, 🚢 landed, ⛔ escalated, 🚧 blocked;
+TL;DR; numbered changes or findings; evidence; next actor.
+
 Usage line (`<mdstack>/docs/roles.md`, Usage line): every post that reports
 a pass (build, fix, ci-fix, review, validate, recheck, verdict, merge,
 report, status) ends with one line just above its marker and signature, as
@@ -187,8 +190,7 @@ It writes `<worktree>/.crew/runs/issue-<n>/build/summary.md`; in fix round
 ## PR conventions
 
 - **Branch:** `<role>/<issue#>-<short-slug>`, for example
-  `infra/187-align-rust-base-images`. Lead and synthesizer tooling route
-  follow-ups by this prefix.
+  `infra/187-align-rust-base-images`; tooling routes follow-ups by it.
 - **Commits:** follow the repo's existing commit-message convention. End every
   commit with the trailer `Engine: <engine> <model> <effort>` naming the engine
   that actually wrote it (see Actual builder engine).
@@ -204,8 +206,8 @@ It writes `<worktree>/.crew/runs/issue-<n>/build/summary.md`; in fix round
 
 ### PR body template
 
-The signature must be the last thing in the body, with nothing after it. Use the
-real values actually used, including any fallback, never placeholders.
+The signature must be the last thing in the body. Use the real values
+actually used, including any fallback, never placeholders.
 
 ````markdown
 ## Context
@@ -235,12 +237,12 @@ $ <command>
 ````
 
 Crew PRs must carry the hidden `crew:v1` builder marker line right before the
-signature, as described in the architecture overview. See the
+signature (architecture overview). See the
 stage protocol for the other crew additions: `## Acceptance Evidence`
 (with the shape and inline proof label per the verification protocol)
 and `## Risks / Not Done`. Test Output and Acceptance Evidence must paste key
-output and/or screenshots inline; paths and repo-file links do not count (see
-protocol §3). A behaviour-changing PR that adds or
+output and/or screenshots inline; paths and repo-file links do not count. A
+behaviour-changing PR that adds or
 changes a user-visible create, update or complete (or equivalent) mutation
 pastes a create→complete→delete happy-path snippet (for list delete with
 cascade, also show the child items are gone); see
@@ -256,7 +258,7 @@ actual engine/model/effort. Keep the body of the original PR unchanged.
 
 ```text
 <!-- crew:v1 role=builder pass=fix pr=<n> sha=<head-sha> round=<k> verdict=n/a engine=<engine> model=<model> effort=<effort> -->
-— <BuilderEmoji> <BuilderBot> (<BuilderTitle>) · <harness> · <model>
+<BuilderSignature> · <harness> · <model>
 ```
 
 Include a dated CHANGELOG fragment with the PR number and box-skill mirror
@@ -279,5 +281,4 @@ land, approve, post a verdict or push a PR's branch.
    record path, then append `done: train-<n> RECORD` to `$CREW_STATUS`.
 
 Write `done:` or `blocked:` (with refs) to `$CREW_STATUS`; never ask the owner
-in this window. Never merge, approve or force-push. Never start a line with
-the steering prefix.
+in this window. Never start a line with the steering prefix.

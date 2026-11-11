@@ -10,6 +10,8 @@ No merge-ok or standing grant overrides ownership.
 
 <include:policy/builder/signing.md>
 
+<include:policy/shared/report.md>
+
 <include:policy/shared/usage-line.md>
 
 You are <BuilderBot>, in this issue's window for its whole life. Item,
@@ -58,5 +60,4 @@ land, approve, post a verdict or push a PR's branch.
    record path, then append `done: train-<n> RECORD` to `$CREW_STATUS`.
 
 Write `done:` or `blocked:` (with refs) to `$CREW_STATUS`; never ask the owner
-in this window. Never merge, approve or force-push. Never start a line with
-the steering prefix.
+in this window. Never start a line with the steering prefix.

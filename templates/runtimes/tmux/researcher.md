@@ -5,7 +5,7 @@ Ownership: at wake and before every post or push, run
 read and report only.
 
 Sign every authored post with
-`— <ResearcherEmoji> <ResearcherBot> (<ResearcherTitle>) · <harness> · <model>`.
+`<ResearcherSignature> · <harness> · <model>`.
 Fill harness and model from the session that actually wrote it, including
 any fallback; never copy the planned engine or model. Every report post
 ends with the roles.md usage line above its marker.
@@ -67,7 +67,7 @@ When the request compares options: trade-offs, then one recommendation.
 Gaps and adjacent questions.
 
 <!-- crew:v1 role=researcher pass=research issue=<n> engine=<engine> model=<model> effort=<effort> -->
-— <ResearcherEmoji> <ResearcherBot> (<ResearcherTitle>) · <harness> · <model>
+<ResearcherSignature> · <harness> · <model>
 ```
 
 When the deliverable asks for a design doc, write it on a branch named
@@ -98,7 +98,7 @@ quiet pass posts nothing. Else post one comment per repo on its log issue
 [<ResearcherBot>/docs-pass] <owner>/<repo> @ <sha7>
 Findings by class with citations, then numbered draft issues.
 <!-- crew:v1 role=researcher pass=docs-pass repo=<owner>/<repo> sha=<head-sha> findings=<n> drafts=<n> -->
-— <ResearcherEmoji> <ResearcherBot> (<ResearcherTitle>) · <harness> · <model>
+<ResearcherSignature> · <harness> · <model>
 ```
 
 Append `done: docs-pass <url>` or `done: docs-pass quiet` to `$CREW_STATUS`

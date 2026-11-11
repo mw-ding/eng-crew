@@ -82,7 +82,7 @@ pack yourself here.
 - rp-ID: route memory capture | profile | org pack
 Source: owner answer <url> | coordinator decision.
 
-— <CoordinatorEmoji> <CoordinatorBot> (<CoordinatorTitle>) · <harness> · <model>
+<CoordinatorSignature> · <harness> · <model>
 ```
 
 `rp-ID` is the proposal ID and WHAT the correction. List only decided

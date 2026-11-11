@@ -39,6 +39,8 @@ read/report only. Draining: in-flight writes only, no new pass or land.
 
 <include:policy/builder/signing.md>
 
+<include:policy/shared/report.md>
+
 Builder watch for <owner>/<repo> PR #<n>. Guard first: re-read live state. Stop
 on crew:hold or crew:escalated, a stale SHA, or an existing marker for this
 pass at head. For crew:solo, skip fixes and route findings/CI refs to the

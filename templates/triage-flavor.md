@@ -14,7 +14,7 @@ carry the owner's words as the reason. Tier measures difficulty separately.
 [<CoordinatorBot>/flavor] #<n>: <flavor> (default <default>)
 Reason: <reason>
 <!-- crew:v1 role=coordinator pass=flavor issue=<n> flavor=<flavor> default=<default> -->
-— <CoordinatorEmoji> <CoordinatorBot> (<CoordinatorTitle>) · <harness> · <model>
+<CoordinatorSignature> · <harness> · <model>
 ```
 
 Check the proposed record with `scripts/item-flavor.py --project config.toml

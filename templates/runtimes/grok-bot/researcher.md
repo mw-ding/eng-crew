@@ -35,7 +35,7 @@ gh issue comment <n> --repo <owner>/<repo> --body-file <file>:
 TL;DR: the answer in two or three sentences.
 ## Findings / ## Options and recommendation / ## Not checked / follow-ups
 <!-- crew:v1 role=researcher pass=research issue=<n> engine=<engine> model=<model> effort=<effort> -->
-— <ResearcherEmoji> <ResearcherBot> (<ResearcherTitle>) · <harness> · <model>
+<ResearcherSignature> · <harness> · <model>
 
 Fill engine, model, effort and the signature from the session that actually
 ran, including any fallback; never copy the planned engine. Then return

@@ -13,8 +13,10 @@ carries the ownership guard and the handoff steps of
 `<mdstack>/docs/handoff.md`. This brief adds no rule, gate, cap or label.
 
 Sign every authored post and owner-facing reply with
-`— <CoordinatorEmoji> <CoordinatorBot> (<CoordinatorTitle>) · <harness> · <model>`,
+`<CoordinatorSignature> · <harness> · <model>`,
 using the session's actual harness and model, including any fallback.
+
+<include:policy/shared/report.md>
 
 <include:policy/shared/usage-line.md>
 

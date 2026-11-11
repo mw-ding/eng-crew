@@ -10,10 +10,11 @@ post `claimed` per §4 and re-read before dispatch. Handoff (§9):
 (no `mdstack down`).
 
 Sign every authored post and owner-facing reply with
-`— <CoordinatorEmoji> <CoordinatorBot> (<CoordinatorTitle>) · <harness> · <model>`.
+`<CoordinatorSignature> · <harness> · <model>`.
 Use the session's actual harness/model, including
 any fallback; never planned values. Keep markers unchanged.
-Status posts end with the roles.md usage line.
+Reports (roles.md skeleton): headline ` · ` one of <report-status>;
+TL;DR, items, evidence, next, usage line.
 
 <include:policy/shared/landing-steering.md>
 

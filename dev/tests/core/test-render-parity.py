@@ -58,11 +58,16 @@ DEFAULT_VALUES = {
     "ReviewerTitle": "Reviewer-validator", "ReviewerEmoji": "🔎",
     "SynthesizerTitle": "Synthesizer", "SynthesizerEmoji": "🔀",
     "ResearcherBot": "Riley", "ResearcherTitle": "Researcher", "ResearcherEmoji": "🔬",
+    "CoordinatorSignature": "— 🔥 Ash (CTO)", "BuilderSignature": "— 🛠️ Builder (Builder)",
+    "ReviewerSignature": "— 🔎 Reviewer (Reviewer-validator)", "SynthesizerSignature": "— 🔀 Synthesizer (Synthesizer)",
+    "ResearcherSignature": "— 🔬 Riley (Researcher)",
+    "report-status": "✅ pass, 🔁 changes, 🚢 landed, ⛔ escalated, 🚧 blocked",
 }
 EXAMPLE_VALUES = dict(DEFAULT_VALUES, **{
     "owner": "mw-ding", "repo": "agentconnect", "author-login": "mw-ding", "reviewer-login": "md-mt",
     "user-logins": 'mw-ding", "md-mt', "CoordinatorBot": "Ash", "BuilderBot": "Ben", "ReviewerBot": "Vera",
-    "SynthesizerBot": "Sam",
+    "SynthesizerBot": "Sam", "BuilderSignature": "— 🛠️ Ben (Builder)",
+    "ReviewerSignature": "— 🔎 Vera (Reviewer-validator)", "SynthesizerSignature": "— 🔀 Sam (Synthesizer)",
 })
 TOKEN = re.compile(r"<([^<>\s!/=-][^<>\n]*)>")
 
@@ -496,6 +501,40 @@ class Parity(unittest.TestCase):
                         expected_text = expected_text.replace("<" + key + ">", value)
             with open(os.path.join(tmp, "runtime", "reviewer.md")) as f:
                 self.assertEqual(normalize(f.read()), normalize(expected_text))
+
+    def test_role_briefs_keep_markers_and_carry_the_report_headline(self):  # #431 AC3, #1291
+        """Every builder, reviewer, synthesizer and coordinator brief carries the report-skeleton headline rule, and
+        emoji off, a team and custom statuses change no crew:v1 marker line and no line outside signatures/status."""
+        marker = re.compile(r"<!-- crew:v1 [^\n]*-->")
+        roles = ("builder", "reviewer", "synthesizer", "coordinator")
+        with tempfile.TemporaryDirectory() as tmp:
+            for runtime in ("tmux", "grok-bot", "session"):
+                briefs = {}
+                for mode, extra in (("plain", ""), ("custom", '\n[identities]\nteam = "md"\n\n[report]\nemoji = false\n'
+                                                              'status = { pass = "P" }\n')):
+                    project = os.path.join(tmp, "%s-%s.toml" % (runtime, mode))
+                    with open(project, "w") as f:
+                        f.write('[runtime]\nname = "%s"\n%s' % (runtime, extra))
+                    out = os.path.join(tmp, "out", runtime, mode)
+                    code, output = render(project, INPUTS, out)
+                    self.assertEqual(code, 0, output)
+                    for name in os.listdir(os.path.join(out, "runtime")):
+                        if name.startswith(roles) and "-lead" not in name and name.endswith(".md"):
+                            with open(os.path.join(out, "runtime", name), encoding="utf-8") as f:
+                                briefs.setdefault(name, {})[mode] = f.read()
+                self.assertTrue(briefs, runtime)
+                briefs = {name: text for name, text in briefs.items() if "Sign every" in text["plain"]}
+                self.assertTrue(briefs, runtime)
+                for name, text in briefs.items():
+                    with self.subTest(runtime=runtime, brief=name):
+                        self.assertIn("roles.md skeleton", text["plain"])
+                        self.assertEqual(marker.findall(text["custom"]), marker.findall(text["plain"]))
+                        if "one of ✅ pass" in text["plain"]:
+                            self.assertIn("one of pass, changes, landed, escalated, blocked;", text["custom"])
+                        for plain, custom in zip(text["plain"].splitlines(), text["custom"].splitlines()):
+                            if plain != custom:
+                                self.assertRegex(plain, r"^`?— \S+ \S+ \([^)]*\) · <harness>|one of ✅ pass", (plain, custom))
+                                self.assertRegex(custom, r"^`?— \S+ \([^)]*\) · md · <harness>|one of pass", (plain, custom))
 
     def test_seeded_one_word_drift_fails(self):
         tmp = tempfile.mkdtemp()

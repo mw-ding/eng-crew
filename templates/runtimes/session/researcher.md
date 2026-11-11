@@ -7,7 +7,7 @@ read and report only.
 
 <control-item:end>
 Sign every authored post with
-`— <ResearcherEmoji> <ResearcherBot> (<ResearcherTitle>) · <harness> · <model>`.
+`<ResearcherSignature> · <harness> · <model>`.
 Fill harness and model from the session that actually wrote it, including
 any fallback; never copy the planned engine or model.
 
