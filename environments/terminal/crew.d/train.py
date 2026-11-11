@@ -1036,14 +1036,18 @@ def train_land(args, values, state, repo, slug):
         if checks.returncode not in (0, 1, 8):
             raise RuntimeError(checks.stderr.strip())
         try:
-            buckets = {c["bucket"] for c in json.loads(checks.stdout or "[]")}
+            observed = json.loads(checks.stdout or "[]")
+            buckets = {c["bucket"] for c in observed}
         except ValueError:
             raise RuntimeError("train CI UNKNOWN: invalid API JSON")
+        missing = poll.missing_checks(observed, poll.required_checks(values))
         if buckets & {"fail", "cancel"}:
             rec["ci"] = "fail"
             why = "train CI red"
         elif not buckets or "pending" in buckets:
             raise RuntimeError("train CI UNKNOWN or pending")
+        elif missing:  # the live baseline at land, even one set after the build (#1536)
+            raise RuntimeError("train CI UNKNOWN or pending; missing " + ", ".join(missing))
         cur = fetch(repo, main)
         if fetch(repo, rec["branch"]) != rec["sha"]:
             why = "train branch moved"

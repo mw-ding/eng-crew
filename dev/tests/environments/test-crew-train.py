@@ -412,6 +412,20 @@ class Build(TrainBase):
         r = self.train("build", "2", "--timeout", "30")
         self.assertIn("ci=fail", r.stdout)
 
+    def test_land_rereads_the_expected_checks_and_merges_nothing_while_one_is_absent(self):  # #1536
+        self.pr(1, {"b.txt": "one\n"})
+        self.pr(2, {"c.txt": "two\n"})
+        self.assertEqual(self.train("build", "1", "2").returncode, 0)  # built green with no baseline yet
+        self.require("ci", "lint", "repo-guard")  # the baseline set after the build still governs the land
+        before = self.remote("refs/heads/main")
+        r = self.train("land", "1", "1")
+        self.assertIn("paused pr=1 reason=train CI UNKNOWN or pending; missing repo-guard", r.stdout)
+        self.assertEqual((self.gh_calls("pr", "merge"), self.remote("refs/heads/main")), ([], before))
+        self.checks(PASS + [{"name": "repo-guard", "bucket": "pass", "link": LINK + "/job/9"}])
+        r = self.train("land", "1", "1")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("landed pr=1", r.stdout)
+
     def test_red_ci_or_local_failure_lands_nothing(self):
         self.pr(1, {"b.txt": "one\n"})
         self.checks(FAIL)
