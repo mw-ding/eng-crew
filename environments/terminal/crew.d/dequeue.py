@@ -35,6 +35,8 @@ def reclaim(values, session, state, windows, expired=False):
         shutil.copy2(status, os.path.join(retained, "status.txt"))
         with open(os.path.join(retained, "output.txt"), "w") as f:
             f.write(tmux.capture(session, windows[name]))
+        with open(os.path.join(retained, "run.json"), "w") as f:  # route consumes this run's later stale wake (#1552)
+            json.dump({"window": name, "run": commands()["watch"].run_identity(rec)}, f)
         summaries = os.path.join(rec["worktree"], ".crew", "runs")
         if os.path.isdir(summaries):
             shutil.copytree(summaries, os.path.join(retained, "summaries"), dirs_exist_ok=True)
@@ -95,7 +97,7 @@ def run(args, role=None):
     rc = spawn(argparse.Namespace(role=pick["role"], issue=pick["issue"], pr=pick["pr"], sweep=pick.get("sweep", False),
                                     docs_pass=pick.get("docs_pass", False), train=pick.get("train"), pass_=None if pick.get("train") else pick["pass"],
                                     **{k: (pick.get("reflection") or {}).get(f) for k, f in REFLECTION},
-                                    head=pick.get("head"), round=pick["round"], tier=pick["tier"],
+                                    head=pick.get("head"), rereview_id=pick.get("rereview_id"), round=pick["round"], tier=pick["tier"],
                                     host=pick.get("host"), reason=pick.get("override_reason"),
                                     timeout=getattr(args, "timeout", 15.0),
                                     project=args.project, org_profile=args.org_profile, messages=pick.get("messages", [])))

@@ -148,6 +148,16 @@ Prior art: the owner-communication etiquette of
 persona and forms of address removed; no text is copied. Decision:
 [#160, row 14](https://github.com/mw-ding/eng-crew/issues/160#issuecomment-6532191486).
 
+## Grant references in posts
+
+A coordinator or synthesizer post that relies on a standing grant (the
+profile's `merge_grant`, a release delegation or another recorded owner
+grant) links the recorded decision that holds it, for example the decision
+comment `merge_grant` names. It never restates the permission in its own
+words, such as "the owner granted merge on these PRs": the grant stays in one
+place and posts point to it. With no recorded grant (`merge_grant = "none"`),
+the post cites the per-PR owner merge-ok at head instead (#314).
+
 ## Roles
 
 Pick the role by the area the change lives in.

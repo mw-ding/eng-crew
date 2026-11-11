@@ -3,7 +3,7 @@ Solo-labelled items skip builder build/fix/CI/merge-up handoffs. The synthesizer
 long-lived lander itself: its durable inbox is the land queue, and route hands it approval, self-gate, green-CI and
 approved merge-up events.
 
-Usage: mdstack lead ensure|suites|handoff|report ROLE [KIND REF...] --project FILE
+Usage: mdstack lead ensure|suites|handoff|report ROLE [KIND REF...] [--id ID] --project FILE
 """
 import argparse
 import json
@@ -157,12 +157,37 @@ def pending(state, name):
         return [m for m in map(json.loads, f) if m["id"] not in done]
 
 
-def retry_pending(args, name=None):
+def deferred_ids(state, name):
+    """Handoff ids the lead acknowledged and then reported as an admission deferral (`deferred: ... id=<id>`)."""
+    status = os.path.join(state, "status", name + ".status")
+    acked, found = set(), set()
+    if os.path.exists(status):
+        with open(status) as f:
+            for line in f:
+                words = line.split()
+                if line.startswith("ack: ") and len(words) > 1:
+                    acked.add(words[1])
+                elif line.startswith("deferred: ") and words[-1].startswith("id="):
+                    found |= {words[-1][3:]} & acked
+    return found
+
+
+def retry_pending(args, name=None, recheck=False):
+    """Nudge each lead with its first pending message. On the 60-second backstop (`recheck`), acknowledged deferred
+    handoffs are nudged only when a scheduler walk (writing only target progression) would admit their ref now (#1502); slot releases and
+    other callers nudge them as before."""
     _, session, state = profile(args)
     for worker, rec in records(state):
         if name is not None and worker != name:
             continue
         messages = pending(state, worker)
+        if messages and recheck:
+            deferred = deferred_ids(state, worker)
+            waiting = [m for m in messages if m["id"] in deferred]
+            messages = [m for m in messages if m["id"] not in deferred]
+            if not messages and waiting:
+                admit = commands()["schedule"].admissible(args, rec["role"].removesuffix("-lead"))
+                messages = [m for m in waiting if "#%s" % m["refs"][0].lstrip("#") in admit]
         if messages:
             if ensure(args, rec["role"].removesuffix("-lead")):
                 raise RuntimeError("crew: cannot retry lead " + worker)
@@ -206,7 +231,8 @@ def report(args):
     name = values["identities.builder.name"].lower() + "-lead"
     os.makedirs(os.path.join(state, "status"), exist_ok=True)
     with open(os.path.join(state, "status", name + ".status"), "a") as out:
-        out.write("%s: %s %s %s\n" % ("deferred" if deferred else "blocked", " ".join(refs), reason, path))
+        out.write("%s: %s %s %s%s\n" % ("deferred" if deferred else "blocked", " ".join(refs), reason, path,
+                                       " id=" + args.id if deferred and args.id else ""))
     if deferred:
         print("crew: admission deferred locally: %s %s" % (reason, " ".join(refs)))
         return 0
@@ -245,6 +271,7 @@ def register(sub):
     p.add_argument("--timeout", type=float, default=15)
     p.add_argument("--wait-ack", type=float)
     p.add_argument("--detail", default="", help="report: observed admission inputs or actionable block details")
+    p.add_argument("--id", help="report: the deferred handoff's inbox id; its 60 s backstop nudge then waits for admission")
     p.add_argument("--project")
     p.add_argument("--org-profile")
 

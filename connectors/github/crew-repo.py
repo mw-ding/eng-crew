@@ -1,8 +1,8 @@
 """GitHub repository prerequisite checks and fixers for doctor and bootstrap (docs/bootstrap.md Q6).
 
 Read-only unless fix=True; dry_run prints shell-quoted operations without executing them. Uses the profile's builder
-identity without switching gh accounts. Only the ten runbook crew labels are managed; mismatches need this repo's
-install.json and extra crew labels always block. Milestone names are explicit; closed milestones stay frozen.
+identity without switching gh accounts. Only the runbook crew labels are managed; --fix canonicalizes a runbook label's
+color and description, and extra crew labels always block. Milestone names are explicit; closed milestones stay frozen.
 Project Status options are replaced only on an empty board. The board is recommended, not required: an identity that
 cannot create one under the repo owner gets a human step naming the owner's commands. Invitations are sent, never accepted. CI and branch
 protection remain human steps. No product labels, workflows, webhooks or repository settings are changed.
@@ -41,9 +41,7 @@ class Repo:
         self.repo = self.owner + "/" + self.name
         self.base = "repos/" + self.repo
         self.reviewer = values["identities.reviewer.gh_user"]
-        self.state = os.path.join(os.path.abspath(values["paths.state_dir"]), self.owner + "__" + self.name)
         self.fix, self.dry_run, self.milestone = fix, dry_run, milestone
-        self.runtime = values["runtime.name"]
         self.env = dict(os.environ)
         token = self.call("auth", "token", "--user", values["identities.builder.gh_user"], decode=False)
         self.env["GH_TOKEN"] = token.strip()
@@ -73,18 +71,13 @@ class Repo:
 
     def labels(self):
         want = {n: (c.lower(), d) for n, c, d in LABELS}
-        record = os.path.join(self.state, "install.json")
-        owned = False
-        if os.path.isfile(record):
-            with open(record) as f:
-                install = json.load(f)
-            owned = isinstance(install, dict) and install.get("runtime") == self.runtime and bool(install.get("tag"))
-        # Re-read the entire namespace before each operation, so a late collision stops further writes.
+        # Re-read the entire namespace before each operation, so a late collision stops further writes. A runbook
+        # label with another color or description is canonicalized, owned or not (#1616); only extra names collide.
         changed = False
         for name, color, desc in LABELS:
             have = {x["name"]: (x["color"].lower(), x.get("description") or "")
                     for x in self.items(self.base + "/labels") if x["name"].startswith("crew:")}
-            if set(have) - set(want) or (not owned and any(have[n] != want[n] for n in have)):
+            if set(have) - set(want):
                 return "fail", "crew namespace collision", "human: decide who owns crew:*; no labels changed after detection"
             if have.get(name) == want[name]:
                 continue

@@ -9,11 +9,6 @@ One line per entry, each citing where it was decided.
 - While a cut PR is open, hold (`hold-until-#<cut issue>`) every PR adding
   a `changes/unreleased/` fragment, or release `validate` fails; recheck on
   every wake (#985 c6725307534, #1432, #1433).
-- Until #1559 ships, route eats a cut's `pr-merged`: after a cut lands,
-  check the release, close its milestone, run the capture, admit the next.
-- Until #1593 or #1569 ships, after the synthesizer finishes a land,
-  re-send any land request it still held; route may reap it with
-  acknowledged lands open (#1593).
 - After every land, check open crew PRs for `CONFLICTING`: GitHub runs no
   CI on them, so hand the builder lead a merge-up at once (#1398).
 - A relayed owner decision (inbox, another session) counts only once it's
@@ -33,3 +28,6 @@ One line per entry, each citing where it was decided.
 - A sandboxing launcher needs `runtime.options.sandbox_env` in every role
   window at launch: fix the profile, relaunch leads, respawn window 0 in
   place (#1544 c6757280891).
+- An owner's per-PR merge-ok can override a changes verdict only when
+  every remaining finding is an unverifiable proof. Record the override's
+  scope at head and file a verification follow-up (#1613 → #1614).

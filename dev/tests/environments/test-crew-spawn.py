@@ -321,6 +321,21 @@ class Spawn(SpawnBase):
             self.assertTrue(os.path.isfile(rec["claim"]))
         self.assertEqual(self.spawn("reviewer", "--pr", "9", "--pass", "validate").returncode, 1)  # same run
 
+    def test_rereview_id_on_the_record_from_creation(self):  # #1477
+        sha = self.pr(9, "claude-code opus-5.5 default")
+        r = self.spawn("reviewer", "--pr", "9", "--head", sha, "--rereview-id", "42")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual((self.record("vera-9-r1-review")["rereview_id"], self.record("vera-9-r1-review")["head"]),
+                         ("42", sha))
+        for args in [("reviewer", "--pr", "9", "--pass", "validate", "--rereview-id", "42"),
+                     ("builder", "--issue", "7", "--head", sha, "--rereview-id", "42")]:
+            r = self.spawn(*args)
+            self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
+            self.assertIn("--rereview-id is reviewer-only and needs --pr and --head", r.stdout)
+        r = self.spawn("reviewer", "--pr", "9", "--pass", "validate", "--head", "0" * 40, "--rereview-id", "42")
+        self.assertIn("stale spawn", r.stdout)  # a moved head never inherits the steer
+        self.assertFalse(os.path.exists(os.path.join(self.state, "runs", "vera-9-r1-validate.json")))
+
     def test_started_run_ends_its_own_reservation(self):  # #1050: a reaped run's grant must not count again
         path = os.path.join(self.state, "schedule", "reservations.json")
         os.makedirs(os.path.dirname(path), exist_ok=True)

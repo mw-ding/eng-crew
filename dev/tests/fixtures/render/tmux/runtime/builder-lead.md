@@ -31,8 +31,9 @@ Never delete a referenced event or finding while work remains pending.
   grant. Restart a dead/missing train worker once, as in Liveness; on a
   second failure send `$CREW_BIN send SYNTH train-failed train-<n> DELEGATION --project "$CREW_PROJECT"`,
   SYNTH being the delegation record's `synthesizer` window.
-- Fix/CI handoff: reuse the issue's builder and send its original refs with
-  `$CREW_BIN send WINDOW fix REF... --project "$CREW_PROJECT"` (or `ci-red`).
+- Fix/CI/merge-up handoff: reuse the issue's builder and send its original refs with
+  `$CREW_BIN send WINDOW fix REF... --project "$CREW_PROJECT"` (or `ci-red`, or
+  `merge-up` for route's conflict handoff).
   If its worker is absent, restart only a dead/missing recorded run; otherwise
   spawn the adopted PR's fix pass. Never deliver an older-head fix.
 - Admission: run `$CREW_BIN schedule decide --pool builder --project "$CREW_PROJECT"`
@@ -45,8 +46,8 @@ Never delete a referenced event or finding while work remains pending.
   Never start a `deferred` or `holds` item; holds belong to the reviewer
   lead. Idle `done:` builders without running tools never count as busy.
   For each new deferral, run
-  `$CREW_BIN lead report builder REASON REF... --detail "observed inputs" --project "$CREW_PROJECT"`
-  with REASON `capacity`, `load`, `suites` or `probe-unavailable`: `capacity`
+  `$CREW_BIN lead report builder REASON REF... --id ID --detail "observed inputs" --project "$CREW_PROJECT"`,
+  ID being the deferred handoff's inbox id, with REASON `capacity`, `load`, `suites` or `probe-unavailable`: `capacity`
   for `cap`, `target` or `ramp`, `load` for `max_load`, `suites` for
   `max_suites` and `probe-unavailable` for an `-unreadable` input.
   This writes `leads/builder-admission.md` and `deferred:` in the lead status.

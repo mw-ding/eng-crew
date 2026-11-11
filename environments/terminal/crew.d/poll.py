@@ -18,6 +18,8 @@ scan also lists the project repo's milestones closed since its baseline under `m
 (milestone-close sweep, triage.md T6, #374). A non-GitHub tracker backend is read through its `tracker.list-items`
 binding, once per `triage.trackers` id (`<tracker>`), and has no milestone list. `--triage-only` runs one triage scan
 and nothing else, on a tmux or session profile, so a hosted routine can refresh the queue before a sweep (#1404).
+An open crew PR whose head turns `CONFLICTING` (UNKNOWN is no conflict) emits one `pr-conflicting` per head and
+conflict, so route hands the builder a merge-up without waiting for CI GitHub never runs on it (#1398).
 Each crew PR whose ready sample (head, CI, verdict, mergeable, hold) changed is one line in
 `metrics/observations.jsonl` with the poll's time and the previous poll's, its sampling bound (self-improve.md, #1524).
 
@@ -145,6 +147,13 @@ def decide(prev, prs, issues, merge_ups=None, express=()):
                 emit("new-head", "#" + n, cur["head"], round=cur["round"])
         elif old.get("express") and not lane:  # lane fallback: the suppressed head now needs normal review
             emit("new-head", "#" + n, cur["head"], round=cur["round"])
+        live = pr.get("mergeable")  # UNKNOWN is no conflict and keeps the head's last known value (#1398)
+        known = live if live in ("MERGEABLE", "CONFLICTING") else \
+            old.get("mergeable") if old.get("head") == cur["head"] else None
+        if known:
+            state["prs"][n]["mergeable"] = known
+        if live == "CONFLICTING" and (cur["head"], live) != (old.get("head"), old.get("mergeable")):
+            emit("pr-conflicting", "#" + n, cur["head"])  # GitHub runs no PR CI on a conflicting head
         if cur["ci"] in ("passed", "failed", "infra") and (cur["head"], cur["ci"]) != (old.get("head"), old.get("ci")) \
                 and not (lane and cur["ci"] == "passed" and not gate):
             emit("ci-" + cur["ci"], "#" + n, cur["head"])

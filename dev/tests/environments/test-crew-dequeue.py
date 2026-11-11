@@ -182,6 +182,9 @@ class CapQueue(SpawnBase):
         with open(os.path.join(retained, "summaries", "issue-7", "build", "summary.md")) as f:
             self.assertEqual(f.read(), "build: ok\n")
         self.assertTrue(os.path.exists(os.path.join(retained, "status.txt")))
+        with open(os.path.join(retained, "run.json")) as f:  # the reclaim identity route matches (#1552)
+            self.assertEqual(json.load(f), {"window": "ben-7", "run": [rec.get(k) for k in (
+                "start", "pane_id", "pane_pid", "pane_start", "worktree")]})
         if TRANSCRIPT:
             print("idle-only: ttl=0 retains builder; ttl=30 reclaims without queued work")
             print("after expiry: builder worktree absent; status, output and build summary retained")
@@ -205,6 +208,18 @@ class CapQueue(SpawnBase):
         self.assertEqual(self.crew("kill", "vera-5-r1-review", "--project", self.project).returncode, 0)
         self.assertEqual(self.record("vera-4-r1-review")["index"], 20)
         self.assertEqual([e["issue"] for e in self.queue()], [9])
+
+    def test_queued_reviewer_keeps_its_rereview_id_through_dequeue(self):  # #1477
+        for pr in ["5", "6"]:
+            self.spawn("reviewer", "--pr", pr, "--head", self.pr(int(pr), "claude-code opus-5.5 v" + pr))
+        sha = self.pr(4, "claude-code opus-5.5 v4")
+        r = self.spawn("reviewer", "--pr", "4", "--head", sha, "--rereview-id", "42")
+        self.assertTrue(r.stdout.startswith("queued: reviewer review PR #4"), r.stdout)
+        self.assertEqual([(e["pr"], e["head"], e["rereview_id"]) for e in self.queue()], [(4, sha, "42")])
+        self.assertEqual(self.crew("kill", "vera-5-r1-review", "--project", self.project).returncode, 0)
+        self.assertEqual((self.record("vera-4-r1-review")["rereview_id"], self.record("vera-4-r1-review")["head"]),
+                         ("42", sha))
+        self.assertEqual(self.queue(), [])
 
     def test_kill_dequeues_only_the_freed_band(self):
         for issue in ("7", "8", "9"):

@@ -345,6 +345,40 @@ class BuilderLead(LivenessBase):
         if TRANSCRIPT:
             print("deferral backstop: retry at 60 s, again at 120 s; completed request stops retries")
 
+    def backstop(self, status, admit=(), recheck=True):
+        """One lead retry with `status` as the lead status and `admit` as the scheduler walk; (nudged ids, walks)."""
+        self.put("status/ben-lead.status", status)
+        before = len(self.calls())
+        with mock.patch.dict(os.environ, self.env), mock.patch.object(
+                self.mod.commands()["schedule"], "admissible", return_value=set(admit)) as walk:
+            self.lead.retry_pending(self.args, "ben-lead", recheck=recheck)
+        nudged = [a[len("inbox: "):] for c in self.calls()[before:] if c[0] == "send-keys"
+                  for a in c if a.startswith("inbox: ")]
+        return nudged, [c.args[1] for c in walk.call_args_list]
+
+    def test_acknowledged_deferral_backstop_waits_for_admission(self):  # #1502
+        self.assertEqual(self.ensure(), 0)
+        self.put("inbox/ben-lead.jsonl", json.dumps(dict(id="d1", kind="build", refs=["#8"])) + "\n")
+        deferred = "ack: d1\ndeferred: #8 capacity /s/leads/builder-admission.md id=d1\n"
+        for _ in range(10):  # ten unchanged capacity deferrals on the 60 s backstop: no inbox typing
+            self.assertEqual(self.backstop(deferred), ([], ["builder"]))
+        self.assertEqual(self.backstop(deferred, admit={"#9"}), ([], ["builder"]))
+        self.assertEqual(self.backstop(deferred, admit={"#8"}), (["d1"], ["builder"]))  # slot or load freed
+        self.assertEqual(self.backstop(deferred, recheck=False), (["d1"], []))  # slot release still nudges
+        self.assertEqual(self.lead.pending(self.state, "ben-lead")[0]["id"], "d1")  # demand stays pending
+        if TRANSCRIPT:
+            print("acked capacity deferral: 10 backstops nudged 0; admissible #8 nudged d1; slot release nudged d1")
+
+    def test_unacknowledged_or_other_id_deferral_keeps_normal_retry(self):  # #1502
+        self.assertEqual(self.ensure(), 0)
+        self.put("inbox/ben-lead.jsonl", "".join(json.dumps(dict(id=i, kind="build", refs=["#8"])) + "\n"
+                                                 for i in ("d1", "d2")))
+        self.assertEqual(self.backstop("deferred: #8 capacity /p id=d1\n"), (["d1"], []))  # never acked
+        self.assertEqual(self.backstop("ack: d1\ndeferred: #8 capacity /p\n"), (["d1"], []))  # no id recorded
+        self.assertEqual(self.backstop("ack: d0\ndeferred: #8 capacity /p id=d0\n"), (["d1"], []))  # old handoff
+        self.assertEqual(self.backstop("ack: d1\ndeferred: #8 capacity /p id=d1\n"), (["d2"], []))  # d2 undelivered
+        self.assertEqual(self.backstop("ack: d1\ndeferred: #8 capacity /p id=d1\ndone: d2\n"), ([], ["builder"]))
+
     def test_idle_lead_is_not_stale_until_work_is_pending(self):  # #578
         self.assertEqual(self.ensure(), 0)
         now = 2_000_000_000
@@ -470,6 +504,15 @@ class BuilderReports(SendBase):
         self.assertEqual([c for c in self.calls() if c[0] == "send-keys"], [])
         if TRANSCRIPT:
             print("lead status: 4 deferred entries; coordinator inbox absent; nudges=0")
+
+    def test_deferral_records_the_handoff_id(self):  # #1502
+        result = self.crew("lead", "report", "builder", "capacity", "#8", "--id", "d1", "--detail", "cap 10/10",
+                           "--project", self.project, CREW_ID="ben-lead")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        with open(os.path.join(self.state, "status", "ben-lead.status")) as f:
+            self.assertEqual(f.read(), "deferred: #8 capacity %s id=d1\n"
+                             % os.path.join(self.state, "leads", "builder-admission.md"))
+        self.assertEqual([c for c in self.calls() if c[0] == "send-keys"], [])
 
     def test_real_blocks_notify_once_across_fresh_processes(self):
         for reason in ("spawn-failure", "missing-dependency", "owner-decision", "lead-fault"):
