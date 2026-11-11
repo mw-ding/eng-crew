@@ -51,13 +51,18 @@ def check(root, rel):
         return None, []
     except (OSError, UnicodeError) as e:
         return None, [(rel, 1, "memory-read", "cannot read (%s)" % e)]
+    return text, check_text(rel, text)
+
+
+def check_text(rel, text):
+    """Problems in one memory file's text: its size limit and personal data."""
     limit = LIMITS["owner" if rel == OWNER else "role"]
     size = len(text.encode("utf-8"))
     problems = [(rel, 1, "memory-size", "%d bytes, over the %d-byte limit; curate it down" % (size, limit))] \
         if size > limit else []
     for n, line in enumerate(text.splitlines(), 1):
         problems += [(rel, n, "memory-personal", "%s: %s" % (kind, ROUTE)) for kind, rx in PERSONAL if rx.search(line)]
-    return text, problems
+    return problems
 
 
 def lint(root):
