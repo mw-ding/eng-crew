@@ -20,8 +20,10 @@ import os
 import shlex
 import shutil
 import subprocess
+import threading
 import time
 import unittest
+from unittest import mock
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # dev/tests/: crew_testlib
 from crew_testlib import CREW, KillLandedBase, LivenessBase, SECRET, SpawnBase
@@ -1182,6 +1184,82 @@ class RemoteRun(KillLandedBase):  # #345: spawn, kill, restart, down and status 
             self.assertEqual(json.load(f)["unlanded"], ["uncommitted: ?? wip.txt"])
         os.remove(os.path.join(self.state, "wake", "queue.jsonl"))
         self.assertEqual([w["reason"] for w in self.wakes("--backstop", "2")], ["backstop"])  # stopped once
+
+class FetchIsolation(SpawnBase):
+    """#1367, #1584: each fetch resolves its own result in a private ref; shared FETCH_HEAD and origin/* stay put."""
+
+    def setUp(self):
+        super().setUp()
+        loader = importlib.machinery.SourceFileLoader("crew_cli", CREW)
+        mod = importlib.util.module_from_spec(importlib.util.spec_from_loader("crew_cli", loader))
+        loader.exec_module(mod)
+        self.fetch = mod.commands()["spawn"].fetch
+        self.main = self.git("rev-parse", "origin/main")
+        self.git("commit", "-q", "--allow-empty", "-m", "moved main")
+        self.git("push", "-q", "origin", "HEAD:main")
+        self.moved = self.git("rev-parse", "HEAD")
+        self.git("update-ref", "refs/remotes/origin/main", self.main)  # the shared tracking ref, left stale
+        self.head = self.pr(5, "claude-code sonnet low")
+
+    def private_refs(self):
+        return self.git("for-each-ref", "refs/crew/fetch/")
+
+    def racing(self, fetch_git):
+        """Fetch PR #5 and main at once; both fetches finish before either resolves its result (barrier)."""
+        barrier, got = threading.Barrier(2, timeout=30), {}
+
+        def gated(repo, *args):
+            out = fetch_git(repo, *args)
+            if args[0] == "fetch":
+                barrier.wait()
+            return out
+
+        def run(ref):
+            got[ref] = self.fetch(self.project_dir, ref)
+        with mock.patch.dict(self.fetch.__globals__, git=gated):
+            threads = [threading.Thread(target=run, args=(ref,)) for ref in ("pull/5/head", "main")]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+        return got
+
+    def test_concurrent_pr_and_main_fetches_return_their_own_commits(self):
+        for _ in range(3):
+            self.assertEqual(self.racing(self.fetch.__globals__["git"]), {"pull/5/head": self.head, "main": self.moved})
+        self.assertEqual(self.private_refs(), "")
+        self.assertEqual(self.git("rev-parse", "refs/remotes/origin/main"), self.main)  # no shared ref update
+        self.assertFalse(os.path.exists(os.path.join(self.project_dir, ".git", "FETCH_HEAD")))
+
+    def test_negative_control_shared_fetch_head_returns_the_other_commit(self):
+        """The pre-fix helper (fetch, then read FETCH_HEAD) under the same barrier: one caller gets the other's SHA."""
+        real = self.fetch.__globals__["git"]
+
+        def shared(repo, *args):
+            if args[0] == "fetch":
+                return real(repo, "fetch", "-q", "origin", args[-1].lstrip("+").split(":")[0])
+            if args[0] == "rev-parse":
+                return real(repo, "rev-parse", "FETCH_HEAD")
+            return real(repo, *args)
+        got = self.racing(shared)
+        self.assertEqual(len(set(got.values())), 1, got)  # both read the last FETCH_HEAD written
+        self.assertNotEqual(got, {"pull/5/head": self.head, "main": self.moved})
+
+    def test_fetch_failure_still_fails_and_leaves_no_private_ref(self):
+        with self.assertRaisesRegex(RuntimeError, "crew: git fetch failed"):
+            self.fetch(self.project_dir, "pull/404/head")
+        self.assertEqual(self.private_refs(), "")
+
+    def test_changed_pr_head_still_refuses_a_stale_spawn(self):
+        r = self.spawn("reviewer", "--pr", "5", "--head", "0" * 40)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("crew: stale spawn: expected %s, live head %s" % ("0" * 40, self.head), r.stdout)
+        self.assertEqual(self.windows(), [])
+        r = self.spawn("reviewer", "--pr", "5", "--head", self.head)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.private_refs(), "")
+        self.assertEqual(self.git("rev-parse", "refs/remotes/origin/main"), self.main)
+
 
 if __name__ == "__main__":
     unittest.main()

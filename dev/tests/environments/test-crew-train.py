@@ -1120,6 +1120,14 @@ class Land(TrainBase):
         self.assertEqual([c["args"] for c in self.gh_calls("pr", "close")], [["pr", "close", "900", "-R", "acme/widgets"]])
         self.assertEqual(self.remote("refs/heads/crew/train-1"), "")
         self.assertIn("train 1 is closed; nothing landed", self.train("land", "1", "3").stdout)
+        with open(self.git_log) as f:  # #1367, #1584: fetches between lands isolate their results
+            fetches = [line.split() for line in f if line.split()[2:3] == ["fetch"]]
+        self.assertTrue(fetches)
+        for args in fetches:
+            self.assertIn("--no-write-fetch-head", args)
+            self.assertIn("--refmap=", args)
+            self.assertTrue(args[-1].split(":")[-1].startswith("refs/crew/fetch/"), args)
+        self.assertEqual(self.git("for-each-ref", "refs/crew/fetch/"), "")
 
     def test_merge_record_names_only_used_profile_deferral(self):
         self.built(1)
