@@ -60,6 +60,8 @@ Runtime state lives under `<state-dir>/<owner>__<repo>/`, never only in a pane:
 | `wake/queue.jsonl` | Durable wake queue the coordinator drains each turn (`mdstack drain`) |
 | `wake/queue.lock` | Lock held around each queue append and `mdstack drain`'s rename |
 | `wake/watcher.pid` | PID of the armed watcher; the turn-end guard reads it |
+| `wake/watcher.lock` | Held (flock) by the one live watcher for its whole life, re-execs included (#399) |
+| `wake/watcher.log` | Output of the persistent watcher `mdstack up` starts (#1346) |
 | `poll-state.json` | Last GitHub state seen by `mdstack poll` |
 | `claims/` | Claim files per [protocol §6](../protocol.md#6-duties-on-wake-all-roles) step 2 |
 | `spawn-queue.jsonl` | Spawn requests refused by a cap |
@@ -221,15 +223,19 @@ the primary.
    one builder handoff ([mdstack poll](#mdstack-poll)). Stale timers fire for
    runs with no status progress, and an ask timer fires at each open owner
    ask's deadline (`asks/<n>.json`, [C8](#runtime-contract)).
-2. A zero-token watcher (a plain script, no model) runs as a background
-   command of the coordinator. It blocks on those sources, appends
+2. A zero-token watcher (a plain script, no model) runs persistently:
+   `mdstack up` starts it in its own session, independent of coordinator
+   turns, so a turn that ends on a model-gateway error stops neither polling,
+   routing nor deadline wakes (#1346). It blocks on those sources, appends
    each actionable event to `wake/queue.jsonl`, runs `mdstack route` for mechanical
-   work, and exits only for retained judgement records with one reason line
-   (`status:`, `poll:`, `stale:`, `ask:`).
-3. The watcher's exit re-invokes the coordinator ([Q3](#q3-coordinator-engine)).
+   work, and for retained judgement records prints one reason line
+   (`status:`, `poll:`, `stale:`, `ask:`) and types `wake: watcher` into an
+   idle coordinator. The one-shot form, which exits instead, stays for a
+   coordinator that arms its own.
+3. The nudge (or a one-shot watcher's exit) re-invokes the coordinator ([Q3](#q3-coordinator-engine)).
    On a turn with an owner message it answers briefly before routing, then
-   drains the retained queue, acts (`mdstack send`, `mdstack spawn`, `mdstack kill`, a
-   GitHub post), and re-arms the watcher before the turn ends.
+   drains the retained queue and acts (`mdstack send`, `mdstack spawn`, `mdstack kill`, a
+   GitHub post). A queue left undrained is nudged again after `--renudge`.
 4. **No turn ends blind.** A turn-end guard refuses to let the coordinator
    stop while work is in flight (a live run record, a non-empty queue or an
    open owner ask) and no watcher is armed. Claude Code: a Stop hook that
@@ -482,7 +488,15 @@ capacity` is retired: no brief calls it since both leads use the scheduler.
 `capacity`, `load`, `suites` and `probe-unavailable` deferrals in
 `leads/builder-admission.md` and the lead's `deferred:` status. The router
 consumes those status wakes without involving the coordinator; keep the
-handoff pending for a backstop or slot release. Only `spawn-failure`,
+handoff pending for a backstop or slot release. With `--id ID`, the lead's
+inbox id for the deferred handoff, the status line ends `id=ID`; once that id
+is acknowledged, the 60-second backstop stops re-typing it and instead re-runs
+the scheduler walk, persisting only the target's progression (no
+reservation, decision log or deferral), and nudges only when the ref is now
+admissible, so a target throttled under high load recovers on that cadence.
+A worker's `done:` (slot release) and the coordinator backstop still nudge it,
+an unacknowledged or unreported id keeps the normal retry, and a re-sent
+handoff gets a new id. Only `spawn-failure`,
 `missing-dependency`, `owner-decision` and `lead-fault` reasons send a
 `blocked` coordinator inbox message with a durable block note. Identical
 reason, refs and detail reuse that message across lead restarts; changed
@@ -565,7 +579,12 @@ line is pending, across restarts and `mdstack down`. The lead lands
 serially under the existing land lock (`locks/merge.pid`, never taken
 from a live holder), trains two or more ready PRs per the land rule, and
 re-checks every [§7](../protocol.md#7-merge-gate-synthesizer) gate live
-before each land (F3). After a direct land it settles the id only once the
+before each land (F3). Staying long-lived does not carry authority between
+lands: for every land it re-reads the head-pinned gate and permission
+sources (marker lines, CI, labels and the recorded `merge_grant` with its
+source decision, scope and exclusions). Inbox and ref payloads, event files
+and narrative summaries only name a candidate; they supply no approval or
+permission, and with `merge_grant = "none"` no standing grant exists (#314). After a direct land it settles the id only once the
 merge commit's CI is green or `blocked: main red after #<n> <run-url>` is
 written. A replayed id whose land already happened finds the PR merged at
 step 1; after a direct land it resumes the merge-commit CI watch before
@@ -798,11 +817,17 @@ each role window (highest index first), stops window 0's processes the same
 way (unless `mdstack down` runs inside that process group), then kills the
 session. If any
 window holds unlanded work, it keeps that worktree, names the windows, keeps
-the session and exits 1. With no session running it is a no-op.
+the session and exits 1. With no session and no watcher running it is a no-op.
+
+After the land-lock refusal, both forms first stop the armed watcher, the
+live PID in `wake/watcher.pid` or else the `wake/watcher.lock` holder's
+(SIGTERM, then waiting for the lock to be released; refusing while it is
+still armed after a short grace, or when a lock holder names no live
+`mdstack watch`, which is never signalled), even when no session is left, so a persistent watcher never restarts what down stops
+(#1346).
 
 `mdstack down --preserve` is the maintenance stop before a migration (#1178).
-After the same land-lock refusal it stops the armed watcher (SIGTERM; it
-refuses while the watcher is still armed after a short grace), then every
+After the watcher it stops every
 pane's processes and the session, but keeps each run's worktree, record,
 claim, inbox and status file. Lead identity records are removed as usual;
 `mdstack up` writes fresh ones.
@@ -860,6 +885,20 @@ reused once it matches, and `current` flips back
 `mdstack doctor` warns on a missing or stale launcher in the profile's
 root (`paths.root`, else `$CREW_ROOT` or `~/.mdstack`) and on a `PATH` that
 resolves its name to something else.
+
+A user-level install set up by `mdstack install`, `layout --write` and `up`
+has no `install.json`. `mdstack upgrade` adopts it before it upgrades
+(#1616): the `paths.mdstack` link must point at a release with a `VERSION`
+and `cli/mdstack` that has a `releases/current` link beside it. The state's
+`VERSION` must match that release, and its `config.toml` copy must match
+`--project`. `--dry-run` reports the adoption and stops; `--yes` writes the
+record, then upgrades. An install that does not verify is not adopted: the
+refusal names the mismatch and points at `mdstack bootstrap`. Adoption covers
+a tmux install only.
+
+Create `crew:*` labels only with `mdstack doctor --fix`. Never make them by
+hand. `--fix` also resets a runbook label's color and description to the
+runbook's values. An extra `crew:*` name is still a namespace collision.
 
 ### mdstack migrate
 
@@ -1122,7 +1161,9 @@ cli/mdstack guard --state <state-dir>/<owner>__<repo>
 run record in `runs/`, a non-empty `wake/queue.jsonl` or an open owner ask
 record in `asks/<n>.json` ([C8](#runtime-contract); an unreadable record
 still counts), and no watcher is armed, meaning `wake/watcher.pid` names no
-live process. It blocks at most once per stop cycle: when the hook input has
+live process. When the PID file is missing or stale but a live watcher holds
+`wake/watcher.lock`, it does not block and prints a `systemMessage` naming
+that case instead (#399). It blocks at most once per stop cycle: when the hook input has
 `stop_hook_active: true` (the coordinator is already continuing because of
 this hook), it allows the stop with a `systemMessage` warning instead, so it
 never loops. Empty or malformed hook input counts as not active.
@@ -1297,6 +1338,7 @@ exactly one consuming role ([protocol §8](../protocol.md#8-safety)):
 | New builder `pass=fix` marker at head after a `verdict=changes` there (an evidence-only fix: no new commit, so no `new-head`) | `fix-at-head` | reviewer |
 | Tracked PR merged / closed | `pr-merged` / `pr-closed` | coordinator |
 | `crew:ready` issue newly assigned | `issue-assigned` | builder |
+| Open crew PR head turns `CONFLICTING` (`UNKNOWN` is no conflict), including after another land | `pr-conflicting` | builder (merge-up via the builder lead, before any CI) |
 | Express change: new builder `pass=selfgate verdict=pass` at head with CI green | `selfgate-passed` | synthesizer |
 
 A change that resolves express ([express lane](../express-lane.md#routing),
@@ -1353,7 +1395,14 @@ synthesizer reports `no-verified-base`, the coordinator re-reads head/holds
 and dispatches normal review and independent validation at that head to
 record the base, then retries portability.
 Conflicts or differing patches route through the builder, then delta
-re-review and independent validation at the updated head. An open rereview
+re-review and independent validation at the updated head. GitHub runs no
+`pull_request` CI on a conflicting PR, so poll emits `pr-conflicting` once
+per head and conflict (an `UNKNOWN` read keeps the head's last known value),
+and `mdstack route` re-reads the PR and hands the builder lead one `merge-up`
+handoff (`#<pr> <head-sha>`) without waiting for checks or a sweep (#1398).
+A closed PR, moved head or resolved conflict consumes the wake; held,
+escalated, draft, solo or lead-less work stays queued for the coordinator.
+A conflict that clears and returns emits again. An open rereview
 steer at head always routes full review and validation. Explicit `recheck`
 recovery and CI-fix passes remain available; they are not required for an
 identical clean base update. A `recheck escalate` status routes full review at
@@ -1932,14 +1981,20 @@ batches leave the watcher running without a model turn or coordinator nudge.
 ### mdstack watch
 
 ```sh
-cli/mdstack watch [--project <config.toml>] [--stale <s>] [--idle-stall <s>] [--backstop <s>] [--source <command>]... [--source-timeout <s>] [--source-failures <n>] [--no-nudge]
+cli/mdstack watch [--project <config.toml>] [--stale <s>] [--idle-stall <s>] [--backstop <s>] [--source <command>]... [--source-timeout <s>] [--source-failures <n>] [--no-nudge] [--persistent [--renudge <s>]] [--detach]
 ```
 
-The zero-token watcher of [Q1](#q1-wake) (#135). The coordinator runs it as
-a background command and re-arms it each turn. It writes its PID to
-`wake/watcher.pid` (removed on exit only while it holds its own PID; when the
-file already names another live `mdstack watch`, it exits 1 at once and touches
-neither that file nor the watch state, #591), then scans every `--interval` seconds
+The zero-token watcher of [Q1](#q1-wake) (#135). `mdstack up` (and
+`mdstack upgrade`, after its reload) starts it with `--detach`: a
+`--persistent` watcher with the `mdstack poll --once` source, in its own
+session, its output appended to `wake/watcher.log`; `CREW_WATCHER=off` skips
+that, for a coordinator that arms its own one-shot watcher (#1346). One
+watcher runs per state dir: it holds `wake/watcher.lock` (flock) for its
+whole life and writes its PID into that file too, so a second start,
+simultaneous or not, exits 0 with
+`crew: a watcher is already armed (pid N)` and touches neither the PID file
+nor the watch state (#591, #399). Under that lock it writes its PID to
+`wake/watcher.pid` (removed on exit only while it holds its own PID), then scans every `--interval` seconds
 (default 5) and blocks until one of these is actionable:
 
 - `status:` a new line in any `status/<window>.status` of a recorded run
@@ -2062,14 +2117,21 @@ It appends each wake to `wake/queue.jsonl` as one JSON line (under
 `mdstack route`. If the new records were all mechanical it keeps scanning.
 Otherwise it prints one
 reason line (`stale: ben-7 dead, silent 1200s, restart`) and exits 0, which
-re-invokes the coordinator. So that no single hook or harness feature is the
+re-invokes the coordinator. A `--persistent` watcher instead nudges and keeps
+scanning, restarting its backstop timer as a re-armed watcher would; while
+`wake/queue.jsonl` stays non-empty with no new wake it nudges again every
+`--renudge` seconds (default 300, a `renudge:` line), so a coordinator turn that
+ended on an error is woken without an owner. It re-reads ownership with each
+source run and exits 1 once it is `lost`. So that no single hook or harness feature is the
 only wake path ([#160](https://github.com/mw-ding/eng-crew/issues/160)
 row 4), it also types the fixed line `wake: watcher` into window 0 when the
 coordinator is idle: `claude` or `codex` in the foreground and no output for
 `--idle` seconds (default 30), the path the Codex recipe uses; like the
 `mdstack send` nudge, it waits 0.3 s before `Enter`. When window 0 shows a
-dialog it types nothing (#315) and queues a `dialog:` wake for window 0
-instead (liveness `ambiguous`, action `escalate`). `--no-nudge`
+blocking prompt it types nothing (#315) and queues a `dialog:` wake for window 0
+instead (liveness `ambiguous`, action `escalate`). A fatal API error over an
+idle composer is not a prompt, so a coordinator stopped by a gateway error
+still gets the wake line (#1346). `--no-nudge`
 turns this off, for a Claude Code coordinator whose exit wake works and
 which would otherwise take a second, empty turn per wake. On SIGTERM,
 SIGINT or SIGHUP it removes `wake/watcher.pid`, saves `wake/watch-state.json` and exits
@@ -2080,7 +2142,7 @@ none is left running after the watcher; between scans, or on a second
 signal, it exits at once. Each scan, before it queues or routes wakes, it
 compares the mtimes of `cli/mdstack`, `crew.d/*.py` and `crew-*.py` with
 those at start; when an mdstack update changes one, it re-execs itself in
-place (same PID, so `wake/watcher.pid` stays valid) without committing that
+place (same PID and inherited lock, so `wake/watcher.pid` stays valid) without committing that
 scan, so the new code finds the same events and resolves any new profile
 keys (#702).
 

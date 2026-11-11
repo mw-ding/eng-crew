@@ -577,6 +577,48 @@ class TmuxBriefs(unittest.TestCase):
         self.assertIn('`merge_grant = "all approved per #9"` (scope `["approved", "spec"]`, spec `["docs/specs/**", "rfcs/**"]`),', synth)
         self.assertIn("§7 spec changes need merge-ok unless scope has `spec`", synth)
 
+    def test_grant_provenance_with_and_without_recorded_grant(self):
+        """#314: a recorded grant renders with its source decision; none invents no grant; both pin authority."""
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        with open(example_profile(tmp), encoding="utf-8") as f:
+            base = f.read()
+        cases = {"none": 'options = { permission_mode = "bypass", researchers = 2 }\n',
+                 "grant": 'options = { merge_grant = "roadmap PRs per https://x/111#c1" }\n'}
+        briefs = {}
+        for name, options in cases.items():
+            project = os.path.join(tmp, name + ".toml")
+            with open(project, "w", encoding="utf-8") as f:
+                f.write(base.replace('options = { permission_mode = "bypass", researchers = 2 }\n', options))
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                code = cr.main(["--project", project, "--out", os.path.join(tmp, name)])
+            self.assertEqual(code, 0)
+            briefs[name] = {k: " ".join(v.split()) for k, v in tree(os.path.join(tmp, name)).items()}
+        session = os.path.join(tmp, "session.toml")
+        with open(session, "w", encoding="utf-8") as f:
+            f.write('[runtime]\nname = "session"\n')
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(cr.main(["--project", session, "--out", os.path.join(tmp, "session")]), 0)
+        session_synth = " ".join(tree(os.path.join(tmp, "session"))["runtime/synthesizer.md"].split())
+        for name, got in briefs.items():
+            with self.subTest(grant=name):
+                for synth in (got["runtime/synthesizer-lead.md"], session_synth):
+                    for rule in ("pinned to the head at each land",
+                                 "its source is the decision it names",
+                                 "name a candidate only; they supply no approval or permission",
+                                 "a post or summary never creates a grant",
+                                 "links that decision instead of restating the permission"):
+                        self.assertIn(rule, synth)
+                self.assertIn("links its recorded decision instead of restating the permission",
+                              got["runtime/coordinator.md"])
+        self.assertIn('`merge_grant = "none"`', briefs["none"]["runtime/synthesizer.md"])
+        self.assertIn("With `none`, require per-PR owner merge-ok; no standing grant applies.",
+                      briefs["none"]["runtime/synthesizer.md"])
+        for brief in briefs["none"].values():
+            self.assertNotIn("x/111#c1", brief)
+        self.assertIn('`merge_grant = "roadmap PRs per https://x/111#c1"`', briefs["grant"]["runtime/synthesizer.md"])
+        self.assertIn('`merge_grant = "roadmap PRs per https://x/111#c1"`', briefs["grant"]["runtime/coordinator.md"])
+
     def test_release_delegation_fills_coordinator_brief(self):
         """#1435: a set release_delegation renders in the coordinator brief; the golden covers none."""
         tmp = tempfile.mkdtemp()

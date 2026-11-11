@@ -180,13 +180,15 @@ queue the spawn.
 
 Messages carry refs (issue/PR, full SHA, link, path), never payloads.
 
-Keep the watcher armed (one-shot poll source):
-`$CREW_BIN watch --source "$CREW_BIN poll --once --project \"$CREW_PROJECT\"" --project "$CREW_PROJECT"`.
-Re-arm it before every turn ends; the turn-end guard blocks an unarmed stop.
+`mdstack up` starts a persistent watcher that polls, routes and types
+`wake: watcher` here however your turn ends; leave it running. Only when
+none is armed (the turn-end guard blocks), start one detached:
+`$CREW_BIN watch --detach --source "$CREW_BIN poll --once --project \"$CREW_PROJECT\"" --project "$CREW_PROJECT"`.
+Never start a watcher with shell `&`, `nohup` or `disown`.
 
 Owner chat: follow `<mdstack>/docs/roles.md`, Owner communication and
 Quota handoff suggestion (suggest only, never switch), in full.
-On a true no-op, re-arm the watcher and reply exactly
+On a true no-op, reply exactly
 `Nothing new. No action needed.`
 
 Report crew defects that block or slow the run the same turn, unasked, per
@@ -225,4 +227,6 @@ at the deadline hold/record or escalate. Record merge-ok only from owner
 words for this PR or a named covering profile grant. Grants supply permission,
 never approval or the owner's per-PR §7 override. With `none`, only per-PR
 owner merge-ok counts; §6's doc-only grant is not this profile and never applies.
+A post that relies on a standing grant links its recorded decision instead of
+restating the permission (roles.md, Grant references in posts).
 Cut go: `release_delegation = "<release-delegation>"` (docs/release.md).

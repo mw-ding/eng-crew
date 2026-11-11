@@ -1310,6 +1310,24 @@ class Land(TrainBase):
                 self.assertIn("train n=%d landed=0/1 pr-closed=yes branch-deleted=yes" % n, r.stdout)
         self.assertEqual(self.gh_calls("pr", "merge"), [])
 
+    def test_changes_then_pass_lands_once_route_reconciled_the_tags(self):  # #1464
+        changes = "<!-- crew:v1 role=reviewer-validator pass=verdict pr=%d sha=%s round=%d verdict=changes -->"
+        cases = [("stale tag", ["crew:approved", "crew:changes"], False, "stopped pr=1 reason=state tag crew:changes"),
+                 ("later changes", ["crew:approved"], True, "stopped pr=2 reason=no approval verdict at head"),
+                 ("reconciled", ["crew:approved"], False, "train n=3 landed=1/1")]
+        for n, (name, labels, later, expect) in enumerate(cases, 1):
+            with self.subTest(case=name):
+                self.built(n)
+                head, reviews = self.view(n)
+                reviews.insert(0, {"body": changes % (n, "0" * 40, 1)})
+                if later:
+                    reviews.append({"body": changes % (n, head, 2)})
+                self.serve(n, head, reviews, labels=labels)
+                r = self.train("land", str(n), str(n))
+                self.assertEqual(r.returncode, int(name != "reconciled"), r.stdout + r.stderr)
+                self.assertIn(expect, r.stdout)
+        self.assertEqual(len(self.gh_calls("pr", "merge")), 1)
+
     def test_transient_pause_resumes_same_green_train(self):
         self.built(1, 2)
         self.assertEqual(self.train("land", "1", "1").returncode, 0)
