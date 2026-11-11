@@ -41,7 +41,17 @@ class Workers(SpawnBase):
             self.assertNotIn(SECRET, launch)
             self.assertEqual(self.record(name)["harness"], "muse")
 
+    def test_private_or_unreadable_visibility_skips_muse_for_the_next_engine(self):  # #1074
+        self.env.update(FAKE_MUSE_VISIBILITY='{"private": true}', FAKE_MUSE_API_EXIT="0")
+        result = self.spawn("builder", "--issue", "7")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual((self.record("ben-7")["engine"], self.record("ben-7")["harness"]), ("codex", "codex"))
+        self.assertIn("exec codex ", self.windows()[-1][-1])
+
     def test_private_or_unreadable_visibility_refuses_and_cleans_up(self):
+        self.write_profile()  # Muse alone: nothing eligible is left, so the spawn refuses before any claim or window
+        with open(self.project, "a") as f:
+            f.write('\n[engines.default]\norder = ["muse/default"]\n')
         for visibility, code in (('{"private": true}', "0"), ('{}', "0"), ('invalid', "0"),
                                  ('{"private": false}', "1")):
             with self.subTest(visibility=visibility, code=code):

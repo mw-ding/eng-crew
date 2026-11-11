@@ -324,6 +324,21 @@ class Watch(LivenessBase):
                 self.set_pane(10, screen=screen(name))
                 self.assertEqual([(w["reason"], w["liveness"]) for w in self.scan(NOW)], want)
 
+    def test_scan_quota_screen_wakes_once_for_restart(self):  # #631: never alive, trust or a stale escalation
+        self.beat(NOW - 30)
+        quoted = "⏺ Read(issue 631)\n  ⎿  printed `Error: Weekly usage limit reached`\n  ■ You've hit your usage limit (quoted)"
+        self.set_pane(10, screen=quoted)  # another harness's text, or its own quoted out of place: not quota
+        self.assertEqual((self.probe(), self.scan(NOW)), ("alive", []))
+        self.set_pane(10, screen="• Working\n■ You've hit your usage limit. Upgrade to Pro or try again in 2 days.")
+        self.assertEqual(self.probe(), "quota")
+        wakes = self.scan(NOW)
+        self.assertEqual([(w["reason"], w["liveness"], w["engine"], w["action"]) for w in wakes],
+                         [("quota", "quota", "codex", "restart")])
+        self.assertEqual(self.scan(NOW + 1800, self.seen), [])  # once per run, and no stale wake behind it
+        rec = dict(self.record("ben-7"), restarts=1)
+        self.put("runs/ben-7.json", json.dumps(rec))
+        self.assertEqual([w["action"] for w in self.scan(NOW)], ["escalate"])  # after its one restart
+
     def test_scan_records_adapter_transient_text_once(self):  # #621
         claude = "  ⎿  API Error (529 {\"type\":\"error\"}) · Retrying in 2 seconds… (attempt 1/10)"
         codex = "■ exceeded retry limit, last status: 429 Too Many Requests"

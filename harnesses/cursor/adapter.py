@@ -1,5 +1,6 @@
 """Cursor harness adapter (docs/runtimes/harness-adapters.md#cursor-cursor)."""
 import os
+import re
 import shutil
 import subprocess
 
@@ -9,6 +10,7 @@ ENGINE_RANK, LAUNCH_RANK = 5, 3
 LOGIN_STATUS = ["auth", "status"]
 PERMISSION = {"bypass": ["--force"]}
 PERMISSION_REFUSAL = "crew: Cursor supports only permission_mode=bypass in this adapter"
+QUOTA = re.compile(r"^\s*Error: (?:\w+ )?usage limit reached\b")  # Error: Weekly usage limit reached. It resets in 1 day. (#631)
 
 
 def role_argv(model, effort, wt, state, flags):

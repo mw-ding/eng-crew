@@ -19,7 +19,7 @@ and GitHub stays the tool of record (invariant I5).
 | Q3 coordinator engine | Claude Code or Codex, chosen by profile; role engines by tier routing | [Q3](#q3-coordinator-engine) |
 | Q5 identities | Per-role identity from the profile, token derived inside the window at launch; single-identity rule from #111 | [Q5](#q5-identities) |
 | Q6 concurrency | Per-band caps, default 5 busy builders and 2 reviewer passes; serial land under `flock` | [Q6](#q6-concurrency) |
-| Q7 failure | Liveness probe from tmux that matches the run identity recorded at spawn (pane id, pane pid and that process's start time), plus watcher stale timers; restart only on `dead` / `missing`, plus one synthesizer respawn after a failed nudge | [Q7](#q7-failure) |
+| Q7 failure | Liveness probe from tmux that matches the run identity recorded at spawn (pane id, pane pid and that process's start time), plus watcher stale timers; restart only on `dead` / `missing` / `quota` (on the next eligible engine), plus one synthesizer respawn after a failed nudge | [Q7](#q7-failure) |
 
 ## Layout and naming
 
@@ -356,6 +356,7 @@ default starts at 2, still within the ceiling.
 | `alive` | Window present with the recorded run identity, pane live, expected harness in the foreground | None; a wedge timer with no status progress turns it `ambiguous` |
 | `dead` | Window present with the recorded pane id and pid, pane dead or harness gone, no `failed:` (nor `done:` for a reviewer or synthesizer run) | Restart once |
 | `missing` | Run record or claim present, and no window, or a window whose pane id, pane pid or that pid's start time differs from the run record | Restart once |
+| `quota` | Window present with the recorded run identity, pane live, and the run's own harness adapter's usage-limit line (`QUOTA`) on screen (#631) | Restart once, in place (same worktree, head, claim and inbox), on the next eligible engine in the role's order, skipping every engine the run exhausted; a reviewer whose PR head moved, or none left, refuses and escalates |
 | `ambiguous` | Probe failed, unexpected foreground process, a blocking prompt (trust, hooks review, Codex approval, Claude Code permission) or a fatal API error on screen, or wedge timer expired | Re-probe; after a bounded time escalate to the coordinator; never restart, except one kill-and-respawn of the synthesizer after a failed nudge (below) |
 
 **Failed nudge** (#308, #312). A window that `mdstack send` could not nudge

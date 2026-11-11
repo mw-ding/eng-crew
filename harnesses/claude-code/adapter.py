@@ -28,6 +28,9 @@ FATAL = r'⎿\s+API Error: [45]\d\d\b.*"type": ?"error"'  # ⎿  API Error: 400 
 # ⎿  API Error (529 …) · Retrying, ⎿  API Error: Connection lost mid-response, and the gateway's capacity line (#1633).
 TRANSIENT = re.compile(r"^ {0,2}(?:⎿\s+API Error\W{1,3}(?:(?:429|5\d\d)\b|Connection lost\b)"
                        r"|(?:⎿\s+)?429 .*\bcapacity\b.*\bexhausted\b)")
+# Its own usage-limit line at the same gutter (#631): the account is out of quota, so a retry on this engine is futile.
+QUOTA = re.compile(r"^ {0,2}⎿\s+(?:Claude (?:AI )?usage limit reached|You[’']ve hit your (?:\w+ )?limit|\d+-hour limit reached|"
+                   r"Weekly limit reached)\b")
 COMPOSER = "❯"
 BUSY = re.compile(r"esc to interrupt|^[✽✻✶✢·*] .+… \([^\n]+\)", re.M)  # a lowercased screen mid-turn
 INSTALL_ROLES = ("coordinator", "builder", "reviewer", "synthesizer")

@@ -1,8 +1,11 @@
-"""`mdstack restart` restarts a dead or missing run once (a builder even after `done:`, as its PR's fix pass; `done:` is
+"""`mdstack restart` restarts a dead, missing or quota-stopped run once (a builder even after `done:`, as its PR's fix pass; `done:` is
 terminal only for reviewer and synthesizer runs), in its own worktree when it holds unlanded work. A run on a role
 host (#345) is probed, checked and relaunched there; a clean one is removed there and spawned again, so placement
 runs again. A reflection run first rechecks its window's posted report and, when one is there, refuses (#1520); else it
-restarts with the same run ID, log issue, input SHA and window.
+restarts with the same run ID, log issue, input SHA and window. A run probing quota (its harness shows its adapter's
+usage-limit line, #631) is stopped and relaunched in place, in its own worktree, claim and inbox at its head, on the next
+eligible engine in its role's order, skipping every engine it has exhausted; the brief lists the inbox IDs it never
+acknowledged. A reviewer whose PR head moved, or a run with no eligible engine left, refuses and stays for escalation.
 
 On the coordinator's window (window 0) it relaunches the live coordinator in place instead (#1544): the current
 sandbox_env and CREW_* environment, resuming --resume ID (else launch.resume). It refuses while the land lock is held,
@@ -17,8 +20,8 @@ import shlex
 import subprocess
 import time
 from crew_shared import (
-    BANDS, brief_src, commands, coordinator_harness, coordinator_window, CREW_BIN, crew_render, ENGINE_CMD, finished,
-    harness, harnesses, heartbeat, identity, kill_run, LAUNCH, main, POINTER, probe, profile, remote_run, runs, sandbox_env,
+    BANDS, brief_src, commands, coordinator_harness, coordinator_window, CREW_BIN, crew_render, ENGINE_CMD, fetch, finished,
+    harness, harnesses, heartbeat, identity, kill_run, LAUNCH, main, POINTER, probe, profile, remote_run, ROLES, runs, sandbox_env,
     show_icon, stop_pane, tmux, unlanded, wait_harness, window_alias, window_env)
 
 
@@ -70,6 +73,54 @@ def relaunch_coordinator(values, session, state, args):
         return 1
     print("crew: relaunched %s in place (window 0, resume %s)" % (coordinator_window(values), resume))
     return 0
+
+
+def next_engine(values, state, rec, exhausted):
+    """The first eligible engine of the run's role order past every exhausted one, as spawn would pick it; a reviewer
+    still avoids the PR's builder engines (#631). RuntimeError when none is left."""
+    spawn, a = commands()["spawn"], rec["args"]
+    avoid = set(exhausted)
+    if "engine_independent_of" in ROLES[rec["role"]]:
+        avoid |= spawn.builder_engines(values, state, rec["repo"], fetch(rec["repo"], values["repo.default_branch"]),
+                                       rec["head"], a["pr"])
+    return spawn.engine_order(values, a["tier"], avoid, rec["role"])[0]
+
+
+def quota_relaunch(values, session, state, args, rec, exhausted):
+    """Relaunch a quota run in place on the next eligible engine (#631): same worktree (so the same head, dirty or
+    not), claim and inbox, never a fresh spawn; the brief names the engine and the inbox IDs never acknowledged."""
+    name, wt = args.window, rec.get("worktree")
+    try:
+        if not wt or not os.path.isdir(wt):
+            raise RuntimeError("its worktree %s is gone" % wt)
+        if "engine_independent_of" in ROLES[rec["role"]]:
+            live = fetch(rec["repo"], "pull/%d/head" % rec["args"]["pr"])
+            if live != rec["head"]:
+                raise RuntimeError("PR #%d head moved from %s to %s; reap the stale reviewer" % (
+                    rec["args"]["pr"], rec["head"][:7], live[:7]))
+        engine, model = next_engine(values, state, rec, exhausted)
+    except RuntimeError as e:
+        print("crew: refusing restart: %s is out of quota: %s; escalate" % (rec["engine"], e))
+        return 1
+    if stop_pane(session, rec["index"]):  # kill-window alone leaves Codex running (#139 F2)
+        print("crew: refusing restart: %s's process group survived the stop" % name)
+        return 1
+    status = os.path.join(state, "status", name + ".status")
+    acks = set()
+    if os.path.exists(status):
+        with open(status) as f:
+            acks = {line[5:].strip() for line in f if line.startswith("ack: ")}
+    inbox = os.path.join(state, "inbox", name + ".jsonl")
+    pending = []
+    if os.path.exists(inbox):
+        with open(inbox) as f:
+            pending = [m["id"] for m in map(json.loads, filter(str.strip, f)) if m["id"] not in acks]
+    with open(os.path.join(state, "runs", name + ".brief.md"), "a", encoding="utf-8") as f:
+        f.write("- Quota fallback: %s is out of quota; this session runs %s %s %s. Attribute that engine.\n" % (
+            rec["engine"], engine, model, rec["effort"]) + "".join("- Pending: inbox: %s\n" % i for i in pending))
+    rec.update(engine=engine, model=model, harness=ENGINE_CMD[engine], exhausted=exhausted)
+    return relaunch(values, session, state, name, rec, ["quota fallback from %s" % exhausted[-1]], args.timeout,
+                    args.project)
 
 
 def relaunch(values, session, state, name, rec, items, timeout, project):
@@ -158,14 +209,18 @@ def run(args):
     cls = remote_run.probe(values, args.window, rec) if host else \
         probe(session, args.window, rec, dict((n, i) for i, n in tmux.list_windows(session)))
     last = heartbeat(state, args.window)[0]
-    problem = ("%s is %s; only dead or missing runs restart" % (args.window, cls) if cls not in ("dead", "missing")
+    problem = ("%s is %s; only dead, missing or quota runs restart" % (args.window, cls) if cls not in ("dead", "missing", "quota")
                else "%s finished (%s); use mdstack kill" % (args.window, last) if finished(rec, last)
                else "%s already restarted once; escalate (crew:escalated, owner channel)" % args.window
-               if rec.get("restarts") else None)
+               if rec.get("restarts") else "a quota run on a role host is not relaunched here; escalate"
+               if cls == "quota" and host else None)
     if problem or "args" not in rec:
         print("crew: refusing restart: " + (problem or "%s has no spawn arguments" % args.window))
         return 1
     wt, a = rec.get("worktree"), rec["args"]
+    exhausted = rec.get("exhausted", []) + [rec["engine"]] if cls == "quota" else []
+    if exhausted:
+        return quota_relaunch(values, session, state, args, rec, exhausted)
     if a.get("reflection"):
         try:
             url = reflection_posted(values, a["reflection"])
