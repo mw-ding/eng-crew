@@ -653,7 +653,7 @@ def train_check_prs(args, values, state, repo, slug, poll, clone):
         results["grant-scope"] = ("manual", "verify the recorded owner decision merge_grant names authorizes spec coverage"
                                   if spec else "verify owner authorization and grant scope")
         results["engine"] = ("manual", "verify actual builder engine and diversity re-check")
-        results["linkage"] = ("manual", "verify Closes linkage or protocol exemption")
+        results["linkage"] = ("manual", "verify Closes linkage, a release cut's Refs plus Release issue line, or protocol exemption")
         results["runtime"] = ("manual", "verify runtime gates and synthesizer inbox holds")
         results["tested-base"] = ("manual", "train supplies tested-base evidence at serial land")
         try:
