@@ -2,7 +2,7 @@
 warn, fail or human, with its fix hint: Python, git, gh, tmux, each profile login in gh, engines, each harness
 adapter's host, coordinator and role checks (Codex hook trust, Claude Code folder trust for the project directory and
 for the checkout role worktrees come from, #408), placeholder paths, a session sandbox with no writable root over the
-checkout's .git and no sandbox_env (#1544), a shared session server whose runs inherit its sandbox (#1469), a state dir or worktree root inside a git checkout, the state dir layout, paths.checkout a clone of [repo], bootstrap's install.json
+checkout's .git and no sandbox_env (#1544), a shared session server whose runs inherit its sandbox (#1469), a state dir or worktree root inside a git checkout, the state dir layout, live builder runs marked unconfined (#1252), paths.checkout a clone of [repo], bootstrap's install.json
 and paths.mdstack link (#1323), the installed version against the latest release (not queried under a non-github [install] source), the
 launcher in the root's bin/ (missing or stale) and where PATH resolves its name (#1317, #1324), the
 recorded install source and the running/installed/minimum versions for [tools] in the profile, and the runtime
@@ -29,7 +29,7 @@ import sys
 import tempfile
 import tomllib
 from crew_shared import (checkout, commands, crew_render, HERE, harnesses, ownership_module, placeholder_paths,
-                         proc, sandbox_env, sessions, load as load_module)
+                         proc, runs, sandbox_env, sessions, load as load_module)
 
 repo_fixers = load_module("crew_repo", "connectors/github/crew-repo.py")
 
@@ -216,6 +216,17 @@ def state_dir(values, fix):
         if not p.endswith("/"):
             open(os.path.join(state, p), "a").close()
     return [("ok", "state dir", "created %s in %s" % (", ".join(missing), state), "")]
+
+
+def confinement(values):
+    """Live builder runs whose record marks them unconfined (#1252): its guarantee is not claimed for them."""
+    state = os.path.join(os.path.abspath(values["paths.state_dir"]), "%s__%s" % (values["repo.owner"], values["repo.name"]))
+    loose = ["%s (%s)" % (n, rec.get("unconfined") or "spawned before #1252") for n, rec in runs(state)
+             if rec["role"] == "builder" and not rec.get("confined")]
+    mode = "confinement=%s" % values.get("runtime.options.confinement", "off")
+    if not loose:
+        return [("ok", "confinement", mode + "; no unconfined builder run", "")]
+    return [("warn", "confinement", "%s; unconfined: %s" % (mode, "; ".join(loose)), "docs/runtimes/tmux.md#confinement")]
 
 
 def version(values):
@@ -405,7 +416,7 @@ def run(args):
     if not bad and github:
         rows += repo_fixers.checks(values, args.fix, args.dry_run, args.milestone)
     rows += checkout_repo(values, args.project) + install(values) + (sandbox(values, args.project) if tmux else [])
-    rows += session_server(sessions.ADAPTERS[backend]) if tmux else []
+    rows += session_server(sessions.ADAPTERS[backend]) + confinement(values) if tmux else []
     rows += handoff(values) + triage(values) + version(values) + launcher(values) + pack(values) + install_source(values)
     rows += tool_drift(values)
     for status, check, detail, hint in rows:

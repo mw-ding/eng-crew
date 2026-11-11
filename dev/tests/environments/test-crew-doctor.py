@@ -22,6 +22,7 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
 import unittest
 from unittest import mock
 import sys
@@ -693,6 +694,32 @@ def label_evidence():
     finally:
         fixture.doCleanups()
     print("delete: fake host and label store removed: %s" % (not os.path.exists(fixture.tmp)))
+
+
+class Confinement(unittest.TestCase):
+    """Live builder runs whose record marks them unconfined (#1252)."""
+
+    def test_unconfined_builder_runs_warn(self):
+        loader = importlib.machinery.SourceFileLoader("crew_cli", CREW)
+        mod = importlib.util.module_from_spec(importlib.util.spec_from_loader("crew_cli", loader))
+        loader.exec_module(mod)
+        doctor = mod.commands()["doctor"]
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        values = {"paths.state_dir": tmp, "repo.owner": "acme", "repo.name": "widgets"}
+        self.assertEqual(doctor.confinement(values), [("ok", "confinement", "confinement=off; no unconfined builder run", "")])
+        runs = os.path.join(tmp, "acme__widgets", "runs")
+        os.makedirs(runs)
+        base = dict(index=10, item="i", repo="r", worktree="w", claim="c", engine="codex", model="m", effort="e",
+                    harness="codex", role="builder")
+        for name, extra in (("ben-1", dict(confined=True)), ("ben-2", dict(confined=False, unconfined="why")),
+                            ("ben-3", {}), ("vera-9", dict(role="reviewer"))):
+            with open(os.path.join(runs, name + ".json"), "w") as f:
+                json.dump(dict(base, **{"pass": "build"}, **extra), f)
+        values["runtime.options.confinement"] = "enforce"
+        self.assertEqual(doctor.confinement(values), [(
+            "warn", "confinement", "confinement=enforce; unconfined: ben-2 (why); ben-3 (spawned before #1252)",
+            "docs/runtimes/tmux.md#confinement")])
 
 
 class SessionServer(unittest.TestCase):

@@ -18,6 +18,9 @@ starts the harness in its runner's session; the brief (its Worktree line names t
 files travel in the call, and the run record (`remote`), claim and brief copy stay on the primary.
 Every worktree is claimed host-wide before it is added (copy-claim.py, docs/runtimes/multi-device.md#working-copy-claims,
 #391): another crew's claim refuses the spawn before any worktree or window, and mdstack kill releases it.
+A builder's worktree is its own clone borrowing the checkout's objects, not a linked worktree; a supported launch is
+confined to it by the harness's OS write sandbox, and confinement=enforce refuses an unsupported one before any claim
+(_confine.py, docs/runtimes/tmux.md#confinement, #1252).
 
 Usage: mdstack spawn ROLE --issue N | --pr N | --sweep | --docs-pass | --reflection WINDOW [--log N] [--input-sha SHA]
        [--run-id ID] | --train N [--pass PASS] [--round K] [--tier T] [--host H --reason TEXT] --project FILE [--org-profile FILE]
@@ -35,6 +38,7 @@ from crew_shared import (
     synthesizer_work)
 
 placement = load("crew_placement", "environments/terminal/crew.d/_placement.py")
+confine = load("crew_confine", "environments/terminal/crew.d/_confine.py")
 # A reflection window ID (docs/self-improve.md#reflection); coalesced windows join with +.
 WINDOW = re.compile(r"(?:week-\d{4}-W\d{2}|close-\d+)(?:\+(?:week-\d{4}-W\d{2}|close-\d+))*")
 
@@ -301,6 +305,12 @@ def run(args):
         return 1
     remote = placed["host"] if placed["host"] != primary else None
     engine, model, effort = placed["engine"], placed["model"], values["engines.%s.effort" % args.tier]
+    try:  # before any claim or window (#1252)
+        confined, unconfined = confine.decide(values, role, harnesses.ADAPTERS[engine],
+                                              values["runtime.options.permission_mode"], remote, state, repo)
+    except RuntimeError as e:
+        print(e)
+        return 1
     if override and not post_override(values, args, name, placed["host"], reason):
         print("crew: refusing spawn: override reason not posted on the item")
         return 1
@@ -339,6 +349,8 @@ def run(args):
            "host": placed["host"], "placement": placed["placement"], "rejections": placed["rejections"]}
     if override:
         rec["override_reason"] = reason
+    if role == "builder":  # mdstack doctor lists unconfined runs (#1252)
+        rec.update({"confined": True} if confined else {"confined": False, "unconfined": unconfined})
     if remote:  # its window and worktree are on the host; the run record, claim and brief copy stay here
         rec["remote"] = True
     if getattr(args, "rereview_id", None):  # on the record before the worker can complete (#1477)
@@ -363,7 +375,10 @@ def run(args):
             raise RuntimeError("crew: refusing spawn: %s exists" % wt)
         if not remote:
             os.makedirs(os.path.dirname(wt), exist_ok=True)
-            git(repo, "worktree", "add", "-q", "--detach", wt, sha)
+            if role == "builder":  # its own git metadata, not a linked worktree of the shared checkout (#1252)
+                confine.run_copy(git, repo, wt, sha, (values["repo.default_branch"], base or sha))
+            else:
+                git(repo, "worktree", "add", "-q", "--detach", wt, sha)
             rec["worktree"] = wt
             save()
             exclude_crew(wt)
@@ -391,7 +406,8 @@ def run(args):
                           "".join("- inbox: " + m["id"] + "\n" for m in messages))
         with open(brief, "a", encoding="utf-8") as out:
             out.write(notes)
-        argv = harness(engine, model, effort, wt, state, values["runtime.options.permission_mode"], values, not remote)
+        argv = harness(engine, model, effort, wt, state, values["runtime.options.permission_mode"], values, not remote,
+                       confined)
         if remote:  # the launch policy above still refuses here; the host builds the argv and checks its own uid
             rec["worktree"] = wt
             save()
@@ -402,8 +418,10 @@ def run(args):
                     "reason") or reply.get("error")))
             rec.update({k: reply[k] for k in ("worktree", "pane_id", "pane_pid", "pane_start")})
         else:
-            tmux.new_window(session, free[0], name, wt, window_env(values, state, role, name, brief, args.project),
-                            LAUNCH % (shlex.join(argv), prompt))
+            env = window_env(values, state, role, name, brief, args.project)
+            if confined:
+                env["TMPDIR"] = confine.tmpdir(wt)
+            tmux.new_window(session, free[0], name, wt, env, LAUNCH % (shlex.join(argv), prompt))
             show_icon(values, session, free[0], role)
             wait_harness(session, free[0], name, ENGINE_CMD[engine], args.timeout)
     except (RuntimeError, OSError) as e:

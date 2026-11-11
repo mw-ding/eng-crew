@@ -129,7 +129,7 @@ RUNTIME_OPTIONS = {"grok-bot": {"max_active_milestones": (int, 1)},
                                         "train_local_checks": (bool, False), "mirror_deferral": (str, "none"),
                                         "mirror": (str, "live-copy"),
                                         "hold_label_blocks": (bool, True), "permission_mode": (str, "bypass"),
-                                        "sandbox_env": (str, ""), "notes": (dict, {}), "launch": (dict, None),
+                                        "confinement": (str, "off"), "sandbox_env": (str, ""), "notes": (dict, {}), "launch": (dict, None),
                                         "role_runtime": (dict, None),
                                         "slack_webhook_env": (str, None), "slack_digest_interval": (int, 3600)},
                    # Hosted or hand-started coordinator with native-subagent or CLI workers (docs/runtimes/session.md, #914).
@@ -868,6 +868,7 @@ def validate(profile, err, backends=BACKENDS, pack_dir=None, item=None):
         if rt.get("name") in RUNTIME_OPTIONS and "options" in rt:
             opts = check_table(err, "runtime.options", rt["options"], RUNTIME_OPTIONS[rt["name"]])
             check_choice(err, "runtime.options.permission_mode", opts.get("permission_mode"), PERMISSION_MODES)
+            check_choice(err, "runtime.options.confinement", opts.get("confinement"), ["enforce", "off"])
             check_choice(err, "runtime.options.session_backend", opts.get("session_backend"),
                          SESSION_BACKENDS.get(rt["name"], []))
             check_choice(err, "runtime.options.tmux_server", opts.get("tmux_server"), ["default", "dedicated"])
