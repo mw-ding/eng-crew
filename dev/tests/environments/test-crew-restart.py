@@ -206,9 +206,10 @@ class Restart(LivenessBase):
     def test_restart_clean_reviewer_refuses_a_moved_head(self):  # #1477: a moved head never inherits the steer
         sha = self.pr(9, "claude-code opus-5.5 default")
         self.assertEqual(self.spawn("reviewer", "--pr", "9", "--head", sha, "--rereview-id", "42").returncode, 0)
-        self.git("commit", "-q", "--allow-empty", "-m", "newer")  # the PR head moves while the reviewer is dead
-        self.git("push", "-q", "-f", "origin", "HEAD:refs/pull/9/head")
-        self.git("reset", "-q", "--hard", "origin/main")
+        self.git("checkout", "-q", "--detach", sha)  # the PR head moves on while the reviewer is dead; the old
+        self.git("commit", "-q", "--allow-empty", "-m", "newer")  # head stays reachable, so the worktree is clean
+        self.git("push", "-q", "origin", "HEAD:refs/pull/9/head")
+        self.git("checkout", "-q", "main")
         self.set_pane(self.record("vera-9-r1-review")["index"], dead="1")
         r = self.crew("restart", "vera-9-r1-review", "--project", self.project, "--timeout", "1")
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
