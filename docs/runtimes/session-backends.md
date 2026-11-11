@@ -79,6 +79,17 @@ Select `session_backend = "herdr"` under `[runtime.options]`, keeping
 `environments/terminal/sessions/herdr/adapter.py` uses the installed CLI and
 the already-running local default server. It never starts, stops or
 reconfigures that shared server, and uses no hooks or agent-reported metadata.
+A run inherits the server's environment and sandbox, not the launching
+shell's: a server started from a sandboxed agent session makes every harness
+it launches exit 71, even from an unsandboxed shell
+([#1469](https://github.com/mw-ding/mdstack/issues/1469)). Start the server
+with `herdr server` from an ordinary terminal opened outside any agent
+session. `mdstack doctor`'s `session server` row reads its provenance
+read-only: `human` when no server runs, `fail` when every process holding its
+socket reads sandboxed, `ok` when none does and `warn` when that is unknown
+(an unreadable status or socket, a platform without a sandbox read, or mixed
+holders). Replacing a running server is the owner's step, in an idle window
+for all its users.
 Each run owns one workspace labelled `<session>:<index>:<window>`; workspace display numbers do not set the bands.
 herdr has no display field apart from the label, so the tab icon renames the
 workspace to `<emoji> <session>:<index>:<window>` after create, and every
@@ -139,6 +150,12 @@ and `runtime.options.tmux_server` (#1327); a backend with one server ignores
 the second. A call the backend cannot answer returns `None`
 (`pane`, `cursor`, `has_window`) or raises `RuntimeError`; the runtime treats
 an unanswered probe as `ambiguous`, never as proof of death.
+
+A backend whose runs inherit a shared server's environment may also provide
+`server_pids()`: the pids holding that server, `[]` when none runs, or
+`RuntimeError` when it cannot tell. It is read-only and feeds `mdstack
+doctor`'s `session server` row, which reads each pid's OS sandbox (macOS
+`sandbox_check`; elsewhere unknown). herdr provides it.
 
 | Capability | Meaning | Without it |
 |---|---|---|

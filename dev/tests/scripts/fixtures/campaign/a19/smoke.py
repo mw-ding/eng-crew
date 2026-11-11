@@ -5,10 +5,12 @@ interactive launch and every installed session backend, launch, doorbell, ack, p
 through SOURCE's own runtime code: the adapter's role argv under the bypass launch policy (--repo names the repository
 a contributor-tier harness needs verified public), the backend's new_session, the foreground check, `mdstack send`'s
 nudge, the inbox `ack:` wait, the C5 probe and the pane stop. tmux runs on a dedicated `-L` server named for the run;
-herdr uses its local server and closes only the run's own workspace. ROOT holds each run's worktree and state. One
+herdr uses its local server and closes only the run's own workspace. Each run's worktree is a detached linked worktree
+of SOURCE at its HEAD, as `mdstack spawn` makes, removed after the run stops; ROOT holds it and the run's state. One
 JSON line per binding pins the source SHA, both adapter files' sha256 and the harness and backend versions; a binding
-not installed, without an interactive launch or skipped by policy is `blocked` with the reason. Exit 0 only when
-every run binding passed."""
+not installed, without an interactive launch, skipped by policy or whose adapter's role trust check is unmet for
+SOURCE's repository root (never accepted here) is `blocked` with the reason. Exit 0 only when every run binding
+passed."""
 import hashlib
 import importlib.util
 import json
@@ -66,9 +68,9 @@ def smoke(engine, adapter, backend, mod, rec):
     """Launch, ready, doorbell, ack, probe and stop on one run; each step's outcome lands in rec, the first failure stops the rest."""
     name, session = "smoke-" + engine, "a19-smoke-%d-%s" % (os.getpid(), engine)
     state, wt = os.path.join(root, backend, engine, "state"), os.path.join(root, backend, engine, "wt")
-    for d in ("status", "inbox", wt):
+    for d in ("status", "inbox"):
         os.makedirs(os.path.join(state, d), exist_ok=True)
-    subprocess.run(["git", "init", "-q", wt], check=True)
+    subprocess.run(["git", "-C", src, "worktree", "add", "-q", "--detach", wt, source], check=True)
     status = os.path.join(state, "status", name + ".status")
     open(os.path.join(state, "brief.md"), "w").write(BRIEF)
     shared.tmux.name = backend
@@ -103,11 +105,23 @@ def smoke(engine, adapter, backend, mod, rec):
         after = run and shared.probe(session, name, run, {n: i for i, n in mod.list_windows(session)})
         steps["stop"] = "ok: probe %s after" % after if not survived and after in ("missing", None) else \
             "failed: group %s survived, probe %s" % (survived, after)
+        subprocess.run(["git", "-C", src, "worktree", "remove", "--force", wt], check=True)
     rec["result"] = "pass" if all(str(v).startswith(("ok", "alive")) for v in steps.values()) and \
         set(steps) == {"launch", "ready", "doorbell", "ack", "probe", "stop"} else "fail"
 
 
 source = subprocess.run(["git", "-C", src, "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+common = subprocess.run(["git", "-C", src, "rev-parse", "--path-format=absolute", "--git-common-dir"],
+                        capture_output=True, text=True).stdout.strip()
+checkout = os.path.dirname(common) if os.path.basename(common) == ".git" else src  # the root linked worktrees key on
+
+
+def untrusted(adapter):
+    """The adapter's unmet role trust check for checkout with its fix, or None (docs/runtimes/harness-adapters.md)."""
+    rows = [r for r in getattr(adapter, "role_checks", lambda v, c: [])({}, checkout) if r[0] != "ok"]
+    return "; ".join("%s %s: %s" % (r[1], r[2], r[3]) for r in rows) or None
+
+
 results = []
 for backend, mod in sorted(shared.sessions.ADAPTERS.items()):
     for engine, adapter in sorted(shared.harnesses.ADAPTERS.items()):
@@ -117,11 +131,13 @@ for backend, mod in sorted(shared.sessions.ADAPTERS.items()):
                "adapter": {p: digest(p)[:12] for p in ("harnesses/%s/adapter.py" % engine,
                                                        "environments/terminal/sessions/%s/adapter.py" % backend)}}
         missing = [e for e in (adapter.EXECUTABLE, mod.EXECUTABLE) if not shutil.which(e)]
-        if missing or not hasattr(adapter, "role_argv") or engine in skip:
+        trust = not missing and hasattr(adapter, "role_argv") and engine not in skip and untrusted(adapter)
+        if missing or not hasattr(adapter, "role_argv") or engine in skip or trust:
             rec["result"] = "blocked"
             rec["block"] = "installation: %s not on PATH" % ", ".join(missing) if missing else \
                 "unsupported: no interactive launch (docs/runtimes/harness-adapters.md#adapter-modules)" if \
-                not hasattr(adapter, "role_argv") else "policy: " + skip[engine]
+                not hasattr(adapter, "role_argv") else "policy: " + skip[engine] if engine in skip else \
+                "precondition: " + trust
         else:
             bypass = adapter.PERMISSION["bypass"]  # muse --version alone applies its own sandbox
             rec["versions"] = {adapter.EXECUTABLE: version([adapter.EXECUTABLE, *bypass, "--version"]),

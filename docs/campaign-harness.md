@@ -354,10 +354,17 @@ binding, from an operator shell, never from CI. It drives one disposable
 run through the runtime's own code: launch, a `ready` line, the `mdstack
 send` doorbell, the inbox `ack:`, the C5 probe and the pane stop. tmux uses
 a dedicated server named for the run. herdr uses its local server and
-closes only the run's own workspace. Each JSON line pins the source SHA,
-both adapter files' sha256 and the harness and backend versions.
-A binding that is not installed, has no interactive launch or is skipped by
-policy (`--skip`) is reported as blocked.
+closes only the run's own workspace. Each run's worktree is a detached
+linked worktree of the source checkout at its HEAD, as `mdstack spawn` makes,
+so Claude Code keys its folder trust on that checkout's repository root; the
+smoke removes only that worktree after the run stops (#1470). Each JSON line
+pins the source SHA, both adapter files' sha256 and the harness and backend
+versions. A binding that is not installed, has no interactive launch, is
+skipped by policy (`--skip`) or whose adapter's role trust check is unmet
+for the source's repository root is reported as blocked, with doctor's fix;
+the smoke never accepts trust itself. Run it from an ordinary terminal
+opened outside any agent session; on herdr, the shared server must also be
+started from one (`mdstack doctor`'s `session server` row).
 
 The ledger's `live` section names every harness and backend binding, plus
 each runtime's mirror and watch. Each entry is one of:
