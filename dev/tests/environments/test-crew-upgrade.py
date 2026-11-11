@@ -403,14 +403,15 @@ class Upgrade(bootstrap_tests.Bootstrap):
                 with mock.patch.object(upgrade.proc, "live_child", return_value=child):
                     self.assertEqual(upgrade.busy({}, self.state, "session", [(10, "ben-7")]), expected)
 
-    def wrapper_upgrade(self, screen, ps_fails=False, child=True):
+    def wrapper_upgrade(self, screen, ps_fails=False, child=True, before=None):
         """upgrade --yes through the CLI: window 0's pane is a launcher wrapper (a real sleep in its own session) whose
         live child is a session leader that is not the harness executable (the native harness, #1618)."""
         (self.bundle / "VERSION").write_text("v2.2.0\n")
         pids = []
         for _ in range(2):  # orphaned, so the stop on reload leaves no zombie holding the process group
-            pid = int(subprocess.run([sys.executable, "-c", "import subprocess; print(subprocess.Popen(['sleep', '60'], "
-                                      "start_new_session=True).pid)"], capture_output=True, text=True).stdout)
+            pid = int(subprocess.run([sys.executable, "-c", "import subprocess as s; print(s.Popen(['sleep', '60'], "
+                                      "start_new_session=True, stdin=s.DEVNULL, stdout=s.DEVNULL, stderr=s.DEVNULL).pid)"],
+                                     capture_output=True, text=True).stdout)  # no inherited pipe: run returns at once
             self.addCleanup(lambda pid=pid: subprocess.run(["kill", "-9", str(pid)], capture_output=True))
             pids.append(pid)
         (Path(self.tmp) / "screen.txt").write_text(screen)
@@ -419,9 +420,31 @@ class Upgrade(bootstrap_tests.Bootstrap):
                   '*) echo claude;; esac;;\ncapture-pane) while IFS= read -r l; do printf "%%s\\n" "$l"; done < %s;;\nesac' % (pids[0], Path(self.tmp) / "screen.txt"))
         tree = 'echo "%d 1 Ss claude"' % pids[0] + ('; echo "%d %d Ss node"' % (pids[1], pids[0]) if child else "")
         self.tool("ps", "exit 1" if ps_fails else 'case "$1" in -axo) %s;; *) echo "S+ claude";; esac' % tree)
-        before = self.manifest.read_bytes()
+        if before:
+            before()
+        installed = self.manifest.read_bytes()
         result = self.upgrade("--yes", "--wait-timeout", "0")
-        return result, self.manifest.read_bytes() != before
+        return result, self.manifest.read_bytes() != installed
+
+    def test_undelivered_coordinator_message_waits_until_acked(self):
+        screen = Path(self.tmp) / "screen.txt"
+        sent = []
+
+        def send_into_dialog():  # mdstack send while a dialog is up: nothing typed, exit 4; then the dialog clears
+            screen.write_text("Do you trust the files in this folder?\n❯ 1. Yes\nEnter to confirm · Esc to cancel\n")
+            sent.append(subprocess.run([sys.executable, str(self.cli), "send", "ash", "blocked", "#7", "--project",
+                                        self.project], input="", capture_output=True, text=True, env=self.env))
+            screen.write_text("────\n❯\u00a0\n────\n")
+        result, written = self.wrapper_upgrade("", before=send_into_dialog)
+        self.assertEqual(sent[0].returncode, 4, sent[0].stdout + sent[0].stderr)
+        msg = json.loads((Path(self.state) / "inbox/ash.jsonl").read_text().splitlines()[-1])["id"]
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("in-flight pass ash: undelivered inbox message " + msg, result.stdout)
+        self.assertFalse(written)
+        self.put("status/ash.status", "ack: %s\n" % msg)  # the window settles it
+        result, written = self.wrapper_upgrade("────\n❯\u00a0\n────\n")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertTrue(written)
 
     def test_wrapper_child_with_idle_screen_applies(self):
         result, written = self.wrapper_upgrade("● Done.\n\n────\n❯\u00a0\n────\n  ? for shortcuts\n")

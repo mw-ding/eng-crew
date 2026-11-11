@@ -58,6 +58,10 @@ def busy(values, state, session, windows):
             return name + ": unacknowledged inbox message"
         if name in leads and commands()["lead"].pending(state, name):
             return name + ": pending inbox message"
+        undelivered = Path(state) / "inbox" / (name + ".undelivered")  # a failed send's nudge (the coordinator's too)
+        acks = {line[5:] for line in lines if line.startswith("ack: ")}
+        if undelivered.exists() and (ids := [i for i in undelivered.read_text().split() if i not in acks]):
+            return name + ": undelivered inbox message %s (%s)" % (ids[0], undelivered)
         pane = tmux.pane(session, index)
         if not pane:
             return name + ": pane probe failed"
