@@ -1956,17 +1956,24 @@ change, woken by `selfgate-passed`) or `train`, is recorded
 without a coordinator wake; other gate-status blocks still wake it. A lead's
 `mdstack send` of `unblocked` to the coordinator with the refs of an earlier
 `blocked` message is appended to its inbox without a nudge (#578). Changes results retain their section
-files after cleanup. Merged PRs get the
-close-out in the coordinator brief: crew labels cleared, the closed issue's
-`crew:ready` removed, a closed issue that GitHub left open closed with a note
-(one that was reopened stays open, #846), and that PR's head branch deleted
-only for a same-repo head that is neither default nor base. Item windows are cleaned up too.
+files after cleanup. Merged PRs get the close-out below; item windows are cleaned
+up too.
 `pr-closed` reaps the assigned builder without merged-PR label or branch cleanup.
 A `fix` or `ci-red` send to a missing `ben-<issue>` with PR/head refs queues a
 `builder-message` wake. Route checks the live PR, linkage and head, spawns the
 builder's fix pass (or waits for its queued spawn), then delivers the refs.
 Live builder messages continue through the existing inbox, including train
 merge-ups; combined CI/review handoff rules remain in effect.
+
+Merged-PR close-out (the coordinator brief points here, #1635): remove
+`crew:approved`, `crew:hold`, `crew:in-review` and `crew:changes` (each if
+present) from the PR, remove `crew:ready` from the issue it closed, and close
+that issue with a note if GitHub left it open (never a reopened one, #846).
+Delete the head branch with `change.delete-branch` only when ALL of these
+hold, read from `change.read-state` and `change.read-default-branch`: the PR
+is merged; `isCrossRepository` is false; `<branch>` is read only from
+`headRefName`; the branch differs from both the default branch and
+`baseRefName`. Otherwise skip deletion and say why in the close-out note.
 
 Spawns are deduplicated by PR/head/pass/round against live and queued runs,
 section files and posted pass markers. An expected `--head` travels through
