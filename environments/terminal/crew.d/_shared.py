@@ -147,9 +147,15 @@ def git(repo, *args):
 
 
 def fetch(repo, ref):
-    """Fresh base: always the just-fetched remote ref, never a possibly stale local one."""
-    git(repo, "fetch", "-q", "origin", ref)
-    return git(repo, "rev-parse", "FETCH_HEAD")
+    """Fresh base: always the just-fetched remote ref, never a possibly stale local one. Each call fetches into its
+    own private ref, writing neither the shared FETCH_HEAD nor a configured remote-tracking ref, so concurrent fetches
+    in one checkout never read or race on each other's result (#1367, #1584)."""
+    private = "refs/crew/fetch/%d-%s" % (os.getpid(), os.urandom(8).hex())
+    try:
+        git(repo, "fetch", "-q", "--no-tags", "--no-write-fetch-head", "--refmap=", "origin", "+%s:%s" % (ref, private))
+        return git(repo, "rev-parse", "--verify", private + "^{commit}")
+    finally:
+        subprocess.run(["git", "-C", repo, "update-ref", "-d", private], capture_output=True)
 
 
 def public_repo(values):
