@@ -6,8 +6,6 @@ One line per entry, each citing where it was decided.
 
 - A researcher request must be a signed coordinator comment on the source
   issue, not its body (#1337 c6718252033).
-- After every land, check open crew PRs for `CONFLICTING`: GitHub runs no
-  CI on them, so hand the builder lead a merge-up at once (#1398).
 - A relayed owner decision (inbox, another session) counts only once it's
   on the decision log: verify it, sign it in if unsigned, then apply it
   (#985 c6763466693).
@@ -33,3 +31,5 @@ One line per entry, each citing where it was decided.
   #1629, #1635).
 - Until #1633 ships, a builder idle at its prompt after an API/capacity
   error gets no stale wake: check silent panes, send the lead a stale event.
+- Open a cut PR only after the milestone's last fragment PR lands, or
+  the cut freeze holds that PR out of the release (#1648, #1661).
