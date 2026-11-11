@@ -842,14 +842,14 @@ def add_item(d, stem, sorted_in):
 
 
 def merge_two_items(d, sorted_in):
-    """Seed d with the real index files, then merge branch b (zeta) into branch a (alpha)."""
+    """Seed d with the real index files, then merge branch b (zeta) into branch a (mu)."""
     for rel in INDEX_FILES:
         with open(os.path.join(os.path.dirname(SCRIPTS), rel), encoding="utf-8") as f:
             write(d, rel, f.read())
     git_out(d, "add", "-A")
     git_out(d, "commit", "-qm", "base")
     base = git_out(d, "rev-parse", "HEAD")[1].strip()
-    for branch, stem in (("a", "alpha"), ("b", "zeta")):
+    for branch, stem in (("a", "mu"), ("b", "zeta")):
         git_out(d, "checkout", "-q", "-b", branch, base)
         add_item(d, stem, sorted_in)
         git_out(d, "add", "-A")
@@ -868,7 +868,7 @@ with tempfile.TemporaryDirectory() as d:
             manifest = f.read()
         with open(os.path.join(d, "docs/deliverables.md"), encoding="utf-8") as f:
             inventory = f.read()
-        both = all("%s-%s" % (s, k) in text for s in ("alpha", "zeta") for k in ("tool.py", "notes.md")
+        both = all("%s-%s" % (s, k) in text for s in ("mu", "zeta") for k in ("tool.py", "notes.md")
                    for text in (manifest, inventory))
         expect("merge: two branches each adding a script, a doc and their index rows merge clean, and the merged "
                "tree passes the index and deliverables checks", rc == 0 and not unmerged and rc2 == 0 and both,
