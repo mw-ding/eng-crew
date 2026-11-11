@@ -210,7 +210,7 @@ class Parser:
         k, v = self.peek()
         if (k, v) == ("op", "("):
             self.i += 1
-            c = {"type": "group", "body": self.items()}
+            c = {"type": "group", "body": self.items(), "subshell": True}
             self.expect(")")
         elif k != "w":
             raise ValueError("unexpected %r at token %d" % (v, self.i))
@@ -285,6 +285,9 @@ def is_assertion(pipe, fns=()):
     w = _words(pipe)
     if pipe["bang"] or (w and (w[0] in ("test", "[") or w[0] in fns)):
         return True
+    c = pipe["cmds"][-1]
+    if c.get("subshell"):
+        return _can_fail(c["body"], fns, ("exit", "return"))
     return bool(w) and w[0] in ("grep", "egrep", "fgrep") and any(
         a in ("--quiet", "--silent") or re.match(r"-[A-Za-z]*q", a) for a in w[1:])
 
@@ -306,6 +309,23 @@ def _pipes(items):
                     yield from _pipes(b)
 
 
+def _can_fail(items, fns, stops):
+    """Whether ITEMS can end their context (a subshell or function) with a failure: an assertion or `false`
+    anywhere, or one of STOPS (`exit`, `return`) that is nonzero, or bare right after `||`, where it keeps the
+    failed status. A bare one after `&&` keeps a success."""
+    for item in items:
+        for n, (p, _) in enumerate(item):
+            w = _words(p) or [""]
+            if is_assertion(p, fns) or w[0] == "false" or (w[0] in stops and (
+                    w[1:2] not in ([], ["0"]) or (not w[1:] and n and item[n - 1][1] == "||"))):
+                return True
+            for c in p["cmds"]:
+                for b in [c["body"]] if c["type"] in ("group", "loop") else c.get("bodies", []):
+                    if _can_fail(b, fns, stops):
+                        return True
+    return False
+
+
 def _tail_fails(items, fns):
     """Whether the exit of ITEMS (a body whose result is kept) can be an assertion's failure."""
     if not items:
@@ -318,18 +338,34 @@ def _tail_fails(items, fns):
     return any(is_assertion(p, fns) for p, _ in item) or any(_tail_fails(b, fns) for b in bodies)
 
 
+def _returns_failure(items):
+    """A `false`, or a `return` that is nonzero or bare right after `||`, anywhere in a function body."""
+    for item in items:
+        for n, (p, _) in enumerate(item):
+            w = _words(p) or [""]
+            if w[0] == "false" or (w[0] == "return" and (w[1:2] not in ([], ["0"]) or (
+                    not w[1:] and n and item[n - 1][1] == "||"))):
+                return True
+            for c in p["cmds"]:
+                if c["type"] == "func":
+                    continue
+                for b in [c["body"]] if c["type"] in ("group", "loop") else c.get("bodies", []):
+                    if _returns_failure(b):
+                        return True
+    return False
+
+
 def fallible(items):
-    """Names of the functions defined in ITEMS whose return status can carry a failure: a nonzero `return`
-    or `false` in the body, or an unguarded assertion (or call to another such function) at its tail. A
-    function that exits on failure ends the step itself, so it does not count."""
+    """Names of the functions defined in ITEMS whose return status can carry a failure: a nonzero or bare
+    `return` (a bare one keeps the last failed status) or `false` in the body, or an unguarded assertion (or
+    call to another such function, or a subshell that can fail) at its tail. A function that exits on failure
+    ends the step itself, so it does not count; an `exit` inside a subshell does not end the step."""
     fns = {c["name"]: c["body"] for p in _pipes(items) for c in p["cmds"] if c["type"] == "func"}
     out = set()
     while True:
         more = set()
         for name, body in fns.items():
-            words = [_words(p) or [""] for p in _pipes(_wrap(body))]
-            if name not in out and (any(w[0] == "false" or (w[0] == "return" and w[1:2] not in ([], ["0"]))
-                                        for w in words) or _tail_fails(_wrap(body), out)):
+            if name not in out and (_returns_failure(_wrap(body)) or _tail_fails(_wrap(body), out)):
                 more.add(name)
         if not more:
             return out
