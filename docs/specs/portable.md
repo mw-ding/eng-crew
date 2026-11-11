@@ -679,6 +679,94 @@ the owner's
 recorded at each head. M46 has no release cut of its own; v7.9.0 follows
 M47. M46 closes after this slice merges.
 
+### M47: installs and working copies
+
+Opened by the spec slice #1691, part of
+[#1646](https://github.com/mw-ding/mdstack/issues/1646). Scope comes from
+[Riley's readiness pass](https://github.com/mw-ding/mdstack/issues/1646#issuecomment-6797511860):
+seven builds, one PR per issue. No item below dispatches before this slice
+merges. Every row is planned: its issue is `open`. B3 waits for B1 and B2,
+and B6 waits for B5; every other row depends only on this slice.
+
+| ID | Issue | Scope | Depends on | Status |
+|---|---|---|---|---|
+| B1 | #1344 | Project references (`FILE#repo`) kept through bootstrap, fetch and install | #1691 | open |
+| B2 | #1537 | Revision-bound memory: render reads core memory at one fresh remote-default SHA | #1691 | open |
+| B3 | #1090 | A true bootstrap no-op: an unchanged install writes nothing | #1691, B1, B2 | open |
+| B4 | #1595 | `mdstack connect` dials the inventory host's address | #1691 | open |
+| B5 | #1252 | A builder run cannot remove another run's working copy | #1691 | open |
+| B6 | #316 | Worktree root parity and conservative GC | #1691, B5 | open |
+| B7 | #281 | Ship the shared secret and glob primitives; keep `check-repo.py` internal | #1691 | open |
+
+Decisions M47 settles (the
+[coordinator's record](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6797570240)
+under the owner's standing pre-approval; any of them changes on the owner's
+word):
+
+- **#1537 memory source.** Each render fetches the project's remote default
+  branch once and reads core memory from that full SHA, frozen across the
+  render's role outputs. A fetch or read failure refuses the render; it
+  never falls back to stale or local memory. Core authority stays the
+  reviewed project `memory/`.
+- **#316 cleanup.** Lifecycle cleanup stays, plus a bounded, dry-run-first
+  GC. Automatic removal covers merged work only, with C6 proof; every
+  ambiguous case is kept and reported. Legacy keep lists stay, and #1166's
+  recorded default (keep) is unchanged.
+- **#316 provider deferred.** Git stays the only worktree provider.
+  #316's AC4 is revised to: "The provider decision, with the treehouse
+  alternative considered and deferred, is recorded under AC1; no provider
+  profile key and no fake-`treehouse` tests." Its AC1–AC3 and AC5 stand.
+  A later provider needs its own spec slice.
+- **Sensitive heads.** B5, B6 (working-copy removal) and B7 (secret
+  pattern move) get the full-diff sensitive check at each head; a
+  sensitive head still needs the owner's per-change reason.
+
+**B5's enforcing boundary (#1252).** A helper, claim check or prompt alone
+does not satisfy #1252, because a raw shell can bypass them. B5 builds this
+boundary:
+
+1. **Own Git metadata per builder run.** Spawn gives each builder run a
+   working copy with its own Git administrative directory (a local clone
+   that borrows objects read-only from the shared checkout), not a linked
+   worktree of the shared checkout. Its refs, index and worktree list
+   belong to the run, so a commit or fetch never writes the shared
+   checkout's metadata.
+2. **OS write boundary.** The worker process runs under an OS-enforced
+   write sandbox whose writable roots are exactly that run's working copy
+   and the reporting paths the brief names (the crew state directory).
+   Sibling run roots and the shared checkout, its common Git directory
+   included, are read-only, so `git -C <shared> worktree remove`, `rm -rf`
+   of a sibling and a write into a sibling's metadata all fail.
+3. **Supported configurations.** A configuration enforces confinement
+   only when its harness applies an OS write sandbox whose writable roots
+   mdstack sets at launch. Today that is Codex with `permission_mode`
+   `safe` or `auto` (workspace-write), with the shared common directory
+   dropped from its added directories. `bypass` on any harness, Pi, Muse,
+   Claude Code without an OS-sandboxed launch, and session-runtime workers
+   (subagents in the coordinator's process) do not enforce. B5 may add a
+   harness to the supported set only with the same proof. A role host
+   applies the same rule on its host.
+4. **Refusal.** A profile setting, `runtime.options.confinement`, takes
+   `enforce` or `off`. Under `enforce`, spawn refuses an unsupported
+   builder configuration before it claims a working copy or opens a
+   window, naming the reason. B5 ships `off` as the default so a running
+   crew keeps launching. Under `off`, the run record and `mdstack doctor`
+   mark the run unconfined, and #1252's guarantee is not claimed for it.
+5. **Proof.** Two live builder runs A and B through the production spawn
+   and launch path, B with a nested evidence worktree: each of A's
+   removal attempts on B fails and B stays usable, while A removes its own
+   clean nested tree. C6 landed and discard checks stay as they are.
+
+Owner steps: none for B1–B4 and B7, whose tests use fakes. B5 lists any
+launcher or sandbox step its supported configurations need. Legacy #1166
+trees stay an owner keep-list decision, not a B6 removal.
+
+Merge permission for M47 spec, protocol, template and gate-contract text is
+the owner's
+[M45–M48 grant](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6789266394),
+recorded at each head. The release cadence stays v7.9.0 after M47 closes. A
+status-sync slice closes the milestone.
+
 ## 6. Decisions
 
 | Date | Decision | Source |
