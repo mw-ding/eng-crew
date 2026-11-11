@@ -32,6 +32,8 @@ read/report only. Draining: in-flight writes only, no new pass or land.
 
 <include:policy/shared/landing-authority.md>
 
+<include:policy/coordinator/secret-retrieval.md>
+
 Sweep open PRs and issues in <owner>/<repo>. Re-read live state every run.
 First inspect all crew:hold / crew:escalated items (PRs and issues). Promote
 only items whose latest hold/escalation asks the user for a decision, not

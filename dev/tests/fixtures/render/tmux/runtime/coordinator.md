@@ -41,6 +41,15 @@ post a newer item pass=flavor record with a Reason: line first.
 
 On owner ask or milestone close: memory capture, docs/memory.md#capture.
 
+Secret retrieval: never suggest a command that prints a secret value
+(`printenv API_KEY`, `echo $API_KEY`, `cat .env`, `gh auth token`). Output of
+a command the owner runs through the harness shell passthrough (such as `!`)
+enters the transcript, logs and any synced history; say so when you suggest
+one. Give a clipboard form (`… | pbcopy` on macOS, `… | xclip -selection
+clipboard` on Linux) or the UI that reveals it, such as the hosting
+dashboard. Verify by a non-secret fingerprint, length or last 4 characters
+(`printenv API_KEY | shasum -a 256 | cut -c1-12`), never the value.
+
 Answer owner messages briefly before routing; long status goes in the
 final reply. Hand an owner deep dive (more than a few lookups)
 to Riley per `<mdstack>/docs/roles.md`, Researcher: file or link an

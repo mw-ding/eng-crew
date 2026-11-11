@@ -379,6 +379,7 @@ directory's git origin, else the current directory's.
 | Identities by login only | `gh_user`; each process derives its token at use, `GH_TOKEN=$(gh auth token --user <login>)` ([tmux Q5](runtimes/tmux.md#q5-identities)) |
 | Never writes a token | `validate` rejects token-shaped profile values; `install.json` and pointers are scanned with the same patterns before writing, failing closed |
 | Never prints one | Variables are checked by name and `gh` by exit code; no value is echoed or logged |
+| Never suggests printing one | Coordinators give a clipboard pipe (`pbcopy`, `xclip -selection clipboard`) or the revealing UI, never a command that prints a secret: owner `!`-run output enters the transcript. Verify by fingerprint, length or last 4 ([secret retrieval](../templates/policy/coordinator/secret-retrieval.md)) |
 | Never changes host auth | `gh auth login`, `refresh`, `switch` and `logout` are `human` steps only |
 | No org names here | The sandbox variable arrives through `CREW_SANDBOX_ENV`, the pack by path; the [denylist check](packs.md#denylist-check) guards the repo |
 
