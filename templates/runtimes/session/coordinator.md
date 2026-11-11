@@ -63,6 +63,8 @@ a lower limit.
 
 <include:policy/coordinator/milestone-admission.md>
 
+<include:policy/coordinator/plan-gate.md>
+
 <include:policy/coordinator/memory-capture.md>
 
 <include:policy/coordinator/secret-retrieval.md>
