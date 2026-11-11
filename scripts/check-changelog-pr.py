@@ -100,11 +100,12 @@ def top_section(text):
 
 
 def released_sections(text):
-    """[(heading, body lines)] of every `## ` section after [Unreleased]."""
+    """[(heading, body lines)] of every `## ` section after [Unreleased], each
+    line kept byte for byte with its terminator."""
     out = []
-    for line in text.splitlines():
+    for line in text.splitlines(keepends=True):
         if line.startswith("## ") and (out or line.rstrip() != "## [Unreleased]"):
-            out.append((line.rstrip(), []))
+            out.append((line, []))
         elif out:
             out[-1][1].append(line)
     return out
@@ -116,13 +117,13 @@ def released_history_error(root, base, head, paths):
     if "CHANGELOG.md" not in paths or "CHANGELOG.md" in changed_paths(root, base, head, "A"):
         return None
     merge_base = git(root, "merge-base", base, head).decode().strip()
-    before = released_sections(git(root, "show", merge_base + ":CHANGELOG.md").decode("utf-8", "replace"))
+    before = released_sections(git(root, "show", merge_base + ":CHANGELOG.md").decode("utf-8", "surrogateescape"))
     after = []
     if "CHANGELOG.md" not in changed_paths(root, base, head, "D"):
-        after = released_sections(git(root, "show", head + ":CHANGELOG.md").decode("utf-8", "replace"))
+        after = released_sections(git(root, "show", head + ":CHANGELOG.md").decode("utf-8", "surrogateescape"))
     if len(after) >= len(before) and after[len(after) - len(before):] == before:
         return None
-    changed = [heading for heading, body in before if (heading, body) not in after]
+    changed = [heading.rstrip() for heading, body in before if (heading, body) not in after]
     return ", ".join(changed) or "the order of released sections"
 
 

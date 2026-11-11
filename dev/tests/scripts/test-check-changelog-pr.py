@@ -255,6 +255,24 @@ class ChangelogPRTest(unittest.TestCase):
         self.commit()
         self.assert_refused(self.run_guard(), "## [1.1.0] - 2026-11-02", "## [1.0.0] - 2026-11-01")
 
+    def test_released_heading_whitespace_refused(self):
+        self.released_base()
+        self.changelog(released=self.RELEASED.replace("## [1.1.0] - 2026-11-02\n", "## [1.1.0] - 2026-11-02 \n"))
+        self.commit()
+        self.assert_refused(self.run_guard(), "## [1.1.0] - 2026-11-02")
+
+    def test_released_final_newline_removed_refused(self):
+        self.released_base()
+        self.changelog(released=self.RELEASED[:-1])
+        self.commit()
+        self.assert_refused(self.run_guard(), "## [1.0.0] - 2026-11-01")
+
+    def test_released_line_ending_changed_refused(self):
+        self.released_base()
+        self.changelog(released=self.RELEASED.replace("### Added\n", "### Added\r\n"))
+        self.commit()
+        self.assert_refused(self.run_guard(), "## [1.0.0] - 2026-11-01")
+
     def test_cut_rewriting_older_section_refused(self):
         self.released_base()
         self.changelog(released="## [1.2.0] - 2026-11-03\n\n### Fixed\n\n- Old fragment. (issue #1, PR #5, "
