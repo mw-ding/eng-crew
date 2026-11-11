@@ -246,6 +246,7 @@ class StatusPullStubTest(unittest.TestCase):  # #1493: two typed lines in one wr
         self.addCleanup(subprocess.run, ["rm", "-rf", d])
         status = Path(d, "s.status")
         p = subprocess.Popen([sys.executable, "-c", sc.STUB, str(status)], stdin=subprocess.PIPE)
+        self.addCleanup(p.stdin.close)
         self.addCleanup(p.wait)
         self.addCleanup(p.kill)
         acks = lambda: [x for x in (status.read_text().splitlines() if status.exists() else [])
