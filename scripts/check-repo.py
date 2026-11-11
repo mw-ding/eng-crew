@@ -8,6 +8,8 @@ complete), no committed evidence directory, union merge for append-only docs
 (`.gitattributes`), markdown lint (check-markdown.py on every tracked *.md
 file), tests per module, and the team spec's dependency rules with the
 runtime-word lint, core memory (layout, size limits, no personal data) and role routines.
+In a git work tree it also warns on stderr, naming them, about non-ignored
+untracked files, which the path checks skip (exit code unchanged).
 Python 3 stdlib only, no network.
 
 Usage: check-repo.py [--root DIR] [--config FILE] [--fix] [--only secrets|docs|links|markers|blockers|shapes|denylist|deliverables|spec-status|design-headers|fragments|script-docs|index|evidence|attributes|markdown|test-layout|deps|memory|routines]...
@@ -202,9 +204,9 @@ def read_lines(path):
     return data.decode("utf-8", "replace").splitlines()
 
 
-def tracked_files(root):
-    """Paths from `git ls-files` when root is the top of a git work tree, else
-    None (e.g. the test temp dirs)."""
+def git_paths(root, *ls_args):
+    """Paths from `git ls-files -z <ls_args>` when root is the top of a git
+    work tree, else None (e.g. the test temp dirs)."""
     env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
 
     def git(*args):
@@ -214,9 +216,15 @@ def tracked_files(root):
         top = git("rev-parse", "--show-toplevel").decode("utf-8", "replace").strip()
         if os.path.realpath(top) != os.path.realpath(root):
             return None
-        return sorted(p for p in git("ls-files", "-z").decode("utf-8", "replace").split("\0") if p)
+        return sorted(p for p in git("ls-files", "-z", *ls_args).decode("utf-8", "replace").split("\0") if p)
     except (OSError, subprocess.CalledProcessError):
         return None
+
+
+def tracked_files(root):
+    """Paths from `git ls-files` when root is the top of a git work tree, else
+    None (e.g. the test temp dirs)."""
+    return git_paths(root)
 
 
 def walk(root):
@@ -1104,6 +1112,11 @@ def main(argv=None):
     if "routines" in checks:
         check_routines(root, fail)
 
+    untracked = git_paths(root, "--others", "--exclude-standard")
+    if untracked:
+        print("check-repo: warning: %d untracked file%s not checked (path checks read `git ls-files`; "
+              "`git add` new files before claiming a pass): %s"
+              % (len(untracked), "" if len(untracked) == 1 else "s", ", ".join(untracked)), file=sys.stderr)
     for f in failures:
         print(f)
     if failures:
