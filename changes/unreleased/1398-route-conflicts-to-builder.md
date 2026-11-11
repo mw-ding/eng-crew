@@ -1,7 +1,7 @@
 ---
 type: fixed
 issue: 1398
-pr: TBD
+pr: 1631
 date: 2026-11-10
 box-skill: none
 ---
