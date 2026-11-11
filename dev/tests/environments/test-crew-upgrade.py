@@ -437,8 +437,38 @@ def evidence():
     print("delete: temporary project, install, state and fake host removed")
 
 
+def adopt_evidence():
+    """#1616 lifecycle: a user-level install with no install.json is adopted and upgraded, upgraded again, then the
+    fake host is deleted."""
+    fixture = Upgrade("test_adopts_a_verified_user_level_install_without_a_record")
+    fixture.setUp()
+    try:
+        fixture.manifest.unlink()
+        (fixture.bundle.parent / "current").symlink_to(fixture.bundle.name, target_is_directory=True)
+        state = Path(fixture.state)
+        print("create: user-level install v2.1.0; install.json exists: %s; link -> %s" % (
+            fixture.manifest.exists(), (state / "mdstack").resolve().name))
+        builder = fixture.bundle / "templates/runtimes/tmux/builder.md"
+        deployed = state / "render/runtime/builder.md"
+        for rule in ("Adopted rule.", "Second rule."):
+            builder.write_text(builder.read_text() + "\n%s\n" % rule)
+            result = fixture.upgrade("--yes")
+            lines = [line for line in result.stdout.splitlines() if line.startswith("crew upgrade: adopted")]
+            record = json.loads(fixture.manifest.read_text())
+            print("upgrade --yes: exit %d; %s" % (result.returncode, lines[0] if lines else "(record already present)"))
+            print("update: record tag=%s status=%s; %r deployed: %s" % (
+                record["tag"], record["status"], rule, rule in deployed.read_text()))
+        result = fixture.upgrade("--yes")
+        print("upgrade --yes: exit %d; %s" % (result.returncode, result.stdout.strip().splitlines()[-1]))
+    finally:
+        fixture.doCleanups()
+    print("delete: fake host, install record and state removed: %s" % (not Path(fixture.tmp).exists()))
+
+
 if __name__ == "__main__":
     if sys.argv[1:] == ["--evidence"]:
         evidence()
+    elif sys.argv[1:] == ["--evidence-adopt"]:
+        adopt_evidence()
     else:
         unittest.main()

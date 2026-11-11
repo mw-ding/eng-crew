@@ -645,5 +645,58 @@ class Sandbox(DoctorBase):
                 self.assertEqual(sandbox(values, self.project)[0], ("ok", "sandbox", "sandbox_env set", ""))
 
 
+LABELS_PY = """import json, sys
+path = sys.argv[1]
+labels = json.load(open(path))
+if sys.argv[2] == "list":
+    print(json.dumps([labels]))
+else:
+    a = sys.argv[2:]
+    new = dict(name=a[2], color=a[a.index("--color") + 1], description=a[a.index("--description") + 1])
+    json.dump([x for x in labels if x["name"] != a[2]] + [new], open(path, "w"))
+"""
+
+
+def label_evidence():
+    """#1616 lifecycle: a hand-made crew:express label on a stateful fake GitHub is repaired by doctor --fix, then
+    the fake host is deleted."""
+    fixture = ToolDrift("test_fix_canonicalizes_a_hand_made_crew_label")
+    fixture.setUp()
+    try:
+        store = os.path.join(fixture.tmp, "labels.json")
+        labels = [{"name": n, "color": c, "description": d} for n, c, d in fixture.crew_labels()]
+        canonical = dict(next(x for x in labels if x["name"] == "crew:express"))
+        next(x for x in labels if x["name"] == "crew:express").update(color="000000", description="hand made")
+        with open(store, "w") as f:
+            json.dump(labels, f)
+        with open(os.path.join(fixture.tmp, "labels.py"), "w") as f:
+            f.write(LABELS_PY)
+        fixture.gh(["acme-bot", "acme-reviewer"], "v2.1.0")
+        os.rename(os.path.join(fixture.bindir, "gh"), os.path.join(fixture.bindir, "gh-std"))
+        py = "%s %s %s" % (sys.executable, os.path.join(fixture.tmp, "labels.py"), store)
+        fixture.tool("gh", 'case "$1 $2" in\n"api repos/acme/widgets/labels?per_page=100") exec %s list;;\n'
+                     '"label create") exec %s "$@";;\n*) exec %s "$@";;\nesac' % (
+                         py, py, os.path.join(fixture.bindir, "gh-std")))
+
+        def express():
+            return next(x for x in json.load(open(store)) if x["name"] == "crew:express")
+        print("create: fake GitHub crew:express = %s" % json.dumps(express(), sort_keys=True))
+        r = fixture.doctor()
+        print("doctor: exit %d; crew labels %s; crew:express unchanged: %s" % (
+            r.returncode, fixture.rows(r)["crew labels"], express()["color"] == "000000"))
+        r = fixture.doctor("--fix")
+        print("doctor --fix: exit %d; crew labels %s" % (r.returncode, fixture.rows(r)["crew labels"]))
+        print("update: fake GitHub crew:express = %s; canonical: %s" % (
+            json.dumps(express(), sort_keys=True), express() == canonical))
+        r = fixture.doctor()
+        print("doctor (rerun): exit %d; crew labels %s" % (r.returncode, fixture.rows(r)["crew labels"]))
+    finally:
+        fixture.doCleanups()
+    print("delete: fake host and label store removed: %s" % (not os.path.exists(fixture.tmp)))
+
+
 if __name__ == "__main__":
-    unittest.main()
+    if sys.argv[1:] == ["--evidence-labels"]:
+        label_evidence()
+    else:
+        unittest.main()
