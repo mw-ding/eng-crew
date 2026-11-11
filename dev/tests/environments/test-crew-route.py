@@ -171,6 +171,42 @@ class Route(SpawnBase):
         self.assertEqual(self.pending(), [])
         self.transcript.append(("state", "validation completed; validation window removed; role runs: []; queued wakes: []"))
 
+    def test_conflict_hands_one_merge_up_to_the_builder_lead_before_ci(self):  # #1398
+        conflict = dict(event="pr-conflicting", consumer="builder", refs=["#12", self.sha])
+        self.live.update(mergeable="CONFLICTING")
+        self.save()
+        self.queue(conflict)
+        self.route()
+        self.assertEqual(self.pending(), [dict(conflict, consumer="coordinator")])  # no builder lead installed
+        os.remove(os.path.join(self.state, "wake", "queue.jsonl"))
+        bindir = os.path.join(self.tmp, "bin")  # a live lead pane, so the replay's ensure finds it alive
+        os.rename(os.path.join(bindir, "tmux"), os.path.join(bindir, "tmux-base"))
+        for name, text in (("tmux", FAKE_TMUX_PANES), ("ps", FAKE_PS)):
+            with open(os.path.join(bindir, name), "w") as f:
+                f.write(text)
+            os.chmod(os.path.join(bindir, name), 0o755)
+        self.env.update(FAKE_PANES=os.path.join(self.tmp, "panes.json"), FAKE_PS=os.path.join(self.tmp, "ps.json"))
+        self.put("render/runtime/builder-lead.md", "Manage the builder pool.\n")
+        self.queue(conflict, conflict)  # a replayed wake reuses the unfinished handoff
+        self.route()
+        self.assertEqual(self.pending(), [])
+        with open(os.path.join(self.state, "inbox", "ben-lead.jsonl")) as f:
+            self.assertEqual([(m["kind"], m["refs"]) for m in map(json.loads, f)], [("merge-up", ["#12", self.sha])])
+        for live, queued in ((dict(mergeable="UNKNOWN"), [conflict]), (dict(labels=[{"name": "crew:hold"}]), [conflict]),
+                             (dict(labels=[{"name": "crew:escalated"}]), [conflict]),
+                             (dict(labels=[{"name": "crew:solo"}]), [dict(conflict, consumer="coordinator")]),
+                             (dict(mergeable="MERGEABLE"), []), (dict(headRefOid="f" * 40), []), (dict(state="CLOSED"), [])):
+            base = dict(mergeable="CONFLICTING", labels=[], headRefOid=self.sha, state="OPEN")
+            self.live = dict(self.live, **dict(base, **live))
+            self.save()
+            if os.path.exists(os.path.join(self.state, "wake", "queue.jsonl")):
+                os.remove(os.path.join(self.state, "wake", "queue.jsonl"))
+            self.queue(conflict)
+            self.route()
+            self.assertEqual(self.pending(), queued, live)
+        with open(os.path.join(self.state, "inbox", "ben-lead.jsonl")) as f:
+            self.assertEqual(len(f.readlines()), 1)
+
     def test_solo_skips_builder_routing_but_keeps_independent_review(self):
         self.live["labels"] = [{"name": "crew:solo"}]
         self.save()

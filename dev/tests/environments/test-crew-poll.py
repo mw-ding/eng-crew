@@ -146,9 +146,32 @@ class PollDecide(unittest.TestCase):
         self.assertEqual(sorted(self.crew.CONSUMER), sorted(["new-head", "ci-passed", "ci-failed", "ci-infra", "review-changes-requested",
                                                              "review-approved", "pr-merged", "pr-closed",
                                                              "issue-assigned", "fix-at-head", "merge-up",
-                                                             "selfgate-passed"]))
+                                                             "selfgate-passed", "pr-conflicting"]))
         self.assertTrue(all(isinstance(v, str) for v in self.crew.CONSUMER.values()))
 
+
+    def test_conflict_at_unchanged_head_wakes_builder_once_per_head_and_conflict(self):  # #1398
+        def poll(state, mergeable, head=HEAD, verdict=True):
+            prs = fixture("prs-approved.json" if verdict else "prs-pending.json")
+            prs[0].update(mergeable=mergeable, headRefOid=head)
+            events, state = self.crew.decide(state, prs, [])
+            return [(e["event"], e["consumer"], e["refs"]) for e in events if e["event"] == "pr-conflicting"], state
+        _, state = poll({}, "MERGEABLE")
+        hit = [("pr-conflicting", "builder", ["#171", HEAD])]
+        events, state = poll(state, "CONFLICTING")  # another land made the approved head conflict, no checks yet
+        self.assertEqual(events, hit)
+        for mergeable in ("CONFLICTING", "UNKNOWN", "CONFLICTING", None):  # repeats and UNKNOWN never multiply
+            events, state = poll(state, mergeable)
+            self.assertEqual(events, [], mergeable)
+        self.assertEqual(state["prs"]["171"]["mergeable"], "CONFLICTING")
+        events, state = poll(state, "MERGEABLE")
+        self.assertEqual((events, state["prs"]["171"]["mergeable"]), ([], "MERGEABLE"))
+        self.assertEqual(poll(state, "CONFLICTING")[0], hit)  # resolved, then conflicting again: a new handoff
+        self.assertEqual(poll(state, "UNKNOWN")[0], [])  # UNKNOWN is not a conflict
+        new = "b" * 40
+        events, state = poll(state, "CONFLICTING", head=new, verdict=False)
+        self.assertEqual(events, [("pr-conflicting", "builder", ["#171", new])])
+        self.assertNotIn("mergeable", poll({}, "UNKNOWN", head=new)[1]["prs"]["171"])
 
     def marked(self, name, *markers, at=None):
         """A fixture with one more review (or one inserted at index at) holding the given crew:v1 lines."""
@@ -445,6 +468,35 @@ class Poll(Base):
         self.assertTrue(all(c[:2] in (["pr", "list"], ["issue", "list"], ["pr", "view"]) for c in calls), calls)
         self.assertIn(["pr", "view", "171", "-R", "acme/widgets", "--json",
                        "number,state,headRefOid,labels,statusCheckRollup,reviews,mergeable"], calls)
+
+    def test_once_conflict_wakes_builder_once_per_head_and_conflict(self):  # #1398: through the shipped CLI
+        self.transcript = []
+        shutil.copy(os.path.join(POLL, "issues-none.json"), os.path.join(self.gh_dir, "issues.json"))
+
+        def poll(mergeable, head=HEAD):
+            prs = fixture("prs-pending.json")
+            prs[0].update(mergeable=mergeable, headRefOid=head)
+            with open(os.path.join(self.gh_dir, "prs.json"), "w") as f:
+                json.dump(prs, f)
+            r = self.crew("poll", "--once", "--project", self.project)
+            self.transcript.append(("mergeable=%s head=%s" % (mergeable, head[:7]), r))
+            self.assertEqual((r.returncode, r.stderr), (0, "mdstack: config %s\n" % self.project), r.stdout)
+            with open(os.path.join(self.state, "poll-state.json")) as f:
+                stored = json.load(f)["prs"]["171"].get("mergeable")
+            return [line for line in r.stdout.splitlines() if "pr-conflicting" in line], stored
+        self.assertEqual(poll("MERGEABLE"), ([], "MERGEABLE"))
+        hit = ["crew: poll: pr-conflicting -> builder #171 " + HEAD]
+        self.assertEqual(poll("CONFLICTING"), (hit, "CONFLICTING"))  # a land made the unchanged head conflict
+        for mergeable in ("CONFLICTING", "UNKNOWN"):  # repeats and UNKNOWN never multiply
+            self.assertEqual(poll(mergeable), ([], "CONFLICTING"), mergeable)
+        self.assertEqual(poll("MERGEABLE"), ([], "MERGEABLE"))
+        self.assertEqual(poll("CONFLICTING"), (hit, "CONFLICTING"))  # resolved, then conflicting again
+        new = "b" * 40
+        self.assertEqual(poll("CONFLICTING", new), (["crew: poll: pr-conflicting -> builder #171 " + new],
+                                                    "CONFLICTING"))
+        self.assertEqual([(w["event"], w["consumer"], w["refs"]) for w in self.queue()
+                          if w["event"] == "pr-conflicting"],
+                         [("pr-conflicting", "builder", ["#171", h]) for h in (HEAD, HEAD, new)])
 
     def test_ready_samples_written_on_change_with_the_polling_bound(self):  # #1524
         def poll(labels, mergeable, state="OPEN"):
@@ -892,4 +944,16 @@ class NativeTriage(Base):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    if "--conflict-transcript" in sys.argv:  # #1398: each `mdstack poll --once` of the CLI conflict test, verbatim
+        test = Poll("test_once_conflict_wakes_builder_once_per_head_and_conflict")
+        test.setUp()
+        try:
+            test.test_once_conflict_wakes_builder_once_per_head_and_conflict()
+            for label, r in test.transcript:
+                print("$ mdstack poll --once --project <fixture>/project/crew.toml  # %s\nexit: %d\n--- stdout\n%s"
+                      "--- stderr\n%s" % (label, r.returncode, r.stdout, r.stderr.replace(test.tmp, "<fixture>")),
+                      end="")
+        finally:
+            test.doCleanups()
+    else:
+        unittest.main()

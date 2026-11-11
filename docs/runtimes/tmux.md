@@ -1337,6 +1337,7 @@ exactly one consuming role ([protocol §8](../protocol.md#8-safety)):
 | New builder `pass=fix` marker at head after a `verdict=changes` there (an evidence-only fix: no new commit, so no `new-head`) | `fix-at-head` | reviewer |
 | Tracked PR merged / closed | `pr-merged` / `pr-closed` | coordinator |
 | `crew:ready` issue newly assigned | `issue-assigned` | builder |
+| Open crew PR head turns `CONFLICTING` (`UNKNOWN` is no conflict), including after another land | `pr-conflicting` | builder (merge-up via the builder lead, before any CI) |
 | Express change: new builder `pass=selfgate verdict=pass` at head with CI green | `selfgate-passed` | synthesizer |
 
 A change that resolves express ([express lane](../express-lane.md#routing),
@@ -1393,7 +1394,14 @@ synthesizer reports `no-verified-base`, the coordinator re-reads head/holds
 and dispatches normal review and independent validation at that head to
 record the base, then retries portability.
 Conflicts or differing patches route through the builder, then delta
-re-review and independent validation at the updated head. An open rereview
+re-review and independent validation at the updated head. GitHub runs no
+`pull_request` CI on a conflicting PR, so poll emits `pr-conflicting` once
+per head and conflict (an `UNKNOWN` read keeps the head's last known value),
+and `mdstack route` re-reads the PR and hands the builder lead one `merge-up`
+handoff (`#<pr> <head-sha>`) without waiting for checks or a sweep (#1398).
+A closed PR, moved head or resolved conflict consumes the wake; held,
+escalated, draft, solo or lead-less work stays queued for the coordinator.
+A conflict that clears and returns emits again. An open rereview
 steer at head always routes full review and validation. Explicit `recheck`
 recovery and CI-fix passes remain available; they are not required for an
 identical clean base update. A `recheck escalate` status routes full review at
