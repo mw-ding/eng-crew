@@ -503,6 +503,45 @@ def source_failure(wake, seen, cmd, error, limit):
     return [{"reason": "source-failing", "event": "%s: %d failures in a row, last: %s" % (cmd, n, error)}]
 
 
+def nudge(args, session, state, wake, seen):
+    """Type `wake: watcher` into an idle window-0 coordinator; one showing a dialog gets a queued `dialog` wake
+    instead, which is returned (#315)."""
+    p = None if args.no_nudge else tmux.pane(session, 0)
+    if not (p and foreground_matches(ENGINE_CMD.values(), {p["command"], *tmux.foreground(p["tty"])}) and
+            time.time() - float(p["activity"]) > args.idle):
+        return None
+    if dialog(session, 0):  # never type into a prompt: its Enter could approve a command (#315)
+        w = {"reason": "dialog", "window": dict(tmux.list_windows(session)).get(0, "0"),
+             "liveness": "ambiguous", "silent": int(time.time() - float(p["activity"])), "action": "escalate"}
+        with queue_lock(state), open(os.path.join(wake, "queue.jsonl"), "a") as f:
+            f.write(json.dumps(dict(w, at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))) + "\n")
+            f.flush()
+            seen["queue"] = queue_sig(wake)
+        return w
+    if "doorbell" in tmux.CAPABILITIES:
+        if error := commands()["send"].nudge(session, 0, "wake: watcher"):
+            print("crew: coordinator nudge not submitted: " + error)
+    else:
+        tmux.send_keys(session, 0, "wake: watcher")  # the Codex-recipe path, for when exit alone wakes nobody
+    return None
+
+
+def announce(args, session, state, wake, seen, wakes):
+    """Wake the coordinator for retained wakes: the nudge, then one reason line and the schedule summary."""
+    wakes = wakes + [w for w in [nudge(args, session, state, wake, seen)] if w]
+    print(reason(wakes[0]) + (" (+%d more in wake/queue.jsonl)" % (len(wakes) - 1) if len(wakes) > 1 else ""))
+    if (line := commands()["schedule"].read(commands()["schedule"].summary, state)) not in (None, "unknown"):
+        print(line)
+    sys.stdout.flush()
+
+
+def backstop_deadline(state, seen, backstop, backoff):
+    """(busy, monotonic time of the next backstop wake): x2 per idle wake up to backoff times; work resets it."""
+    busy = any(runs(state)) or any(commands()["lead"].pending(state, n) for n, _ in commands()["lead"].records(state))
+    seen["idle"] = 0 if busy else seen["idle"]
+    return busy, time.monotonic() + min(backstop * 2 ** seen["idle"], backstop * backoff)
+
+
 def register(sub):
     p = sub.add_parser("watch")
     p.add_argument("--stale", type=float, default=900, help="seconds without status progress before a stale wake")
@@ -556,12 +595,10 @@ def run(args):
 
     for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):  # a killed watcher removes its PID file, saves offsets
         signal.signal(sig, stop)
-    busy = any(runs(state)) or any(commands()["lead"].pending(state, n) for n, _ in commands()["lead"].records(state))
-    seen["idle"] = 0 if busy else seen["idle"]
     sweep = routine("coordinator", "stale-sweep")  # the team head's backstop (#1247)
     backstop = args.backstop or commands()["up"].crew_routines.interval(sweep, values)
     backoff = sweep.get("idle_backoff", 1)
-    deadline = time.monotonic() + min(backstop * 2 ** seen["idle"], backstop * backoff)  # backs off when idle
+    busy, deadline = backstop_deadline(state, seen, backstop, backoff)  # backs off when idle
     code = code_sig()
     source_interval = values["runtime.options.poll_interval"] if args.source_interval is None else args.source_interval
     try:
@@ -648,27 +685,7 @@ def run(args):
             sleeping = False
         if held:  # held during the last scan, whose wakes are queued
             raise SystemExit(128 + held[0])
-        p = None if args.no_nudge else tmux.pane(session, 0)
-        if p and foreground_matches(ENGINE_CMD.values(), {p["command"], *tmux.foreground(p["tty"])}) and \
-                time.time() - float(p["activity"]) > args.idle:
-            if dialog(session, 0):  # never type into a prompt: its Enter could approve a command (#315)
-                w = {"reason": "dialog", "window": dict(tmux.list_windows(session)).get(0, "0"),
-                     "liveness": "ambiguous", "silent": int(time.time() - float(p["activity"])), "action": "escalate"}
-                with queue_lock(state), open(os.path.join(wake, "queue.jsonl"), "a") as f:
-                    f.write(json.dumps(dict(w, at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))) + "\n")
-                    f.flush()
-                    seen["queue"] = queue_sig(wake)
-                wakes.append(w)
-            else:
-                if "doorbell" in tmux.CAPABILITIES:
-                    if error := commands()["send"].nudge(session, 0, "wake: watcher"):
-                        print("crew: coordinator nudge not submitted: " + error)
-                else:
-                    tmux.send_keys(session, 0, "wake: watcher")  # the Codex-recipe path, for when exit alone wakes nobody
-        wakes += others
-        print(reason(wakes[0]) + (" (+%d more in wake/queue.jsonl)" % (len(wakes) - 1) if len(wakes) > 1 else ""))
-        if (line := commands()["schedule"].read(commands()["schedule"].summary, state)) not in (None, "unknown"):
-            print(line)
+        announce(args, session, state, wake, seen, wakes + others)
         return 0
     finally:
         save(seen)
