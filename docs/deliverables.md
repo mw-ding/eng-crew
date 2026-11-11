@@ -68,12 +68,15 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `connectors/notion/knowledge.py` | Deliverable | all | Knowledge connector: Notion binding of knowledge-read and knowledge-propose-edit ([#1229](https://github.com/mw-ding/eng-crew/issues/1229)) |
 | `connectors/notion/manifest.toml` | Deliverable | all | Connector: Notion knowledge capability declaration ([#1229](https://github.com/mw-ding/eng-crew/issues/1229)) |
 | `core/README.md` | Deliverable | all | Module README: purpose, contents and how the module plugs in ([#1237](https://github.com/mw-ding/eng-crew/issues/1237)) |
-| `core/crew-config.py` | Deliverable | all | Install CLI: validate and resolve a profile; imports the secret-scan patterns of `check-repo.py` ([#275](https://github.com/mw-ding/eng-crew/issues/275)) |
+| `core/crew-config.py` | Deliverable | all | Install CLI: validate and resolve a profile; imports `core/secret-patterns.py` and `core/path-glob.py` ([#281](https://github.com/mw-ding/eng-crew/issues/281)) |
 | `core/crew-memory.py` | Deliverable | all | Install CLI: core memory lint (layout, size limits, no personal data) and the section the renderer appends to each brief ([#1230](https://github.com/mw-ding/eng-crew/issues/1230)) |
 | `core/crew-pack.py` | Deliverable | all | Install CLI: pack plug-in loader (pack.toml, discovery, version range, floors, commit pin) ([#1236](https://github.com/mw-ding/eng-crew/issues/1236)) |
 | `core/crew-render.py` | Deliverable | all | Install CLI: render briefs from the resolved profile |
 | `core/crew-roles.py` | Deliverable | all | Install CLI: validate a domain's role definitions |
 | `core/crew-routines.py` | Deliverable | all | Install CLI: validate role routines (schedule, skill, generic actions, miss policy) and decide when one is due ([#1247](https://github.com/mw-ding/eng-crew/issues/1247)) |
+| `core/markdown-scan.py` | Deliverable | all | Shared module: markdown fence, code-span, comment and link scanning for `docs-scan.py` and the repo guard ([#281](https://github.com/mw-ding/eng-crew/issues/281)) |
+| `core/path-glob.py` | Deliverable | all | Shared module: path glob matching for `crew-config.py` and the repo guard ([#281](https://github.com/mw-ding/eng-crew/issues/281)) |
+| `core/secret-patterns.py` | Deliverable | all | Shared module: secret-scan patterns for `crew-config.py` and the repo guard ([#281](https://github.com/mw-ding/eng-crew/issues/281)) |
 | `dev/**` | Internal | n/a | Guards and tests: tests per module, shared test helpers and fixtures (dev/tests/), run by CI and release validation, not installed |
 | `docs/README.md` | Internal | n/a | Maintainer docs: the docs index, not loaded by roles |
 | `docs/architecture.md` | Deliverable | all | Protocol bundle (core): the text roles load and cite |
@@ -177,7 +180,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `scripts/changelog-cut.py` | Deliverable | all | Release helper: cut the CHANGELOG and fragments into a version section; the `release.cut` binding runs it from the installed bundle ([#1033](https://github.com/mw-ding/mdstack/issues/1033)) |
 | `scripts/check-changelog-pr.py` | Internal | n/a | Guards and tests: PR fragment requirement, run by CI, not installed |
 | `scripts/check-markdown.py` | Deliverable | all | Install CLI: local markdownlint parity; `check-repo.py` loads it for its `markdown` check ([#644](https://github.com/mw-ding/eng-crew/issues/644)) |
-| `scripts/check-repo.py` | Deliverable | all | Install CLI: the repo guard; `crew-config.py` imports its secret-scan patterns ([#275](https://github.com/mw-ding/eng-crew/issues/275)) |
+| `scripts/check-repo.py` | Deliverable | all | Install CLI: the repo guard ([#275](https://github.com/mw-ding/eng-crew/issues/275)) |
 | `scripts/check-skill-drift.py` | Deliverable | all | Drift check: render-vs-live check ([#128](https://github.com/mw-ding/eng-crew/issues/128)) |
 | `scripts/crew-install.py` | Deliverable | all | Install CLI: shared release verifier and `transport` record for bootstrap, upgrade and host prepare ([#882](https://github.com/mw-ding/eng-crew/issues/882)) |
 | `scripts/crew-precheck.py` | Deliverable | all | Role helper: check enabled builder pre-review markers at head |
