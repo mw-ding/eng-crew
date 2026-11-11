@@ -262,7 +262,7 @@ def scan(state, session, now, stale, seen, idle_ttl=1800, stuck_after=1800, idle
         key = "stale %s" % beat  # not the class: an ambiguous -> alive flip is the same silence (#234 N4)
         if seen["keys"].get(name) != key:
             seen["keys"][name] = key
-            wakes.append({"reason": "stale", "window": name, "liveness": cls, "silent": int(now - beat),
+            wakes.append({"reason": "stale", "window": name, "liveness": cls, "silent": int(now - beat), "run": identity,
                           "action": "restart" if cls in ("dead", "missing") and not rec.get("restarts") else "escalate"})
             stall(state, seen, name, now, utc(beat), cls)
     for n, text, due in asks(state):  # whatever the backstop: the ask's §6 auto-apply time (tmux.md C8)
