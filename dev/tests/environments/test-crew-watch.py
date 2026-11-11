@@ -15,7 +15,9 @@ deadline (an unreadable one at once), the scan sleep cut short to land on a dead
 backstop is backed off; unfinished spawns skip liveness wakes for 60 s, then wake as missing, while started missing
 runs wake immediately; a run record reaped between listing and stat skipped, a second watcher a no-op (exit 0, naming the armed PID)
 without touching the armed one's PID file, simultaneous starts leaving exactly one watcher through `wake/watcher.lock` (#399), and a watcher removing the PID file only when it holds its own PID
-(#591); finishing work deferred past `stuck_after` waking once as `schedule-stuck` with the snapshot, and the exit
+(#591); a `--persistent` watcher nudging the coordinator and scanning on, nudging an undrained queue again
+after `--renudge` and stopping once it is drained, and `--detach` starting one in its own session, a second a no-op
+(#1346); finishing work deferred past `stuck_after` waking once as `schedule-stuck` with the snapshot, and the exit
 line followed by the schedule summary (#628); the triage sweep timer (#748): due, overdue on wake, an empty queue
 skipped, disabled, queued and failed spawns, never a wake, and closed milestones swept at once and kept until a started sweep takes them (#374), a later closed milestone
 swept at once once the queued sweep was dequeued (#1175), and the timer
@@ -28,6 +30,7 @@ queue entry, and a run that ended without a report rerun, never over an unreadab
 """
 import json
 import os
+import re
 import shlex
 import shutil
 import signal
@@ -930,6 +933,60 @@ class Watch(LivenessBase):
         p.send_signal(signal.SIGTERM)
         p.communicate(timeout=10)
         self.assertFalse(os.path.exists(pidfile))
+
+    @staticmethod
+    def read(path):
+        with open(path) as f:
+            return f.read()
+
+    def wait_for(self, check, timeout=20):
+        deadline = time.monotonic() + timeout
+        while not check():
+            self.assertLess(time.monotonic(), deadline, "timed out")
+            time.sleep(0.05)
+
+    def test_persistent_watcher_nudges_keeps_scanning_and_renudges_until_drained(self):  # #1346
+        once = "test -e %s || { touch %s; printf 'pr-merged #9\\n'; }" % ((os.path.join(self.tmp, "polled"),) * 2)
+        nudge = ["send-keys", "-t", "=crew-acme-widgets:0", "-l", "wake: watcher"]
+        self.set_pane(0, command="claude")  # idle: a coordinator whose turn ended on a gateway error
+        log = os.path.join(self.tmp, "watch.out")
+        with open(log, "w") as out:
+            p = subprocess.Popen([sys.executable, CREW, "watch", "--project", self.project, "--interval", "0.05",
+                                  "--source-interval", "0", "--persistent", "--renudge", "1", "--source",
+                                  "sh -c %s" % shlex.quote(once)], stdout=out, stderr=subprocess.DEVNULL, env=self.env)
+        self.wait_for(lambda: self.calls().count(nudge) >= 1)
+        self.assertIsNone(p.poll())  # the wake did not end the watcher
+        self.wait_for(lambda: self.calls().count(nudge) >= 2)  # nobody drained the queue: nudged again
+        self.put("status/ben-7.status", "done: PR #12\n")  # a later event is still routed and nudged
+        self.wait_for(lambda: "status: ben-7 done: PR #12" in self.read(log))
+        with open(os.path.join(self.state, "wake", "queue.jsonl"), "w"):
+            pass  # the coordinator drained it
+        time.sleep(0.3)
+        drained = self.calls().count(nudge)
+        time.sleep(1.5)
+        self.assertEqual(self.calls().count(nudge), drained)  # nothing left: no more nudges
+        self.assertIsNone(p.poll())
+        p.send_signal(signal.SIGTERM)
+        p.wait(timeout=10)
+        lines = self.read(log).splitlines()
+        self.assertEqual(lines[0], "poll: pr-merged #9")
+        self.assertIn("renudge: wake/queue.jsonl not drained", lines)
+        self.assertFalse(os.path.exists(os.path.join(self.state, "wake", "watcher.pid")))
+
+    def test_detach_starts_one_persistent_watcher_that_outlives_its_caller(self):  # #1346
+        r = self.crew("watch", "--project", self.project, "--interval", "0.05", "--detach")
+        self.assertEqual(r.returncode, 0, r.stderr)
+        pid = int(re.fullmatch(r"crew: persistent watcher started \(pid (\d+), log (\S+)\)\n", r.stdout)[1])
+        pidfile = os.path.join(self.state, "wake", "watcher.pid")
+        self.wait_for(lambda: os.path.exists(pidfile) and self.read(pidfile).strip() == str(pid))
+        self.addCleanup(lambda: subprocess.run(["kill", str(pid)], capture_output=True))
+        self.assertNotEqual(os.getpgid(pid), os.getpgid(0))  # its own session: the caller's signals miss it
+        with open(self.ps, "w") as f:
+            json.dump({"command": {str(pid): "python3 cli/mdstack watch --persistent"}}, f)
+        again = self.crew("watch", "--project", self.project, "--detach")
+        self.assertEqual((again.returncode, again.stdout), (0, "crew: a watcher is already armed (pid %d)\n" % pid))
+        os.kill(pid, signal.SIGTERM)
+        self.wait_for(lambda: not os.path.exists(pidfile))
 
     def test_simultaneous_starts_leave_exactly_one_watcher(self):  # #399: the lock, not a check-then-write
         first, second = self.watch(), self.watch()

@@ -560,6 +560,21 @@ def announce(args, session, state, wake, seen, wakes):
     sys.stdout.flush()
 
 
+def start_persistent(state, argv):
+    """Start `mdstack watch --persistent ARGV` in its own session, so it outlives the shell or coordinator turn that
+    started it, its output appended to wake/watcher.log (#1346); prints and returns 0, also when one is armed."""
+    wake = os.path.join(state, "wake")
+    os.makedirs(wake, exist_ok=True)
+    if pid := armed(os.path.join(wake, "watcher.pid")):
+        print("crew: a watcher is already armed (pid %d)" % pid)
+        return 0
+    with open(os.path.join(wake, "watcher.log"), "a") as log:
+        p = subprocess.Popen([sys.executable, CREW_BIN, "watch", "--persistent", *argv], stdin=subprocess.DEVNULL,
+                             stdout=log, stderr=log, start_new_session=True)
+    print("crew: persistent watcher started (pid %d, log %s)" % (p.pid, os.path.join(wake, "watcher.log")))
+    return 0
+
+
 def backstop_deadline(state, seen, backstop, backoff):
     """(busy, monotonic time of the next backstop wake): x2 per idle wake up to backoff times; work resets it."""
     busy = any(runs(state)) or any(commands()["lead"].pending(state, n) for n, _ in commands()["lead"].records(state))
@@ -584,6 +599,12 @@ def register(sub):
                    help="one-shot event command (mdstack poll --once); each stdout line is a poll wake")
     p.add_argument("--no-nudge", action="store_true", help="do not type the wake line into an idle coordinator")
     p.add_argument("--idle", type=float, default=30, help="seconds with no coordinator output that count as idle")
+    p.add_argument("--persistent", action="store_true",
+                   help="nudge the coordinator and keep scanning instead of exiting on a coordinator wake (#1346)")
+    p.add_argument("--renudge", type=float, default=300,
+                   help="with --persistent, seconds before an undrained wake/queue.jsonl is nudged again")
+    p.add_argument("--detach", action="store_true",
+                   help="start a --persistent watcher in its own session (log: wake/watcher.log) and return")
     p.add_argument("--project")
     p.add_argument("--org-profile")
 
@@ -592,6 +613,9 @@ def run(args):
     """Zero-token watcher: block on status files, liveness, owner-ask deadlines, one-shot --source commands and
     queue growth; queue wakes, then exit."""
     values, session, state = profile(args)
+    if args.detach:
+        argv = sys.argv[sys.argv.index("watch") + 1:]
+        return start_persistent(state, [a for a in argv if a not in ("--detach", "--persistent")])
     wake = os.path.join(state, "wake")
     os.makedirs(wake, exist_ok=True)
     path, pidfile = os.path.join(wake, "watch-state.json"), os.path.join(wake, "watcher.pid")
@@ -647,6 +671,9 @@ def run(args):
             due = args.source and time.time() >= seen.get("sources_next", 0)
             if due:  # GitHub reads at most once per source interval, however short the scan --interval (#1300)
                 seen["sources_next"] = time.time() + source_interval
+                if args.persistent and ownership_module.status(values) == "lost":  # prompt stop (#212)
+                    print("crew: ownership: lost; persistent watcher stopped", flush=True)
+                    return 1
             for cmd in args.source if due else []:  # one-shot commands, each cut off at the source timeout
                 before = queue_sig(wake)
                 try:
@@ -679,6 +706,8 @@ def run(args):
             if not wakes and not others and time.monotonic() > deadline:
                 trial["idle"] += 0 if busy else 1
                 wakes = [{"reason": "backstop", "event": "due (%s in flight)" % ("work" if busy else "nothing")}]
+                if args.persistent:  # the next backstop, as a re-armed one-shot watcher would start it
+                    busy, deadline = backstop_deadline(state, trial, backstop, backoff)
             if wakes:
                 with queue_lock(state), open(os.path.join(wake, "queue.jsonl"), "a") as f:
                     for w in wakes:
@@ -707,8 +736,19 @@ def run(args):
                         wakes.insert(0, w)
                         candidates.remove(key)
                 others = []
-                if wakes:
+                if wakes and not args.persistent:
                     break
+                if wakes:  # persistent: wake the coordinator by its nudge and keep scanning (#1346)
+                    announce(args, session, state, wake, seen, wakes)
+                    seen["nudged"] = time.time()
+                    busy, deadline = backstop_deadline(state, seen, backstop, backoff)
+                    save(seen)
+            if args.persistent and not wakes and time.time() - seen.get("nudged", 0) >= args.renudge and \
+                    os.path.exists(queue := os.path.join(wake, "queue.jsonl")) and os.path.getsize(queue):
+                # a coordinator turn that ended without draining (a gateway error, #1346) is nudged again
+                announce(args, session, state, wake, seen, [{"reason": "renudge", "event": "wake/queue.jsonl not drained"}])
+                seen["nudged"] = time.time()
+                save(seen)
             sleeping = True
             if held:
                 raise SystemExit(128 + held[0])
