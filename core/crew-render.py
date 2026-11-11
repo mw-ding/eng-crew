@@ -94,10 +94,11 @@ MAPPED["flavor-validation-scope"] = ["flavor.validation_scope"]
 MAPPED["flavor-selfgate-engine"] = ["flavor.selfgate_engine"]
 MAPPED["TeamName"] = ["identities.team"]  # optional; empty when unset (#1329)
 # <RoleSignature>: `— <emoji> <name> (<title>) · <team>`, harness and model follow it in the template (#431, #1291);
-# <report-status>: the profile's fixed status set (docs/roles.md Report skeleton). Both read [report]; no marker changes.
+# <report-status>: the profile's fixed status set (docs/roles.md Report skeleton); <report-merge-status>: its landed and
+# blocked statuses, for synthesizer merge posts. All read [report]; no marker changes.
 for role, metadata in ROLES.items():
     MAPPED[role.title() + "Signature"] = [metadata["identity_key"] + ".name"]
-MAPPED["report-status"] = ["report.emoji"]
+MAPPED["report-status"] = MAPPED["report-merge-status"] = ["report.emoji"]
 # <mirror-gate>: the tmux synthesizer's mirror-gate paragraph by runtime.options.mirror (#877, docs/runtimes/tmux.md).
 MIRROR_GATE = {
     "live-copy": "Mirror deferral: read the recorded owner decision named by `mirror_deferral`\n"
@@ -488,6 +489,9 @@ class Renderer:
         if name == "report-status":
             return ", ".join(self.emoji("report.status." + k, mark) + k
                              for k, mark in crew_config.REPORT_STATUS.items())
+        if name == "report-merge-status":
+            return " or ".join(self.emoji("report.status." + k, crew_config.REPORT_STATUS[k]) + k
+                               for k in ("landed", "blocked"))
         if name.endswith("Signature") and name[:-len("Signature")].lower() in ROLES:
             key = ROLES[name[:-len("Signature")].lower()]["identity_key"]
             team = self.values.get("team.name") or self.values.get("identities.team")

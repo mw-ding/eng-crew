@@ -154,6 +154,7 @@ including file's, so a role's shared policy is authored once (#1184).
 | `<SynthesizerSignature>` | Synthesizer signature head: `— <emoji> <name> (<title>) · <team>`; emoji and team optional (#431, #1291) | `identities.synthesizer.name` |
 | `<ResearcherSignature>` | Researcher signature head: `— <emoji> <name> (<title>) · <team>`; emoji and team optional (#431, #1291) | `identities.researcher.name` |
 | `<report-status>` | The report skeleton's fixed status set, with emoji unless `report.emoji = false` (#431) | `report.emoji` |
+| `<report-merge-status>` | Its `landed` and `blocked` statuses, for synthesizer merge posts (#431) | `report.emoji` |
 | `<flavor-name>` | Render baseline name; live item/path resolution still applies | `flavor.name` |
 | `<flavor-review>` | Render baseline review; live item/path resolution still applies | `flavor.review` |
 | `<flavor-validation>` | Render baseline validation; live item/path resolution still applies | `flavor.validation` |

@@ -28,6 +28,7 @@ Cite every claim: path:line at Base, a doc section, an issue or PR, or a
 command with its key output. Mark the uncited as inference. Direction rule
 (<mdstack>/docs/packs.md): name no organization's internal tools.
 
+Report headlines (roles.md skeleton) end ` · ` one of <report-status>.
 Post exactly one finding, as <author-login>, with
 gh issue comment <n> --repo <owner>/<repo> --body-file <file>:
 

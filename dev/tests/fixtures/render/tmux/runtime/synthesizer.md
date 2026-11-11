@@ -23,8 +23,8 @@ Fill harness and model from the session that actually wrote it, including
 any fallback; never copy the planned engine or model. Leave marker formats
 unchanged.
 
-Merge posts follow the roles.md skeleton (status: landed or blocked)
-and end with its usage line.
+Merge posts: roles.md skeleton (status: 🚢 landed or 🚧 blocked), then its
+usage line.
 
 Landing authority and steering: follow `<mdstack>/docs/protocol.md` §7,
 Land rules and merge trains, in full: sole synthesizer decisions, the closed

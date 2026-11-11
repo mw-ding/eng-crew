@@ -62,6 +62,7 @@ DEFAULT_VALUES = {
     "ReviewerSignature": "— 🔎 Reviewer (Reviewer-validator)", "SynthesizerSignature": "— 🔀 Synthesizer (Synthesizer)",
     "ResearcherSignature": "— 🔬 Riley (Researcher)",
     "report-status": "✅ pass, 🔁 changes, 🚢 landed, ⛔ escalated, 🚧 blocked",
+    "report-merge-status": "🚢 landed or 🚧 blocked",
 }
 EXAMPLE_VALUES = dict(DEFAULT_VALUES, **{
     "owner": "mw-ding", "repo": "agentconnect", "author-login": "mw-ding", "reviewer-login": "md-mt",
@@ -502,16 +503,18 @@ class Parity(unittest.TestCase):
             with open(os.path.join(tmp, "runtime", "reviewer.md")) as f:
                 self.assertEqual(normalize(f.read()), normalize(expected_text))
 
-    def test_role_briefs_keep_markers_and_carry_the_report_headline(self):  # #431 AC3, #1291
-        """Every builder, reviewer, synthesizer and coordinator brief carries the report-skeleton headline rule, and
-        emoji off, a team and custom statuses change no crew:v1 marker line and no line outside signatures/status."""
+    def test_role_briefs_keep_markers_and_carry_the_report_headline(self):  # #431 AC1-3, #1291
+        """Every builder, reviewer, synthesizer, coordinator and researcher brief carries the report-skeleton headline
+        rule with the profile's statuses, and emoji off, a team and custom statuses change no crew:v1 marker line and
+        no line outside signatures/status."""
         marker = re.compile(r"<!-- crew:v1 [^\n]*-->")
-        roles = ("builder", "reviewer", "synthesizer", "coordinator")
+        roles = ("builder", "reviewer", "synthesizer", "coordinator", "researcher")
         with tempfile.TemporaryDirectory() as tmp:
             for runtime in ("tmux", "grok-bot", "session"):
                 briefs = {}
                 for mode, extra in (("plain", ""), ("custom", '\n[identities]\nteam = "md"\n\n[report]\nemoji = false\n'
-                                                              'status = { pass = "P" }\n')):
+                                                              'status = { pass = "P" }\n'),
+                                    ("status", '\n[report]\nstatus = { pass = "P", landed = "L", blocked = "B" }\n')):
                     project = os.path.join(tmp, "%s-%s.toml" % (runtime, mode))
                     with open(project, "w") as f:
                         f.write('[runtime]\nname = "%s"\n%s' % (runtime, extra))
@@ -528,13 +531,18 @@ class Parity(unittest.TestCase):
                 for name, text in briefs.items():
                     with self.subTest(runtime=runtime, brief=name):
                         self.assertIn("roles.md skeleton", text["plain"])
+                        full = "✅ pass, 🔁 changes, 🚢 landed, ⛔ escalated, 🚧 blocked" in text["plain"]
+                        self.assertTrue(full or "🚢 landed or 🚧 blocked" in text["plain"])  # merge statuses only
+                        self.assertIn("P pass, 🔁 changes, L landed, ⛔ escalated, B blocked" if full
+                                      else "L landed or B blocked", text["status"])
+                        self.assertIn("pass, changes, landed, escalated, blocked" if full
+                                      else "landed or blocked", text["custom"])
                         self.assertEqual(marker.findall(text["custom"]), marker.findall(text["plain"]))
-                        if "one of ✅ pass" in text["plain"]:
-                            self.assertIn("one of pass, changes, landed, escalated, blocked;", text["custom"])
+                        self.assertEqual(marker.findall(text["status"]), marker.findall(text["plain"]))
                         for plain, custom in zip(text["plain"].splitlines(), text["custom"].splitlines()):
                             if plain != custom:
-                                self.assertRegex(plain, r"^`?— \S+ \S+ \([^)]*\) · <harness>|one of ✅ pass", (plain, custom))
-                                self.assertRegex(custom, r"^`?— \S+ \([^)]*\) · md · <harness>|one of pass", (plain, custom))
+                                self.assertRegex(plain, r"^`?— \S+ \S+ \([^)]*\) · <harness>|✅ pass|🚢 landed or", (plain, custom))
+                                self.assertRegex(custom, r"^`?— \S+ \([^)]*\) · md · <harness>|(^| )pass, changes|[ (]landed or", (plain, custom))
 
     def test_seeded_one_word_drift_fails(self):
         tmp = tempfile.mkdtemp()
