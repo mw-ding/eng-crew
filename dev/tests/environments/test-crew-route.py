@@ -680,6 +680,13 @@ class Route(SpawnBase):
         self.assertEqual(self.pending(), [self.event("pr-merged")])
         self.assertIn(["api", "-X", "DELETE", "repos/acme/widgets/git/refs/heads/builder/7-feature"], self.gh_calls())
 
+    def test_hold_released_is_kept_for_the_coordinator(self):  # #394
+        rec = dict(id="poll-1", source="poll", reason="poll", event="hold-released", consumer="coordinator", refs=["#12"])
+        self.queue(rec)
+        r = self.route()
+        self.assertEqual(self.pending(), [rec])  # a judgement wake: the owner's unhold reaches window 0 at once
+        self.assertIn("judgement records remain", r.stdout)
+
     def test_lead_land_closeout_needs_no_coordinator_turn(self):  # #1569
         self.synthesizer_lead()
         self.put("render/runtime/builder-lead.md", "Manage the builder pool.\n")

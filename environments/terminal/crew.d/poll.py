@@ -21,7 +21,8 @@ and nothing else, on a tmux or session profile, so a hosted routine can refresh 
 Each crew PR whose ready sample (head, CI, verdict, mergeable, hold) changed is one line in
 `metrics/observations.jsonl` with the poll's time and the previous poll's, its sampling bound (self-improve.md, #1524).
 `poll-state.json`'s `held` lists the refs parked on the owner: open crew PRs and crew:ready issues labelled
-crew:hold, crew:escalated or crew:needs-md, and the issues such a PR closes; `mdstack watch` backs off for them (#394).
+crew:hold, crew:escalated or crew:needs-md, and the issues such a PR closes; `mdstack watch` backs off for them, and
+open refs that leave it are one `hold-released` record for the coordinator (#394).
 
 Usage: mdstack poll [--once | --triage-only] --project FILE
 """
@@ -164,6 +165,9 @@ def decide(prev, prs, issues, merge_ups=None, express=()):
         if item.get("state", "OPEN") == "OPEN" and {label["name"] for label in item["labels"]} & OWNER_BLOCKED:
             held |= {item["number"]} | {i["number"] for i in item.get("closingIssuesReferences", [])}
     state["held"] = ["#%d" % n for n in sorted(held)]
+    open_refs = {"#%s" % i["number"] for i in prs + issues if i.get("state", "OPEN") == "OPEN"}
+    if released := sorted(set(prev.get("held", [])) - set(state["held"]) & open_refs, key=lambda r: int(r[1:])):
+        emit("hold-released", *released)  # the owner lifted a hold: wake at once, not at the backstop (#394)
     for n in state["issues"]:
         if n not in prev.get("issues", []):
             emit("issue-assigned", "#%d" % n)

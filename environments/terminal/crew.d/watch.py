@@ -40,8 +40,9 @@ Each scan also scales idle lifecycle role instances down to their min (`mdstack 
 role routines (`mdstack up`'s routine_tick, #1247); the triage, docs and backstop timers take their cadence from the
 researcher's and coordinator's routine files (docs/routines.md#terminal).
 While every recorded run's item is held or owner-blocked (an open ask, or `held` in poll-state.json) and no lead has
-pending work, the backstop waits its idle cap, at least 4 h; a run or lead message that can move restores the short
-backstop on the next scan, and ask deadlines and poll wakes are unchanged (#394).
+pending work, the backstop waits its idle cap, at least 4 h from arming; each scan recomputes this both ways, so work
+becoming held extends the wait and a run or lead message that can move restores the short backstop; ask deadlines and
+poll wakes are unchanged, and `mdstack poll`'s `hold-released` wakes the coordinator when the owner lifts a hold (#394).
 
 Usage: mdstack watch --project FILE [--org-profile FILE]
 """
@@ -584,8 +585,11 @@ def run(args):
     sweep = routine("coordinator", "stale-sweep")  # the team head's backstop (#1247)
     backstop = args.backstop or commands()["up"].crew_routines.interval(sweep, values)
     backoff = sweep.get("idle_backoff", 1)
-    deadline = time.monotonic() + (max(backstop * backoff, HELD_BACKSTOP) if flight == "held" else
-                                   min(backstop * 2 ** seen["idle"], backstop * backoff))  # backs off when idle
+    armed_at = time.monotonic()
+
+    def wait(flight, idle):  # backs off when idle; held-only work waits the cap, at least 4 h (#394)
+        return max(backstop * backoff, HELD_BACKSTOP) if flight == "held" else min(backstop * 2 ** idle, backstop * backoff)
+    deadline = armed_at + wait(flight, seen["idle"])
     code = code_sig()
     source_interval = values["runtime.options.poll_interval"] if args.source_interval is None else args.source_interval
     try:
@@ -632,9 +636,13 @@ def run(args):
             others = queued(state, wake, trial)
             if code_sig() != code and not held:  # before route resolves the live profile with old code (#702)
                 reexec()  # trial is not committed, so the new image finds this scan's status lines and records again
-            if flight != "work" and in_flight(state) == "work":  # live work again: the short backstop (#394)
-                flight, trial["idle"] = "work", 0
-                deadline = min(deadline, time.monotonic() + backstop)
+            if (now_flight := in_flight(state)) != flight:  # recomputed each scan, both ways (#394)
+                if now_flight == "work":  # live work again: the short backstop from now
+                    trial["idle"] = 0
+                    deadline = min(deadline, time.monotonic() + backstop)
+                else:
+                    deadline = armed_at + wait(now_flight, trial["idle"])
+                flight = now_flight
             if not wakes and not others and time.monotonic() > deadline:
                 trial["idle"] += 0 if flight == "work" else 1
                 wakes = [{"reason": "backstop", "event": "due (%s in flight)" % flight}]

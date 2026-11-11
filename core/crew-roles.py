@@ -23,7 +23,8 @@ ID = re.compile(r"[a-z][a-z0-9-]*")
 PASSES = {"tmux": {"coordinate", "build", "fix", "review", "validate", "recheck", "land", "research"},
           "grok-bot": {"coordinate", "build", "fix", "review", "validate", "land"}}
 EVENTS = {"tmux": {"issue-assigned", "new-head", "ci-passed", "ci-failed", "ci-infra", "review-approved",
-                   "review-changes-requested", "pr-merged", "pr-closed", "fix-at-head", "merge-up", "selfgate-passed"},
+                   "review-changes-requested", "pr-merged", "pr-closed", "fix-at-head", "merge-up", "selfgate-passed",
+                   "hold-released"},
           "grok-bot": {"issue-assigned", "pr-opened", "new-head", "ci-passed", "ci-failed",
                        "review-requested", "review-approved", "review-changes-requested", "pr-merged", "pr-closed"}}
 POLICIES = {"always-on": "min = max", "elastic": "1 <= min < max", "ephemeral": "min = 0"}

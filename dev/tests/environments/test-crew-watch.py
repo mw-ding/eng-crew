@@ -788,6 +788,16 @@ class Watch(LivenessBase):
         with open(os.path.join(self.state, "wake", "watch-state.json")) as f:
             self.assertEqual(json.load(f)["idle"], 0)
 
+    def test_watch_backstop_extends_when_active_work_becomes_held(self):  # #394
+        p = self.watch("--backstop", "1")
+        self.armed(p)  # ben-7 on issue #7 is live: the short backstop
+        self.put("poll-state.json", json.dumps({"prs": {}, "issues": [], "held": ["#7"]}))  # the owner holds it
+        time.sleep(3)  # three short backstops
+        self.assertIsNone(p.poll())  # recomputed to max(16 x 1 s, 4 h) from arming
+        os.remove(os.path.join(self.state, "poll-state.json"))
+        out, err = p.communicate(timeout=10)
+        self.assertEqual(out, "backstop: due (work in flight)\n", err)
+
     def test_watch_ask_deadline_wakes_while_only_held_work_is_open(self):  # #394, #287
         self.ask("7", "2020-01-01T09:00:00-08:00")  # past due: held, and its deadline still wakes
         out, err = self.watch("--backstop", "3600").communicate(timeout=10)

@@ -125,6 +125,22 @@ class PollDecide(unittest.TestCase):
         closed = dict(prs[0], state="CLOSED")
         self.assertEqual(self.crew.decide(state, [closed], [])[1]["held"], [])
 
+    def test_owner_unhold_is_one_prompt_coordinator_wake(self):  # #394
+        prs = fixture("prs-pending.json")
+        prs[0]["labels"] = [{"name": "crew:in-review"}, {"name": "crew:hold"}]
+        ready = {"assignees": [{"login": "a"}], "number": 9, "labels": [{"name": "crew:ready"}, {"name": "crew:needs-md"}]}
+        _, state = self.crew.decide({}, prs, [ready])
+        self.assertEqual(state["held"], ["#9", "#171"])
+        self.assertEqual(self.crew.decide(state, prs, [ready])[0], [])  # still held: no wake
+        prs[0]["labels"] = [{"name": "crew:in-review"}]  # only the label changes; head, CI and verdict do not
+        ready["labels"] = [{"name": "crew:ready"}]
+        events, after = self.crew.decide(state, prs, [ready])
+        self.assertEqual([(e["event"], e["consumer"], e["refs"]) for e in events],
+                         [("hold-released", "coordinator", ["#9", "#171"])])
+        self.assertEqual(after["held"], [])
+        closed = dict(prs[0], state="CLOSED", labels=[{"name": "crew:hold"}])
+        self.assertEqual([e["event"] for e in self.crew.decide(state, [closed], [])[0]], ["pr-closed"])  # gone, not unheld
+
     def test_changes_verdict_to_builder(self):
         self.assertEqual(self.only("prs-ci-passed.json", "prs-changes.json"),
                          [("review-changes-requested", "builder", ["#171", HEAD])])
