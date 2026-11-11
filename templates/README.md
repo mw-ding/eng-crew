@@ -5,8 +5,7 @@ Copy a template onto the bot, replace every placeholder, and keep the wiring
 doc ([wiring.md](runtimes/grok-bot/wiring.md)) in sync. These are templates only: nothing here
 creates or changes a live routine. For the roles and markers they rely on, see
 [../docs/architecture.md](../docs/architecture.md) and the
-[docs index](../docs/README.md). A filled-in example is in
-[../examples/agentconnect/](../examples/agentconnect/README.md).
+[docs index](../docs/README.md).
 
 ## Files
 
