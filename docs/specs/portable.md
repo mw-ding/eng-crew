@@ -767,6 +767,139 @@ the owner's
 recorded at each head. The release cadence stays v7.9.0 after M47 closes. A
 status-sync slice closes the milestone.
 
+### M48: release integrity and reports
+
+Opened by the spec slice #1697, part of
+[#1647](https://github.com/mw-ding/mdstack/issues/1647). Scope comes from
+[Riley's readiness pass](https://github.com/mw-ding/mdstack/issues/1647#issuecomment-6798439318):
+nine builds, one PR per issue. No item below dispatches before this slice
+merges. Every row is planned: its issue is `open`. B4 (#1418) also waits
+for B5 (#978) and B2 (#1416); every other row depends only on this slice.
+
+| ID | Issue | Scope | Depends on | Status |
+|---|---|---|---|---|
+| B1 | #1415 | Release cut checks the bump class against the published predecessor's pack manifests | #1697 | open |
+| B2 | #1416 | Release cut PRs use a non-closing release-issue reference; the issue closes after publication | #1697 | open |
+| B3 | #1417 | Released CHANGELOG sections are immutable outside a cut | #1697 | open |
+| B4 | #1418 | Moved or quoted prose keeps its meaning: qualifiers, slice linkage and closing keywords | #1697, B5, B2 | open |
+| B5 | #978 | Work-unit rule: an issue is a unit of work; one PR per issue, split into commits | #1697 | open |
+| B6 | #258 | C8 and §6: a deadline applies only a permitted default and supplies no merge-ok | #1697 | open |
+| B7 | #372 | The coordinator edits owner config only under a recorded authorization | #1697 | open |
+| B8 | #431, #1291 | One report skeleton for every role, with the team in signatures | #1697 | open |
+| B9 | #1314 | Remove `examples/agentconnect/` and every reference to it | #1697 | open |
+
+ACs and paths per row (the readiness pass has the full text and line
+citations):
+
+- **B1 (#1415).** Pin the published predecessor (D1) and a named positive
+  manifest corpus; show they pass that release's validator, then run the
+  candidate validator on them. A newly failing manifest refuses a
+  same-major minor or patch, naming baseline, manifest, failing requirement
+  and the required major. A major permits the break; an unreadable baseline
+  fails with a repair step. Paths: `scripts/release-check.py` (or a new
+  `scripts/release-compat.py`), `.github/workflows/release.yml`,
+  `docs/release.md`, `docs/deliverables.md`, release-check tests and
+  fixtures.
+- **B2 (#1416).** A genuine cut carries exactly one same-repo release-issue
+  reference in D2's form. That form satisfies linkage, is discovered for
+  publication and never closes at merge. A successful publish posts the
+  release URL, then closes the issue; a failure leaves it open. A missing,
+  ambiguous or foreign target refuses with a correction step. Paths:
+  `docs/release.md`, `docs/backends/github.md`, `docs/protocol.md` (Linked
+  issue row and §7), `docs/roles.md`, `scripts/release-trigger.py`, the
+  release workflow, builder and synthesizer policy fragments, the tmux
+  linkage instruction and its tests.
+- **B3 (#1417).** Against the merge base, `check-changelog-pr.py` rejects
+  edits to or deletions of released sections, even with a valid new
+  fragment, before either success path. A cut may add its section and
+  consume fragments. Paths: `scripts/check-changelog-pr.py`,
+  `CONTRIBUTING.md`, its test.
+- **B4 (#1418).** (a) A doc move records a source-to-destination comparison
+  of qualifiers, exceptions and scope. (b) Before opening a slice PR, the
+  builder cites the newest signed allocation and compares its issue with the
+  PR's link; a later change is reported in a signed note, never fixed by a
+  body edit. (c) A body check flags every closing keyword outside the one
+  intended closing line, honouring D2's form. It is a builder duty, not a
+  new gate. Paths: `CONTRIBUTING.md`, `templates/policy/builder/build-pass.md`,
+  `docs/roles.md`, a new `scripts/check-pr-linkage.py` and its test.
+- **B5 (#978).** Coordinator planning and stage 1 state the owner's
+  work-unit rule: one PR per issue, logical commits that pass where tests
+  apply, review by commit and by the combined PR. Separate work keeps
+  separate issues; M26 principle 9 (doc moves) stays. The ~100-line slice
+  sizing in this section's preface stops being normative; historical tables
+  stay. Paths:
+  `docs/roles.md`, `docs/protocol.md`, this spec, the coordinator dispatch
+  skill, builder and reviewer policy fragments.
+- **B6 (#258).** C8 and §6 say a deadline wakes the coordinator to apply
+  only a permitted default; elapsed time is never a merge-ok. A merge still
+  needs a covering recorded grant or a per-PR owner record plus every gate.
+  Paths: `docs/runtimes/tmux.md`, `docs/protocol.md` §6.
+- **B7 (#372).** Before editing owner profile, team or config, the
+  coordinator reads the recorded authorization and its scope. A covered edit
+  is applied and reported with its key and record, with no new ask; an
+  uncovered edit keeps the owner's config and goes to the owner-decision
+  path. Paths: a coordinator policy fragment and its `SKILL.md` index,
+  `docs/roles.md`, render fixtures.
+- **B8 (#431, #1291).** `docs/roles.md` defines one outcome-first skeleton
+  (headline, TL;DR, numbered changes or findings, compact evidence, next
+  actor) and a fixed status set, applied to every role's human reports
+  without changing markers, evidence sections or the usage line. Profile
+  emoji have neutral fallbacks and one install-wide off switch. Signatures
+  carry the team: resolved `team.name`, else the team-file basename; legacy
+  single-repo installs omit it. Paths: `docs/roles.md`, `docs/profile.md`,
+  `core/crew-config.py`, `core/crew-render.py`, `profiles/default.toml`,
+  signing and report fragments, runtime templates and parity fixtures.
+- **B9 (#1314).** Delete only `examples/agentconnect/`, its required-doc
+  entries, links and catalog rows, and the `examples/**` manifest row;
+  regenerate `docs/deliverables.md`; update the parity fixture's provenance
+  comment only. Paths: the four files and the references the readiness pass
+  lists.
+
+Decisions M48 settles (the
+[coordinator's record](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6798475405)
+under the owner's standing pre-approval; any of them changes on the owner's
+word):
+
+- **D1, #1415 baseline.** The latest published stable predecessor, pinned
+  once per cut: v7.8.0 now, v7.9.0 if it publishes first. The corpus is
+  named positive manifests plus an external-pack fixture from that snapshot.
+- **D2, #1416 linkage.** A release-only non-closing form: `Refs #N` plus a
+  whole-line `Release issue: #N`, exactly one same-repo target on a genuine
+  cut. Ordinary PRs keep `Closes`. The release issue closes after the
+  release URL exists and the notice succeeds.
+- **D3, #431 and #1291.** Adopt the report skeleton and fold #1291's
+  team-signature AC into #431: B8's one PR closes both issues.
+
+Version classification, against the
+[Versioning](../deliverables.md#versioning) table, for the v7.10.0 cut:
+
+- **#1416 is major.** It adds a release-only exemption to the Linked issue
+  gate, which §7 checks: a merge gate satisfied differently.
+- **#1415 is minor.** The release approval gate's condition, release
+  validation green, is unchanged; the new refusal only rejects a version the
+  Versioning rules already forbid. If B1 changes the release approval row
+  itself, it becomes major and is reclassified in its PR.
+- **The rest add no gate.** B3 changes internal paths only (none); B4, B5
+  and B7 add role duties and B8 optional profile keys with defaults
+  (minor); B6 and B9 are wording or docs changes (patch). B8 changes no
+  marker field or parsed output; if it does, it is major.
+
+So with B2 as specified, v7.10.0 cannot be a minor. Before the cut, the
+coordinator takes it to the owner, as the decision record requires: a
+major cut with a `**Breaking:**` entry, or the owner's other call. No break
+goes through as a minor.
+
+Sensitive heads: B1–B3 (release and CI) and B9 (deletions) are forecast;
+every build runs the full-diff sensitive check at each head, and a
+sensitive head still needs the owner's per-change reason. Owner steps: none
+for the nine builds; publication keeps the owner-actor approval flow.
+
+Merge permission for M48 spec, protocol, template and gate-contract text is
+the owner's
+[M45–M48 grant](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6789266394),
+recorded at each head. A status-sync slice closes the milestone, then the
+v7.10.0 cut follows.
+
 ## 6. Decisions
 
 | Date | Decision | Source |
