@@ -1,7 +1,7 @@
 ---
 type: removed
 issue: 1314
-pr: TBD
+pr: 1702
 date: 2026-11-11
 box-skill: none
 ---
