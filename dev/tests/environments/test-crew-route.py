@@ -131,6 +131,13 @@ class Route(SpawnBase):
         self.route()
         self.assertEqual(self.pending(), [dict(conflict, consumer="coordinator")])  # no builder lead installed
         os.remove(os.path.join(self.state, "wake", "queue.jsonl"))
+        bindir = os.path.join(self.tmp, "bin")  # a live lead pane, so the replay's ensure finds it alive
+        os.rename(os.path.join(bindir, "tmux"), os.path.join(bindir, "tmux-base"))
+        for name, text in (("tmux", FAKE_TMUX_PANES), ("ps", FAKE_PS)):
+            with open(os.path.join(bindir, name), "w") as f:
+                f.write(text)
+            os.chmod(os.path.join(bindir, name), 0o755)
+        self.env.update(FAKE_PANES=os.path.join(self.tmp, "panes.json"), FAKE_PS=os.path.join(self.tmp, "ps.json"))
         self.put("render/runtime/builder-lead.md", "Manage the builder pool.\n")
         self.queue(conflict, conflict)  # a replayed wake reuses the unfinished handoff
         self.route()
@@ -141,7 +148,8 @@ class Route(SpawnBase):
                              (dict(labels=[{"name": "crew:escalated"}]), [conflict]),
                              (dict(labels=[{"name": "crew:solo"}]), [dict(conflict, consumer="coordinator")]),
                              (dict(mergeable="MERGEABLE"), []), (dict(headRefOid="f" * 40), []), (dict(state="CLOSED"), [])):
-            self.live = dict(self.live, mergeable="CONFLICTING", labels=[], headRefOid=self.sha, state="OPEN", **live)
+            base = dict(mergeable="CONFLICTING", labels=[], headRefOid=self.sha, state="OPEN")
+            self.live = dict(self.live, **dict(base, **live))
             self.save()
             if os.path.exists(os.path.join(self.state, "wake", "queue.jsonl")):
                 os.remove(os.path.join(self.state, "wake", "queue.jsonl"))
