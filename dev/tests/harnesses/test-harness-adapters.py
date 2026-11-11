@@ -133,7 +133,11 @@ class ShippedTables(unittest.TestCase):
                 shared["harness"]("claude-code", "m", "high", "/wt", "/state", "bypass", {})
             self.assertEqual(shared["harness"]("claude-code", "m", "high", "/wt", "/state", "bypass", {}, False)[0], "claude")
             self.assertEqual(shared["harness"]("claude-code", "m", "high", "/wt", "/state", "auto", {})[-1], "auto")
-            self.assertEqual(shared["harness"]("codex", "m", "high", "/wt", "/state", "bypass", {})[0], "codex")
+            with mock.patch.object(shared["subprocess"], "run", return_value=Namespace(returncode=0, stdout='{"private": false}')):
+                values = {"repo.owner": "acme", "repo.name": "widgets"}
+                for engine in ("codex", "pi", "cursor", "muse"):  # no launch_refusal: the default launches as root
+                    self.assertFalse(hasattr(shared["harnesses"].ADAPTERS[engine], "launch_refusal"), engine)
+                    self.assertTrue(shared["harness"](engine, "m", "high", "/wt", "/state", "bypass", values), engine)
 
     def test_contributor_tier_is_core_policy(self):
         """Muse declares only CONTRIBUTOR_TIER; the core reads visibility and refuses before the adapter runs."""
