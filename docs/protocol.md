@@ -1083,13 +1083,17 @@ hold gets `crew:needs-md` immediately; the coordinator routes that ask through
 the same channel and SLA.
 
 At the auto-apply time, if the user has not answered, the coordinator applies
-the posted default and records it on the change/tracker item. Allowed defaults
-are:
+the posted default and records it on the change/tracker item. The deadline
+only wakes the coordinator to apply a permitted default: elapsed time never
+supplies a merge-ok. Allowed defaults are:
 
-- **Merge:** only 🟢/🟡 doc-only changes with green CI that qualify for the
-  standing grant below; the coordinator hands the merge to the synthesizer,
-  which re-checks every §7 gate. Never auto-apply a merge to code, workflow,
-  or `docs/protocol.md` changes.
+- **Merge:** only 🟢/🟡 doc-only changes with green CI that this
+  repository's own recorded standing grant covers (§7 Merge permission), or
+  that already carry the owner's per-change merge-ok at head; the coordinator
+  hands the merge to the synthesizer, which re-checks every §7 gate. Without
+  such a grant or merge-ok (for example under `merge_grant = "none"`), hold or
+  escalate instead. Never auto-apply a merge to code, workflow, or
+  `docs/protocol.md` changes.
 - **Defer:** close as not planned, with a note explaining when to reopen.
 - **Keep hold:** leave the item on hold and record that decision.
 
