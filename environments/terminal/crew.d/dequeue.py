@@ -35,6 +35,8 @@ def reclaim(values, session, state, windows, expired=False):
         shutil.copy2(status, os.path.join(retained, "status.txt"))
         with open(os.path.join(retained, "output.txt"), "w") as f:
             f.write(tmux.capture(session, windows[name]))
+        with open(os.path.join(retained, "run.json"), "w") as f:  # route consumes this run's later stale wake (#1552)
+            json.dump({"window": name, "run": commands()["watch"].run_identity(rec)}, f)
         summaries = os.path.join(rec["worktree"], ".crew", "runs")
         if os.path.isdir(summaries):
             shutil.copytree(summaries, os.path.join(retained, "summaries"), dirs_exist_ok=True)
