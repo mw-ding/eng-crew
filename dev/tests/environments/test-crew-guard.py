@@ -1,8 +1,9 @@
 """Tests for mdstack guard, moved from test-crew.py; fixtures in crew_testlib.py (stdlib only).
 
 Covers: decisions, an open owner ask (`asks/<n>.json`, also unreadable) blocking until it closes, a live
-watcher, at most one block per stop cycle (Claude Code stop_hook_active, Codex notify payload), malformed input, no-op outside the coordinator window. Run in CI.
+watcher, a live watcher holding `wake/watcher.lock` with its PID file missing named instead of blocked (#399), at most one block per stop cycle (Claude Code stop_hook_active, Codex notify payload), malformed input, no-op outside the coordinator window. Run in CI.
 """
+import fcntl
 import json
 import os
 import unittest
@@ -49,6 +50,16 @@ class Guard(Base):
         self.assertIsNone(self.guard())
         self.put("wake/watcher.pid", "999999999\n")
         self.assertEqual(self.guard()["decision"], "block")
+
+    def test_guard_names_a_live_watcher_whose_pid_file_is_missing(self):  # #399
+        self.put("runs/ben-7.json", "{}")
+        self.put("wake/watcher.lock", "")
+        with open(os.path.join(self.state, "wake", "watcher.lock")) as lock:
+            fcntl.flock(lock, fcntl.LOCK_EX)  # a live watcher holds the lock
+            out = self.guard()
+            self.assertNotIn("decision", out)
+            self.assertIn("a live watcher holds wake/watcher.lock but wake/watcher.pid is missing", out["systemMessage"])
+        self.assertEqual(self.guard()["decision"], "block")  # released: nothing armed
 
     def test_guard_blocks_at_most_once_per_stop_cycle(self):
         self.put("runs/ben-7.json", "{}")

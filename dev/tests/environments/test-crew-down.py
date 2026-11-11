@@ -2,7 +2,7 @@
 
 Covers: kill order and the land-lock refusal, no-op without a session, names windows holding
 unlanded work, ends a real pane process that ignores SIGHUP and SIGTERM (SIGKILL) for every
-window. Run in CI.
+window; the watcher stopped first by plain down too, even with no session left (#1346). Run in CI.
 """
 import fcntl
 import json
@@ -86,6 +86,20 @@ class DownPreserve(KillLandedBase):  # #1178: the maintenance stop before a migr
         self.assertTrue(os.path.isfile(os.path.join(wt, "wip.txt")))
         for rel in ("runs/ben-7.json", "claims/builder-issue7"):
             self.assertTrue(os.path.exists(os.path.join(self.state, rel)), rel)
+
+    def test_down_stops_the_watcher_even_with_no_session_left(self):  # #1346: a persistent watcher outlives it
+        pid = fake_watcher(self.tmp)
+        self.addCleanup(lambda: subprocess.run(["kill", "-9", str(pid)], capture_output=True))
+        self.put("wake/watcher.pid", "%d\n" % pid)
+        with open(self.state_file, "w") as f:
+            json.dump({}, f)
+        r = self.crew("down", "--project", self.project)
+        self.assertEqual((r.returncode, r.stdout), (0, "crew: crew-acme-widgets not running; watcher stopped\n"),
+                         r.stderr)
+        deadline = time.monotonic() + 5
+        while subprocess.run(["ps", "-o", "command=", "-p", str(pid)], capture_output=True, text=True).stdout.strip():
+            self.assertLess(time.monotonic(), deadline)
+            time.sleep(0.1)
 
     def test_preserve_refuses_while_land_lock_held_before_stopping_anything(self):
         os.makedirs(os.path.join(self.state, "locks"), exist_ok=True)
