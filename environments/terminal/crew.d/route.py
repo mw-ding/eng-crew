@@ -360,7 +360,7 @@ def reclaimed(state, w):
 
 
 def obsolete_block(values, line):
-    """A `blocked:` line whose typed items are all terminal, or whose pinned head or round is superseded (#1476):
+    """A `blocked:` line whose every typed item is terminal or a PR whose pinned head or round is superseded (#1476):
     `blocked: [<handoff-id>|<window>...] #n... [<sha>] [r<k>] ...`. An open issue, an untyped line or an unreadable
     item keeps it."""
     m = BLOCKED.match(line)
@@ -374,8 +374,6 @@ def obsolete_block(values, line):
         if r.returncode:
             raise RuntimeError("crew: gh api issue #%d: %s" % (n, r.stderr.strip()))
         items[n] = json.loads(r.stdout)
-    if head and any("pull_request" in i for i in items.values()):
-        items = {n: i for n, i in items.items() if "pull_request" in i}  # the head pins its PR; closed issues follow
     for n, item in items.items():
         if item.get("state") == "closed":
             continue

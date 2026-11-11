@@ -119,17 +119,18 @@ class Route(SpawnBase):
                  "blocked: 20261108T192515Z-7e128c #1365 %s r1 validate spawn failed twice" % self.sha,
                  "blocked: 20261108T201245Z-4ea3e6 #12 %s r1 review pass; validation held" % self.sha,
                  "blocked: 20261108T221424Z-ac8e6e #1400 %s scheduler target held at 3" % old,
-                 "blocked: 20261109T031344Z-3d6a98 #1427 %s recheck r4 was not run" % old]
+                 "blocked: 20261109T031344Z-3d6a98 #1427 %s recheck r4 was not run" % old,
+                 "blocked: #1363 #12 %s closed issue, moved PR" % old]
         current = ["blocked: 20261110T233207Z-f07dc4 #12 %s r2 review changes; needs coordinator" % self.sha,
-                   "blocked: #7 hold", "blocked: main red after #1365 https://example.invalid/run",
+                   "blocked: #7 hold", "blocked: #7 #12 %s issue #7 still needs owner decision" % old, "blocked: main red after #1365 https://example.invalid/run",
                    "blocked: #999 owner-decision /leads/builder-blocks/c.md"]
         self.spawn("builder", "--issue", "7")
         worker = dict(reason="status", window="ben-7", line="blocked: #1363 needs the owner")
         self.queue(*[dict(reason="status", window="ben-lead", line=line) for line in stale + current], worker)
         r = self.route()
         self.assertEqual([w["line"] for w in self.pending()], current + [worker["line"]])
-        self.assertIn("gh api issue #999", self.pending()[3]["route_error"])  # unreadable: kept for reconciliation
-        self.assertEqual(r.stdout.count("terminal or superseded item; consumed"), 8)
+        self.assertIn("gh api issue #999", self.pending()[4]["route_error"])  # unreadable: kept for reconciliation
+        self.assertEqual(r.stdout.count("terminal or superseded item; consumed"), 9)
 
     def test_stale_wake_for_a_reclaimed_run_is_consumed(self):  # #1552
         reclaimed, replacement = [1, "%1", 101, "t1", "/w/ben-7"], [2, "%2", 202, "t2", "/w/ben-7"]
