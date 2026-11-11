@@ -230,8 +230,10 @@ class Watch(LivenessBase):
 
     def test_scan_started_run_without_window_wakes_immediately(self):
         self.missing_window()
-        self.assertEqual([(w["reason"], w["liveness"], w["action"]) for w in self.scan(NOW)],
+        wakes = self.scan(NOW)
+        self.assertEqual([(w["reason"], w["liveness"], w["action"]) for w in wakes],
                          [("stale", "missing", "restart")])
+        self.assertEqual(wakes[0]["run"], self.mod.run_identity(self.record("ben-7")))  # #1552
 
     def test_scan_fresh_silent_dead_and_twice(self):
         self.beat(NOW - 60)
