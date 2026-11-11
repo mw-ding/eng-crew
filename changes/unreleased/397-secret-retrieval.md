@@ -1,7 +1,7 @@
 ---
 type: security
 issue: 397
-pr: TBD
+pr: 1629
 date: 2026-11-10
 box-skill: none
 ---
