@@ -2,9 +2,9 @@
 
 Covers, against a fixture crew with a real builder worktree: the preview is blocked while the old session runs,
 and after `mdstack down --preserve` it lists every mapping (the old home, also the unchanged checkout, keeps its
-whole-path references and moves the paths under it), the state move, the registered worktree move, an unregistered
-directory kept, the old process identities archived, the operational rewrites, the settings copy and the owner's
-memory and trust steps, writing nothing; a destination that exists blocks; profiles naming different repos are
+whole-path references and moves the paths under it), the state move, the builder run copy's move (#1252), a
+registered role worktree's move, an unrelated directory kept, the old process identities archived, the operational rewrites, the settings copy and the owner's
+memory and trust steps, writing nothing; a destination that exists blocks, for a run copy and a worktree alike; profiles naming different repos are
 refused; on apply, an unrelated compound hook keeps its shell text while the guard is re-quoted, a hook citing an
 old path whose new path needs quoting blocks before anything moves, and an interrupted apply's quoted rollback
 commands run and restore the state; a team reference FILE#<repo> outside the clone previews and applies through its
@@ -43,6 +43,8 @@ class MigrateBase(KillLandedBase):
             f.write("x\n")
         self.old_wt_root = os.path.join(self.tmp, "state", "wt")
         os.makedirs(os.path.join(self.old_wt_root, "orphan-dir"))
+        self.linked = os.path.join(self.old_wt_root, "vera-9")  # a role's linked worktree, as a reviewer's
+        self.git("worktree", "add", "-q", "--detach", self.linked)
         self.root = os.path.join(self.tmp, "home root")
         self.new_home = os.path.join(self.root, "crew-home")
         os.makedirs(self.new_home)
@@ -84,8 +86,9 @@ class Preview(MigrateBase):
         self.assertIn("map %s -> %s (under it: %s)" % (self.project_dir, self.project_dir, self.new_home), lines)
         self.assertIn("move %s -> %s" % (self.state, self.new_state), lines)
         name = os.path.basename(self.wt)
-        self.assertIn("worktree-move %s -> %s" % (self.wt, os.path.join(self.new_wt_root, name)), lines)
-        self.assertIn("keep %s (not a registered worktree of %s)" % (
+        self.assertIn("move %s -> %s" % (self.wt, os.path.join(self.new_wt_root, name)), lines)
+        self.assertIn("worktree-move %s -> %s" % (self.linked, os.path.join(self.new_wt_root, "vera-9")), lines)
+        self.assertIn("keep %s (not a registered worktree or run copy of %s)" % (
             os.path.join(self.old_wt_root, "orphan-dir"), self.project_dir), lines)
         self.assertIn("archive %s" % os.path.join(self.state, "leads", "builder.json"), lines)
         self.assertTrue(any(line.startswith("rewrite %s (" % os.path.join(self.state, "runs", "ben-7.json"))
@@ -99,11 +102,12 @@ class Preview(MigrateBase):
 
     def test_existing_destination_blocks(self):
         self.stop()
-        os.makedirs(os.path.join(self.new_wt_root, os.path.basename(self.wt)))
+        for name in (os.path.basename(self.wt), "vera-9"):
+            os.makedirs(os.path.join(self.new_wt_root, name))
         r = self.migrate()
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
-        self.assertIn("blocked: destination exists: %s" % os.path.join(self.new_wt_root, os.path.basename(self.wt)),
-                      r.stdout)
+        for name in (os.path.basename(self.wt), "vera-9"):
+            self.assertIn("blocked: destination exists: %s" % os.path.join(self.new_wt_root, name), r.stdout)
 
     def test_different_repos_refused(self):
         with open(self.new_project) as f:
@@ -134,7 +138,12 @@ class Apply(MigrateBase):
         name = os.path.basename(self.wt)
         new_wt = os.path.join(self.new_wt_root, name)
         self.assertTrue(os.path.isfile(os.path.join(new_wt, "wip.txt")))
-        self.assertIn(os.path.realpath(new_wt), [os.path.realpath(line[9:]) for line in self.git(
+        self.assertFalse(os.path.exists(self.wt))
+        self.assertEqual(self.git("status", "--porcelain", cwd=new_wt), "?? wip.txt")  # the copy still works
+        self.assertEqual(os.path.realpath(self.git("rev-parse", "--path-format=absolute", "--git-common-dir",
+                                                   cwd=new_wt)), os.path.realpath(os.path.join(new_wt, ".git")))
+        new_linked = os.path.join(self.new_wt_root, "vera-9")
+        self.assertIn(os.path.realpath(new_linked), [os.path.realpath(line[9:]) for line in self.git(
             "worktree", "list", "--porcelain").splitlines() if line.startswith("worktree ")])
         rec = json.loads(self.read(os.path.join(self.new_state, "runs", "ben-7.json")))
         self.assertEqual((rec["worktree"], os.path.realpath(rec["repo"]), rec["claim"]),
@@ -191,7 +200,7 @@ class Apply(MigrateBase):
 
     def test_interrupted_apply_reports_completed_steps_and_rollback(self):
         self.stop()
-        self.git("worktree", "lock", self.wt)
+        self.git("worktree", "lock", self.linked)
         r = self.migrate("--apply")
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         self.assertIn("crew: migrate --apply failed: git worktree move", r.stdout)
@@ -201,7 +210,7 @@ class Apply(MigrateBase):
         journals = [os.path.join(d, "journal.json") for d, _, n in os.walk(self.new_state) if "journal.json" in n]
         self.assertEqual(len(journals), 1)
         self.assertEqual(json.loads(self.read(journals[0]))[0]["op"], "move %s -> %s" % (self.state, self.new_state))
-        self.assertTrue(os.path.isdir(self.wt))
+        self.assertTrue(os.path.isdir(self.linked))
         for line in [line for line in r.stdout.splitlines() if line.startswith("rollback: ")]:
             run = subprocess.run(["sh", "-c", line[len("rollback: "):]], capture_output=True, text=True)
             self.assertEqual(run.returncode, 0, run.stderr)
