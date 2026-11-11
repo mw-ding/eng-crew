@@ -73,6 +73,17 @@ Refreshing open items' criteria after an owner decision follows the
 [plan gate](protocol.md#6-duties-on-wake-all-roles). This adds no merge
 permission: spec changes keep the merge gate's existing rules.
 
+**Work-unit issues (#978).** An issue is a unit of work: one feature, fix or
+design, never a slice cut to fit a line budget. Milestone planning and triage
+file issues by work, with their dependencies and gate or sensitivity marks.
+Each issue gets one PR; a large PR is split into reviewable commits (see
+[PR conventions](#pr-conventions)), not into more issues or PRs. Keep
+separate issues only for separate work: different features, an owner-decision
+or design-first item, a gate-contract change the owner wants to approve on its
+own, or cross-area work split by role ([Roles](#roles)). Doc moves keep M26
+principle 9. Review, validation, evidence and the
+[merge gate](protocol.md#7-merge-gate-synthesizer) still apply per PR.
+
 **Dispatch independence.** Never send a builder or reviewer a change back
 solely because it is behind the default branch: synchronize at land under
 protocol §7's verdict portability rule. File or subsystem overlap is a risk
@@ -704,9 +715,9 @@ only, never chat. See [observe.md](observe.md).
 - **Branch:** `<role>/<issue#>-<short-slug>`, for example
   `infra/187-align-rust-base-images`. Lead and synthesizer tooling route
   follow-ups by this prefix.
-- **Commits:** follow the repo's existing commit-message convention. End every
-  commit with the trailer `Engine: <engine> <model> <effort>` naming the engine
-  that actually wrote it (see [Actual builder engine](#actual-builder-engine)).
+- **Commits:** one PR per issue, in logical commits that pass their tests.
+  Follow repo convention; end each with `Engine: <engine> <model> <effort>`,
+  the engine that actually wrote it ([Actual builder engine](#actual-builder-engine)).
 - **Evidence:** for behaviour changes, embed runtime proof inline in the body
   or signed fix / ci-fix reviews ([verification](verification.md)); never
   commit evidence. Docs-only PRs state N/A and why.
