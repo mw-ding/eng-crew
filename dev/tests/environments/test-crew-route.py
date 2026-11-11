@@ -38,7 +38,7 @@ class Route(SpawnBase):
                     "elif args[:1] == ['api'] and '/commits/' in args[1]: print(json.dumps({'parents': pr['_parents']}))\n"
                     "elif args[:1] == ['api'] and '/compare/' in args[1]: print(json.dumps({'status': pr['_comparison']}))\n"
                     "elif args[:1] == ['api'] and '/issues/' in args[1]: n = args[1].rsplit('/', 1)[1]; "
-                    "print(json.dumps(pr['_issues'][n])) if n in pr.get('_issues', {}) else sys.exit(1)\n"
+                    "item = pr.get('_issues', {}).get(n, {'state': 'open'}); print(json.dumps(item)) if item else sys.exit(1)\n"
                     "elif args[:1] == ['api'] and '-X' not in args: print('{}')\n"
                     "elif args[:2] == ['issue', 'list']: print(json.dumps(pr.get('_open', [])))\n"
                     "elif args[1:2] == ['list']: print('[]')\n" % (self.gh_log, self.data))
@@ -108,7 +108,7 @@ class Route(SpawnBase):
         old, done = "b" * 40, {"state": "closed"}
         self.live["_issues"] = {"1316": done, "1322": done, "1363": done, "1400": done, "1427": done,
                                 "1365": dict(done, pull_request={}), "12": {"state": "open", "pull_request": {}},
-                                "7": {"state": "open"}}
+                                "7": {"state": "open"}, "999": None}
         self.live["reviews"] = [self.signed("<!-- crew:v1 role=reviewer-validator pass=verdict pr=12 sha=%s round=2 "
                                             "verdict=pass -->" % self.sha)]
         self.save()
