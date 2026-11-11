@@ -146,6 +146,52 @@ class Discovery(PackCase):
         self.assertIn("harnesses claude-code core harnesses/claude-code/adapter.py", out.stdout)
 
 
+class Absence(PackCase):
+    """#1411: optional pack inputs left out, resolved through paths.pack discovery (never --pack-manifest)."""
+
+    def resolve_lines(self, control_item):
+        with open(self.project) as f:
+            text = f.read()
+        with open(self.project, "w") as f:
+            f.write(text.replace("[repo]\n", "[repo]\ncontrol_item = %s\n" % control_item)
+                    .replace("[runtime]\n", '[runtime]\ninstance = "laptop"\n'))
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+            code = cc.main(["resolve", "--project", self.project])
+        with open(self.project, "w") as f:
+            f.write(text)
+        return code, out.getvalue()
+
+    def test_pack_without_profile_toml_keeps_its_items_and_the_core_flavor(self):
+        os.remove(os.path.join(self.pack, "profile.toml"))
+        reg, problems = pk.discover(cc, cc.harnesses, self.pack)
+        self.assertEqual(problems, [])
+        for kind, name in (("connectors", "example-tracker"), ("harnesses", "example-agent"),
+                           ("skills", "example-review")):
+            self.assertEqual(reg[kind][name][0], "pack:example", kind)
+        profile, prov, problems, layers = cc.resolve_profile(self.project)
+        self.assertEqual(problems, [])
+        self.assertEqual(layers, ["core", "default", "pack", "project"])
+        self.assertEqual(profile["backends"]["tracker"]["name"], "example-tracker")
+        self.assertEqual(prov["backends.tracker.capabilities.create-item"], "pack:example-tracker")
+        self.assertEqual((profile["runtime"]["options"]["idle_builder_ttl"], prov["runtime.options.idle_builder_ttl"]),
+                         (900, "pack"))
+        self.assertEqual((profile["flavor"]["name"], prov["flavor.name"]), ("standard", "core (unset: flagged)"))
+
+    def test_pack_connector_without_a_render_map_keeps_default_ids(self):
+        self.assertFalse(os.path.exists(os.path.join(self.pack, "render")))
+        code, out = self.resolve_lines("7")
+        self.assertEqual(code, 0, out)
+        self.assertIn('ids.item = "[1-9][0-9]*"  # core\nids.change = "[1-9][0-9]*"  # core\n', out)
+        code, out = self.resolve_lines('"OPS-1042"')
+        self.assertEqual(code, 1)
+        self.assertIn("repo.control_item: a string id needs the tracker backend's [ids] item pattern", out)
+        self.write("render/backends/example-tracker.toml", '[ids]\nitem = "[A-Z][A-Z0-9]+-[0-9]+"\n')
+        code, out = self.resolve_lines('"OPS-1042"')  # the same discovery path does read a map once present
+        self.assertEqual(code, 0, out)
+        self.assertIn('ids.item = "[A-Z][A-Z0-9]+-[0-9]+"  # backend-map:example-tracker\n', out)
+
+
 class Version(PackCase):
     def test_framework_range(self):
         pack = self.loaded()[0]
