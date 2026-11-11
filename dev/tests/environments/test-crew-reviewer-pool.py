@@ -569,6 +569,31 @@ class ReviewerPool(route_tests.Route):
         self.assertEqual(self.record("vera-12-r1-review")["rereview_id"], "42")
         self.assertNotIn("vera-12-r1-validate", self.names())
 
+    def test_restarted_rereview_pass_completes_without_a_duplicate(self):  # #1477
+        self.handoff("review", ["#12", self.sha, "1"])
+        self.pool()
+        self.live["reviews"] = [dict(body="<!-- crew:v1 role=coordinator pass=steer cmd=rereview cmd-id=42 sha=%s -->" % self.sha)]
+        self.save()
+        self.handoff("review", ["#12", self.sha, "1", "42"])
+        self.pool()
+        self.queue(self.status("vera-12-r1-review", "review pass"))
+        self.route()
+        self.pool()
+        self.assertEqual(self.record("vera-12-r1-review")["rereview_id"], "42")
+        args = argparse.Namespace(**dict(vars(self.args), reviewer_lead=True))
+        pool = self.mod.commands()["reviewer-pool"]
+        with mock.patch.dict(os.environ, dict(self.env, CREW_POOL="reviewer")):  # the session is lost: clean restart
+            self.mod.tmux.kill_window("crew-acme-widgets", self.record("vera-12-r1-review")["index"])
+            self.assertTrue(pool.dispatch(args, self.mod.profile(args)[0], self.state,
+                                          dict(reason="stale", window="vera-12-r1-review")))
+        rec = self.record("vera-12-r1-review")
+        self.assertEqual((rec["restarts"], rec["rereview_id"], rec["head"]), (1, "42", self.sha))
+        self.queue(self.status("vera-12-r1-review", "review pass"))
+        self.route()
+        self.pool()
+        self.assertIn("vera-12-r1-validate", self.names())  # the restarted pass's completion moves on to validation
+        self.assertNotIn("vera-12-r1-review", self.names())  # and opens no duplicate same-head review
+
     def test_reclaim_does_not_bypass_load_admission_by_dequeuing(self):
         self.gate()
         self.target(4)
