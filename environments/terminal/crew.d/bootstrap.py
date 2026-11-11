@@ -411,15 +411,16 @@ Product code, workflows, labels and settings. Use eng-backend, trivial tier.
     print("Smoke: queued " + record["smoke"]["issue"] + "; pipeline result pending")
 
 
-def unchanged(previous, record, targets, live, rendered):
+def unchanged(previous, record, live, rendered):
     """Whether applying would write nothing (docs/bootstrap.md Q8): a healthy record equal to the planned one (its
-    render_sha256 covers a render not yet deployed), every target byte-equal on disk and any live render equal to
-    this one (none yet for tmux before mdstack up)."""
+    render_sha256 covers a render not yet deployed), every recorded target byte-equal on disk (a deselected harness's
+    included) and any live render equal to this one (none yet for tmux before mdstack up)."""
     checks = previous.get("self_test", {})
     if previous.get("status") != "installed" or "fail" in checks.values() or \
             {k: v for k, v in previous.items() if k != "self_test"} != record:
         return False
-    if any(p.is_symlink() or not p.is_file() or digest(p) != record["targets"][str(p)] for p in targets):
+    if any(Path(p).is_symlink() or not Path(p).is_file() or digest(Path(p)) != sha  # retained ones too (#1090 R1)
+           for p, sha in record["targets"].items()):
         return False
     if not live.is_dir():
         return checks.get("deploy") == "pending mdstack up"
@@ -638,7 +639,7 @@ def bootstrap(args):
         if (not (removals or scaffold or dropped) and link.is_symlink()
                 and not (upgrade_deploys and not live.is_dir())
                 and not (args.smoke and not previous.get("smoke", {}).get("issue"))
-                and unchanged(previous, record, targets, live, rendered)
+                and unchanged(previous, record, live, rendered)
                 and excluded(repo, exclude, excludes)):
             print("crew bootstrap: no changes")
             if args.smoke:

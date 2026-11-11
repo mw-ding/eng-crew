@@ -1294,6 +1294,19 @@ class HarnessTargets(Bootstrap):
         r = self.bootstrap("--harness", "claude-code", "--yes")  # deselecting codex changes the record
         self.assertIn("crew bootstrap: installed", r.stdout)
 
+    def test_a_missing_target_of_a_deselected_harness_is_not_unchanged(self):  # #1090 review R1
+        self.assertEqual(self.bootstrap("--harness", "claude-code", "--harness", "codex", "--yes").returncode, 0)
+        self.assertEqual(self.bootstrap("--harness", "codex", "--yes").returncode, 0)
+        self.assert_no_changes(roots=(self.claude, self.exclude.parent))
+        record = json.loads(self.manifest.read_text())
+        retained = self.claude / "skills/crew-coordinator/SKILL.md"
+        self.assertIn(str(retained), record["targets"])
+        retained.unlink()
+        r = self.bootstrap("--yes")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertNotIn("no changes", r.stdout)
+        self.assertIn("self-test failed: targets", r.stderr)
+
     def test_new_bundle_repoints_the_guard_and_reruns(self):
         """#1088: installing a newer bundle re-points the Stop guard at it; a rerun is not refused as edited."""
         self.own_bundle()
