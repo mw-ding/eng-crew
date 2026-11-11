@@ -160,6 +160,7 @@ scripts/reflection-measures.py	deliverable	all	Role helpers: offline reflection 
 scripts/reflection-scan.py	deliverable	all	Role helper: offline reflection evidence index over forge snapshots, lessons and findings at a SHA ([#1518](https://github.com/mw-ding/mdstack/issues/1518))
 scripts/release-bundle.py	internal	n/a	Guards and tests: release tooling, run by the release workflow, not installed
 scripts/release-check.py	internal	n/a	Guards and tests: release tooling, run by the release workflow, not installed
+scripts/release-compat.py	internal	n/a	Guards and tests: release tooling, run by the release workflow, not installed
 scripts/release-trigger.py	internal	n/a	Guards and tests: release tooling, run by the release workflow, not installed
 scripts/required-docs.txt	internal	n/a	Guards and tests: required docs and sections, run by CI
 scripts/run-tests.py	internal	n/a	Guards and tests: parallel test runner, run by CI, not installed

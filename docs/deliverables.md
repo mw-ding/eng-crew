@@ -198,6 +198,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `scripts/reflection-scan.py` | Deliverable | all | Role helper: offline reflection evidence index over forge snapshots, lessons and findings at a SHA ([#1518](https://github.com/mw-ding/mdstack/issues/1518)) |
 | `scripts/release-bundle.py` | Internal | n/a | Guards and tests: release tooling, run by the release workflow, not installed |
 | `scripts/release-check.py` | Internal | n/a | Guards and tests: release tooling, run by the release workflow, not installed |
+| `scripts/release-compat.py` | Internal | n/a | Guards and tests: release tooling, run by the release workflow, not installed |
 | `scripts/release-trigger.py` | Internal | n/a | Guards and tests: release tooling, run by the release workflow, not installed |
 | `scripts/required-docs.txt` | Internal | n/a | Guards and tests: required docs and sections, run by CI |
 | `scripts/run-tests.py` | Internal | n/a | Guards and tests: parallel test runner, run by CI, not installed |
