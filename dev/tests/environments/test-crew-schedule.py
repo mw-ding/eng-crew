@@ -2,6 +2,7 @@
 JSON object, `unknown` per failed read, memory pressure on macOS and Linux; the summary line, defer `since` times and
 stuck finishing work (docs/scheduling.md#observability). Fake tmux and gh; run in CI.
 """
+import argparse
 import datetime
 import importlib.machinery
 import importlib.util
@@ -651,6 +652,60 @@ class DecideCommand(Fixture):
         self.assertEqual((out["admit"], [d["reasons"] for d in out["deferred"]], out["held"]),
                          ([], [["holds-unreadable"]], []))
         self.assertRegex(self.crew("schedule", "summary", "--project", self.project).stdout, r"; held unknown; ")
+
+    def mod_schedule(self):
+        loader = importlib.machinery.SourceFileLoader("crew_cli", CREW)
+        mod = importlib.util.module_from_spec(importlib.util.spec_from_loader("crew_cli", loader))
+        loader.exec_module(mod)
+        return mod.commands()["schedule"]
+
+    def test_admissible_writes_only_target_progression(self):  # #1502
+        schedule = self.mod_schedule()
+        sched = os.path.join(self.state, "schedule")
+        def files():
+            found = {}
+            for n in os.listdir(sched):
+                with open(os.path.join(sched, n)) as f:
+                    found[n] = f.read()
+            return found
+        before = files()
+        args = argparse.Namespace(project=self.project, org_profile=None)
+        with mock.patch.dict(os.environ, self.env):
+            self.assertEqual(schedule.admissible(args, "builder"), {"#9"})
+            self.assertEqual(schedule.admissible(args, "builder"), {"#9"})
+        after = files()
+        self.assertEqual(json.loads(after.pop("target.json"))["target"], 1)
+        after.pop("lock", None)
+        self.assertEqual(after, before)  # no reservation, decision log or deferral
+        self.assertEqual([(a["ref"], a["reasons"]) for a in self.call("decide", "--pool", "builder")["deferred"]],
+                         [("#601", ["target"])])  # the same walk decide takes
+
+    def test_backstop_recovers_a_throttled_target_without_decide(self):  # #1502 review R1
+        s = self.mod_schedule()
+        start = datetime.datetime(2026, 11, 11, tzinfo=datetime.timezone.utc)
+        snap = dict(workers=[dict(role="builder", state="busy", item="#1")] * 3, caps=dict(builder=4, reviewer=2),
+                    reservations=[], holds=[], tracker="unknown", load=1.0, memory=dict(os="darwin", level="normal"),
+                    memory_high="warn", errors=0,
+                    demand=dict(builder=[dict(id="d1", kind="build", refs=["#8"])], reviewer=[]))
+        state = os.path.join(self.tmp, "throttled")
+        os.makedirs(os.path.join(state, "schedule"))
+        with open(os.path.join(state, "schedule", "target.json"), "w") as f:
+            json.dump(dict(target=2, changed=s.stamp(start), starts=[]), f)  # T shrunk to busy - 1 under high load
+        args = argparse.Namespace(project="fake", org_profile=None)
+        real, seen = datetime.datetime, []
+        with mock.patch.object(s, "profile", return_value=({}, "fake", state)), \
+                mock.patch.object(s, "snapshot", return_value=snap), \
+                mock.patch.object(s, "lead_states", return_value=dict(builder="alive", reviewer="alive")):
+            for minutes in (3, 6):  # load low, busy unchanged: T 2 -> 3 -> 4, one step per schedule_interval
+                class Clock(real):
+                    @classmethod
+                    def now(cls, tz=None):
+                        return start + datetime.timedelta(minutes=minutes)
+                with mock.patch.object(s.datetime, "datetime", Clock):
+                    seen.append(sorted(s.admissible(args, "builder")))
+        with open(os.path.join(state, "schedule", "target.json")) as f:
+            self.assertEqual((seen, json.load(f)["target"]), ([[], ["#8"]], 4))
+        self.assertEqual(sorted(os.listdir(os.path.join(state, "schedule"))), ["lock", "target.json"])
 
     def test_decide_and_release_require_a_pool(self):
         r = self.crew("schedule", "decide", "--project", self.project)

@@ -488,7 +488,15 @@ capacity` is retired: no brief calls it since both leads use the scheduler.
 `capacity`, `load`, `suites` and `probe-unavailable` deferrals in
 `leads/builder-admission.md` and the lead's `deferred:` status. The router
 consumes those status wakes without involving the coordinator; keep the
-handoff pending for a backstop or slot release. Only `spawn-failure`,
+handoff pending for a backstop or slot release. With `--id ID`, the lead's
+inbox id for the deferred handoff, the status line ends `id=ID`; once that id
+is acknowledged, the 60-second backstop stops re-typing it and instead re-runs
+the scheduler walk, persisting only the target's progression (no
+reservation, decision log or deferral), and nudges only when the ref is now
+admissible, so a target throttled under high load recovers on that cadence.
+A worker's `done:` (slot release) and the coordinator backstop still nudge it,
+an unacknowledged or unreported id keeps the normal retry, and a re-sent
+handoff gets a new id. Only `spawn-failure`,
 `missing-dependency`, `owner-decision` and `lead-fault` reasons send a
 `blocked` coordinator inbox message with a durable block note. Identical
 reason, refs and detail reuse that message across lead restarts; changed
