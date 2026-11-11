@@ -2,6 +2,8 @@
 <strategy:merge>`$CREW_STATE/trains/train-*.json` on a new fix run). If this PR is a dropped
 <strategy:merge>conflict with `merge_up=builder`, merge the default branch, resolve the
 <strategy:merge>conflict, and use the existing merge-up note and re-check; no rebase or force-push.
+<strategy:merge>Kind `merge-up` (a conflict seen by poll, refs `#<pr> <head-sha>`): merge the default
+<strategy:merge>branch the same way, resolve the conflict, push, and post the merge-up note.
 <strategy:rebase>For a base-update conflict routed by <SynthesizerBot> (this backend has no trains),
 <strategy:rebase>rebase onto the default branch, resolve the conflict, upload the result as a new head
 <strategy:rebase>of the change, and use the existing merge-up note and re-check; earlier heads must

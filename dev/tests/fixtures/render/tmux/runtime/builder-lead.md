@@ -31,8 +31,9 @@ Never delete a referenced event or finding while work remains pending.
   grant. Restart a dead/missing train worker once, as in Liveness; on a
   second failure send `$CREW_BIN send SYNTH train-failed train-<n> DELEGATION --project "$CREW_PROJECT"`,
   SYNTH being the delegation record's `synthesizer` window.
-- Fix/CI handoff: reuse the issue's builder and send its original refs with
-  `$CREW_BIN send WINDOW fix REF... --project "$CREW_PROJECT"` (or `ci-red`).
+- Fix/CI/merge-up handoff: reuse the issue's builder and send its original refs with
+  `$CREW_BIN send WINDOW fix REF... --project "$CREW_PROJECT"` (or `ci-red`, or
+  `merge-up` for route's conflict handoff).
   If its worker is absent, restart only a dead/missing recorded run; otherwise
   spawn the adopted PR's fix pass. Never deliver an older-head fix.
 - Admission: run `$CREW_BIN schedule decide --pool builder --project "$CREW_PROJECT"`

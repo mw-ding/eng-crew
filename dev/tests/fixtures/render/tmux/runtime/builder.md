@@ -128,6 +128,8 @@ For a fix dispatched from a train, read the referenced train record (or
 `$CREW_STATE/trains/train-*.json` on a new fix run). If this PR is a dropped
 conflict with `merge_up=builder`, merge the default branch, resolve the
 conflict, and use the existing merge-up note and re-check; no rebase or force-push.
+Kind `merge-up` (a conflict seen by poll, refs `#<pr> <head-sha>`): merge the default
+branch the same way, resolve the conflict, push, and post the merge-up note.
 Kind `fix`: address each finding and any linked CI failure in the same fix,
 push, post the `[Ben/fix] round <k> @ <sha7>` COMMENT review (`gh pr review <n> --comment --body-file <file>`) with its `pass=fix`
 marker (§3). Kind `ci-red`: fix CI and post `[Ben/ci-fix]` the same way; at the effective caps[1]
