@@ -695,13 +695,6 @@ def label_evidence():
     print("delete: fake host and label store removed: %s" % (not os.path.exists(fixture.tmp)))
 
 
-if __name__ == "__main__":
-    if sys.argv[1:] == ["--evidence-labels"]:
-        label_evidence()
-    else:
-        unittest.main()
-
-
 class SessionServer(unittest.TestCase):
     """A shared session server's sandbox, which its runs inherit, from the backend's server_pids() (#1469)."""
 
@@ -746,3 +739,10 @@ class SessionServer(unittest.TestCase):
         dead.wait()
         expected = (False, None) if sys.platform == "darwin" else (None, None)
         self.assertEqual((self.doctor.proc.sandboxed(1), self.doctor.proc.sandboxed(dead.pid)), expected)
+
+
+if __name__ == "__main__":
+    if sys.argv[1:] == ["--evidence-labels"]:
+        label_evidence()
+    else:
+        unittest.main()
