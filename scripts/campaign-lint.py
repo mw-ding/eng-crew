@@ -289,6 +289,11 @@ def is_assertion(pipe, fns=()):
         a in ("--quiet", "--silent") or re.match(r"-[A-Za-z]*q", a) for a in w[1:])
 
 
+def _wrap(cmd):
+    """A function body (any compound command) as a one-item list whose result is the function's."""
+    return [[({"bang": False, "cmds": [cmd]}, None)]]
+
+
 def _pipes(items):
     """Every pipeline in ITEMS, nested bodies included, with the functions defined there."""
     for item in items:
@@ -296,7 +301,7 @@ def _pipes(items):
             yield p
             for c in p["cmds"]:
                 if c["type"] == "func":
-                    yield from _pipes([[({"bang": False, "cmds": [c["body"]]}, None)]])
+                    yield from _pipes(_wrap(c["body"]))
                 for b in [c.get("body")] if c["type"] in ("group", "loop") else c.get("bodies", []):
                     yield from _pipes(b)
 
@@ -322,9 +327,9 @@ def fallible(items):
     while True:
         more = set()
         for name, body in fns.items():
-            words = [_words(p) or [""] for p in _pipes([[({"bang": False, "cmds": [body]}, None)]])]
+            words = [_words(p) or [""] for p in _pipes(_wrap(body))]
             if name not in out and (any(w[0] == "false" or (w[0] == "return" and w[1:2] not in ([], ["0"]))
-                                        for w in words) or (body["type"] == "group" and _tail_fails(body["body"], out))):
+                                        for w in words) or _tail_fails(_wrap(body), out)):
                 more.add(name)
         if not more:
             return out
@@ -374,8 +379,8 @@ def _lint(items, kept, found, fns):
                         _lint(b, kept_here, found, fns)
                 elif c["type"] == "loop":
                     _lint(c["body"], False, found, fns)
-                elif c["type"] == "func" and c["body"]["type"] == "group":
-                    _lint(c["body"]["body"], True, found, fns)
+                elif c["type"] == "func":
+                    _lint(_wrap(c["body"]), True, found, fns)
 
 
 def lint_step(src):
