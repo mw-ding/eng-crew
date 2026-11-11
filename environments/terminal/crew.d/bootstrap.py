@@ -411,6 +411,30 @@ Product code, workflows, labels and settings. Use eng-backend, trivial tier.
     print("Smoke: queued " + record["smoke"]["issue"] + "; pipeline result pending")
 
 
+def unchanged(previous, record, targets, live, rendered):
+    """Whether applying would write nothing (docs/bootstrap.md Q8): a healthy record equal to the planned one (its
+    render_sha256 covers a render not yet deployed), every target byte-equal on disk and any live render equal to
+    this one (none yet for tmux before mdstack up)."""
+    checks = previous.get("self_test", {})
+    if previous.get("status") != "installed" or "fail" in checks.values() or \
+            {k: v for k, v in previous.items() if k != "self_test"} != record:
+        return False
+    if any(p.is_symlink() or not p.is_file() or digest(p) != record["targets"][str(p)] for p in targets):
+        return False
+    if not live.is_dir():
+        return checks.get("deploy") == "pending mdstack up"
+    return checks.get("deploy") == "ok" and {p: p.read_bytes() for p in live.rglob("*") if p.is_file()} == {
+        p: text.encode() for p, text in rendered.items()}
+
+
+def excluded(repo, exclude, lines):
+    """Whether every planned exclude line is already in the repository's info/exclude."""
+    if not lines:
+        return True
+    exclude = exclude or Path(git(str(repo), "rev-parse", "--path-format=absolute", "--git-path", "info/exclude"))
+    return exclude.is_file() and set(lines) <= set(exclude.read_text().splitlines())
+
+
 def run(args):
     try:
         if args.uninstall:
@@ -594,7 +618,9 @@ def bootstrap(args):
                       targets={**{p: sha for p, sha in old.items() if Path(p) not in stale},
                                **{str(p): hashlib.sha256(text.encode()).hexdigest()
                                   for p, text in targets.items()}}, harnesses=harnesses,
-                      launches=launches, pending_human_steps=pending, status="installed")
+                      launches=launches, pending_human_steps=pending, status="installed",
+                      render_sha256=hashlib.sha256(json.dumps({str(p.relative_to(live)): text for p, text in
+                                                              rendered.items()}, sort_keys=True).encode()).hexdigest())
         owned = {**{path: entry for path, entry in previous.get("harness_pointers", {}).items()
                     if entry["harness"] not in harnesses}, **owned}
         if owned:
@@ -608,6 +634,16 @@ def bootstrap(args):
             record["pack"] = pack
         if "smoke" in previous:
             record["smoke"] = previous["smoke"]
+        upgrade_deploys = tmux and not harnesses and getattr(args, "cmd", "bootstrap") == "upgrade"
+        if (not (removals or scaffold or dropped) and link.is_symlink()
+                and not (upgrade_deploys and not live.is_dir())
+                and not (args.smoke and not previous.get("smoke", {}).get("issue"))
+                and unchanged(previous, record, targets, live, rendered)
+                and excluded(repo, exclude, excludes)):
+            print("crew bootstrap: no changes")
+            if args.smoke:
+                print("Smoke: already queued " + previous["smoke"]["issue"])
+            return 0
         for path, text in {**targets, **rendered}.items():
             before = path.read_text() if path.exists() else ""
             print("".join(difflib.unified_diff(before.splitlines(True), text.splitlines(True),

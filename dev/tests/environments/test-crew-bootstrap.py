@@ -96,6 +96,26 @@ class Bootstrap(doctor_tests.DoctorBase):
         return subprocess.run([sys.executable, str(self.cli), "bootstrap", "--project", self.project, *args],
                               input="", capture_output=True, text=True, env=self.env)
 
+    def snapshot(self, *roots):
+        """{path: (bytes or link target, mtime_ns, inode)} under each root, the state dir always (#1090)."""
+        found = {}
+        for root in (Path(self.state), *roots):
+            for p in [root, *root.rglob("*")] if root.exists() else []:
+                if p.is_symlink() or p.is_file():
+                    st = p.lstat()
+                    found[p] = (os.readlink(p) if p.is_symlink() else p.read_bytes(), st.st_mtime_ns, st.st_ino)
+        return found
+
+    def assert_no_changes(self, *flags, roots=()):
+        before = self.snapshot(*roots)
+        for extra in (("--dry-run",), ("--yes",)):
+            r = self.bootstrap(*flags, *extra)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertIn("crew bootstrap: no changes\n", r.stdout)
+            self.assertNotIn("Self-test:", r.stdout)
+            self.assertNotIn("crew bootstrap: installed", r.stdout)
+        self.assertEqual(self.snapshot(*roots), before)
+
     def test_dry_run_and_confirmation_leave_no_install(self):
         r = self.bootstrap("--dry-run")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
@@ -126,6 +146,54 @@ class Bootstrap(doctor_tests.DoctorBase):
         self.assertEqual(self.calls(), [])
         self.assertEqual(record["self_test"], dict(profile="ok", render="ok", briefs="ok",
                                                 size_budget="ok", deploy="pending mdstack up", targets="ok", doctor="ok"))
+
+    def test_unchanged_rerun_writes_nothing_and_changed_input_applies(self):  # #1090 AC1-AC3
+        self.real_git()
+        subprocess.run(["git", "init", "-q", self.project_dir], check=True)
+        self.assertEqual(self.bootstrap("--yes").returncode, 0)
+        git_info = Path(self.project_dir) / ".git/info"
+        self.assert_no_changes(roots=(git_info,))
+        self.project_path.write_text(self.project_path.read_text() + "# owner note\n")
+        r = self.bootstrap("--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("crew bootstrap: installed", r.stdout)
+        self.assertEqual((Path(self.state) / "config.toml").read_text(), self.project_path.read_text())
+        self.assert_no_changes(roots=(git_info,))
+        exclude = git_info / "exclude"
+        exclude.write_text(exclude.read_text().replace(".crew/\n", ""))
+        r = self.bootstrap("--yes")
+        self.assertIn("crew bootstrap: installed", r.stdout)
+        self.assertEqual(exclude.read_text().count(".crew/"), 1)
+
+    def test_a_changed_render_is_a_change_before_mdstack_up(self):  # #1090 AC2
+        self.own_bundle()
+        self.real_git()
+        subprocess.run(["git", "init", "-q", self.project_dir], check=True)
+        self.assertEqual(self.bootstrap("--yes").returncode, 0)
+        self.assert_no_changes()
+        template = self.bundle / "templates/runtimes/tmux/builder.md"
+        template.write_text(template.read_text() + "New rule.\n")
+        r = self.bootstrap("--yes")
+        self.assertIn("Self-test: size_budget ok", r.stdout)
+        self.assertIn("crew bootstrap: installed", r.stdout)
+        self.assert_no_changes()
+
+    def test_a_deployed_render_must_match_for_no_changes(self):  # #1090 AC2: a re-render is a change
+        self.real_git()
+        subprocess.run(["git", "init", "-q", self.project_dir], check=True)
+        self.assertEqual(self.bootstrap("--yes").returncode, 0)
+        live = Path(self.state) / "render"
+        env = dict(os.environ, **self.env)
+        subprocess.run([sys.executable, str(self.bundle / "core/crew-render.py"), "--project", self.project,
+                        "--out", str(live)], env=env, check=True, capture_output=True)
+        r = self.bootstrap("--yes")  # deploy moves from pending to ok: recorded once
+        self.assertIn("Self-test: deploy ok", r.stdout)
+        self.assert_no_changes()
+        brief = live / "runtime/reviewer.md"
+        brief.write_text(brief.read_text() + "stale\n")
+        r = self.bootstrap("--yes")
+        self.assertNotIn("no changes", r.stdout)
+        self.assertIn("Self-test: deploy fail", r.stdout)
 
     def test_gitless_home_writes_the_scratch_exclude_in_its_checkout(self):  # #1178
         self.real_git()
@@ -411,6 +479,10 @@ class Bootstrap(doctor_tests.DoctorBase):
         record = json.loads(self.manifest.read_text())
         self.assertEqual(record["status"], "failed")
         self.assertEqual(record["self_test"]["briefs"], "fail")
+        r = self.bootstrap("--yes")  # a failed install is never an unchanged one (#1090 AC3)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertNotIn("no changes", r.stdout)
+        self.assertIn("self-test failed: briefs", r.stderr)
 
     def test_post_apply_doctor_failure_is_recorded(self):
         self.real_git()
@@ -473,6 +545,8 @@ class Bootstrap(doctor_tests.DoctorBase):
         record = json.loads(self.manifest.read_text())
         self.assertEqual(record["smoke"], dict(issue="https://github.com/acme/widgets/issues/123", status="queued"))
         self.assertEqual(self.calls(), [["has-session", "-t", "=crew-acme-widgets"]])
+        r = self.bootstrap("--yes", "--smoke")
+        self.assertIn("crew bootstrap: no changes\nSmoke: already queued", r.stdout)
 
     def test_smoke_requires_started_tmux_and_records_creation_failure(self):
         self.smoke_host()
@@ -515,6 +589,7 @@ class Bootstrap(doctor_tests.DoctorBase):
         self.assertIn("Human step: Run mdstack up --project " + self.project, r.stdout)
         self.assertNotIn("routines", r.stdout)
         self.assertTrue((Path(self.tmp) / "live" / "runtime" / "coordinator.md").is_file())
+        self.assert_no_changes(roots=(Path(self.tmp) / "live",))  # #1090 AC3
 
     def test_grok_triage_enabled_reports_no_timer(self):
         text = self.project_path.read_text().replace('name = "tmux"', 'name = "grok-bot"')
@@ -1210,6 +1285,14 @@ class HarnessTargets(Bootstrap):
         self.assertEqual({p: p.read_bytes() for p in files}, before)
         self.assertEqual(self.exclude.read_text(), excluded)
         self.assertEqual(self.calls(), [])
+        self.assert_no_changes(roots=(self.claude, self.exclude.parent))  # #1090 AC1, AC3
+        self.assert_no_changes(*flags, roots=(self.claude, self.exclude.parent))
+        files[0].unlink()  # a missing pointer re-applies
+        r = self.bootstrap("--yes")
+        self.assertIn("crew bootstrap: installed", r.stdout)
+        self.assertEqual({p: p.read_bytes() for p in files}, before)
+        r = self.bootstrap("--harness", "claude-code", "--yes")  # deselecting codex changes the record
+        self.assertIn("crew bootstrap: installed", r.stdout)
 
     def test_new_bundle_repoints_the_guard_and_reruns(self):
         """#1088: installing a newer bundle re-points the Stop guard at it; a rerun is not refused as edited."""
