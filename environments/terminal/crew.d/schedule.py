@@ -446,6 +446,27 @@ def lead_states(session, state, values):
     return {p: read(probe, session, n, recs[n], windows) if n in recs else "missing" for p, n in names.items()}
 
 
+def evaluate(args, values, session, state, now):
+    """One write-free walk for args.pool: (snapshot, live reservations, advanced target document, actions, the
+    unreadable input or None)."""
+    snap = snapshot(args)
+    workers = [] if snap["workers"] == UNKNOWN else snap["workers"]
+    reserved = live_reservations(snap["reservations"] if isinstance(snap["reservations"], list) else [], workers, now)
+    busy = workers + [dict(role=r["pool"], state="busy") for r in reserved]  # a reservation counts as busy for T
+    path = os.path.join(state, "schedule", "target.json")
+    doc = json.load(open(path)) if os.path.exists(path) else None
+    doc = target(snap if snap["workers"] == UNKNOWN else dict(snap, workers=busy), target_options(values), doc, now)
+    unreadable = "demand" if snap["demand"][args.pool] == UNKNOWN else "caps" if UNKNOWN in snap["caps"].values() \
+        else "workers" if snap["workers"] == UNKNOWN else "holds" if snap["holds"] == UNKNOWN else None
+    if unreadable:
+        actions = [dict(pool=args.pool, ref=None, action="defer", reasons=[unreadable + "-unreadable"])]
+    else:
+        leads = read(lead_states, session, state, values)
+        actions = walk(args.pool, rank(snap), snap, reserved, doc, target_options(values),
+                       {} if leads == UNKNOWN else leads, ceiling_hit(snap, values))
+    return snap, reserved, doc, actions, unreadable
+
+
 def schedule_decide(args):
     """One decision for args.pool under schedule/lock; returns the JSON printed to the lead."""
     values, session, state = profile(args)
@@ -454,19 +475,8 @@ def schedule_decide(args):
     with open(os.path.join(sched, "lock"), "w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         now = datetime.datetime.now(datetime.timezone.utc)
-        snap = snapshot(args)
-        workers = [] if snap["workers"] == UNKNOWN else snap["workers"]
-        reserved = live_reservations(snap["reservations"] if isinstance(snap["reservations"], list) else [], workers, now)
-        busy = workers + [dict(role=r["pool"], state="busy") for r in reserved]  # a reservation counts as busy for T
-        doc = update_target(state, snap if snap["workers"] == UNKNOWN else dict(snap, workers=busy), values, now)
-        unreadable = "demand" if snap["demand"][args.pool] == UNKNOWN else "caps" if UNKNOWN in snap["caps"].values() \
-            else "workers" if snap["workers"] == UNKNOWN else "holds" if snap["holds"] == UNKNOWN else None
-        if unreadable:
-            actions = [dict(pool=args.pool, ref=None, action="defer", reasons=[unreadable + "-unreadable"])]
-        else:
-            leads = read(lead_states, session, state, values)
-            actions = walk(args.pool, rank(snap), snap, reserved, doc, target_options(values),
-                           {} if leads == UNKNOWN else leads, ceiling_hit(snap, values))
+        snap, reserved, doc, actions, unreadable = evaluate(args, values, session, state, now)
+        save_json(os.path.join(sched, "target.json"), doc)
         grants = [a for a in actions if a["action"] == "admit" and a["reasons"] != ["reserved"]]
         save_json(os.path.join(sched, "reservations.json"),
                   reserved + [dict(ref=a["ref"], pool=args.pool, time=stamp(now)) for a in grants])
