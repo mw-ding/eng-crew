@@ -59,6 +59,7 @@ them names a harness. A module states:
 | `PROMPTS`, `FATAL` | no | blocking-dialog heading and footer pairs, and the fatal API error line (C5) |
 | `BUSY`, `COMPOSER` | no | mid-turn screen text `mdstack upgrade` waits out, and the composer's prompt glyph (C1) |
 | `TRANSIENT` | no | transient-error text (C5) |
+| `QUOTA` | no | the harness's own usage-limit line: the run probes `quota`, and `mdstack restart` relaunches it once on the next eligible engine in its role's order (C5, #631) |
 | `usage(directory, start)` | no | session usage: `{input, cached, output, model}` totals since `start` (epoch seconds) from the logs of runs in `directory`, or `None` with no log entry; [`scripts/run-usage.py`](../../scripts/README.md#run-usage-helper) prints `tokens n/a` then |
 | `install_targets(project, state, pointer, check)`, `INSTALL_TARGETS`, `install_launch(project, pointer, notes)` | no | install pointer files, their paths, and a printed launch line that pack launch notes extend (C3) |
 

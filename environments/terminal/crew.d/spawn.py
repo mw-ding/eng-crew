@@ -174,6 +174,7 @@ def register(sub):
     p.add_argument("--round", type=int, default=1, help="verdict round k, for reviewer window names")
     p.add_argument("--tier", choices=["trivial", "default", "deep"], help="default: the role's default_tier, else default")
     p.add_argument("--timeout", type=float, default=15.0, help="seconds to see the harness in the foreground")
+    p.add_argument("--skip-engine", action="append", default=[], help="skip this engine (a quota restart, #631)")
     p.add_argument("--host", help="placement override: run on this inventory host; needs --reason")
     p.add_argument("--reason", help="why the host is overridden; posted on the item before the spawn")
     p.add_argument("--project")
@@ -279,8 +280,9 @@ def run(args):
         if getattr(args, "head", None) and args.head != sha:
             raise RuntimeError("crew: stale spawn: expected %s, live head %s" % (args.head, sha))
         base = fetch(repo, values["repo.default_branch"]) if args.pr else None
-        order = engine_order(values, args.tier, role=role) if "engine_independent_of" not in data else engine_order(
-            values, args.tier, builder_engines(values, state, repo, base, sha, args.pr), role)
+        skip = set(getattr(args, "skip_engine", None) or ())
+        order = engine_order(values, args.tier, skip, role=role) if "engine_independent_of" not in data else engine_order(
+            values, args.tier, builder_engines(values, state, repo, base, sha, args.pr) | skip, role)
         paths = git(repo, "diff", "--name-only", "%s...%s" % (base, sha)).split() if args.pr and \
             placement.inventory(values) else []
         placed = placement.place(dict(role=role, paths=paths, order=order, host=override, **{"pass": pass_}), values,

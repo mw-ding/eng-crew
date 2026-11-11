@@ -8,7 +8,9 @@ working run whose tmux pane printed nothing for `--idle-stall` (default 1800 s) 
 liveness `idle` even while its claim or status file keeps being refreshed (#1283). Each new stale wake opens a stall
 in `metrics/observations.jsonl` keyed by run, and that run's next status line closes it (self-improve.md, #1524).
 Each live run's screen is matched against its harness adapter's transient-error text; each new match is a line in
-`schedule/errors.jsonl` (docs/scheduling.md#inputs). Finishing work deferred by the scheduler past `stuck_after` is one
+`schedule/errors.jsonl` (docs/scheduling.md#inputs). A run whose harness shows its adapter's usage-limit line probes
+`quota` and wakes once per run as `quota` (action restart: `mdstack restart` moves it to the next eligible engine, #631;
+escalate after its one restart). Finishing work deferred by the scheduler past `stuck_after` is one
 `schedule-stuck` wake per (pool, ref, first deferral), and the exit line is followed by `mdstack schedule summary`'s line
 (docs/scheduling.md#observability).
 Its `wake: watcher` line is never typed into a window 0 showing a dialog, which gets
@@ -249,6 +251,12 @@ def scan(state, session, now, stale, seen, idle_ttl=1800, stuck_after=1800, idle
         if cls in ("alive", "ambiguous") and rec.get("harness") in TRANSIENT:
             for line in transient_lines(tmux.capture(session, rec["index"]), rec["harness"]):
                 gateway_error(state, name, line, now, once=True)
+        if cls == "quota" and not finished(rec, last):
+            if seen["keys"].get(name) != "quota":  # once per run: a new identity clears the key
+                seen["keys"][name] = "quota"
+                wakes.append({"reason": "quota", "window": name, "liveness": cls, "engine": rec.get("engine"),
+                              "run": identity, "action": "escalate" if rec.get("restarts") else "restart"})
+            continue
         idle = idle_builder(state, name) if rec["role"] == "builder" and cls == "alive" else None
         if idle_ttl and idle is not None and now - idle >= idle_ttl:
             key = "idle %s" % idle

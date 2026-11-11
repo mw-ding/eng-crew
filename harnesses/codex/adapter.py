@@ -24,6 +24,7 @@ FATAL = r'■\s(?=.*"type": ?"error")(?=.*"status": ?[45]\d\d\b)'  # ■ {"type"
 # Its own error banner only, a line opening with ■: never tool output, file names or quoted text (#1366).
 TRANSIENT = re.compile(r'^■\s.*(?:"status": ?(?:429|5\d\d)\b|\b(?:429|5\d\d)\b.*(?:Too Many Requests|Internal Server '
                        r"Error|Bad Gateway|Unavailable|Gateway Timeout|retry)|rate.?limit)", re.I)  # ■ … last status: 429 …
+QUOTA = re.compile(r"^■\s+You[’']ve hit your usage limit\b")  # ■ You've hit your usage limit. … try again in 2 days (#631)
 COMPOSER = "›"
 BUSY = re.compile(r"esc to interrupt")  # a lowercased screen mid-turn
 

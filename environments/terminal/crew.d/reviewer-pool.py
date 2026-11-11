@@ -24,7 +24,7 @@ def dispatch(args, values, state, wake):
             if record["role"] == "reviewer" and record["args"]["pr"] == pr["number"]:
                 route.reap(args, worker)
         return True
-    if wake.get("reason") in ("stale", "dialog", "lifecycle"):
+    if wake.get("reason") in ("stale", "dialog", "lifecycle", "quota"):
         if rec is None:
             return True
         _, session, _ = profile(args)
@@ -41,7 +41,7 @@ def dispatch(args, values, state, wake):
                 return True
         if last.startswith("done:"):
             return route.route_record(args, values, state, dict(wake, reason="status", line=last, round=rec["args"]["round"]))
-        if liveness in ("dead", "missing") and not rec.get("restarts"):
+        if liveness in ("dead", "missing", "quota") and not rec.get("restarts"):  # quota: next engine (#631)
             pr = route.gh("pr", "view", str(rec["args"]["pr"]), "-R", "%s/%s" % (values["repo.owner"], values["repo.name"]),
                           "--json", "headRefOid,state,labels")
             if pr["headRefOid"] != rec["head"] or pr["state"] != "OPEN":

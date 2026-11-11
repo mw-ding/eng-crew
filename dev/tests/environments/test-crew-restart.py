@@ -1,6 +1,7 @@
 """Tests for mdstack restart, moved from test-crew.py; fixtures in crew_testlib.py (stdlib only).
 
-Covers: only when dead or missing and only once (fresh worktree when clean, relaunch in place
+Covers: only when dead, missing or quota and only once (quota: on the next eligible engine past every exhausted
+one, in place or fresh; none left refuses, #631) (fresh worktree when clean, relaunch in place
 keeping unlanded work), a finished run refused, a builder after `done:` restarts as its PR's fix
 pass (fresh or in place), an in-place relaunch accepts a Claude Code pane whose command reads as
 its version (#286), a dead train worker respawns with --train and keeps the pending train record (#1391), a dead
@@ -193,6 +194,52 @@ class Restart(LivenessBase):
         self.assertEqual((rec["restarts"], rec["worktree"]), (1, wt))  # same base SHA, so the same fresh path
         self.assertEqual(self.git("status", "--porcelain", cwd=wt), "")
         self.assertEqual(len(self.windows()), 2)
+
+    QUOTA = "■ You've hit your usage limit. Upgrade to Pro or try again in 2 days."  # Codex's own banner (#631)
+
+    def test_quota_run_restarts_once_on_the_next_engine(self):  # #631: a clean worktree respawns past codex
+        self.set_pane(10, screen=self.QUOTA)
+        self.assertEqual(self.probe(), "quota")
+        r = self.crew("restart", "ben-7", "--project", self.project, "--timeout", "1")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("crew: started ben-7 (window 10, claude-code sonnet medium)", r.stdout)
+        rec = self.record("ben-7")
+        self.assertEqual((rec["engine"], rec["model"], rec["harness"], rec["restarts"], rec["exhausted"]),
+                         ("claude-code", "sonnet", "claude", 1, ["codex"]))
+        self.assertEqual(rec["args"], {"issue": 7, "pr": None, "pass": "build", "round": 1, "tier": "default"})
+        with open(os.path.join(self.state, "runs", "ben-7.brief.md")) as f:
+            self.assertIn("- Engine: claude-code sonnet medium\n", f.read())
+        self.set_pane(10, screen="  ⎿  You've hit your limit · resets 3pm")
+        r = self.crew("restart", "ben-7", "--project", self.project, "--timeout", "1")
+        self.assertEqual(r.returncode, 1)  # once: a second quota escalates
+        self.assertIn("already restarted once; escalate", r.stdout)
+
+    def test_quota_run_with_unlanded_work_relaunches_in_its_worktree_on_the_next_engine(self):  # #631
+        before = self.record("ben-7")
+        wt = before["worktree"]
+        with open(os.path.join(wt, "notes.txt"), "w") as f:
+            f.write("draft\n")
+        self.set_pane(10, screen=self.QUOTA)
+        r = self.crew("restart", "ben-7", "--project", self.project, "--timeout", "1")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("keeping unlanded work", r.stdout)
+        self.assertIn("exec claude --model sonnet --effort medium", self.windows()[-1][-1])
+        after = self.record("ben-7")
+        self.assertEqual((after["worktree"], after["claim"], after["engine"], after["harness"], after["exhausted"]),
+                         (wt, before["claim"], "claude-code", "claude", ["codex"]))
+        self.assertTrue(os.path.exists(os.path.join(wt, "notes.txt")))
+        with open(os.path.join(self.state, "runs", "ben-7.brief.md")) as f:
+            self.assertIn("- Quota fallback: codex is out of quota; this session runs claude-code sonnet medium.", f.read())
+
+    def test_quota_run_with_no_eligible_engine_left_refuses(self):  # #631: a durable block, the run kept
+        with open(self.project, "a") as f:
+            f.write('\n[engines.roles]\nbuilder = { order = ["codex/gpt-6.1-sol"] }\n')
+        self.set_pane(10, screen=self.QUOTA)
+        r = self.crew("restart", "ben-7", "--project", self.project, "--timeout", "1")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("codex is out of quota and no eligible engine is left", r.stdout)
+        self.assertEqual((self.record("ben-7")["engine"], len(self.windows())), ("codex", 1))
+        self.assertNotIn("restarts", self.record("ben-7"))
 
     def test_restart_clean_reviewer_keeps_its_rereview_id(self):  # #1477
         sha = self.pr(9, "claude-code opus-5.5 default")
