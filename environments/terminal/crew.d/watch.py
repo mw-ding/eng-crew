@@ -45,6 +45,7 @@ Usage: mdstack watch --project FILE [--org-profile FILE]
 import argparse
 import contextlib
 import datetime
+import fcntl
 import glob
 import hashlib
 import json
@@ -60,6 +61,7 @@ from crew_shared import checkout, commands, CREW_BIN, dialog, ownership_module, 
 # Fields route adds to a record it leaves queued; a kept record still matches its candidate and wakes window 0 (#814).
 ROUTE_NOTES = ("at", "route_error", "consumer", "dependents")
 RATE_LIMITED = re.compile(r"rate-limited until (\S+Z)")  # mdstack poll's exit-75 line for a GitHub quota refusal
+LOCK_ENV = "MDSTACK_WATCH_LOCK"  # "<pid>:<fd>" of the held wake/watcher.lock, kept across a re-exec (#399)
 RATE_HOLD_MAX = 3600  # seconds; GitHub's primary quota window, so a bad reset time never parks the sources for longer
 
 def asks(state):
@@ -432,6 +434,26 @@ def armed(pidfile):
     return pid if "watch" in command.split() else None
 
 
+def hold_lock(wake):
+    """Take wake/watcher.lock exclusively for this process's life (#399); the fd, or None while another watcher holds
+    it. A re-exec'd watcher (same PID) reuses the fd it inherited, so the lock is never released in between. A short
+    retry outlasts `mdstack guard`'s instant probe."""
+    pid, _, fd = os.environ.get(LOCK_ENV, "").partition(":")
+    if pid == str(os.getpid()) and fd.isdigit():
+        return int(fd)
+    fd = os.open(os.path.join(wake, "watcher.lock"), os.O_RDWR | os.O_CREAT, 0o644)
+    deadline = time.monotonic() + 1
+    while True:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return fd
+        except BlockingIOError:
+            if time.monotonic() >= deadline:
+                os.close(fd)
+                return None
+            time.sleep(0.05)
+
+
 def reason(w):
     if "event" in w:
         return "%s: %s" % (w["reason"], w["event"])
@@ -475,8 +497,11 @@ def code_sig():
     return sorted((p, os.stat(p).st_mtime_ns) for p in paths if os.path.exists(p))
 
 
-def reexec():
-    """Replace this process with a fresh `mdstack watch` on the same argv; the PID, so wake/watcher.pid, is kept."""
+def reexec(lock):
+    """Replace this process with a fresh `mdstack watch` on the same argv; the PID, so wake/watcher.pid, and the held
+    wake/watcher.lock are kept."""
+    os.set_inheritable(lock, True)
+    os.environ[LOCK_ENV] = "%d:%d" % (os.getpid(), lock)
     sys.stdout.flush()
     print("crew: watch: crew code changed on disk; re-exec", file=sys.stderr, flush=True)
     os.execv(sys.executable, [sys.executable, *sys.argv])
@@ -570,10 +595,18 @@ def run(args):
     wake = os.path.join(state, "wake")
     os.makedirs(wake, exist_ok=True)
     path, pidfile = os.path.join(wake, "watch-state.json"), os.path.join(wake, "watcher.pid")
-    if other := armed(pidfile):  # leave its PID file and state alone (#591)
-        print("crew: a watcher is already armed (pid %d)" % other)
-        return 1
+    lock = hold_lock(wake)
+    if lock is None:  # one watcher per state dir: leave its PID file and state alone (#591, #399)
+        other = "unknown"
+        with contextlib.suppress(OSError):
+            with open(pidfile) as f:
+                other = f.read().strip() or other
+        print("crew: a watcher is already armed (pid %s)" % other)
+        return 0
+    with open(pidfile, "w") as f:  # published under the lock, so a refused start can name this watcher
+        f.write("%d\n" % os.getpid())
     if ownership_module.status(values) == "lost":  # prompt stop: never re-armed once ownership moved away
+        os.remove(pidfile)
         print("crew: ownership: lost; watcher not armed (run mdstack down, then mdstack handoff stopped)")
         return 1
     seen = {"offsets": {}, "keys": {}, "idle": 0, "queue": None}
@@ -602,8 +635,6 @@ def run(args):
     code = code_sig()
     source_interval = values["runtime.options.poll_interval"] if args.source_interval is None else args.source_interval
     try:
-        with open(pidfile, "w") as f:
-            f.write("%d\n" % os.getpid())
         while True:
             docs_tick(values, state, time.time(), args.project, args.org_profile)
             commands()["up"].scale_down(values, session, state, time.time())  # idle lifecycle instances (#1231)
@@ -644,7 +675,7 @@ def run(args):
                          values["runtime.options.stuck_after"], args.idle_stall) + found
             others = queued(state, wake, trial)
             if code_sig() != code and not held:  # before route resolves the live profile with old code (#702)
-                reexec()  # trial is not committed, so the new image finds this scan's status lines and records again
+                reexec(lock)  # trial is not committed, so the new image finds this scan's status lines and records again
             if not wakes and not others and time.monotonic() > deadline:
                 trial["idle"] += 0 if busy else 1
                 wakes = [{"reason": "backstop", "event": "due (%s in flight)" % ("work" if busy else "nothing")}]

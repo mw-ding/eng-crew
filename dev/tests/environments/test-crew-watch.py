@@ -13,8 +13,8 @@ SIGHUP like SIGTERM, a dialog waking at once (each captured stuck screen in `fix
 screen never), a stale key that ignores the liveness class, an owner ask waking at its deadline once per
 deadline (an unreadable one at once), the scan sleep cut short to land on a deadline, an ask wake while the
 backstop is backed off; unfinished spawns skip liveness wakes for 60 s, then wake as missing, while started missing
-runs wake immediately; a run record reaped between listing and stat skipped, a second watcher refusing to start
-without touching the armed one's PID file, and a watcher removing the PID file only when it holds its own PID
+runs wake immediately; a run record reaped between listing and stat skipped, a second watcher a no-op (exit 0, naming the armed PID)
+without touching the armed one's PID file, simultaneous starts leaving exactly one watcher through `wake/watcher.lock` (#399), and a watcher removing the PID file only when it holds its own PID
 (#591); finishing work deferred past `stuck_after` waking once as `schedule-stuck` with the snapshot, and the exit
 line followed by the schedule summary (#628); the triage sweep timer (#748): due, overdue on wake, an empty queue
 skipped, disabled, queued and failed spawns, never a wake, and closed milestones swept at once and kept until a started sweep takes them (#374), a later closed milestone
@@ -923,13 +923,32 @@ class Watch(LivenessBase):
             json.dump({"command": {str(p.pid): "python3 cli/mdstack watch --project crew.toml"}}, f)
         second = self.watch()
         out, _ = second.communicate(timeout=10)
-        self.assertEqual((second.returncode, out), (1, "crew: a watcher is already armed (pid %d)\n" % p.pid))
+        self.assertEqual((second.returncode, out), (0, "crew: a watcher is already armed (pid %d)\n" % p.pid))
         with open(pidfile) as f:
             self.assertEqual(int(f.read()), p.pid)
         self.assertIsNone(p.poll())
         p.send_signal(signal.SIGTERM)
         p.communicate(timeout=10)
         self.assertFalse(os.path.exists(pidfile))
+
+    def test_simultaneous_starts_leave_exactly_one_watcher(self):  # #399: the lock, not a check-then-write
+        first, second = self.watch(), self.watch()
+        for _ in range(200):
+            if first.poll() is not None or second.poll() is not None:
+                break
+            time.sleep(0.05)
+        live, done = (first, second) if second.poll() is not None else (second, first)
+        out, _ = done.communicate(timeout=10)
+        self.assertEqual((done.returncode, out), (0, "crew: a watcher is already armed (pid %d)\n" % live.pid))
+        self.armed(live)
+        with open(os.path.join(self.state, "wake", "watcher.pid")) as f:
+            self.assertEqual(int(f.read()), live.pid)
+        live.send_signal(signal.SIGTERM)
+        live.communicate(timeout=10)
+        third = self.watch()  # the lock went with the watcher
+        self.armed(third)
+        third.send_signal(signal.SIGTERM)
+        third.communicate(timeout=10)
 
     def test_watcher_removes_only_its_own_pid_file(self):  # #591: a stale or reused PID does not block arming
         pidfile = os.path.join(self.state, "wake", "watcher.pid")
