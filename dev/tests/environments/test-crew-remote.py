@@ -1223,6 +1223,14 @@ class Runner(Base):
         beat = self.load(os.path.join(self.root, "runner.json"))
         self.assertEqual((beat["session"], beat["interval"], beat["pid"]), ("crew-host", 30, os.getpid()))
 
+    def test_runner_never_beats_when_new_session_exits_0_without_a_session(self):  # #1480
+        os.environ["TMUX_TMPDIR"] = os.path.join(self.tmp, "tmux-tmp")
+        with open(os.path.join(self.bin, "tmux"), "w") as f:
+            f.write('#!/bin/sh\ncase "$3" in new-session) echo "error creating socket" >&2;; has-session) exit 1;; esac\n')
+        with self.assertRaisesRegex(RuntimeError, "no session crew-host after exit 0"):
+            remote.runner(self.root, once=True)
+        self.assertFalse(os.path.exists(os.path.join(self.root, "runner.json")))
+
 
 if __name__ == "__main__":
     unittest.main()
