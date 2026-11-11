@@ -34,6 +34,8 @@ read/report only. Draining: in-flight writes only, no new pass or land.
 
 <include:policy/coordinator/secret-retrieval.md>
 
+<include:policy/coordinator/owner-config.md>
+
 A comment landed on a PR in <owner>/<repo>. Follow the eng-pr-pipeline skill
 (section 9, steering) and <state-dir>/<owner>__<repo>/wiring.md section 2a.
 

@@ -36,6 +36,9 @@ never `/tmp` or outside the state dir.
 
 <include:policy/coordinator/secret-retrieval.md>
 
+Owner config: edit only under a recorded authorization, per
+`<mdstack>/docs/roles.md`, Owner config edits.
+
 Answer owner messages briefly before routing; long status goes in the
 final reply. Hand an owner deep dive (more than a few lookups)
 to <ResearcherBot> per `<mdstack>/docs/roles.md`, Researcher: file or link an

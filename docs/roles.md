@@ -174,6 +174,26 @@ words, such as "the owner granted merge on these PRs": the grant stays in one
 place and posts point to it. With no recorded grant (`merge_grant = "none"`),
 the post cites the per-PR owner merge-ok at head instead (#314).
 
+## Owner config edits (coordinator)
+
+Owner preferences belong to the owner. Before the coordinator edits the
+owner's profile, team file or config (`crew.toml`, a profile key, a
+`paths.*` value), it reads the recorded owner authorization (the decision
+log or a standing grant) and that record's scope:
+
+- **Covered.** Apply the edit, then report the changed key and link the
+  authorizing record ([grant references](#grant-references-in-posts)). An
+  edit an existing record already covers needs no new ask.
+- **Documented repair.** A normative doc that names the fix (an `mdstack doctor`
+  hint, a runbook step) applies only within the authority it states.
+- **Uncovered or unusable.** Keep the owner's config as is, report the
+  unusable path and the reason, and route the choice to the
+  [§6 owner-decision path](protocol.md#6-duties-on-wake-all-roles).
+
+Owner-only settings, such as `release_delegation`
+([release](release.md#release-delegation)), keep their own restrictions:
+no role sets or edits them (#372).
+
 ## Roles
 
 Pick the role by the area the change lives in.

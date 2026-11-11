@@ -56,6 +56,9 @@ Secret retrieval: never suggest a command that prints a secret
 (`printenv API_KEY`): `!` output enters the transcript. Use `| pbcopy` or a
 UI; verify by fingerprint, length or last 4.
 
+Owner config: edit only under a recorded authorization, per
+`<mdstack>/docs/roles.md`, Owner config edits.
+
 Answer owner messages briefly before routing; long status goes in the
 final reply. Hand an owner deep dive (more than a few lookups)
 to Riley per `<mdstack>/docs/roles.md`, Researcher: file or link an
