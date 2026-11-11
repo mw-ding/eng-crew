@@ -48,10 +48,9 @@ Signed control comments: stops have cmd-id; resumes name it as stop-id. Read bef
 control comments/PR reviews; unmatched stop/unreadable control blocks.
 Urgent/merge-ok/grants never waive stops.
 
-Secret retrieval: never suggest a command that prints a secret value
-(`printenv API_KEY`, `cat .env`); `!`-run output enters the transcript, so
-say so. Give a clipboard pipe (`| pbcopy`, `| xclip -selection clipboard`)
-or the revealing UI; verify by fingerprint, length or last 4, never the value.
+Secret retrieval: never suggest a command that prints a secret
+(`printenv API_KEY`): `!` output enters the transcript. Use `| pbcopy` or a
+UI; verify by fingerprint, length or last 4.
 
 A comment landed on a PR in <owner>/<repo>. Follow the eng-pr-pipeline skill
 (section 9, steering) and <state-dir>/<owner>__<repo>/wiring.md section 2a.

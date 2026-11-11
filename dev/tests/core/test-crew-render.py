@@ -1379,7 +1379,7 @@ class SessionRuntime(unittest.TestCase):
 class SecretRetrieval(unittest.TestCase):
     """#397: every coordinator brief carries the secret-retrieval rule; no rendered brief prints a secret."""
 
-    RULE = "Secret retrieval: never suggest a command that prints a secret value"
+    RULE = "Secret retrieval: never suggest a command that prints a secret"
     PRINTS = re.compile(r"printenv \w+\b(?! \|)|echo \$\w*(?:KEY|TOKEN|SECRET|PASS)\b(?! \|)|cat \S*\.env\b(?! \|)"
                         r"|(?<!\$\()gh auth token\b")
 
@@ -1405,7 +1405,7 @@ class SecretRetrieval(unittest.TestCase):
                             self.assertTrue(self.RULE in flat, "no secret-retrieval rule in %s/%s" % (runtime, rel))
                         start = flat.find(self.RULE)
                         if start >= 0:
-                            flat = flat[:start] + flat[flat.index("never the value.", start):]
+                            flat = flat[:start] + flat[flat.index("length or last 4.", start):]
                         self.assertEqual(self.PRINTS.findall(flat), [])
 
     def test_lint_catches_a_secret_print(self):

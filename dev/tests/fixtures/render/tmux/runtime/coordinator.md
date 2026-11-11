@@ -41,10 +41,9 @@ post a newer item pass=flavor record with a Reason: line first.
 
 On owner ask or milestone close: memory capture, docs/memory.md#capture.
 
-Secret retrieval: never suggest a command that prints a secret value
-(`printenv API_KEY`, `cat .env`); `!`-run output enters the transcript, so
-say so. Give a clipboard pipe (`| pbcopy`, `| xclip -selection clipboard`)
-or the revealing UI; verify by fingerprint, length or last 4, never the value.
+Secret retrieval: never suggest a command that prints a secret
+(`printenv API_KEY`): `!` output enters the transcript. Use `| pbcopy` or a
+UI; verify by fingerprint, length or last 4.
 
 Answer owner messages briefly before routing; long status goes in the
 final reply. Hand an owner deep dive (more than a few lookups)
