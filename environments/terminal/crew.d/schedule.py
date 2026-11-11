@@ -46,6 +46,18 @@ def jsonl(path):
         return [json.loads(line) for line in f if line.strip()]
 
 
+def work_event(path):
+    """A reviewer `work` ref's event and None, else None and why it is unreadable or not a JSON object (#1020)."""
+    try:
+        with open(path) as f:
+            event = json.load(f)
+    except (OSError, ValueError) as e:
+        return None, "%s: %s" % (type(e).__name__, e)
+    if not isinstance(event, dict):
+        return None, "not a JSON object"
+    return event, None
+
+
 def work_pass(event):
     """The reviewer pass a `work` event starts and its PR ref, else (None, None)."""
     if event.get("event") in ("new-head", "fix-at-head", "merge-up"):
@@ -64,11 +76,14 @@ def demand(state, values, role):
     for m in commands()["lead"].pending(state, values["identities.%s.name" % role].lower() + "-lead"):
         item = dict(id=m["id"], kind=m["kind"], refs=m["refs"], ts=m.get("ts"))
         if role == "reviewer" and m["kind"] == "work":
-            with open(m["refs"][0]) as f:
-                item["event"] = json.load(f)
-            kind, ref = work_pass(item["event"])
-            if kind:
-                item.update(kind=kind, refs=[ref])
+            event, error = work_event(m["refs"][0])
+            if error:
+                item.update(kind="invalid-work", error=error)  # unranked; the pool records its disposition (#1020)
+            else:
+                item["event"] = event
+                kind, ref = work_pass(event)
+                if kind:
+                    item.update(kind=kind, refs=[ref])
         items.append(item)
     if role == "builder":
         items += [dict(kind=e["pass"], issue=e["issue"], pr=e["pr"], ts=e["queued"], queued=True)
