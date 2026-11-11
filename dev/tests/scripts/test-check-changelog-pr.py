@@ -213,6 +213,81 @@ class ChangelogPRTest(unittest.TestCase):
         self.commit()
         self.assertEqual(self.run_guard(base=newer_base).returncode, 1)
 
+    RELEASED = ("## [1.1.0] - 2026-11-02\n\n### Fixed\n\n- Second. (issue #2, PR #4, 2026-11-02)\n\n"
+                "## [1.0.0] - 2026-11-01\n\n### Added\n\n- First. (issue #1, PR #3, 2026-11-01)\n")
+
+    def released_base(self):
+        self.changelog()
+        self.commit()
+        self.base = self.git("rev-parse", "HEAD").strip()
+
+    def changelog(self, unreleased="", released=None):
+        self.write("CHANGELOG.md", "# Changelog\n\n## [Unreleased]\n\n" + unreleased
+                   + (self.RELEASED if released is None else released))
+
+    def assert_refused(self, result, *sections):
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn("released CHANGELOG.md history changed: " + ", ".join(sections), result.stderr)
+
+    def test_released_edit_with_new_fragment_refused(self):
+        self.released_base()
+        self.changelog(released=self.RELEASED.replace("- First.", "- First, reworded."))
+        self.write("README.md")
+        self.write("changes/unreleased/2-new.md")
+        self.commit()
+        self.assert_refused(self.run_guard(), "## [1.0.0] - 2026-11-01")
+
+    def test_released_edit_alone_refused(self):
+        self.released_base()
+        self.changelog(released=self.RELEASED.replace("- Second.", "- Second, reworded."))
+        self.commit()
+        self.assert_refused(self.run_guard(), "## [1.1.0] - 2026-11-02")
+
+    def test_released_section_deleted_refused(self):
+        self.released_base()
+        self.changelog(released=self.RELEASED.split("## [1.0.0]")[0])
+        self.commit()
+        self.assert_refused(self.run_guard(), "## [1.0.0] - 2026-11-01")
+
+    def test_changelog_deleted_refused(self):
+        self.released_base()
+        (self.root / "CHANGELOG.md").unlink()
+        self.commit()
+        self.assert_refused(self.run_guard(), "## [1.1.0] - 2026-11-02", "## [1.0.0] - 2026-11-01")
+
+    def test_cut_rewriting_older_section_refused(self):
+        self.released_base()
+        self.changelog(released="## [1.2.0] - 2026-11-03\n\n### Fixed\n\n- Old fragment. (issue #1, PR #5, "
+                       "2026-11-03)\n\n" + self.RELEASED.replace("- Second.", "- Second, reworded."))
+        (self.root / "changes/unreleased/1-old.md").unlink()
+        self.commit()
+        self.assert_refused(self.run_guard(), "## [1.1.0] - 2026-11-02")
+
+    def test_cut_adding_new_section_passes(self):
+        self.released_base()
+        self.changelog(released="## [1.2.0] - 2026-11-03\n\n### Fixed\n\n- Old fragment. (issue #1, PR #5, "
+                       "2026-11-03)\n\n" + self.RELEASED)
+        (self.root / "changes/unreleased/1-old.md").unlink()
+        self.commit()
+        result = self.run_guard()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("exempt-only", result.stdout)
+
+    def test_unreleased_only_edit_passes(self):
+        self.released_base()
+        self.changelog(unreleased="### Fixed\n\n- Direct entry. (issue #9, PR #10, 2026-11-03)\n\n")
+        self.commit()
+        result = self.run_guard()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("exempt-only", result.stdout)
+
+    def test_unchanged_changelog_with_fragment_passes(self):
+        self.released_base()
+        self.write("README.md")
+        self.write("changes/unreleased/2-new.md")
+        self.commit()
+        self.assertEqual(self.run_guard().returncode, 0)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -13,14 +13,18 @@ With --pr N (CI passes the PR number), every fragment the PR adds or changes
 must say `pr: N`; `pr: TBD` or another number fails and names the fragment.
 A merge-train PR (head ref `crew/train-*`) carries its members' fragments, so
 it is refused only for `pr: TBD`.
+Released history is immutable: every PR, a cut included, must keep each
+released section of CHANGELOG.md (every `## ` section below `## [Unreleased]`)
+byte for byte, so the head's released part may only gain new sections on top.
+This runs before the exempt and fragment success paths.
 Push events pass without inspecting a diff. Fragment format is checked
 separately by check-repo.py.
 
 Usage: check-changelog-pr.py --base REF [--head REF] [--root DIR] [--event pull_request|push]
                              [--pr N] [--head-ref BRANCH]
 PRs compare the merge base of REF and head to head, ignoring base-only changes.
-Exit 1 for a missing fragment, a wrong fragment PR number or an unreadable
-diff, otherwise 0.
+Exit 1 for a changed released section, a missing fragment, a wrong fragment
+PR number or an unreadable diff, otherwise 0.
 """
 import argparse
 import fnmatch
@@ -95,6 +99,33 @@ def top_section(text):
     return lines[heads[0]].rstrip(), lines[heads[0] + 1:end]
 
 
+def released_sections(text):
+    """[(heading, body lines)] of every `## ` section after [Unreleased]."""
+    out = []
+    for line in text.splitlines():
+        if line.startswith("## ") and (out or line.rstrip() != "## [Unreleased]"):
+            out.append((line.rstrip(), []))
+        elif out:
+            out[-1][1].append(line)
+    return out
+
+
+def released_history_error(root, base, head, paths):
+    """A message naming the released sections the PR changed, or None. The
+    head's released sections must end with the merge base's, unchanged."""
+    if "CHANGELOG.md" not in paths or "CHANGELOG.md" in changed_paths(root, base, head, "A"):
+        return None
+    merge_base = git(root, "merge-base", base, head).decode().strip()
+    before = released_sections(git(root, "show", merge_base + ":CHANGELOG.md").decode("utf-8", "replace"))
+    after = []
+    if "CHANGELOG.md" not in changed_paths(root, base, head, "D"):
+        after = released_sections(git(root, "show", head + ":CHANGELOG.md").decode("utf-8", "replace"))
+    if len(after) >= len(before) and after[len(after) - len(before):] == before:
+        return None
+    changed = [heading for heading, body in before if (heading, body) not in after]
+    return ", ".join(changed) or "the order of released sections"
+
+
 def cut_fix_entry(root, base, head, deleted):
     """True when the head CHANGELOG has a new top version section with more new
     issue-naming entries than the deleted fragments account for."""
@@ -127,6 +158,13 @@ def main(argv=None):
         ap.error("--base is required for pull_request")
     try:
         paths = changed_paths(args.root, args.base, args.head)
+        changed = released_history_error(args.root, args.base, args.head, paths)
+        if changed:
+            print("check-changelog-pr: FAILED (released CHANGELOG.md history changed: %s; "
+                  "restore those sections as released and record the change in a "
+                  "changes/unreleased fragment, see CONTRIBUTING.md#changelog)" % changed,
+                  file=sys.stderr)
+            return 1
         if args.pr:
             errors = fragment_pr_errors(args.root, args.base, args.head, args.pr,
                                         fnmatch.fnmatchcase(args.head_ref, TRAIN_REF))
