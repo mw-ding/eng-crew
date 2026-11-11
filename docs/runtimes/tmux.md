@@ -1337,7 +1337,7 @@ exactly one consuming role ([protocol §8](../protocol.md#8-safety)):
 | New builder `pass=fix` marker at head after a `verdict=changes` there (an evidence-only fix: no new commit, so no `new-head`) | `fix-at-head` | reviewer |
 | Tracked PR merged / closed | `pr-merged` / `pr-closed` | coordinator |
 | Owner lifts `crew:hold`, `crew:escalated` or `crew:needs-md` from an open crew PR or `crew:ready` issue (it leaves `poll-state.json`'s `held`) | `hold-released` | coordinator (#394) |
-| A held item (in `held`) gains an owner comment or PR review, the hold label unchanged | `owner-answer` | coordinator (#394) |
+| A held item (in `held`) or one with an open `asks/<n>.json` gains an owner comment or PR review, hold and ask unchanged | `owner-answer` | coordinator (#394) |
 | `crew:ready` issue newly assigned | `issue-assigned` | builder |
 | Open crew PR head turns `CONFLICTING` (`UNKNOWN` is no conflict), including after another land | `pr-conflicting` | builder (merge-up via the builder lead, before any CI) |
 | Express change: new builder `pass=selfgate verdict=pass` at head with CI green | `selfgate-passed` | synthesizer |
@@ -2119,7 +2119,7 @@ nor the watch state (#591, #399). Under that lock it writes its PID to
   a live, unrelated or unclassified run, or a pending lead message, restores
   the short backstop. Ask deadlines and poll wakes still wake at once, and an
   owner lifting a hold is a `hold-released` poll wake, an owner comment on a
-  held item an `owner-answer` one (#394).
+  held or asked item an `owner-answer` one (#394).
 
 It appends each wake to `wake/queue.jsonl` as one JSON line (under
 `wake/queue.lock`), saves `wake/watch-state.json` after every scan, and runs
