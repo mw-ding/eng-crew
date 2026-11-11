@@ -174,7 +174,7 @@ def deferred_ids(state, name):
 
 def retry_pending(args, name=None, recheck=False):
     """Nudge each lead with its first pending message. On the 60-second backstop (`recheck`), acknowledged deferred
-    handoffs are nudged only when a write-free scheduler walk would admit their ref now (#1502); slot releases and
+    handoffs are nudged only when a scheduler walk (writing only target progression) would admit their ref now (#1502); slot releases and
     other callers nudge them as before."""
     _, session, state = profile(args)
     for worker, rec in records(state):

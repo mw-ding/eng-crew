@@ -469,11 +469,18 @@ def evaluate(args, values, session, state, now):
 
 
 def admissible(args, pool):
-    """Refs of `pool` one decision would admit now, reserved ones included, without writing schedule state: the lead
-    backstop's token-free re-check of acknowledged deferred handoffs (#1502). Unreadable inputs admit nothing."""
+    """Refs of `pool` one decision would admit now, reserved ones included: the lead backstop's token-free re-check of
+    acknowledged deferred handoffs (#1502). It persists only the target's progression in schedule/target.json, so a
+    throttled T recovers on this cadence; it writes no reservation, decision log or deferral. Unreadable inputs admit
+    nothing."""
     values, session, state = profile(args)
-    actions = evaluate(argparse.Namespace(**dict(vars(args), pool=pool)), values, session, state,
-                       datetime.datetime.now(datetime.timezone.utc))[3]
+    sched = os.path.join(state, "schedule")
+    os.makedirs(sched, exist_ok=True)
+    with open(os.path.join(sched, "lock"), "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        _, _, doc, actions, _ = evaluate(argparse.Namespace(**dict(vars(args), pool=pool)), values, session, state,
+                                         datetime.datetime.now(datetime.timezone.utc))
+        save_json(os.path.join(sched, "target.json"), doc)
     return {a["ref"] for a in actions if a["action"] == "admit"}
 
 
