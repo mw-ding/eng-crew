@@ -141,9 +141,10 @@ def train_local_checks(wt):
     return ("none" if not scripts else None), []
 
 
-def train_wait_ci(slug, pr, args):
+def train_wait_ci(slug, pr, args, required=()):
     """pass | fail | timeout for the train PR's checks, and their CI run links. Sleeps --grace first: checks register
-    a few seconds after the PR opens and `gh pr checks` exits non-zero until they do, so no checks yet is pending."""
+    a few seconds after the PR opens and `gh pr checks` exits non-zero until they do, so no checks yet is pending, and
+    so is an expected check not registered yet (`[ci] required_checks`, #1536): absent at the deadline, it times out."""
     time.sleep(args.grace)
     deadline = time.monotonic() + args.timeout
     while True:
@@ -154,7 +155,8 @@ def train_wait_ci(slug, pr, args):
         except ValueError:
             checks = []
         buckets = {c.get("bucket") for c in checks}
-        if checks and "pending" not in buckets:
+        if checks and "pending" not in buckets and (not buckets <= {"pass", "skipping"} or
+                                                    not commands()["poll"].missing_checks(checks, required)):
             links = list(dict.fromkeys(re.sub(r"/job/\d+$", "", c["link"]) for c in checks if c.get("link")))
             return ("pass" if buckets <= {"pass", "skipping"} else "fail"), links
         if time.monotonic() >= deadline:
@@ -387,7 +389,8 @@ def train_build(args, values, state, repo, slug):
                 rec["ci"] = "pending"
                 train_save(state, rec)
                 if not args.no_wait:
-                    rec["ci"], rec["ci_links"] = train_wait_ci(slug, rec["pr"], args)
+                    rec["ci"], rec["ci_links"] = train_wait_ci(slug, rec["pr"], args,
+                                                               commands()["poll"].required_checks(values))
                 if rec["ci"] not in ("pass", "pending"):  # a red train never lands; its check links stay readable after the close
                     train_close(repo, slug, rec, values)
         for line in tail:
@@ -598,8 +601,10 @@ def train_check_prs(args, values, state, repo, slug, poll, clone):
             results["express"] = ("blocked", "spec change needs owner merge-ok at head") if lane and spec else (
                 "pass", "resolved express") if lane else ("blocked", lane_why) if "unreadable" in lane_why else (
                 "blocked", "crew lane (%s): drop crew:express" % lane_why)
-        results["ci"] = ("pass", "checks green at head") if poll.pr_snapshot(view)["ci"] == "passed" else (
-            "blocked", "checks " + poll.pr_snapshot(view)["ci"])
+        required = poll.required_checks(values)
+        ci, missing = poll.pr_snapshot(view, required)["ci"], poll.missing_checks(view["statusCheckRollup"], required)
+        results["ci"] = ("pass", "checks green at head") if ci == "passed" else (
+            "blocked", "checks %s%s" % (ci, "; missing " + ", ".join(missing) if missing else ""))
         tags = {lb["name"] for lb in view["labels"]}
         results["sensitive"] = ("blocked", "owner merge-ok needed at head") if (
             "crew:sensitive" in tags and not merge_ok) else ("pass", "merge-ok present or not sensitive")
@@ -684,7 +689,7 @@ def train_wait(args, values, state, repo, slug):
     rebuilt, _ = train_predecessor(args, values, state, repo, slug, rec)
     if rebuilt is not None:
         return rebuilt
-    rec["ci"], rec["ci_links"] = train_wait_ci(slug, rec["pr"], args)
+    rec["ci"], rec["ci_links"] = train_wait_ci(slug, rec["pr"], args, commands()["poll"].required_checks(values))
     if rec["ci"] != "pass":
         train_close(repo, slug, rec, values)
     train_save(state, rec)
@@ -1031,14 +1036,18 @@ def train_land(args, values, state, repo, slug):
         if checks.returncode not in (0, 1, 8):
             raise RuntimeError(checks.stderr.strip())
         try:
-            buckets = {c["bucket"] for c in json.loads(checks.stdout or "[]")}
+            observed = json.loads(checks.stdout or "[]")
+            buckets = {c["bucket"] for c in observed}
         except ValueError:
             raise RuntimeError("train CI UNKNOWN: invalid API JSON")
+        missing = poll.missing_checks(observed, poll.required_checks(values))
         if buckets & {"fail", "cancel"}:
             rec["ci"] = "fail"
             why = "train CI red"
         elif not buckets or "pending" in buckets:
             raise RuntimeError("train CI UNKNOWN or pending")
+        elif missing:  # the live baseline at land, even one set after the build (#1536)
+            raise RuntimeError("train CI UNKNOWN or pending; missing " + ", ".join(missing))
         cur = fetch(repo, main)
         if fetch(repo, rec["branch"]) != rec["sha"]:
             why = "train branch moved"
