@@ -784,6 +784,29 @@ class PackOverlay(unittest.TestCase):
         with open(manifest, "w") as f:
             f.write(text + "\n[land]\n" + land)
 
+    def test_land_delete_renders_only_where_the_backend_maps_it(self):  # #395
+        code, out, got = self.render(self.project())
+        self.assertEqual(code, 0, out)
+        synth = tree(got)["runtime/synthesizer.md"]
+        self.assertIn("run `gh pr merge <n> --squash --match-head-commit <head-sha>`, add\n"
+                      "   `--delete-branch` if same-repo, not default/base, post\n", synth)
+        self.assertIn("line and `Head branch: deleted|retained (<reason>)|delete failed` (exit>0,\n"
+                      "   `MERGED`)", synth)
+        session = os.path.join(self.tmp, "session.toml")
+        with open(session, "w") as f:
+            f.write('[runtime]\nname = "session"\n')
+        code, out, got = self.render(session)
+        self.assertEqual(code, 0, out)
+        self.assertIn("bound to that head, add `--delete-branch` if\n   same-repo, not default/base, post", tree(got)["runtime/synthesizer.md"])
+        self.assertIn("`Head branch: deleted|retained\n   (<reason>)|delete failed` (exit>0, `MERGED`)",
+                      tree(got)["runtime/synthesizer.md"])
+        write_pack(os.path.join(self.tmp, "pack"), mapping="\n".join(
+            line for line in self.github.splitlines() if not line.startswith("land-delete-arg =")) + "\n")
+        code, out, got = self.render(self.project(), "--org-profile", self.org)
+        self.assertEqual(code, 0, out)
+        self.assertNotIn("--delete-branch", tree(got)["runtime/synthesizer.md"])
+        self.assertNotIn("Head branch:", tree(got)["runtime/synthesizer.md"])
+
     def test_async_land_renders_synthesizer_and_builder_steps(self):
         code, out, sync = self.render(self.project(), "--org-profile", self.org)
         self.assertEqual(code, 0, out)

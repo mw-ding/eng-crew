@@ -599,7 +599,8 @@ Route consumes the lead's `ack:`, `done:` and waiting gate-status lines
 `blocked:` lines stay queued for the coordinator: owner merge-ok,
 `crew:sensitive`, holds and `main red`; lead faults arrive as `stale` or
 `dialog` wakes. Merged-PR close-out stays in route (labels, closing the
-issue, branch deletion under the existing rules, builder reclaim through the
+issue, a fallback branch deletion under the existing rules when the land
+left the branch, builder reclaim through the
 builder lead), so a land needs no coordinator turn. With a Slack owner
 channel, route also queues the away-only `land` notification through
 `mdstack notify` (stable id `land-<n>`, the train number or `direct`, the
@@ -1971,11 +1972,14 @@ Merged-PR close-out (the coordinator brief points here, #1635): remove
 `crew:approved`, `crew:hold`, `crew:in-review` and `crew:changes` (each if
 present) from the PR, remove `crew:ready` from the issue it closed, and close
 that issue with a note if GitHub left it open (never a reopened one, #846).
-Delete the head branch with `change.delete-branch` only when ALL of these
-hold, read from `change.read-state` and `change.read-default-branch`: the PR
-is merged; `isCrossRepository` is false; `<branch>` is read only from
-`headRefName`; the branch differs from both the default branch and
-`baseRefName`. Otherwise skip deletion and say why in the close-out note.
+The land deletes an eligible head branch itself where the change backend maps
+`change.land-delete-arg` (#395), so an ordinary land leaves nothing to delete.
+Only if the head branch outlived the land, delete it with
+`change.delete-branch`, and only when ALL of these hold, read from
+`change.read-state` and `change.read-default-branch`: the PR is merged;
+`isCrossRepository` is false; `<branch>` is read only from `headRefName`; the
+branch differs from both the default branch and `baseRefName`. Otherwise skip
+deletion and say why in the close-out note.
 
 Spawns are deduplicated by PR/head/pass/round against live and queued runs,
 section files and posted pass markers. An expected `--head` travels through
