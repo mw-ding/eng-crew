@@ -392,6 +392,29 @@ otherwise the profile is unsupported for release
 `changelog-cut.py --project config.toml` reads `changelog` and `fragments`;
 its flags override them.
 
+### `[ci]`
+
+Optional, new in #1536: the expected-check baseline a green CI read needs at
+the exact head. Without the table, every observed check at head decides as
+before; a repo whose branch protection lists no required checks has no other
+source for the set.
+
+| Key | Type | Default | Meaning |
+|---|---|---|---|
+| `required_checks` | list of unique, nonempty check names | none | Check run or status context names that must each be present and green at head |
+
+```toml
+[ci]
+required_checks = ["markdownlint", "links", "repo-guard"]
+```
+
+`mdstack poll`, the synthesizer's gate-status CI item and `mdstack train`
+build and wait read the same decision: a named check absent at head (never
+created, not registered yet) keeps CI pending, never passed, and gate-status
+names the missing checks. A failed or infrastructure-failed check still reads
+as failed or infra. A check left out of the list, such as an optional job,
+stays optional.
+
 ### `[install]`
 
 Optional ([#882](https://github.com/mw-ding/eng-crew/issues/882)): where
