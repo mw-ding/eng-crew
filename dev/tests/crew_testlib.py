@@ -230,6 +230,7 @@ class Base(unittest.TestCase):
 
 
 SECRET = "ghp_" + "S3cr3tT0kenValue0000000000000000000000"  # built at run time; never in a file
+ENGINE_STUBS = ("claude", "codex", "pi", "muse", "opencode")  # not cursor-agent: eng workers never use Cursor
 
 
 class SpawnBase(Base):
@@ -258,6 +259,15 @@ class SpawnBase(Base):
                     "'closingIssuesReferences': [{'number': 7}], 'body': os.environ.get('FAKE_PR_BODY', '')}))\n"
                     "else:\n open(%r, 'a').write('called\\n')\n print(%r)\n" % (os.path.join(self.tmp, "gh.log"), SECRET))
         os.chmod(os.path.join(bindir, "gh"), 0o755)
+        # Stub engine CLIs, last on PATH: spawn picks only an engine whose executable is installed (#631), so the
+        # suite needs none installed; an installed real CLI still comes first, as before.
+        self.engines = os.path.join(self.tmp, "engines")
+        os.makedirs(self.engines)
+        for cli in ENGINE_STUBS:
+            with open(os.path.join(self.engines, cli), "w") as f:
+                f.write("#!/bin/sh\nexit 0\n")
+            os.chmod(os.path.join(self.engines, cli), 0o755)
+        self.env["PATH"] += os.pathsep + self.engines
         self.env["GH_TOKEN"] = SECRET
         self.assertEqual(self.up().returncode, 0)
 

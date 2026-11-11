@@ -586,6 +586,20 @@ class Spawn(SpawnBase):
         self.assertIn("contributor-tier engine needs a verified public repository", r.stdout)
         self.assertFalse(os.path.exists(os.path.join(self.state, "runs", "vera-10-r1-review.json")))
 
+    def test_order_skips_an_engine_whose_executable_is_missing(self):  # #631 B6 AC1: before selection
+        loader = importlib.machinery.SourceFileLoader("crew_cli_exec", CREW)
+        mod = importlib.util.module_from_spec(importlib.util.spec_from_loader("crew_cli_exec", loader))
+        loader.exec_module(mod)
+        spawn = mod.commands()["spawn"]
+        values = {"engines.default.order": ["pi/test-model", "codex/gpt-6.1-sol", "claude-code/sonnet"]}
+        os.remove(os.path.join(self.engines, "pi"))
+        with mock.patch.dict(os.environ, PATH=self.engines):  # the stubs alone: pi missing, the rest installed
+            self.assertEqual(spawn.engine_order(values, "default"), [["codex", "gpt-6.1-sol"], ["claude-code", "sonnet"]])
+            self.assertEqual(spawn.engine_order(values, "default", local=False)[0], ["pi", "test-model"])  # a host decides
+        with mock.patch.dict(os.environ, PATH=os.path.join(self.tmp, "empty-bin")):
+            with self.assertRaisesRegex(RuntimeError, "a local engine needs its executable on PATH"):
+                spawn.engine_order(values, "default")
+
     def test_dead_pane_reads_dead_not_its_launch_word(self):  # #139 F20
         self.env["FAKE_TMUX_PANE"] = "dead"
         start = time.monotonic()

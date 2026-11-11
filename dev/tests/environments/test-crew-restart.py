@@ -197,18 +197,29 @@ class Restart(LivenessBase):
 
     QUOTA = "■ You've hit your usage limit. Upgrade to Pro or try again in 2 days."  # Codex's own banner (#631)
 
-    def test_quota_run_restarts_once_on_the_next_engine(self):  # #631: a clean worktree respawns past codex
+    def test_quota_run_restarts_once_on_the_next_engine(self):  # #631: a clean run too stays in place
+        before = self.record("ben-7")
+        msg = {"id": "20261111T073000Z-abcdef", "from": "ben-lead", "kind": "fix", "ts": "2026-11-11T07:30:00Z",
+               "refs": ["#12", before["head"], "https://github.com/acme/widgets/pull/12#pullrequestreview-123"]}
+        self.put("inbox/ben-7.jsonl", json.dumps(msg) + "\n")  # never acked: the quota stopped the session first
+        self.git("commit", "-q", "--allow-empty", "-m", "main advanced")
+        self.git("push", "-q", "origin", "HEAD:main")
         self.set_pane(10, screen=self.QUOTA)
         self.assertEqual(self.probe(), "quota")
         r = self.crew("restart", "ben-7", "--project", self.project, "--timeout", "1")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertIn("crew: started ben-7 (window 10, claude-code sonnet medium)", r.stdout)
+        self.assertIn("crew: restarted ben-7 (window 10) in its worktree", r.stdout)
+        self.assertIn("exec claude --model sonnet --effort medium", self.windows()[-1][-1])
         rec = self.record("ben-7")
         self.assertEqual((rec["engine"], rec["model"], rec["harness"], rec["restarts"], rec["exhausted"]),
                          ("claude-code", "sonnet", "claude", 1, ["codex"]))
-        self.assertEqual(rec["args"], {"issue": 7, "pr": None, "pass": "build", "round": 1, "tier": "default"})
+        self.assertEqual((rec["head"], rec["worktree"], rec["claim"], rec["args"]),  # same head despite main moving
+                         (before["head"], before["worktree"], before["claim"], before["args"]))
+        self.assertEqual(self.git("rev-parse", "HEAD", cwd=rec["worktree"]), before["head"])
+        with open(os.path.join(self.state, "inbox", "ben-7.jsonl")) as f:
+            self.assertEqual(json.loads(f.read()), msg)  # the pending fix request survives
         with open(os.path.join(self.state, "runs", "ben-7.brief.md")) as f:
-            self.assertIn("- Engine: claude-code sonnet medium\n", f.read())
+            self.assertIn("- Pending: inbox: 20261111T073000Z-abcdef\n", f.read())
         self.set_pane(10, screen="  ⎿  You've hit your limit · resets 3pm")
         r = self.crew("restart", "ben-7", "--project", self.project, "--timeout", "1")
         self.assertEqual(r.returncode, 1)  # once: a second quota escalates
@@ -231,13 +242,29 @@ class Restart(LivenessBase):
         with open(os.path.join(self.state, "runs", "ben-7.brief.md")) as f:
             self.assertIn("- Quota fallback: codex is out of quota; this session runs claude-code sonnet medium.", f.read())
 
+    def test_quota_reviewer_with_a_moved_head_refuses_keeping_its_state(self):  # #631: never a stale review
+        sha = self.pr(9, "claude-code opus-5.5 default")
+        self.assertEqual(self.spawn("reviewer", "--pr", "9", "--head", sha).returncode, 0)
+        self.put("inbox/vera-9-r1-review.jsonl", '{"id": "x1", "kind": "review", "refs": ["#9"]}\n')
+        self.git("commit", "-q", "--allow-empty", "-m", "feat: y\n\nEngine: claude-code opus-5.5 default")
+        self.git("push", "-q", "-f", "origin", "HEAD:refs/pull/9/head")  # the PR head moves
+        self.git("reset", "-q", "--hard", "origin/main")
+        self.set_pane(self.record("vera-9-r1-review")["index"], screen=self.QUOTA)
+        r = self.crew("restart", "vera-9-r1-review", "--project", self.project, "--timeout", "1")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("PR #9 head moved from %s" % sha[:7], r.stdout)
+        rec = self.record("vera-9-r1-review")
+        self.assertEqual((rec["engine"], rec["head"], "restarts" in rec), ("codex", sha, False))
+        self.assertTrue(os.path.exists(os.path.join(self.state, "inbox", "vera-9-r1-review.jsonl")))
+        self.assertTrue(os.path.isdir(rec["worktree"]))
+
     def test_quota_run_with_no_eligible_engine_left_refuses(self):  # #631: a durable block, the run kept
         with open(self.project, "a") as f:
             f.write('\n[engines.roles]\nbuilder = { order = ["codex/gpt-6.1-sol"] }\n')
         self.set_pane(10, screen=self.QUOTA)
         r = self.crew("restart", "ben-7", "--project", self.project, "--timeout", "1")
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
-        self.assertIn("codex is out of quota and no eligible engine is left", r.stdout)
+        self.assertIn("codex is out of quota: crew: no eligible", r.stdout)
         self.assertEqual((self.record("ben-7")["engine"], len(self.windows())), ("codex", 1))
         self.assertNotIn("restarts", self.record("ben-7"))
 

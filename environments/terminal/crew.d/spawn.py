@@ -27,6 +27,7 @@ import json
 import os
 import re
 import shlex
+import shutil
 import time
 from crew_shared import (
     BANDS, brief_src, checkout, commands, copy_claim, ENGINE_CMD, fetch, git, harness, harnesses, identity, kill_run, LAUNCH, NAMES, over_cap, PASSES, POINTER,
@@ -45,18 +46,21 @@ def reflection_of(args):
                        "sha": getattr(args, "input_sha", None)}
 
 
-def engine_order(values, tier, avoid=None, role=None):
+def engine_order(values, tier, avoid=None, role=None, local=True):
     """Eligible interactive engines in the role's override order, else the tier's (#597): a reviewer avoids every
-    actual builder engine of the PR (roles.md Reviewer engine selection), a restart every exhausted engine, and a
-    contributor-tier engine needs a verified public repository (#1074); the launch policy still refuses it."""
+    actual builder engine of the PR (roles.md Reviewer engine selection), a restart every exhausted engine, a local
+    launch (local; with a [hosts] inventory each host's capabilities.engines decides) needs the engine's executable on
+    PATH, and a contributor-tier engine needs a verified public repository (#1074); the launch policy still refuses it."""
     key = "engines.roles.%s.order" % role if "engines.roles.%s.order" % role in values else "engines.%s.order" % tier
     order = [e.split("/", 1) for e in values[key]]
-    order = [e for e in order if e[0] in ENGINE_CMD and e[0] not in (avoid or ())]
+    order = [e for e in order if e[0] in ENGINE_CMD and e[0] not in (avoid or ()) and
+             (not local or shutil.which(ENGINE_CMD[e[0]]))]
     if any(getattr(harnesses.ADAPTERS[e[0]], "CONTRIBUTOR_TIER", False) for e in order) and not public_repo(values):
         order = [e for e in order if not getattr(harnesses.ADAPTERS[e[0]], "CONTRIBUTOR_TIER", False)]
     if not order:
-        raise RuntimeError("crew: no eligible %s engine in %s differs from the builder's %s (a contributor-tier "
-                           "engine needs a verified public repository)" % ("/".join(ENGINE_CMD), key, sorted(avoid or ())))
+        raise RuntimeError("crew: no eligible %s engine in %s differs from the builder's %s (a local engine needs its "
+                           "executable on PATH; a contributor-tier engine needs a verified public repository)" % (
+                               "/".join(ENGINE_CMD), key, sorted(avoid or ())))
     return order
 
 
@@ -174,7 +178,6 @@ def register(sub):
     p.add_argument("--round", type=int, default=1, help="verdict round k, for reviewer window names")
     p.add_argument("--tier", choices=["trivial", "default", "deep"], help="default: the role's default_tier, else default")
     p.add_argument("--timeout", type=float, default=15.0, help="seconds to see the harness in the foreground")
-    p.add_argument("--skip-engine", action="append", default=[], help="skip this engine (a quota restart, #631)")
     p.add_argument("--host", help="placement override: run on this inventory host; needs --reason")
     p.add_argument("--reason", help="why the host is overridden; posted on the item before the spawn")
     p.add_argument("--project")
@@ -280,9 +283,9 @@ def run(args):
         if getattr(args, "head", None) and args.head != sha:
             raise RuntimeError("crew: stale spawn: expected %s, live head %s" % (args.head, sha))
         base = fetch(repo, values["repo.default_branch"]) if args.pr else None
-        skip = set(getattr(args, "skip_engine", None) or ())
-        order = engine_order(values, args.tier, skip, role=role) if "engine_independent_of" not in data else engine_order(
-            values, args.tier, builder_engines(values, state, repo, base, sha, args.pr) | skip, role)
+        local = not placement.inventory(values)  # with hosts, placement checks each host's declared engines
+        order = engine_order(values, args.tier, role=role, local=local) if "engine_independent_of" not in data else \
+            engine_order(values, args.tier, builder_engines(values, state, repo, base, sha, args.pr), role, local)
         paths = git(repo, "diff", "--name-only", "%s...%s" % (base, sha)).split() if args.pr and \
             placement.inventory(values) else []
         placed = placement.place(dict(role=role, paths=paths, order=order, host=override, **{"pass": pass_}), values,

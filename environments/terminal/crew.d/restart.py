@@ -3,8 +3,9 @@ terminal only for reviewer and synthesizer runs), in its own worktree when it ho
 host (#345) is probed, checked and relaunched there; a clean one is removed there and spawned again, so placement
 runs again. A reflection run first rechecks its window's posted report and, when one is there, refuses (#1520); else it
 restarts with the same run ID, log issue, input SHA and window. A run probing quota (its harness shows its adapter's
-usage-limit line, #631) is stopped and relaunched on the next eligible engine in its role's order, skipping every engine
-it has exhausted; with none left it refuses and the run stays for escalation.
+usage-limit line, #631) is stopped and relaunched in place, in its own worktree, claim and inbox at its head, on the next
+eligible engine in its role's order, skipping every engine it has exhausted; the brief lists the inbox IDs it never
+acknowledged. A reviewer whose PR head moved, or a run with no eligible engine left, refuses and stays for escalation.
 
 On the coordinator's window (window 0) it relaunches the live coordinator in place instead (#1544): the current
 sandbox_env and CREW_* environment, resuming --resume ID (else launch.resume). It refuses while the land lock is held,
@@ -83,6 +84,43 @@ def next_engine(values, state, rec, exhausted):
         avoid |= spawn.builder_engines(values, state, rec["repo"], fetch(rec["repo"], values["repo.default_branch"]),
                                        rec["head"], a["pr"])
     return spawn.engine_order(values, a["tier"], avoid, rec["role"])[0]
+
+
+def quota_relaunch(values, session, state, args, rec, exhausted):
+    """Relaunch a quota run in place on the next eligible engine (#631): same worktree (so the same head, dirty or
+    not), claim and inbox, never a fresh spawn; the brief names the engine and the inbox IDs never acknowledged."""
+    name, wt = args.window, rec.get("worktree")
+    try:
+        if not wt or not os.path.isdir(wt):
+            raise RuntimeError("its worktree %s is gone" % wt)
+        if "engine_independent_of" in ROLES[rec["role"]]:
+            live = fetch(rec["repo"], "pull/%d/head" % rec["args"]["pr"])
+            if live != rec["head"]:
+                raise RuntimeError("PR #%d head moved from %s to %s; reap the stale reviewer" % (
+                    rec["args"]["pr"], rec["head"][:7], live[:7]))
+        engine, model = next_engine(values, state, rec, exhausted)
+    except RuntimeError as e:
+        print("crew: refusing restart: %s is out of quota: %s; escalate" % (rec["engine"], e))
+        return 1
+    if stop_pane(session, rec["index"]):  # kill-window alone leaves Codex running (#139 F2)
+        print("crew: refusing restart: %s's process group survived the stop" % name)
+        return 1
+    status = os.path.join(state, "status", name + ".status")
+    acks = set()
+    if os.path.exists(status):
+        with open(status) as f:
+            acks = {line[5:].strip() for line in f if line.startswith("ack: ")}
+    inbox = os.path.join(state, "inbox", name + ".jsonl")
+    pending = []
+    if os.path.exists(inbox):
+        with open(inbox) as f:
+            pending = [m["id"] for m in map(json.loads, filter(str.strip, f)) if m["id"] not in acks]
+    with open(os.path.join(state, "runs", name + ".brief.md"), "a", encoding="utf-8") as f:
+        f.write("- Quota fallback: %s is out of quota; this session runs %s %s %s. Attribute that engine.\n" % (
+            rec["engine"], engine, model, rec["effort"]) + "".join("- Pending: inbox: %s\n" % i for i in pending))
+    rec.update(engine=engine, model=model, harness=ENGINE_CMD[engine], exhausted=exhausted)
+    return relaunch(values, session, state, name, rec, ["quota fallback from %s" % exhausted[-1]], args.timeout,
+                    args.project)
 
 
 def relaunch(values, session, state, name, rec, items, timeout, project):
@@ -182,12 +220,7 @@ def run(args):
     wt, a = rec.get("worktree"), rec["args"]
     exhausted = rec.get("exhausted", []) + [rec["engine"]] if cls == "quota" else []
     if exhausted:
-        try:
-            engine, model = next_engine(values, state, rec, exhausted)
-        except RuntimeError as e:
-            print("crew: refusing restart: %s is out of quota and no eligible engine is left: %s; escalate" % (
-                rec["engine"], e))
-            return 1
+        return quota_relaunch(values, session, state, args, rec, exhausted)
     if a.get("reflection"):
         try:
             url = reflection_posted(values, a["reflection"])
@@ -217,14 +250,6 @@ def run(args):
         if done:
             with open(os.path.join(state, "runs", args.window + ".brief.md"), "a", encoding="utf-8") as f:
                 f.write("- Restarted after done: as Pass fix, Item %s\n" % rec["item"])
-        if exhausted:  # the quota pane is still up: stop it first (kill-window alone leaves Codex running, #139 F2)
-            if stop_pane(session, rec["index"]):
-                print("crew: refusing restart: %s's process group survived the stop" % args.window)
-                return 1
-            with open(os.path.join(state, "runs", args.window + ".brief.md"), "a", encoding="utf-8") as f:
-                f.write("- Quota fallback: %s is out of quota; this session runs %s %s %s. Attribute that engine.\n" % (
-                    rec["engine"], engine, model, rec["effort"]))
-            rec.update(engine=engine, model=model, harness=ENGINE_CMD[engine], exhausted=exhausted)
         if host:
             return relaunch_remote(values, state, args.window, rec, items)
         return relaunch(values, session, state, args.window, rec, items, args.timeout, args.project)
@@ -239,13 +264,10 @@ def run(args):
     r = a.get("reflection")
     argv += ["--reflection", r["window"], "--run-id", r["run"], "--input-sha", r["sha"]] + (
         ["--log", str(r["log"])] if r["log"] else []) if r else []
-    argv += [x for e in exhausted for x in ("--skip-engine", e)]  # spawn picks past them (#631)
     code = main(argv + ["--timeout", str(args.timeout)])
     for name, new in runs(state):
         if new.get("args") == a:
             new["restarts"] = 1
-            if exhausted:
-                new["exhausted"] = exhausted
             with open(os.path.join(state, "runs", name + ".json"), "w") as f:
                 json.dump(new, f, indent=2)
     return code
