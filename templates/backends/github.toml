@@ -15,6 +15,7 @@ read-diff-paths = "gh pr diff <n> --name-only"
 read-diff = "git fetch -q origin <default-branch> +refs/pull/<n>/head && git diff --no-color --no-renames origin/<default-branch>...<head-sha>"
 update-from-base = "gh pr update-branch <n>"
 land = "gh pr merge <n> --squash --match-head-commit <head-sha>"
+land-delete-arg = "--delete-branch"
 close = "gh pr close <n>"
 list-open = "gh pr list --state open --json number,headRefName,closingIssuesReferences"
 read-state = """gh pr view <n> -R <owner>/<repo> --json

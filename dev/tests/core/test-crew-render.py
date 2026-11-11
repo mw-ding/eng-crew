@@ -784,6 +784,29 @@ class PackOverlay(unittest.TestCase):
         with open(manifest, "w") as f:
             f.write(text + "\n[land]\n" + land)
 
+    def test_land_delete_renders_only_where_the_backend_maps_it(self):  # #395
+        code, out, got = self.render(self.project())
+        self.assertEqual(code, 0, out)
+        synth = tree(got)["runtime/synthesizer.md"]
+        self.assertIn("run `gh pr merge <n> --squash --match-head-commit <head-sha>`, add\n"
+                      "   `--delete-branch` if same-repo, not default/base, post\n", synth)
+        self.assertIn("line and `Head branch: deleted|retained (<reason>)|delete failed` (exit>0,\n"
+                      "   `MERGED`)", synth)
+        session = os.path.join(self.tmp, "session.toml")
+        with open(session, "w") as f:
+            f.write('[runtime]\nname = "session"\n')
+        code, out, got = self.render(session)
+        self.assertEqual(code, 0, out)
+        self.assertIn("bound to that head, add `--delete-branch` if\n   same-repo, not default/base, post", tree(got)["runtime/synthesizer.md"])
+        self.assertIn("`Head branch: deleted|retained\n   (<reason>)|delete failed` (exit>0, `MERGED`)",
+                      tree(got)["runtime/synthesizer.md"])
+        write_pack(os.path.join(self.tmp, "pack"), mapping="\n".join(
+            line for line in self.github.splitlines() if not line.startswith("land-delete-arg =")) + "\n")
+        code, out, got = self.render(self.project(), "--org-profile", self.org)
+        self.assertEqual(code, 0, out)
+        self.assertNotIn("--delete-branch", tree(got)["runtime/synthesizer.md"])
+        self.assertNotIn("Head branch:", tree(got)["runtime/synthesizer.md"])
+
     def test_async_land_renders_synthesizer_and_builder_steps(self):
         code, out, sync = self.render(self.project(), "--org-profile", self.org)
         self.assertEqual(code, 0, out)
@@ -1416,6 +1439,45 @@ class SessionRuntime(unittest.TestCase):
             self.assertIn(section, flat)
             self.assertLess(flat.index("report gate-status below"), flat.index(section))
         self.assertIn("otherwise edit that review body in place with gh api --method PUT", flat)
+
+
+class SecretRetrieval(unittest.TestCase):
+    """#397: every coordinator brief carries the secret-retrieval rule; no rendered brief prints a secret."""
+
+    RULE = "Secret retrieval: never suggest a command that prints a secret"
+    PRINTS = re.compile(r"printenv \w+\b(?! \|)|echo \$\w*(?:KEY|TOKEN|SECRET|PASS)\b(?! \|)|cat \S*\.env\b(?! \|)"
+                        r"|(?<!\$\()gh auth token\b")
+
+    def renders(self, tmp):
+        for runtime in ("tmux", "session", "grok-bot"):
+            project = os.path.join(tmp, "%s.toml" % runtime)
+            with open(project, "w") as f:
+                f.write('[runtime]\nname = "%s"\n' % runtime)
+            out = os.path.join(tmp, runtime)
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(cr.main(["--project", project, "--out", out]), 0)
+            yield runtime, tree(os.path.join(out, "runtime"))
+
+    def test_rule_in_coordinators_and_no_secret_print(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for runtime, got in self.renders(tmp):
+                coordinators = sorted(rel for rel in got if rel.startswith("coordinator") and rel != "coordinator-wiring.md")
+                self.assertTrue(coordinators, runtime)
+                for rel, text in got.items():
+                    flat = " ".join(text.split())
+                    with self.subTest(runtime=runtime, brief=rel):
+                        if rel in coordinators:
+                            self.assertTrue(self.RULE in flat, "no secret-retrieval rule in %s/%s" % (runtime, rel))
+                        start = flat.find(self.RULE)
+                        if start >= 0:
+                            flat = flat[:start] + flat[flat.index("length or last 4.", start):]
+                        self.assertEqual(self.PRINTS.findall(flat), [])
+
+    def test_lint_catches_a_secret_print(self):
+        for bad in ("run `printenv TODO_API_KEY`", "`echo $API_KEY`", "`cat .env`", "`gh auth token`"):
+            self.assertTrue(self.PRINTS.search(bad), bad)
+        for ok in ("`printenv API_KEY | pbcopy`", 'GH_TOKEN="$(gh auth token --user x)"', "`cat .env | pbcopy`"):
+            self.assertFalse(self.PRINTS.search(ok), ok)
 
 
 if __name__ == "__main__":

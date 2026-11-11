@@ -34,6 +34,8 @@ never `/tmp` or outside the state dir.
 
 <include:policy/coordinator/memory-capture.md>
 
+<include:policy/coordinator/secret-retrieval.md>
+
 Answer owner messages briefly before routing; long status goes in the
 final reply. Hand an owner deep dive (more than a few lookups)
 to <ResearcherBot> per `<mdstack>/docs/roles.md`, Researcher: file or link an

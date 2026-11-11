@@ -697,21 +697,21 @@ def train_wait(args, values, state, repo, slug):
     return 0 if rec["ci"] == "pass" else 1
 
 
-def train_merge_record(values, rec, i, m, merge, permission, mirror_deferral="none"):
+def train_merge_record(values, rec, i, m, merge, permission, mirror_deferral="none", branch="retained"):
     content = " content=identical carried-from=" + m.get("verified_head", m["head"]) if m.get("verified_base") else ""
     return ("[%s/merge] squashed @ %s → %s (mdstack train %d)\n\n"
             "Land rule: train of %d (ready together).\n\n"
             "- Train: `%s` @ %s (base `%s` %s), member %d of %d, train PR #%d (draft, CI only); CI green: %s. "
             "Tested with main: `%s` held exactly the train's state before this member, so no catch-up.\n"
             "- Passing approval carried from: `pass=%s verdict=pass` at %s.\n- Permission: %s.\n"
-            "- %s.\n- %s\n\n"
+            "- %s.\n- Head branch: %s.\n- %s\n\n"
             "<!-- crew:v1 role=synthesizer pass=merge pr=%d sha=%s round=n/a verdict=n/a%s -->\n" % (
                 values.get("identities.synthesizer.name", "Sam"), m["head"][:7], merge[:7], rec["n"], len(rec["members"]), rec["branch"],
                 rec["sha"], values["repo.default_branch"], rec["base"], i, len(rec["members"]), rec["pr"],
                 ", ".join(rec["ci_links"]) or "all checks", values["repo.default_branch"], m.get("approval", "verdict"),
                 m.get("verified_head", m["head"]), permission, "Mirror: n/a (profile)" if values.get(
                     "runtime.options.mirror", "live-copy") == "none" else "Mirror deferral used: " + mirror_deferral,
-                train_report(rec), m["pr"], m["head"], content))
+                branch, train_report(rec), m["pr"], m["head"], content))
 
 
 def train_report(rec):
@@ -740,7 +740,7 @@ def train_view(poll, slug, pr, args, state, n):
     Each failed read naming a gateway error is recorded, including reads a later retry recovers from."""
     for attempt in range(10):
         try:
-            view = poll.gh_json("pr", "view", str(pr), "-R", slug, "--json", poll.PR_FIELDS + ",commits,comments,mergeable,closingIssuesReferences")
+            view = poll.gh_json("pr", "view", str(pr), "-R", slug, "--json", poll.PR_FIELDS + ",headRefName,isCrossRepository,headRepositoryOwner,headRepository,baseRefName,commits,comments,mergeable,closingIssuesReferences")
             if view.get("mergeable") != "UNKNOWN":
                 return view
             reason = "GitHub mergeability UNKNOWN"
@@ -1058,9 +1058,16 @@ def train_land(args, values, state, repo, slug):
         if not why:
             if not require_ownership(values, "land"):
                 return 1
-            r = subprocess.run(["gh", "pr", "merge", str(pr), "-R", slug, "--squash", "--match-head-commit", m["head"]],
-                               capture_output=True, text=True)
-            why = "merge refused: " + r.stderr.strip() if r.returncode else None
+            # eligible same-repo heads are deleted by the merge itself, never by a later route DELETE (#395)
+            keep = commands()["route"].branch_retained(values, view, main)
+            r = subprocess.run(["gh", "pr", "merge", str(pr), "-R", slug, "--squash", "--match-head-commit", m["head"]]
+                               + ([] if keep else ["--delete-branch"]), capture_output=True, text=True)
+            branch = "retained (%s)" % keep if keep else "deleted at merge"
+            if r.returncode and not keep and poll.gh_json("pr", "view", str(pr), "-R", slug, "--json", "state")["state"] == "MERGED":
+                branch = "delete failed (%s)" % (r.stderr.strip() or "exit %d" % r.returncode)
+            elif r.returncode:
+                why = "merge refused: " + r.stderr.strip()
+            print("branch pr=%d %s" % (pr, branch))
         if not why:  # landed: the squash must sit on the tested state and reproduce the train step's tree
             new = fetch(repo, main)
             landed.append({"pr": pr, "head": m["head"], "merge": new})
@@ -1072,7 +1079,8 @@ def train_land(args, values, state, repo, slug):
             if git(repo, "rev-parse", new + "^") != expected or tree[0] != tree[1]:
                 why = "landed as %s, not the train's tested state; merge record not posted" % new
             else:
-                body = train_merge_record(values, rec, i, m, new, "owner merge-ok at head" if merge_ok else grant, mirror_deferral)
+                body = train_merge_record(values, rec, i, m, new, "owner merge-ok at head" if merge_ok else grant, mirror_deferral,
+                                          branch)
                 if not require_ownership(values, "write"):
                     rec["pending_record"] = {"pr": pr, "body": body}
                     train_save(state, rec)

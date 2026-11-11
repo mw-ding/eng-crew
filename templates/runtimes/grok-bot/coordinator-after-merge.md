@@ -36,6 +36,8 @@ read/report only. Draining: in-flight writes only, no new pass or land.
 
 <include:policy/shared/landing-authority.md>
 
+<include:policy/coordinator/secret-retrieval.md>
+
 Follow eng-pr-pipeline section 6 (coordinator on pr-merged) and wiring.md.
 
 ci-failed on <default-branch>: find the failing run, commit and PR. Ignore

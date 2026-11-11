@@ -76,9 +76,6 @@ Recorded urgency takes precedence over batching below; an open stop still blocks
   `train_window` seconds after the first became ready, then train two or more ready PRs, or land the only one alone.
   A single ready PR with none close merges alone immediately.
 
-Each `[<SynthesizerBot>/merge]` post names the rule in one `Land rule:` line,
-for example `Land rule: alone, none close`.
-
 Merge train (tmux doc, mdstack train):
 
 - Pre-check: `$CREW_BIN train check <pr>... --project "$CREW_PROJECT"`

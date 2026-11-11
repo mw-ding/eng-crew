@@ -181,7 +181,7 @@ How tmux meets each capability, with gaps in the
 |---|---|---|
 | C1 Wake on event | Watcher blocks on status files, stale timers and `mdstack poll`; it applies mechanical routes before its exit re-invokes the coordinator for judgement, which routes retained wakes by `mdstack send` or `mdstack spawn`; turn-end guard blocks an idle coordinator with no armed watcher ([Q1](#q1-wake)); waiting is token-free: the watcher and `mdstack poll` are plain scripts, and the backstop doubles per idle wake while no run is recorded, capped at 16 × `--backstop` ([mdstack watch](#mdstack-watch)) | C1 wake on event: partial, compensated by `mdstack poll` diffing against `poll-state.json` and the §6 step 3 sweep on the first wake after the machine resumes; residual risk: no work moves while the machine sleeps or the tmux server is down<br>C1 wake on event (waiting cost): partial, compensated by `--no-nudge` for a coordinator whose exit wake works ([mdstack watch](#mdstack-watch)); residual risk: with the default nudge, kept so that no single harness feature is the only wake path ([#160](https://github.com/mw-ding/eng-crew/issues/160) row 4), a Claude Code coordinator may take a second, empty turn per wake<br>C1 wake on event (Codex turn-end guard): partial, compensated by the watcher's typed wake and the documented [notify recipe](#mdstack-guard); residual risk: `mdstack up` does not install that recipe (verified on codex-cli 0.164.0, #170), so a Codex coordinator without it that ends a turn without re-arming the watcher can idle blind<br>C1 wake on event (Pi): partial, compensated by the watcher's typed wake ([Pi adapter](harness-adapters.md#pi-pi)); residual risk: live wake timing is unverified and no turn-end guard extension is installed, so ending without re-arming the watcher can idle blind<br>C1 wake on event (Cursor): partial, compensated by the watcher's typed wake ([Cursor adapter](harness-adapters.md#cursor-cursor)); residual risk: live timing is unverified and no turn-end hook is installed, so ending without re-arming the watcher can idle blind |
 | C2 One consumer per event | `mdstack poll`'s decision function maps each GitHub change to one consumer ([protocol §8](../protocol.md#8-safety)); each wake record names one window; terminal `pr-merged` is handled by `mdstack route`; `pr-closed` goes to the coordinator, which runs `mdstack kill`, so the Grok Bot two-watch exception is not needed | None |
-| C3 Messages by reference, proof of delivery | `mdstack send` appends refs only (issue, PR, full SHA, link, path) to `inbox/<window>.jsonl`, then types a fixed nudge `inbox: <msg-id>` and confirms it left the composer (exit 4 if not, or if a dialog is on screen, when nothing is typed); delivery is proven only by `ack: <msg-id>` in the window's status file; no ack in the profile timeout → one re-nudge, then a liveness check; lifecycle goes through `mdstack kill` and spawn, never message text | None |
+| C3 Messages by reference, proof of delivery | `mdstack send` appends refs only (issue, PR, full SHA, link, path) to `inbox/<window>.jsonl`, then types a fixed nudge `inbox: <msg-id>` and confirms it left the composer (exit 4 if not, or if a dialog is on screen, when nothing is typed; that id is then recorded in `inbox/<window>.undelivered`, and `mdstack upgrade` waits until the window acks it or the operator clears it); delivery is proven only by `ack: <msg-id>` in the window's status file; no ack in the profile timeout → one re-nudge, then a liveness check; lifecycle goes through `mdstack kill` and spawn, never message text | None |
 | C4 Status protocol | One line per event in `status/<window>.status`: `ack:`, `done:`, `blocked:`, `paused:`, `failed:`, each with refs; the matching GitHub marker stays the record; a window that exits with no `done:` / `failed:` is `missing` or `dead` under C5 | None |
 | C5 Liveness | Probe from tmux and `ps`, not the agent: window present, run identity (`#{pane_id}`, `#{pane_pid}` and that process's start time) vs the run record, `#{pane_dead}`, then `#{pane_current_command}` and the pane's foreground process names vs the run record's expected harness ([Q7](#q7-failure)); a different pane id, pid or start time is `missing`, never `alive`, and a failed probe or adapter dialog is `ambiguous` | C5 liveness (Pi extension dialogs): partial, compensated by `--approve` avoiding built-in project trust and disabling extensions that prompt before unattended dispatch; residual risk: custom extension dialogs are not recognized and may probe alive<br>C5 liveness (Cursor dialogs): partial, compensated by authenticating and accepting workspace trust once with the owner attached before unattended dispatch; residual risk: Cursor-specific login/trust dialogs are not recognized and may probe alive |
 | C6 Isolation | `mdstack spawn` creates a unique worktree from a fresh base and refuses the main checkout, a branch-named path or an existing path; `mdstack kill` removes that run's worktree, build output and state files only ([Spawn and kill](#spawn-and-kill)), and only when its unlanded-work check (uncommitted or untracked paths; commits not on a fresh fetch of the default branch, the run's branch or `refs/pull/<n>/head`; a failed check counts as unlanded) finds nothing, or after `--discard --reason` posts the owner's reason and that list on the run's PR or issue; otherwise it keeps them and exits 1 ([mdstack kill](#mdstack-kill), #172). `mdstack down` and `mdstack restart` keep unlanded worktrees the same way | None |
@@ -599,7 +599,8 @@ Route consumes the lead's `ack:`, `done:` and waiting gate-status lines
 `blocked:` lines stay queued for the coordinator: owner merge-ok,
 `crew:sensitive`, holds and `main red`; lead faults arrive as `stale` or
 `dialog` wakes. Merged-PR close-out stays in route (labels, closing the
-issue, branch deletion under the existing rules, builder reclaim through the
+issue, a fallback branch deletion under the existing rules when the land
+left the branch, builder reclaim through the
 builder lead), so a land needs no coordinator turn. With a Slack owner
 channel, route also queues the away-only `land` notification through
 `mdstack notify` (stable id `land-<n>`, the train number or `direct`, the
@@ -1971,11 +1972,14 @@ Merged-PR close-out (the coordinator brief points here, #1635): remove
 `crew:approved`, `crew:hold`, `crew:in-review` and `crew:changes` (each if
 present) from the PR, remove `crew:ready` from the issue it closed, and close
 that issue with a note if GitHub left it open (never a reopened one, #846).
-Delete the head branch with `change.delete-branch` only when ALL of these
-hold, read from `change.read-state` and `change.read-default-branch`: the PR
-is merged; `isCrossRepository` is false; `<branch>` is read only from
-`headRefName`; the branch differs from both the default branch and
-`baseRefName`. Otherwise skip deletion and say why in the close-out note.
+The land deletes an eligible head branch itself where the change backend maps
+`change.land-delete-arg` (#395), so an ordinary land leaves nothing to delete.
+Only if the head branch outlived the land, delete it with
+`change.delete-branch`, and only when ALL of these hold, read from
+`change.read-state` and `change.read-default-branch`: the PR is merged;
+`isCrossRepository` is false; `<branch>` is read only from `headRefName`; the
+branch differs from both the default branch and `baseRefName`. Otherwise skip
+deletion and say why in the close-out note.
 
 Spawns are deduplicated by PR/head/pass/round against live and queued runs,
 section files and posted pass markers. An expected `--head` travels through

@@ -1,6 +1,6 @@
 ---
 name: coordinator
-description: Coordinator (team head) role policy shared by every runtime's coordinator brief (signing, landing authority and milestone admission).
+description: Coordinator (team head) role policy shared by every runtime's coordinator brief (signing, landing authority, secret retrieval and milestone admission).
 ---
 
 # Coordinator
@@ -20,6 +20,9 @@ Role-wide rules:
 - [usage-line.md](../shared/usage-line.md): usage line above the signature
   of every pass-reporting post (session; the tmux brief has a one-line
   pointer to fit its size budget).
+- [secret-retrieval.md](secret-retrieval.md): never suggest a command that
+  prints a secret; clipboard or UI retrieval and non-secret fingerprints
+  (tmux, session and the Grok Bot routines).
 
 Procedures:
 

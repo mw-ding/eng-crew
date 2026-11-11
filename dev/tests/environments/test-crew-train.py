@@ -105,6 +105,12 @@ FAKE_GH = textwrap.dedent("""\
                     ["merge", "-q", "--squash", "FETCH_HEAD"], ["commit", "-q", "-m", "squash #" + args[2]],
                     ["push", "-q", "origin", "HEAD:main"]):
             subprocess.run([os.environ["FAKE_REAL_GIT"], *cmd], cwd=tmp, check=True, capture_output=True)
+        failure = os.path.join(d, "delete-error.txt")
+        if "--delete-branch" in args and os.path.exists(failure):  # gh exits non-zero after a landed merge
+            view = pr(args[2])
+            view["state"] = "MERGED"
+            json.dump(view, open(os.path.join(d, "pr-%s.json" % args[2]), "w"))
+            sys.exit(open(failure).read())
     """)
 IDENTITY = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@example.invalid", "GIT_COMMITTER_NAME": "t",
             "GIT_COMMITTER_EMAIL": "t@example.invalid"}
@@ -1006,6 +1012,62 @@ class Land(TrainBase):
         result = self.train("land", "2", "1")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual(len(self.gh_calls("pr", "merge")), 1)
+
+    def head(self, n, **fields):
+        path = os.path.join(self.gh_dir, "pr-%d.json" % n)
+        with open(path) as f:
+            view = json.load(f)
+        view.update(dict(headRefName="builder/%d-x" % n, baseRefName="main", isCrossRepository=False,
+                         headRepositoryOwner={"login": "acme"}, headRepository={"name": "widgets"}), **fields)
+        with open(path, "w") as f:
+            json.dump(view, f)
+
+    def merge_record(self):
+        post = self.gh_calls("pr", "review")[-1]["args"]
+        return post[post.index("--body") + 1]
+
+    def test_same_repo_head_is_deleted_by_the_merge_itself(self):  # #395
+        head = self.built(1)[0]
+        self.head(1)
+        result = self.train("land", "1", "1")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual([c["args"] for c in self.gh_calls("pr", "merge")],
+                         [["pr", "merge", "1", "-R", "acme/widgets", "--squash", "--match-head-commit", head,
+                           "--delete-branch"]])
+        self.assertIn("branch pr=1 deleted at merge", result.stdout)
+        self.assertIn("- Head branch: deleted at merge.", self.merge_record())
+        self.assertFalse([c for c in self.gh_calls() if c["args"][:1] == ["api"] and "-X" in c["args"]])
+
+    def test_fork_default_base_and_unknown_heads_are_never_deleted(self):  # #395
+        cases = [(dict(isCrossRepository=True, headRepositoryOwner={"login": "fork"}), "fork"),
+                 (dict(headRepository={"name": "other"}), "fork"),
+                 (dict(headRefName="main"), "default or base branch"),
+                 (dict(headRefName=None, isCrossRepository=None), "fork")]
+        for n, (fields, reason) in enumerate(cases, 1):
+            with self.subTest(fields=fields):
+                head = self.built(n)[0]
+                self.head(n, **fields)
+                result = self.train("land", str(n), str(n))
+                self.assertIn("branch pr=%d retained (%s)" % (n, reason), result.stdout)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual(self.gh_calls("pr", "merge")[-1]["args"],
+                                 ["pr", "merge", str(n), "-R", "acme/widgets", "--squash", "--match-head-commit", head])
+                self.assertIn("- Head branch: retained (%s)." % reason, self.merge_record())
+
+    def test_failed_delete_after_landed_merge_records_the_land(self):  # #395
+        head = self.built(1)[0]
+        self.head(1)
+        self.put_gh("delete-error.txt", "failed to delete remote branch builder/1-x: HTTP 403")
+        result = self.train("land", "1", "1")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("landed pr=1 head=%s" % head, result.stdout)
+        self.assertIn("branch pr=1 delete failed (failed to delete remote branch builder/1-x: HTTP 403)", result.stdout)
+        self.assertIn("- Head branch: delete failed (failed to delete remote branch builder/1-x: HTTP 403).",
+                      self.merge_record())
+
+    def put_gh(self, name, text):
+        with open(os.path.join(self.gh_dir, name), "w") as f:
+            f.write(text)
 
     def test_unreadable_landing_control_refuses_land(self):
         self.built(1)

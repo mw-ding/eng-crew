@@ -64,6 +64,18 @@ marker format itself is core ([protocol §4](../protocol.md#4-marker-conventions
   author identity. `--match-head-commit` makes GitHub refuse the merge if the
   head moved after the gate check
   ([protocol §7](../protocol.md#7-merge-gate-synthesizer)).
+- **Head branch (#395):** for a same-repository head that is neither the
+  default nor the base branch, the land adds `--delete-branch`, so the merge
+  deletes the branch and close-out makes no separate DELETE call. The
+  briefs' `-R <o>/<r>` keeps `gh` from touching local branches. A fork,
+  default or base head lands without it and is retained. `gh` exits non-zero
+  if the merge lands but the delete fails: `mdstack train land` re-reads the
+  state and records `delete failed` for a `MERGED` PR, a direct land's next
+  live read shows the PR merged, and close-out's guarded delete is the
+  fallback. The repository setting `delete_branch_on_merge` is the
+  alternative
+  ([merge settings](../runbooks/github-ci-protection.md#merge-settings-and-enforcement-limits));
+  with it, `gh` treats the already-deleted branch as done.
 - **Merge-up:** GitHub update-branch (a merge commit, never a rebase) for a PR
   synchronized at land, or a builder conflict-resolution merge. A passing
   verdict carries only after protocol §7 proves identical content and green
@@ -173,6 +185,7 @@ signals, the author identity for everything else.
 | change | Read diff | `git fetch -q origin <default-branch> +refs/pull/<n>/head && git diff --no-color --no-renames origin/<default-branch>...<sha>` in any clone of the repository: the unified diff at head against its merge base, without rename folding (`gh pr diff` folds renames) |
 | change | Update from base | `gh pr update-branch <n>` (merge; never `--rebase`), or `git merge origin/<default-branch>` and push |
 | change | Land | `gh pr merge <n> --squash --match-head-commit <sha>` |
+| change | Delete on land | `--delete-branch`, added to Land |
 | change | Close | `gh pr close <n>` |
 | change | List open | `gh pr list --state open --json number,headRefName,closingIssuesReferences` |
 | change | Read state | `gh pr view <n> -R <o>/<r> --json state,headRefName,headRepositoryOwner,headRepository,isCrossRepository,baseRefName` |
