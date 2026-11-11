@@ -10,13 +10,13 @@ repo of a team file, a render per repo under the team state root), and the #606 
 role windows, preflight-only coordinator, resume, schema refusals, the pack ownership read), and the #1323 refusals (a
 checkout of another repo, a missing paths.mdstack), and the #1544 sandbox refusal. Run in CI.
 """
+import fcntl
 import importlib.util
 import json
 import os
 from pathlib import Path
 import shlex
 import shutil
-import signal
 import subprocess
 import sys
 import tempfile
@@ -273,7 +273,7 @@ class Up(Base):
         line = [x for x in r.stdout.splitlines() if x.startswith("crew: persistent watcher started")]
         self.assertEqual(len(line), 1, r.stdout)
         pid = int(line[0].split("pid ")[1].split(",")[0])
-        self.addCleanup(lambda: subprocess.run(["kill", str(pid)], capture_output=True))
+        self.addCleanup(self.stop_watcher, pid)
         command = subprocess.run(["ps", "-ww", "-o", "command=", "-p", str(pid)], capture_output=True, text=True).stdout
         self.assertIn("watch --persistent --source", command)
         self.assertIn("poll --once --project " + os.path.abspath(self.project), command)
@@ -282,7 +282,20 @@ class Up(Base):
         while not (os.path.exists(pidfile) and open(pidfile).read().strip() == str(pid)):
             self.assertLess(time.monotonic(), deadline)
             time.sleep(0.05)
-        os.kill(pid, signal.SIGTERM)
+
+    def stop_watcher(self, pid):
+        """SIGTERM the watcher and wait until it frees wake/watcher.lock, held for its whole life: a scan it was in
+        (and its children) can still write wake/ after the signal, racing the tmp dir's removal (#1654)."""
+        subprocess.run(["kill", str(pid)], capture_output=True)
+        deadline = time.monotonic() + 20
+        with open(os.path.join(self.state, "wake", "watcher.lock"), "a") as f:  # "a": a failure before it existed
+            while True:
+                try:
+                    fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    return
+                except BlockingIOError:
+                    self.assertLess(time.monotonic(), deadline, "watcher %d still holds its lock" % pid)
+                    time.sleep(0.05)
 
     def test_up_is_idempotent(self):
         self.assertEqual(self.up().returncode, 0)
