@@ -1489,5 +1489,28 @@ class SecretRetrieval(unittest.TestCase):
             self.assertFalse(self.PRINTS.search(ok), ok)
 
 
+
+class OwnerConfigAuthorization(unittest.TestCase):
+    """#372: every coordinator brief carries the owner-config authorization rule (instruction presence only)."""
+
+    CLAUSES = (
+        "Owner config (profile, team file, config): edit only within a recorded owner authorization's scope,",
+        "or a documented repair's; report the key and link the record, no new ask.",
+        "Else keep the config, report the unusable path and reason, and route it to the §6 owner-decision path.",
+        "Owner-only settings stay restricted.",
+    )
+
+    def test_rule_in_every_coordinator_brief(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for runtime, got in SecretRetrieval().renders(tmp):
+                coordinators = sorted(rel for rel in got if rel.startswith("coordinator") and rel != "coordinator-wiring.md")
+                self.assertTrue(coordinators, runtime)
+                for rel in coordinators:
+                    flat = " ".join(got[rel].split())
+                    for clause in self.CLAUSES:
+                        with self.subTest(runtime=runtime, brief=rel, clause=clause[:30]):
+                            self.assertIn(clause, flat)
+
+
 if __name__ == "__main__":
     unittest.main()
