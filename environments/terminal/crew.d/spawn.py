@@ -383,8 +383,8 @@ def run(args):
                           "".join("- inbox: " + m["id"] + "\n" for m in messages))
         with open(brief, "a", encoding="utf-8") as out:
             out.write(notes)
-        argv = harness(engine, model, effort, wt, state, values["runtime.options.permission_mode"], values)
-        if remote:  # the launch policy above still refuses here; the host builds the argv from the same fields
+        argv = harness(engine, model, effort, wt, state, values["runtime.options.permission_mode"], values, not remote)
+        if remote:  # the launch policy above still refuses here; the host builds the argv and checks its own uid
             rec["worktree"] = wt
             save()
             reply = remote_run.spawn(values, state, name, rec, brief, wt_name, "refs/pull/%d/head" % args.pr
