@@ -383,7 +383,59 @@ class Upgrade(bootstrap_tests.Bootstrap):
                 mock.patch.object(upgrade.proc, "live_child", return_value=False):
             for screen in ("✽ Recombobulating… (5s · ↓ 159 tokens)", "Working (esc to interrupt)"):
                 with mock.patch.object(upgrade.tmux, "capture", return_value=screen):
-                    self.assertEqual(upgrade.busy(self.state, "session", [(10, "ben-7")]), "ben-7")
+                    self.assertEqual(upgrade.busy(self.state, "session", [(10, "ben-7")]), "ben-7: harness mid-turn")
+
+    def test_unacked_inbox_after_terminal_status_waits(self):
+        self.put("status/ben-7.status", "done: #7 #9 head\n")
+        self.put("inbox/ben-7.jsonl", json.dumps({"id": "m1", "kind": "fix", "refs": []}) + "\n")
+        with mock.patch.object(upgrade, "runs", return_value=[("ben-7", {"role": "builder"})]), \
+                mock.patch.object(cli.commands()["lead"], "records", return_value=[]):
+            self.assertEqual(upgrade.busy(self.state, "session", [(10, "ben-7")]),
+                             "ben-7: unacknowledged inbox message")
+
+    def wrapper_upgrade(self, screen, ps_fails=False):
+        """upgrade --yes through the CLI: window 0's pane is a launcher wrapper (a real sleep in its own session) whose
+        live child is a session leader that is not the harness executable (the native harness, #1618)."""
+        (self.bundle / "VERSION").write_text("v2.2.0\n")
+        pids = []
+        for _ in range(2):  # orphaned, so the stop on reload leaves no zombie holding the process group
+            pid = int(subprocess.run([sys.executable, "-c", "import subprocess; print(subprocess.Popen(['sleep', '60'], "
+                                      "start_new_session=True).pid)"], capture_output=True, text=True).stdout)
+            self.addCleanup(lambda pid=pid: subprocess.run(["kill", "-9", str(pid)], capture_output=True))
+            pids.append(pid)
+        (Path(self.tmp) / "screen.txt").write_text(screen)
+        self.tool("tmux", 'case "$1" in -L|-S) shift 2;; esac\ncase "$1" in\nlist-windows) echo "0 ash";;\n'
+                  'display-message) case "$*" in *pane_id*) echo "%%1 %d 0 0 /dev/ttys999 claude";; *cursor*) ;; '
+                  '*) echo claude;; esac;;\ncapture-pane) while IFS= read -r l; do printf "%%s\\n" "$l"; done < %s;;\nesac' % (pids[0], Path(self.tmp) / "screen.txt"))
+        self.tool("ps", "exit 1" if ps_fails else 'case "$1" in -axo) echo "%d 1 Ss claude"; echo "%d %d Ss node";; '
+                  '*) echo "S+ claude";; esac' % (pids[0], pids[1], pids[0]))
+        before = self.manifest.read_bytes()
+        result = self.upgrade("--yes", "--wait-timeout", "0")
+        return result, self.manifest.read_bytes() != before
+
+    def test_wrapper_child_with_idle_screen_applies(self):
+        result, written = self.wrapper_upgrade("● Done.\n\n────\n❯\u00a0\n────\n  ? for shortcuts\n")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertNotIn("in-flight", result.stdout)
+        self.assertIn("reloaded ash", result.stdout)
+        self.assertTrue(written)
+
+    def test_wrapper_child_busy_or_unknown_screen_stays_busy(self):
+        for screen, reason in (("✽ Recombobulating… (5s · esc to interrupt)\n❯\u00a0\n", "harness mid-turn"),
+                               ("Loading…\n", "live child process and no idle prompt on screen"),
+                               ("Do you want to proceed?\n❯ 1. Yes\n  2. No\nEsc to cancel\n",
+                                "live child process and no idle prompt on screen")):
+            with self.subTest(screen=screen):
+                result, written = self.wrapper_upgrade(screen)
+                self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+                self.assertIn("in-flight pass ash: %s; wait timed out; no install written" % reason, result.stdout)
+                self.assertFalse(written)
+
+    def test_failed_process_probe_stays_busy(self):
+        result, written = self.wrapper_upgrade("❯\u00a0\n", ps_fails=True)
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("in-flight pass ash: crew: process probe unavailable; wait timed out", result.stdout)
+        self.assertFalse(written)
 
     def test_reload_keeps_metadata_and_coordinator_last(self):
         state = Path(self.state)

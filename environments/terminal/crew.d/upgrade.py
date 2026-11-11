@@ -27,8 +27,9 @@ import shlex
 import tempfile
 import time
 from crew_shared import (
-    brief_src, BUSY, commands, coordinator_harness, crew_render, ENGINE_CMD, harness, identity, LAUNCH,
-    POINTER, proc, profile, require_ownership, role_notes, runs, stop_pane, tmux, wait_harness, window_env)
+    brief_src, BUSY, commands, COMPOSER, coordinator_harness, crew_render, dialog, ENGINE_CMD, harness, identity,
+    LAUNCH, POINTER, proc, profile, require_ownership, role_notes, runs, stop_pane, tmux, unacked, wait_harness,
+    window_env)
 
 
 def register(sub):
@@ -39,21 +40,35 @@ def register(sub):
 
 
 def busy(state, session, windows):
+    """The first window still running a pass, as `name: reason`, or None. A live child under the pane (a launcher
+    wrapper's harness and MCP servers, #1618) is idle only when an adapter's idle screen shows: its composer glyph
+    opening a line, no mid-turn text and no dialog. A failed probe or an unrecognized screen stays busy."""
     records = dict(runs(state))
     leads = dict(commands()["lead"].records(state))
     for index, name in windows:
         if index != 0 and name not in records and name not in leads:
-            return name
+            return name + ": no run record"
         path = Path(state) / "status" / (name + ".status")
         lines = [s for s in path.read_text().splitlines() if not s.startswith("heartbeat:")] if path.exists() else []
         if name in records and (not lines or not lines[-1].startswith(("done:", "blocked:", "failed:"))):
-            return name
+            return name + ": status not finished"
+        if name in records and unacked(state, name, lines):
+            return name + ": unacknowledged inbox message"
         if name in leads and commands()["lead"].pending(state, name):
-            return name
+            return name + ": pending inbox message"
         pane = tmux.pane(session, index)
-        screen = tmux.capture(session, index).lower()
-        if not pane or proc.live_child(pane["pid"], pane["command"]) or any(b.search(screen) for b in BUSY):
-            return name
+        if not pane:
+            return name + ": pane probe failed"
+        screen = tmux.capture(session, index)
+        if any(b.search(screen.lower()) for b in BUSY):
+            return name + ": harness mid-turn"
+        try:
+            child = proc.live_child(pane["pid"], pane["command"])
+        except RuntimeError as e:
+            return name + ": " + str(e)
+        if child and not (any(COMPOSER.match(row) for row in screen.splitlines())
+                          and not dialog(session, index)):
+            return name + ": live child process and no idle prompt on screen"
     return None
 
 
