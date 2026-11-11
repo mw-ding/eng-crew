@@ -32,6 +32,8 @@ Its waiting gate-status blocks are consumed like a synthesizer's; its other
 `train-report` (all landed, `dropped=none stop=none`) is consumed. After its land's close-out, route queues the
 away-only Slack `land` message itself and hands `crew:ready` dependents to the builder lead; only dependents that are
 not ready still wake the coordinator.
+A poll `pr-conflicting` at the live head becomes one builder-lead `merge-up` handoff before any CI (#1398); a moved
+head or resolved conflict is consumed, and held, escalated, solo or lead-less conflicts stay queued.
 
 Usage: mdstack route --project FILE [--org-profile FILE] [--timeout SECS]
 """
@@ -222,17 +224,11 @@ def review(args, state, pr, head, pass_, round_):
         admit(args, "#%d" % pr["number"])
     try:
         invoke(args, "spawn", role="reviewer", issue=None, pr=pr["number"], pass_=pass_, round=round_,
-               tier="default", head=head)
+               tier="default", head=head, rereview_id=steer if lead else None)
     except RuntimeError:
         if lead:
             commands()["schedule"].schedule_release(scheduler(args, refs=["#%d" % pr["number"]]))
         raise
-    if steer and getattr(args, "reviewer_lead", False):
-        for name, rec in runs(state):
-            if rec["role"] == "reviewer" and rec.get("head") == head and rec["pass"] == pass_ and \
-                    rec["args"].get("pr") == pr["number"] and rec["args"].get("round") == round_:
-                rec["rereview_id"] = steer
-                commands()["lead"].save_record(os.path.join(state, "runs", name + ".json"), rec)
 
 
 def reap(args, name, state=None, dequeue=True):
@@ -371,6 +367,24 @@ def milestone_complete(repo, pr):
     return False
 
 
+def conflict(args, values, state, w):
+    """A poll `pr-conflicting` wake (#1398): GitHub runs no PR CI on a conflicting head, so the builder lead gets one
+    merge-up handoff now. A closed PR, moved head or resolved conflict is consumed (a new conflict polls again); held,
+    escalated, draft, still-UNKNOWN, solo or lead-less work stays queued for the coordinator."""
+    lead, n, head = commands()["lead"], int(w["refs"][0].lstrip("#")), w["refs"][1]
+    pr = gh("pr", "view", str(n), "-R", "%s/%s" % (values["repo.owner"], values["repo.name"]), "--json",
+            "state,headRefOid,isDraft,labels,mergeable")
+    if pr["state"] != "OPEN" or pr["headRefOid"] != head or pr["mergeable"] == "MERGEABLE":
+        return True
+    if pr["mergeable"] != "CONFLICTING" or pr["isDraft"] or \
+            {label["name"] for label in pr["labels"]} & {"crew:escalated", "crew:hold"}:
+        return False
+    if not lead.enabled(state, "builder") or lead.solo(values, pr=n):
+        w["consumer"] = "coordinator"  # solo: the owner's session takes the merge-up through the coordinator
+        return False
+    return lead.handoff(args, "builder", "merge-up", ["#%d" % n, head]) in (0, 4)
+
+
 def reclaimed(state, w):
     """A dead or missing stale wake for the very run an idle reclaim removed (#1552); a replacement run under the same
     window name has another identity and still wakes."""
@@ -466,6 +480,8 @@ def route_record(args, values, state, w):
         lead.retry_pending(args)
     if leader and w.get("reason") == "stale":
         return w.get("liveness") in ("dead", "missing") and lead.ensure(args, leader["role"].removesuffix("-lead")) == 0
+    if event == "pr-conflicting":
+        return conflict(args, values, state, w)
     pool = "builder" if event in ("issue-assigned", "builder-message", "builder-queued") else rec.get("role") if rec else None
     if event in ("issue-assigned", "builder-message"):
         n = int(w["refs"][0].lstrip("#"))

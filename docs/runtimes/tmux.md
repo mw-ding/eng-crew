@@ -973,7 +973,7 @@ job root and the optional remote URL.
 ### mdstack spawn
 
 ```sh
-cli/mdstack spawn <role> --issue <n> | --pr <n> | --sweep | --docs-pass | --reflection <window> [--log <n>] [--input-sha <sha>] [--run-id <id>] [--pass <pass>] [--round <k>] [--tier <tier>] [--project <config.toml>]
+cli/mdstack spawn <role> --issue <n> | --pr <n> | --sweep | --docs-pass | --reflection <window> [--log <n>] [--input-sha <sha>] [--run-id <id>] [--pass <pass>] [--round <k>] [--head <sha>] [--rereview-id <id>] [--tier <tier>] [--project <config.toml>]
 ```
 
 `mdstack spawn` (#132) follows [Spawn and kill](#spawn-and-kill) steps 2 to 7;
@@ -1337,6 +1337,7 @@ exactly one consuming role ([protocol §8](../protocol.md#8-safety)):
 | New builder `pass=fix` marker at head after a `verdict=changes` there (an evidence-only fix: no new commit, so no `new-head`) | `fix-at-head` | reviewer |
 | Tracked PR merged / closed | `pr-merged` / `pr-closed` | coordinator |
 | `crew:ready` issue newly assigned | `issue-assigned` | builder |
+| Open crew PR head turns `CONFLICTING` (`UNKNOWN` is no conflict), including after another land | `pr-conflicting` | builder (merge-up via the builder lead, before any CI) |
 | Express change: new builder `pass=selfgate verdict=pass` at head with CI green | `selfgate-passed` | synthesizer |
 
 A change that resolves express ([express lane](../express-lane.md#routing),
@@ -1393,7 +1394,14 @@ synthesizer reports `no-verified-base`, the coordinator re-reads head/holds
 and dispatches normal review and independent validation at that head to
 record the base, then retries portability.
 Conflicts or differing patches route through the builder, then delta
-re-review and independent validation at the updated head. An open rereview
+re-review and independent validation at the updated head. GitHub runs no
+`pull_request` CI on a conflicting PR, so poll emits `pr-conflicting` once
+per head and conflict (an `UNKNOWN` read keeps the head's last known value),
+and `mdstack route` re-reads the PR and hands the builder lead one `merge-up`
+handoff (`#<pr> <head-sha>`) without waiting for checks or a sweep (#1398).
+A closed PR, moved head or resolved conflict consumes the wake; held,
+escalated, draft, solo or lead-less work stays queued for the coordinator.
+A conflict that clears and returns emits again. An open rereview
 steer at head always routes full review and validation. Explicit `recheck`
 recovery and CI-fix passes remain available; they are not required for an
 identical clean base update. A `recheck escalate` status routes full review at
@@ -1948,17 +1956,24 @@ change, woken by `selfgate-passed`) or `train`, is recorded
 without a coordinator wake; other gate-status blocks still wake it. A lead's
 `mdstack send` of `unblocked` to the coordinator with the refs of an earlier
 `blocked` message is appended to its inbox without a nudge (#578). Changes results retain their section
-files after cleanup. Merged PRs get the
-close-out in the coordinator brief: crew labels cleared, the closed issue's
-`crew:ready` removed, a closed issue that GitHub left open closed with a note
-(one that was reopened stays open, #846), and that PR's head branch deleted
-only for a same-repo head that is neither default nor base. Item windows are cleaned up too.
+files after cleanup. Merged PRs get the close-out below; item windows are cleaned
+up too.
 `pr-closed` reaps the assigned builder without merged-PR label or branch cleanup.
 A `fix` or `ci-red` send to a missing `ben-<issue>` with PR/head refs queues a
 `builder-message` wake. Route checks the live PR, linkage and head, spawns the
 builder's fix pass (or waits for its queued spawn), then delivers the refs.
 Live builder messages continue through the existing inbox, including train
 merge-ups; combined CI/review handoff rules remain in effect.
+
+Merged-PR close-out (the coordinator brief points here, #1635): remove
+`crew:approved`, `crew:hold`, `crew:in-review` and `crew:changes` (each if
+present) from the PR, remove `crew:ready` from the issue it closed, and close
+that issue with a note if GitHub left it open (never a reopened one, #846).
+Delete the head branch with `change.delete-branch` only when ALL of these
+hold, read from `change.read-state` and `change.read-default-branch`: the PR
+is merged; `isCrossRepository` is false; `<branch>` is read only from
+`headRefName`; the branch differs from both the default branch and
+`baseRefName`. Otherwise skip deletion and say why in the close-out note.
 
 Spawns are deduplicated by PR/head/pass/round against live and queued runs,
 section files and posted pass markers. An expected `--head` travels through
@@ -2362,6 +2377,11 @@ It never opens a second PR or treats a waiting builder as a free slot.
 Reviewer dispatch is keyed by PR/full head/pass/round, with a rereview steer's
 id distinguishing a fresh requested pass at the same head. Live runs,
 queued requests, retained section files and posted markers all participate.
+The steer id goes to `mdstack spawn --rereview-id` (reviewer only, with
+`--pr` and `--head`), which writes it into the run record before the harness
+starts; a queued request, dequeue and a clean restart carry it, and the
+restart pins the run's head, so a moved head refuses as stale instead of
+inheriting the old steer (#1477).
 Review starts with CI pending; validation follows a passing review subject
 to the existing held-CI policy; recheck follows the existing merge-up rules.
 A replay of a passing review still starts missing validation even if the

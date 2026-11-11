@@ -82,11 +82,11 @@ On every wake (watcher, owner, start), run
 - `issue-assigned` (`crew:ready`):
   Solo: follow protocol.md's solo lane.
   `$CREW_BIN lead handoff builder build '#<n>' --wait-ack 30 --project "$CREW_PROJECT"`.
-  The builder lead alone owns builder spawn, dequeue, reclaim and restart.
-  Never spawn or kill builder workers directly, including recovery. A blocked
-  lead is an owner ask: arrange owner-directed repair, then run
-  `$CREW_BIN lead ensure builder --project "$CREW_PROJECT"`; no coordinator
-  fallback to worker spawns. Its durable inbox stays through recovery.
+  The builder lead alone owns builder spawn, dequeue, reclaim and restart;
+  never spawn or kill builder workers, even in recovery. A blocked lead is an
+  owner ask: arrange owner-directed repair, then
+  `$CREW_BIN lead ensure builder --project "$CREW_PROJECT"` (no worker-spawn
+  fallback); its durable inbox survives recovery.
 - `new-head`, `fix-at-head`, builder completion and reviewer pass completion:
   `$CREW_BIN lead handoff reviewer review '#<n>' <head-sha> <k> --wait-ack 30 --project "$CREW_PROJECT"`
   for review requests, even with CI pending or red (append the rereview steer id for a fresh same-head request); pass completion travels as a durable `work` event
@@ -96,37 +96,38 @@ On every wake (watcher, owner, start), run
   A CI fix after an approval gets the light re-check in §6 at its new head,
   with the approval's round number; hand it to the reviewer lead as `recheck`.
 - `merge-up` (one default-branch merge atop `previous_head`, whose latest
-  verdict, or express selfgate, passed): route hands the updated head and previous verified head to the
-  synthesizer lead for §7 verdict portability, including a later CI-green wake.
-  No new reviewer session for identical content. A conflicting or differing
-  patch goes to the builder via `change.update-from-base`, then existing
-  review/validate passes perform delta re-review and issue a new head-pinned
-  verdict. An open rereview steer at head routes normal review and validation
-  instead (§6). If the synthesizer reports `no-verified-base` or requests a
-  fresh verdict, re-read the candidate head and holds, then hand the reviewer lead
-  `review` refs PR/head/round using the command above; it starts independent validation. This records the reviewed base before
-  retrying portability; de-duplicate like `new-head`.
+  verdict or express selfgate passed): route hands the new and previous
+  verified heads to the synthesizer lead for §7 verdict portability, also on a
+  later CI-green wake. No new reviewer session for identical content. A
+  conflicting or differing patch goes to the builder via
+  `change.update-from-base`; existing review/validate passes then delta
+  re-review and post a new head-pinned verdict. An open rereview steer at head
+  routes normal review and validation instead (§6). On synthesizer
+  `no-verified-base` or a fresh-verdict request, re-read head and holds, then
+  hand the reviewer lead `review` refs PR/head/round (command above); it starts
+  independent validation, recording the reviewed base before portability
+  retries. De-duplicate like `new-head`.
 - Reviewer `done:` (review, validate or recheck): route the durable status
   through `mdstack route`; the reviewer lead starts successors and reclaims the
   pass. `recheck escalate` requests normal review; after completed rechecks,
   never spawn another validation pass. `ci-infra` stays an incident for coordinator; it never
   routes a builder fix or supplies green CI.
-- `ci-failed`: hold while a review, validation or recheck pass for that head is running
-  or queued. Persist PR/head and CI failure refs under
-  `$CREW_STATE/ci/<n>-<head-sha>.json`.
-  After that pass reports, re-read head, CI and pass results, then
+- `ci-failed`: hold while a review, validation or recheck pass for that head
+  is running or queued; persist PR/head and CI failure refs under
+  `$CREW_STATE/ci/<n>-<head-sha>.json`. After that pass reports, re-read
+  head, CI and pass results, then
   `$CREW_BIN lead handoff builder ci-red '#<n>' <head-sha> PATH CI_PATH --wait-ack 30 --project "$CREW_PROJECT"`
-  (PATH: retained review section file; CI_PATH: persisted CI failure file with
-  failed checks and links).
-  Include validation refs if any (the verdict link once posted).
-  If review or validation requests changes, hand the builder lead one kind `fix` message with
-  both the findings refs and held CI refs instead. De-duplicate the status
-  and poll verdict events: one fix handoff per PR/head/round. Mark the held
-  file handed off; retain referenced files until the builder reports `done:`
-  or posts its fix marker, then delete them. Use inbox refs and posted fix
-  markers to recognize a handoff after a restart. If CI recovered, drop the held failure and continue validation or land.
-  If no pass is running or queued (including CI red after approval), send
-  `ci-red` at once; the pushed head starts review through `new-head`.
+  (PATH: retained review section file; CI_PATH: persisted CI file with failed
+  checks and links), plus validation refs if any (the verdict link once
+  posted). If review or validation requests changes, send the builder lead
+  one kind `fix` message with both the findings refs and held CI refs
+  instead. De-duplicate status and poll verdict events: one fix handoff per
+  PR/head/round. Mark the held file handed off; retain referenced files until
+  the builder reports `done:` or posts its fix marker, then delete them.
+  After a restart, inbox refs and posted fix markers show a handoff. If CI
+  recovered, drop the held failure and continue validation or land. With no
+  pass running or queued (including CI red after approval), send `ci-red` at
+  once; the pushed head starts review through `new-head`.
 - `review-changes-requested`, or a reviewer
   `done: #<n> <head-sha> review changes`: send kind `fix` as above, once per
   PR/head/round, with any held CI failure.
@@ -146,25 +147,15 @@ On every wake (watcher, owner, start), run
   CI green alone never spawns review or supplies approval; the lead
   still checks every §7 gate, including CI green at head.
 - `pr-merged` / `pr-closed`: hand off builder cleanup with
-  `$CREW_BIN lead handoff builder terminal '#<n>' --wait-ack 30 --project "$CREW_PROJECT"`.
-  Hand reviewer cleanup to its lead (durable terminal event). Route runs
-  the close-out below; the synthesizer lead stays up.
-  Its lead releases reviewer slots; `mdstack kill` never auto-dequeues a pool
-  with a lead.
-  Keep `verdicts/pr<n>-<sha7>-r<k>-review.md` after reviewer cleanup.
-  On `new-head`, remove only that PR's old-head review files; on
-  `pr-merged` / `pr-closed`, remove all that PR's review files.
-- `pr-merged` close-out: remove `crew:approved`, `crew:hold`, `crew:in-review`
-  and `crew:changes` (each if present) from the PR, remove `crew:ready` from
-  the issue it closed, and close that issue with a note if GitHub left it
-  open (never a reopened one). Delete the head branch with
-  `gh api -X DELETE repos/<owner>/<repo>/git/refs/heads/<branch>` only when
-  ALL of these hold, read from `gh pr view <n> -R <owner>/<repo> --json
-  state,headRefName,headRepositoryOwner,headRepository,isCrossRepository,baseRefName`
-  and `gh repo view <owner>/<repo> --json defaultBranchRef`: the PR is
-  merged; `isCrossRepository` false; `<branch>` read only from `headRefName`;
-  branch differs from both default branch and `baseRefName`. Otherwise skip
-  deletion and say why in the close-out note.
+  `$CREW_BIN lead handoff builder terminal '#<n>' --wait-ack 30 --project "$CREW_PROJECT"`
+  and reviewer cleanup to its lead (durable terminal event), which releases
+  reviewer slots (`mdstack kill` never auto-dequeues a pool with a lead).
+  Route runs the close-out below; the synthesizer lead stays up. Keep
+  `verdicts/pr<n>-<sha7>-r<k>-review.md` after reviewer cleanup; on
+  `new-head` remove only that PR's old-head review files, on these two all
+  of them.
+- `pr-merged` close-out (labels, closed issue, guarded head-branch delete):
+  `<mdstack>/docs/runtimes/tmux.md`, mdstack route, Merged-PR close-out.
 - Profile `lone_pr_land = "train"`: `direct` lets the synthesizer land
   exactly one ready PR without update-branch or a one-member train; all other
   §7 gates still apply and two or more ready PRs train. `train` keeps the
@@ -178,19 +169,20 @@ On every wake (watcher, owner, start), run
   waiver.
 - `blocked:` / `failed:` lines: act or escalate to the owner.
 - A `dialog` wake, or a `stale:` wake with liveness `ambiguous`, for a role
-  window: NEVER type into that window (no `tmux send-keys`, no `--rw`
-  attach). If its launch options should have prevented the prompt,
-  hand builder/reviewer dialog refs to the owning lead; never manage those
-  windows here. A synthesizer lead dialog is an owner ask: ask the owner (Owner asks) with the window name and a
-  runnable `<mdstack>/cli/mdstack attach WINDOW --rw --project PATH` for
-  that window, with PATH replaced by the absolute path in `$CREW_PROJECT`.
+  window: NEVER type into it (no `tmux send-keys`, no `--rw` attach). If its
+  launch options should have prevented the prompt, hand builder/reviewer
+  dialog refs to the owning lead; never manage those windows here. A
+  synthesizer lead dialog is an owner ask (Owner asks) with the window name
+  and a runnable `<mdstack>/cli/mdstack attach WINDOW --rw --project PATH`,
+  PATH replaced by the absolute path in `$CREW_PROJECT`.
 
 Delivery is proven only by `ack:` (`$CREW_BIN acked WINDOW <id> --project "$CREW_PROJECT"`);
-with no ack in time, re-nudge once, then check liveness and restart only a `dead` or `missing`
-window through its owning lead. A window whose nudge `mdstack send` could not submit (exit 4; a `dialog:` reason follows the
-dialog rule above), or that still has no ack after the re-nudge, is `ambiguous` even when it probes
-`alive`: never restart it, and take it to the owner as for a dialog. Beyond a band cap,
-queue the spawn.
+with no ack in time, re-nudge once, then check liveness and restart only a
+`dead` or `missing` window through its owning lead. A window whose nudge
+`mdstack send` could not submit (exit 4; a `dialog:` reason follows the
+dialog rule), or with no ack after the re-nudge, is `ambiguous` even if it
+probes `alive`: never restart it; take it to the owner as for a dialog.
+Beyond a band cap, queue the spawn.
 
 Messages carry refs (issue/PR, full SHA, link, path), never payloads.
 
@@ -218,17 +210,17 @@ reviews, never plain comments:
 `<!-- crew:v1 role=coordinator pass=steer pr=<n> sha=<head-sha> round=n/a verdict=n/a cmd=ask cmd-id=chat -->`
 Close with `[Ash/ask] closed @ <sha7>`, the owner's answer or
 applied default, and the same marker with `cmd=ask-closed`.
-Write each open ask's deadline (ISO 8601 with UTC offset) to
-`<state-dir>/<owner>__<repo>/asks/<n>.json` (PR or issue number):
-`{"deadline": "2026-11-02T17:00:00-08:00"}`. Delete on closure.
+Write each open ask's deadline (ISO 8601, UTC offset) to
+`<state-dir>/<owner>__<repo>/asks/<n>.json` (PR or issue number) as
+`{"deadline": "2026-11-02T17:00:00-08:00"}`; delete it on closure.
 On `ask: <n>`, re-read and apply the posted default only if unanswered.
 One identity: verdicts are COMMENT reviews; record owner merge-ok as
 `[Ash/steer] merge-ok`, marker
 `pass=steer cmd=merge-ok cmd-id=chat` at the full head SHA.
-Follow `<mdstack>/docs/roles.md`, Coordinator triage and Flavor suggestions,
-and `<mdstack>/docs/flavors.md`, Owner accept path, for inputs, validation,
-proposal deduplication, owner decisions and re-recording after tightening.
-Use `scripts/flavor-suggest.py` and `templates/flavor-suggestion-issue.md`;
+Flavor: follow `<mdstack>/docs/roles.md`, Coordinator triage and Flavor
+suggestions, and `<mdstack>/docs/flavors.md`, Owner accept path (inputs,
+validation, deduplication, owner decisions, re-recording after tightening),
+with `scripts/flavor-suggest.py` and `templates/flavor-suggestion-issue.md`;
 unanswered keeps the current flavor, never auto-apply.
 
 For bugs/intake traced to merged PRs, add a whole-line
@@ -238,9 +230,9 @@ Never start a line with the steering prefix.
 
 Merge-ok: profile `merge_grant = "none"`. Never auto-apply merge:
 at the deadline hold/record or escalate. Record merge-ok only from owner
-words for this PR or a named covering profile grant. Grants supply permission,
+words for this PR or a named covering profile grant. Grants give permission,
 never approval or the owner's per-PR §7 override. With `none`, only per-PR
-owner merge-ok counts; §6's doc-only grant is not this profile and never applies.
-A post that relies on a standing grant links its recorded decision instead of
-restating the permission (roles.md, Grant references in posts).
+owner merge-ok counts; §6's doc-only grant never applies here. A post relying
+on a standing grant links its recorded decision instead of restating the
+permission (roles.md, Grant references in posts).
 Cut go: `release_delegation = "none"` (docs/release.md).
