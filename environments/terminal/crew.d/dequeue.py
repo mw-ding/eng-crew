@@ -97,7 +97,7 @@ def run(args, role=None):
     rc = spawn(argparse.Namespace(role=pick["role"], issue=pick["issue"], pr=pick["pr"], sweep=pick.get("sweep", False),
                                     docs_pass=pick.get("docs_pass", False), train=pick.get("train"), pass_=None if pick.get("train") else pick["pass"],
                                     **{k: (pick.get("reflection") or {}).get(f) for k, f in REFLECTION},
-                                    head=pick.get("head"), round=pick["round"], tier=pick["tier"],
+                                    head=pick.get("head"), rereview_id=pick.get("rereview_id"), round=pick["round"], tier=pick["tier"],
                                     host=pick.get("host"), reason=pick.get("override_reason"),
                                     timeout=getattr(args, "timeout", 15.0),
                                     project=args.project, org_profile=args.org_profile, messages=pick.get("messages", [])))

@@ -133,6 +133,8 @@ def enqueue(state, args, pass_, reason=None):
         entry["docs_pass"] = True
     if getattr(args, "train", None):
         entry["train"] = args.train
+    if getattr(args, "rereview_id", None):  # the steer this pass answers, bound to its PR/head/pass/round (#1477)
+        entry["rereview_id"] = args.rereview_id
     if reflection_of(args):
         entry["reflection"] = reflection_of(args)
     if reason:
@@ -165,6 +167,7 @@ def register(sub):
     p.add_argument("--train", type=int, help="builder only: build the delegated merge train N, no item (#1391)")
     p.add_argument("--pass", dest="pass_", choices=sorted({p for v in PASSES.values() for p in v}))
     p.add_argument("--head", help="expected PR head; refuse a changed head, including a queued spawn")
+    p.add_argument("--rereview-id", help="reviewer only, with --pr and --head: the rereview steer this pass answers")
     p.add_argument("--round", type=int, default=1, help="verdict round k, for reviewer window names")
     p.add_argument("--tier", choices=["trivial", "default", "deep"], help="default: the role's default_tier, else default")
     p.add_argument("--timeout", type=float, default=15.0, help="seconds to see the harness in the foreground")
@@ -202,6 +205,9 @@ def run(args):
         return 2
     if reflection and (role != "researcher" or args.issue or args.pr or sweep or docs_pass):
         print("crew: --reflection is researcher-only and takes no --issue, --pr, --sweep or --docs-pass")
+        return 2
+    if getattr(args, "rereview_id", None) and (role != "reviewer" or not args.pr or not getattr(args, "head", None)):
+        print("crew: --rereview-id is reviewer-only and needs --pr and --head")
         return 2
     if docs_pass and not values.get("docs.enabled"):
         print("crew: refusing spawn: --docs-pass needs [docs] enabled = true (docs/profile.md#docs)")
@@ -327,6 +333,8 @@ def run(args):
         rec["override_reason"] = reason
     if remote:  # its window and worktree are on the host; the run record, claim and brief copy stay here
         rec["remote"] = True
+    if getattr(args, "rereview_id", None):  # on the record before the worker can complete (#1477)
+        rec["rereview_id"] = args.rereview_id
     if role == "reviewer":  # the brief's verdict file, removed by mdstack kill
         rec["verdict"] = os.path.join(state, "verdicts", "pr%d-%s-r%d-%s.md" % (args.pr, sha[:7], args.round, pass_))
 

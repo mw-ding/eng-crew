@@ -973,7 +973,7 @@ job root and the optional remote URL.
 ### mdstack spawn
 
 ```sh
-cli/mdstack spawn <role> --issue <n> | --pr <n> | --sweep | --docs-pass | --reflection <window> [--log <n>] [--input-sha <sha>] [--run-id <id>] [--pass <pass>] [--round <k>] [--tier <tier>] [--project <config.toml>]
+cli/mdstack spawn <role> --issue <n> | --pr <n> | --sweep | --docs-pass | --reflection <window> [--log <n>] [--input-sha <sha>] [--run-id <id>] [--pass <pass>] [--round <k>] [--head <sha>] [--rereview-id <id>] [--tier <tier>] [--project <config.toml>]
 ```
 
 `mdstack spawn` (#132) follows [Spawn and kill](#spawn-and-kill) steps 2 to 7;
@@ -2381,6 +2381,11 @@ It never opens a second PR or treats a waiting builder as a free slot.
 Reviewer dispatch is keyed by PR/full head/pass/round, with a rereview steer's
 id distinguishing a fresh requested pass at the same head. Live runs,
 queued requests, retained section files and posted markers all participate.
+The steer id goes to `mdstack spawn --rereview-id` (reviewer only, with
+`--pr` and `--head`), which writes it into the run record before the harness
+starts; a queued request, dequeue and a clean restart carry it, and the
+restart pins the run's head, so a moved head refuses as stale instead of
+inheriting the old steer (#1477).
 Review starts with CI pending; validation follows a passing review subject
 to the existing held-CI policy; recheck follows the existing merge-up rules.
 A replay of a passing review still starts missing validation even if the
