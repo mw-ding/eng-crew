@@ -133,8 +133,8 @@ def reconcile_approval(values, repo, pr, own):
     crew:approved, drop crew:changes and crew:in-review, and read the tags back before land work is forwarded. An open
     rereview at head or a later formal changes request leaves the tags for the gate."""
     head = pr["headRefOid"]
-    if commands()["poll"].pr_snapshot(own)["verdict"] != "pass" or open_rereview(pr, head):
-        return
+    if commands()["poll"].pr_snapshot(own)["verdict"] != "pass" or open_rereview(own, head):  # a foreign verdict
+        return  # never settles a rereview (#1290)
     last = max(i for i, r in enumerate(own["reviews"]) for m in markers(r["body"])
                if m.get("role") == "reviewer-validator" and m.get("pass") == "verdict" and m.get("sha") == head)
     if any(r.get("state") == "CHANGES_REQUESTED" and (r.get("author") or {}).get("login") ==

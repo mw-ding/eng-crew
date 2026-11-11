@@ -446,7 +446,10 @@ class Route(SpawnBase):
                 ("stale head", dict(sha="f" * 40), ()),
                 ("later changes verdict", {}, (self.signed(verdict % self.sha),)),
                 ("formal changes request", {}, (dict(self.signed("Needs work."), state="CHANGES_REQUESTED"),)),
-                ("open rereview", {}, (dict(body=steer % self.sha),))):
+                ("open rereview", {}, (dict(body=steer % self.sha),)),
+                ("foreign verdict after rereview", {}, (dict(body=steer % self.sha),
+                                                         self.signed(verdict.replace("changes", "pass") % self.sha,
+                                                                     name="Rex")))):
             with self.subTest(case=case):
                 self.passed_after_changes(*extra, **kw)
                 self.queue(self.event("review-approved"))
