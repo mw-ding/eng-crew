@@ -202,9 +202,9 @@ def read_lines(path):
     return data.decode("utf-8", "replace").splitlines()
 
 
-def tracked_files(root):
-    """Paths from `git ls-files` when root is the top of a git work tree, else
-    None (e.g. the test temp dirs)."""
+def git_paths(root, *ls_args):
+    """Paths from `git ls-files -z <ls_args>` when root is the top of a git
+    work tree, else None (e.g. the test temp dirs)."""
     env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
 
     def git(*args):
@@ -214,9 +214,15 @@ def tracked_files(root):
         top = git("rev-parse", "--show-toplevel").decode("utf-8", "replace").strip()
         if os.path.realpath(top) != os.path.realpath(root):
             return None
-        return sorted(p for p in git("ls-files", "-z").decode("utf-8", "replace").split("\0") if p)
+        return sorted(p for p in git("ls-files", "-z", *ls_args).decode("utf-8", "replace").split("\0") if p)
     except (OSError, subprocess.CalledProcessError):
         return None
+
+
+def tracked_files(root):
+    """Paths from `git ls-files` when root is the top of a git work tree, else
+    None (e.g. the test temp dirs)."""
+    return git_paths(root)
 
 
 def walk(root):
