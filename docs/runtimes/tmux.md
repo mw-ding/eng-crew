@@ -880,6 +880,20 @@ reused once it matches, and `current` flips back
 root (`paths.root`, else `$CREW_ROOT` or `~/.mdstack`) and on a `PATH` that
 resolves its name to something else.
 
+A user-level install set up by `mdstack install`, `layout --write` and `up`
+has no `install.json`. `mdstack upgrade` adopts it before it upgrades
+(#1616): the `paths.mdstack` link must point at a release with a `VERSION`
+and `cli/mdstack` that has a `releases/current` link beside it. The state's
+`VERSION` must match that release, and its `config.toml` copy must match
+`--project`. `--dry-run` reports the adoption and stops; `--yes` writes the
+record, then upgrades. An install that does not verify is not adopted: the
+refusal names the mismatch and points at `mdstack bootstrap`. Adoption covers
+a tmux install only.
+
+Create `crew:*` labels only with `mdstack doctor --fix`. Never make them by
+hand. `--fix` also resets a runbook label's color and description to the
+runbook's values. An extra `crew:*` name is still a namespace collision.
+
 ### mdstack migrate
 
 ```sh
