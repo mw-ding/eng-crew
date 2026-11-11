@@ -153,12 +153,19 @@ class StepLintTest(unittest.TestCase):
                 ("f() { test 1 -eq 2 || exit 1; }; echo \"$(f)\"; echo tail", "in a command substitution"),
                 ("f() { test 1 -eq 2 || exit 1; }; for x in $(f); do :; done; echo tail", "in a command substitution"),
                 ("f() { test 1 -eq 2 || exit 1; }; case `f` in *) : ;; esac; echo tail", "in a command substitution"),
-                ("(test -e a || exit 1); echo tail", "`exit` in a subshell")):
+                ("(test -e a || exit 1); echo tail", "`exit` in a subshell"),
+                # #1687 r1: an `exit` in a helper's condition list makes it an exiting helper too.
+                ("f() { if test 1 -eq 2 || exit 1; then :; fi; }; f | cat; echo tail", "a call to f"),
+                ("f() { while test 1 -eq 2 || exit 1; do break; done; }; f | cat; echo tail", "a call to f"),
+                ("f() { if test 1 -eq 2 || exit 1; then :; fi; }; x=$(f); echo tail", "a call to f"),
+                ("g() { until f; do :; done; }; f() { test 1 -eq 2 || exit 1; }; g | cat; echo tail", "a call to g")):
             found = cl.lint_step(src)
             self.assertTrue(any(f.startswith("unsupported: ") and ctx in f for f in found), (src, found))
         self.good("f() { test 1 -eq 2 || exit 1; }; f; echo tail")  # a foreground exiting helper ends the step
         self.good("g() { f; }; f() { test 1 -eq 2 || exit 1; }; g; echo tail")
         self.good("f() { test 1 -eq 2 || exit 1; }; if true; then f; fi; echo tail")
+        self.good("f() { if test 1 -eq 2 || exit 1; then :; fi; }; f; echo tail")
+        self.good("(if test -e a; then echo y; fi) | cat; true")  # a predicate in a subshell is control flow
         self.good("for r in a; do test -e $r || exit 1; done > out; echo tail")
         self.good("x=$(git rev-parse HEAD); n=$((n+1)); echo \"$x `date`\"")
         self.good("say() { echo hi; }; say | cat; x=$(say); echo \"$x\"")

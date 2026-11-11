@@ -258,9 +258,11 @@ class CampaignRunTest(unittest.TestCase):
                     "f() { test 1 -eq 2 || exit 1; }; f | cat; echo tail",
                     "test 1 -eq 2 || { echo bad; exit 1 & }; echo tail",
                     "for r in a; do test 1 -eq 2 || exit 1; done | cat; echo tail",
-                    "x=$(test 1 -eq 2 || exit 1); echo tail"):
+                    "x=$(test 1 -eq 2 || exit 1); echo tail",
+                    "f() { if test 1 -eq 2 || exit 1; then :; fi; }; f | cat; echo tail",
+                    "f() { while test 1 -eq 2 || exit 1; do break; done; }; x=$(f); echo tail"):
             res = self.one({"name": "local-exit", "run": src})
-            self.assertEqual((res["status"], res["events"]), ("FAIL", []), "%s (#1677 review r3-r7, #1684)" % src)
+            self.assertEqual((res["status"], res["events"]), ("FAIL", []), "%s (#1677 review r3-r7, #1684, #1687 r1)" % src)
         res = self.one({"name": "helper", "run": "f() { test 1 -eq 2 || exit 1; }; f; echo tail"})
         self.assertEqual((res["status"], res["steps"][0]["exit"]), ("FAIL", 1), "a foreground exiting helper ends the step")
         for src in ("test 1 -eq 1 || exit 1; echo tail", "test 1 -eq 1 || { echo bad; exit 1; }; echo tail",

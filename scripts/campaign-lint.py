@@ -318,16 +318,18 @@ def _wrap(cmd):
     return [[({"bang": False, "cmds": [cmd]}, None)]]
 
 
-def _pipes(items):
-    """Every pipeline in ITEMS, nested bodies included, with the functions defined there."""
+def _pipes(items, conds=False):
+    """Every pipeline in ITEMS, nested bodies (and with CONDS, condition lists) included, with the functions
+    defined there."""
     for item in items:
         for p, _ in item:
             yield p
             for c in p["cmds"]:
                 if c["type"] == "func":
-                    yield from _pipes(_wrap(c["body"]))
-                for b in [c.get("body")] if c["type"] in ("group", "loop") else c.get("bodies", []):
-                    yield from _pipes(b)
+                    yield from _pipes(_wrap(c["body"]), conds)
+                for b in ([c["body"]] if c["type"] in ("group", "loop") else c.get("bodies", [])) + (
+                        c.get("conds", []) if conds else []):
+                    yield from _pipes(b, conds)
 
 
 def _tail_fails(items, fns):
@@ -481,12 +483,13 @@ def _unsupported(items, fns, found, in_func=False):
 
 
 def exiting(items):
-    """Names of the functions defined in ITEMS that can run `exit`, directly or through another such call."""
-    fns = {c["name"]: c["body"] for p in _pipes(items) for c in p["cmds"] if c["type"] == "func"}
+    """Names of the functions defined in ITEMS that can run `exit`, directly or through another such call, in a
+    body or a condition list."""
+    fns = {c["name"]: c["body"] for p in _pipes(items, True) for c in p["cmds"] if c["type"] == "func"}
     out = set()
     while True:
         more = {name for name, body in fns.items() if name not in out and any(
-            (_words(p) or [""])[0] in out | {"exit"} for p in _pipes(_wrap(body)))}
+            (_words(p) or [""])[0] in out | {"exit"} for p in _pipes(_wrap(body), True))}
         if not more:
             return out
         out |= more
