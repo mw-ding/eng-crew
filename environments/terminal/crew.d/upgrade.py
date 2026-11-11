@@ -27,7 +27,7 @@ import shlex
 import tempfile
 import time
 from crew_shared import (
-    brief_src, BUSY, commands, COMPOSER, coordinator_harness, crew_render, dialog, ENGINE_CMD, harness, identity,
+    brief_src, BUSY, commands, coordinator_harness, crew_render, dialog, ENGINE_CMD, harness, harnesses, identity,
     LAUNCH, POINTER, proc, profile, require_ownership, role_notes, runs, stop_pane, tmux, unacked, wait_harness,
     window_env)
 
@@ -39,10 +39,12 @@ def register(sub):
     p.add_argument("--timeout", type=float, default=15)
 
 
-def busy(state, session, windows):
-    """The first window still running a pass, as `name: reason`, or None. A live child under the pane (a launcher
-    wrapper's harness and MCP servers, #1618) is idle only when an adapter's idle screen shows: its composer glyph
-    opening a line, no mid-turn text and no dialog. A failed probe or an unrecognized screen stays busy."""
+def busy(values, state, session, windows):
+    """The first window still running a pass, as `name: reason`, or None. A window whose harness adapter declares a
+    COMPOSER is idle only on its idle screen: a row opening with that glyph, no mid-turn text, no dialog and no
+    unsubmitted `inbox:` nudge on the composer (the coordinator's only delivery state), whatever processes live under
+    the pane (a launcher wrapper's harness and MCP servers, #1618). Other adapters stay busy on a live child. A failed
+    probe or an unrecognized screen stays busy."""
     records = dict(runs(state))
     leads = dict(commands()["lead"].records(state))
     for index, name in windows:
@@ -66,9 +68,17 @@ def busy(state, session, windows):
             child = proc.live_child(pane["pid"], pane["command"])
         except RuntimeError as e:
             return name + ": " + str(e)
-        if child and not (any(COMPOSER.match(row) for row in screen.splitlines())
-                          and not dialog(session, index)):
-            return name + ": live child process and no idle prompt on screen"
+        rec = records.get(name) or leads.get(name)
+        executable = rec.get("harness") if rec else ENGINE_CMD.get(values.get("engines.coordinator"))
+        glyph = getattr(harnesses.BY_EXECUTABLE.get(executable), "COMPOSER", "")
+        if glyph:
+            rows = [row for row in screen.splitlines() if row.startswith(glyph)]
+            if not rows or dialog(session, index):
+                return name + ": no idle prompt on screen"
+            if any(commands()["send"].NUDGE.search(row) for row in rows):
+                return name + ": unsubmitted inbox nudge on screen"
+        elif child:
+            return name + ": live child process"
     return None
 
 
@@ -229,7 +239,7 @@ def run(args):
                       "the new briefs")
                 return 0
             deadline = time.monotonic() + args.wait_timeout
-            while active := busy(state, session, tmux.list_windows(session)):
+            while active := busy(values, state, session, tmux.list_windows(session)):
                 if time.monotonic() >= deadline:
                     raise ValueError("in-flight pass " + active + "; wait timed out; no install written")
                 time.sleep(0.2)

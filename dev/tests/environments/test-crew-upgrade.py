@@ -383,17 +383,27 @@ class Upgrade(bootstrap_tests.Bootstrap):
                 mock.patch.object(upgrade.proc, "live_child", return_value=False):
             for screen in ("✽ Recombobulating… (5s · ↓ 159 tokens)", "Working (esc to interrupt)"):
                 with mock.patch.object(upgrade.tmux, "capture", return_value=screen):
-                    self.assertEqual(upgrade.busy(self.state, "session", [(10, "ben-7")]), "ben-7: harness mid-turn")
+                    self.assertEqual(upgrade.busy({}, self.state, "session", [(10, "ben-7")]), "ben-7: harness mid-turn")
 
     def test_unacked_inbox_after_terminal_status_waits(self):
         self.put("status/ben-7.status", "done: #7 #9 head\n")
         self.put("inbox/ben-7.jsonl", json.dumps({"id": "m1", "kind": "fix", "refs": []}) + "\n")
         with mock.patch.object(upgrade, "runs", return_value=[("ben-7", {"role": "builder"})]), \
                 mock.patch.object(cli.commands()["lead"], "records", return_value=[]):
-            self.assertEqual(upgrade.busy(self.state, "session", [(10, "ben-7")]),
+            self.assertEqual(upgrade.busy({}, self.state, "session", [(10, "ben-7")]),
                              "ben-7: unacknowledged inbox message")
 
-    def wrapper_upgrade(self, screen, ps_fails=False):
+    def test_adapter_without_composer_keeps_the_live_child_rule(self):
+        self.put("status/ben-7.status", "done: #7 #9 head\n")
+        with mock.patch.object(upgrade, "runs", return_value=[("ben-7", {"role": "builder", "harness": "pi"})]), \
+                mock.patch.object(cli.commands()["lead"], "records", return_value=[]), \
+                mock.patch.object(upgrade.tmux, "pane", return_value={"pid": "123", "command": "pi"}), \
+                mock.patch.object(upgrade.tmux, "capture", return_value="Loading…\n"):
+            for child, expected in ((True, "ben-7: live child process"), (False, None)):
+                with mock.patch.object(upgrade.proc, "live_child", return_value=child):
+                    self.assertEqual(upgrade.busy({}, self.state, "session", [(10, "ben-7")]), expected)
+
+    def wrapper_upgrade(self, screen, ps_fails=False, child=True):
         """upgrade --yes through the CLI: window 0's pane is a launcher wrapper (a real sleep in its own session) whose
         live child is a session leader that is not the harness executable (the native harness, #1618)."""
         (self.bundle / "VERSION").write_text("v2.2.0\n")
@@ -407,8 +417,8 @@ class Upgrade(bootstrap_tests.Bootstrap):
         self.tool("tmux", 'case "$1" in -L|-S) shift 2;; esac\ncase "$1" in\nlist-windows) echo "0 ash";;\n'
                   'display-message) case "$*" in *pane_id*) echo "%%1 %d 0 0 /dev/ttys999 claude";; *cursor*) ;; '
                   '*) echo claude;; esac;;\ncapture-pane) while IFS= read -r l; do printf "%%s\\n" "$l"; done < %s;;\nesac' % (pids[0], Path(self.tmp) / "screen.txt"))
-        self.tool("ps", "exit 1" if ps_fails else 'case "$1" in -axo) echo "%d 1 Ss claude"; echo "%d %d Ss node";; '
-                  '*) echo "S+ claude";; esac' % (pids[0], pids[1], pids[0]))
+        tree = 'echo "%d 1 Ss claude"' % pids[0] + ('; echo "%d %d Ss node"' % (pids[1], pids[0]) if child else "")
+        self.tool("ps", "exit 1" if ps_fails else 'case "$1" in -axo) %s;; *) echo "S+ claude";; esac' % tree)
         before = self.manifest.read_bytes()
         result = self.upgrade("--yes", "--wait-timeout", "0")
         return result, self.manifest.read_bytes() != before
@@ -421,12 +431,16 @@ class Upgrade(bootstrap_tests.Bootstrap):
         self.assertTrue(written)
 
     def test_wrapper_child_busy_or_unknown_screen_stays_busy(self):
-        for screen, reason in (("✽ Recombobulating… (5s · esc to interrupt)\n❯\u00a0\n", "harness mid-turn"),
-                               ("Loading…\n", "live child process and no idle prompt on screen"),
-                               ("Do you want to proceed?\n❯ 1. Yes\n  2. No\nEsc to cancel\n",
-                                "live child process and no idle prompt on screen")):
-            with self.subTest(screen=screen):
-                result, written = self.wrapper_upgrade(screen)
+        nudge = "────\n❯\u00a0inbox: 20261111T044605Z-4741d0\n────\n"  # the coordinator's message not yet submitted
+        for screen, child, reason in (
+                ("✽ Recombobulating… (5s · esc to interrupt)\n❯\u00a0\n", True, "harness mid-turn"),
+                ("Loading…\n", True, "no idle prompt on screen"),
+                ("Loading…\n", False, "no idle prompt on screen"),  # no tool-session child: the screen still decides
+                ("", False, "no idle prompt on screen"),  # an empty capture
+                ("Do you want to proceed?\n❯ 1. Yes\n  2. No\nEsc to cancel\n", True, "no idle prompt on screen"),
+                (nudge, True, "unsubmitted inbox nudge on screen")):
+            with self.subTest(screen=screen, child=child):
+                result, written = self.wrapper_upgrade(screen, child=child)
                 self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
                 self.assertIn("in-flight pass ash: %s; wait timed out; no install written" % reason, result.stdout)
                 self.assertFalse(written)
