@@ -569,6 +569,50 @@ One cutover and a major release.
 | 34.2 | #1238 | Getting-started, pack-author and migration guides | 34.1 | open |
 | 34.3 | #1239 | Major release cut with release notes for M29–M34 | 34.1, 34.2 | open |
 
+### M46: verification exercises the real path
+
+Opened by the spec slice #1669, part of
+[#1645](https://github.com/mw-ding/mdstack/issues/1645). M35–M45 were
+tracked as GitHub milestones only. Scope comes from
+[Riley's readiness pass](https://github.com/mw-ding/mdstack/issues/1645#issuecomment-6793843567):
+seven survivor items and one follow-up, so that each check runs the path
+it claims to prove. Admitted after M45 closes; no item below dispatches
+before this slice merges. Every row is planned: its issue is `open`.
+B1 and B2 go first; the others follow as capacity permits.
+
+| ID | Issue | Scope | Depends on | Status |
+|---|---|---|---|---|
+| B1 | #1614 | Synthesizer refusal lab: the production session synthesizer against a stub stack backend | #1669 | open |
+| B2 | #1412 | Campaign assertions and retained failing cases | #1669 | open |
+| B3 | #1411 | Discovery-path absence tests | #1669, after B1 and B2 start | open |
+| B4 | #1413 | Production template test helper | #1669, after B1 and B2 start | open |
+| B5 | #1414 | Visible untracked files in `check-repo.py` | #1669, after B1 and B2 start | open |
+| B6 | #1493 | Unbuffered lab status-pull input | #1669, after B1 and B2 start | open |
+| B7 | #1470, #1469 | Faithful A19 source (linked worktree) and shared-server preconditions; owner-run proof after its fix lands | #1669, after B1 and B2 start | open |
+| F1 | #1649 | Detached-fixture capture-pipe lesson (docs) | #1669 | open |
+
+Decisions M46 settles:
+
+- **#1469 consolidated into #1470.** The same A19 journey needs source and
+  trust parity and the shared-server precondition before its failed
+  bindings rerun; B7 carries both issues' criteria and evidence.
+- **#1649 is a learning only.** Its fixture fix already shipped in #1637;
+  F1 records the lesson and changes no test.
+- **No protocol or merge-gate change.** B1 exercises the existing gate. A
+  fix that changes what counts as a verdict, permission, CI pass or proof
+  becomes gate-contract work under the protocol's existing rules.
+- **Owner steps for B7.** Checkout trust is already accepted for the
+  checkout; the owner re-accepts it only if doctor reports it unmet. The
+  live proof is a pinned-source A19 run from an ordinary terminal opened
+  outside any agent session, after B7's fix lands. mdstack never stops or
+  restarts the shared server.
+
+Merge permission for M46 spec, protocol, template and gate-contract text is
+the owner's
+[M45–M48 grant](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6789266394),
+recorded at each head. M46 has no release cut of its own. A status-sync
+slice closes the milestone.
+
 ## 6. Decisions
 
 | Date | Decision | Source |
