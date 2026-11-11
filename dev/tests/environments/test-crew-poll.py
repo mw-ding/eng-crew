@@ -314,6 +314,51 @@ class PollDecide(unittest.TestCase):
                           "verdict=n/a" % HEAD)
         self.assertEqual(self.crew.decide({}, cut, [])[0][0]["round"], 1)  # §5: counted after a cutover
 
+    VALUES = {"identities.coordinator.gh_user": "acme-bot", "identities.coordinator.name": "Ash",
+              "identities.reviewer.gh_user": "acme-reviewer", "identities.reviewer.name": "Vera"}
+
+    @staticmethod
+    def post(marker, login, name):
+        return {"author": {"login": login}, "body": "<!-- crew:v1 %s -->\n— %s (Role) · codex · m" % (marker, name)}
+
+    def resumed_round(self, *tail):
+        """Round k of a new head after three own changes verdicts, an escalation and tail, with the profile values."""
+        prs = fixture("prs-pending.json")
+        prs[0]["reviews"] = [self.post("role=reviewer-validator pass=verdict pr=171 sha=%s round=%d verdict=changes"
+                                       % (str(k) * 40, k), "acme-reviewer", "Vera") for k in (2, 3, 4)]
+        prs[0]["reviews"] += [self.post("role=reviewer-validator pass=escalation pr=171 sha=%s round=3 verdict=n/a"
+                                        % ("4" * 40), "acme-reviewer", "Vera"), *tail]
+        return self.crew.decide({}, prs, [], values=self.VALUES)[0][0]["round"]
+
+    def test_round_counts_after_canonical_steer_resume(self):  # #1005: protocol §5 and §9
+        def steer(cmd, login="acme-bot", name="Ash", role="coordinator"):
+            return self.post("role=%s pass=steer pr=171 sha=%s round=n/a verdict=n/a cmd=%s cmd-id=chat"
+                             % (role, "4" * 40, cmd), login, name)
+        changes = self.post("role=reviewer-validator pass=verdict pr=171 sha=%s round=1 verdict=changes" % ("5" * 40),
+                            "acme-reviewer", "Vera")
+        self.assertEqual(self.resumed_round(), 4)
+        for cmd in ("resume", "cutover"):
+            self.assertEqual(self.resumed_round(steer(cmd)), 1, cmd)
+            self.assertEqual(self.resumed_round(steer(cmd), changes), 2, cmd)  # the next changes verdict is round 2
+        for legacy in ("resume", "cutover"):  # supported legacy reset records still reset
+            self.assertEqual(self.resumed_round(self.post("role=coordinator pass=%s pr=171 sha=%s round=n/a verdict=n/a"
+                                                          % (legacy, "4" * 40), "acme-bot", "Ash")), 1, legacy)
+        no_reset = {
+            "builder note": self.post("role=builder pass=fix pr=171 sha=%s round=3 verdict=n/a" % HEAD, "acme-bot", "Ben"),
+            "merge-ok steer": steer("merge-ok"),
+            "rereview steer": steer("rereview"),
+            "builder pass=resume": self.post("role=builder pass=resume pr=171 sha=%s" % HEAD, "acme-bot", "Ben"),
+            "reviewer steer resume": steer("resume", "acme-reviewer", "Vera", role="reviewer-validator"),
+            "foreign login": steer("resume", login="someone"),
+            "foreign coordinator": steer("resume", name="Zed"),
+            "ownership handoff": self.post("role=coordinator pass=handoff handoff=h1 state=acked from=a to=b cmd-id=c "
+                                           "sha=%s round=n/a verdict=n/a" % ("9" * 40), "acme-bot", "Ash"),
+            "foreign changes": self.post("role=reviewer-validator pass=verdict pr=171 sha=%s round=1 verdict=changes"
+                                         % ("5" * 40), "acme-bot", "Ash"),
+        }
+        for why, post in no_reset.items():
+            self.assertEqual(self.resumed_round(post), 4, why)
+
     def test_evidence_only_fix_at_same_head_wakes_reviewer_once(self):  # #139 B2
         fix = "role=builder pass=fix pr=171 sha=%s round=1 verdict=n/a engine=codex model=m effort=e" % HEAD
         _, state = self.crew.decide({}, fixture("prs-changes.json"), [])
