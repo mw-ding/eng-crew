@@ -25,7 +25,7 @@ from unittest.mock import patch
 
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # dev/tests/: crew_testlib
-from crew_testlib import example_profile, write_pack
+from crew_testlib import example_profile, render_template, write_pack
 
 TESTS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # dev/tests/
 SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(TESTS)), "scripts")
@@ -220,6 +220,15 @@ class Render(unittest.TestCase):
             self.assertEqual(got["briefs/builder.md"], "# B\n" + line + "End Bo.\n")
             self.assertEqual(got["briefs/reviewer.md"], "# R\n" + line)
             self.assertIn("by Ash" if "Edited" in rule else "to Ash: `gh pr create", line)
+
+    def test_render_template_helper_expands_shared_include(self):  # #1413
+        self.overlay("core/builder.md", "# B\n<include:policy/shared/rule.md>\nEnd <BuilderBot>.\n")
+        self.policy("shared/rule.md", "Escalate to <CoordinatorBot>: `<op:change.open>`.\n")
+        text, problems = render_template(PROJECT, "briefs/builder.md", self.inputs)
+        self.assertEqual(problems, [])
+        self.assertNotIn("<include:", text)
+        self.assertIn("# B\nEscalate to Ash: `gh pr create", text)
+        self.assertIn("End Bo.\n", text)
 
     def test_policy_include_fails_closed(self):  # #1184
         self.overlay("core/builder.md", "# B\n<include:policy/shared/none.md>\n")

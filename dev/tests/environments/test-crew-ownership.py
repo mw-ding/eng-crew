@@ -12,11 +12,7 @@ from pathlib import Path
 import unittest
 import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # dev/tests/: crew_testlib
-from crew_testlib import Base, SCRIPTS, write_pack
-
-render_spec = importlib.util.spec_from_file_location("render", os.path.join(os.path.dirname(SCRIPTS), "core", "crew-render.py"))
-render = importlib.util.module_from_spec(render_spec)
-render_spec.loader.exec_module(render)
+from crew_testlib import Base, SCRIPTS, render_template, write_pack
 
 spec = importlib.util.spec_from_file_location("ownership", os.path.join(os.path.dirname(SCRIPTS), "environments", "terminal", "crew.d", "_ownership.py"))
 own = importlib.util.module_from_spec(spec)
@@ -224,13 +220,11 @@ class Commands(Base):
     def test_rendered_grok_guard_has_resolved_issue_and_instance(self):
         p = Path(self.project)
         p.write_text(p.read_text().replace('name = "tmux"', 'name = "grok-bot"'))
-        values, problems = render.resolve(self.project, None)
+        text, problems = render_template(self.project, "runtime/builder-b1.md")
         self.assertEqual(problems, [])
-        template = Path(SCRIPTS).parent / "templates" / "runtimes" / "grok-bot" / "builder-b1.md"
-        renderer, problems = render.Renderer(values, str(Path(SCRIPTS).parent / "templates")), []
-        lines = renderer.expand(str(template), template.read_text().splitlines(keepends=True), problems)
-        self.assertEqual(problems, [])
-        text = renderer.line("".join(line for _, _, line in lines))
+        self.assertIn("<include:policy/shared/flavor.md>",
+                      (Path(SCRIPTS).parent / "templates" / "runtimes" / "grok-bot" / "builder-b1.md").read_text())
+        self.assertNotIn("<include:", text)
         self.assertIn("control item=99, runtime=grok-bot@local", text)
 
     def test_grok_routines_and_tmux_briefs_carry_guard(self):
