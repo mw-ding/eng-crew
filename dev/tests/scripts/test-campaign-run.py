@@ -2,7 +2,7 @@
 """Fixture test for scripts/campaign-run.py (offline, temp dirs only).
 
 Covers scenario selection, the five distinct statuses, the per-step guard recheck, the command exit captured apart from the capture, explicit
-completion waits (matched and deadline), the {source} placeholder and stub env, no operator forge or SSH agent credentials in a step (#1106), the guard refusal, the committed A03/A05 fixture steps failing closed on an earlier assertion, a step with an unhandled assertion refused before it runs while explicit refusal oracles still pass, expected-fail and accepted dispositions reported apart from PASS (a passing one FAILs; #1412), the A12 reproduction helper agreeing only with a capture at head, the A22 duplicate-key oracle passing on a run id with capitals (#1177), the A23 fake SSH transport's loopback and fault modes, the A19 ledger matching every shipped adapter and declared row and failing a gap claimed as conformant (#1443), the A19 smoke running in a linked worktree of its source and blocking on unmet checkout trust (#1470), a seeded rerun reproducing events and failure, and the
+completion waits (matched and deadline), the {source} placeholder and stub env, no operator forge or SSH agent credentials in a step (#1106), the guard refusal, the committed A03/A05 fixture steps failing closed on an earlier assertion, a step with an unhandled assertion or a child-shell `exit` refused before it runs while explicit refusal oracles still pass, expected-fail and accepted dispositions reported apart from PASS (a passing one FAILs; #1412), the A12 reproduction helper agreeing only with a capture at head, the A22 duplicate-key oracle passing on a run id with capitals (#1177), the A23 fake SSH transport's loopback and fault modes, the A19 ledger matching every shipped adapter and declared row and failing a gap claimed as conformant (#1443), the A19 smoke running in a linked worktree of its source and blocking on unmet checkout trust (#1470), a seeded rerun reproducing events and failure, and the
 decoy sentinel failing a run whose step reaches an inherited TMUX (#817; throwaway sockets only, with the runner's TMUX_TMPDIR restored after, #818). Run in CI.
 """
 import contextlib
@@ -254,10 +254,17 @@ class CampaignRunTest(unittest.TestCase):
                     "test 1 -eq 2 || (exit 1); echo tail", "f() { test 1 -eq 2 || (exit 1); }; f; echo tail",
                     "test 1 -eq 2 || { true || exit 1; }; echo tail", "{ test 1 -eq 2; } &",
                     "if test 1 -eq 2; true; then echo tail; fi", "test 1 -eq 2 || true | exit 1; echo tail",
-                    "test 1 -eq 2 || { echo bad; exit 1; } | cat; echo tail"):
+                    "test 1 -eq 2 || { echo bad; exit 1; } | cat; echo tail",
+                    "f() { test 1 -eq 2 || exit 1; }; f | cat; echo tail",
+                    "test 1 -eq 2 || { echo bad; exit 1 & }; echo tail",
+                    "for r in a; do test 1 -eq 2 || exit 1; done | cat; echo tail",
+                    "x=$(test 1 -eq 2 || exit 1); echo tail"):
             res = self.one({"name": "local-exit", "run": src})
-            self.assertEqual((res["status"], res["events"]), ("FAIL", []), "%s (#1677 review r3-r6)" % src)
+            self.assertEqual((res["status"], res["events"]), ("FAIL", []), "%s (#1677 review r3-r7, #1684)" % src)
+        res = self.one({"name": "helper", "run": "f() { test 1 -eq 2 || exit 1; }; f; echo tail"})
+        self.assertEqual((res["status"], res["steps"][0]["exit"]), ("FAIL", 1), "a foreground exiting helper ends the step")
         for src in ("test 1 -eq 1 || exit 1; echo tail", "test 1 -eq 1 || { echo bad; exit 1; }; echo tail",
+                    "f() { test 1 -eq 1 || exit 1; }; f; echo tail",
                     "test -e / && echo foreground", "if test 1 -eq 2; then echo yes; fi; echo tail"):
             self.assertEqual(self.one({"name": "supported", "run": src})["status"], "PASS", src)
         res = self.one({"name": "handler", "run": "test 1 -eq 2 || { echo bad; exit 1; }; echo tail"})
