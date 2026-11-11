@@ -91,6 +91,15 @@ directly into the new version section, in the cut's entry format with
 issue beyond the ones the deleted fragments produce. A cut that also changes any
 other path still needs a fragment, which fails the release check, so ship that
 change in its own PR.
+Released sections are immutable. Every `##` (level-two) section below
+`## [Unreleased]` in `CHANGELOG.md` stays byte for byte as released,
+whitespace and line endings included: a PR, a cut included, may only add a
+new version section on top and edit `[Unreleased]`. The same guard
+fails a PR that rewords, moves or deletes a released section or entry, before
+any exempt-path or fragment check, so a new fragment does not satisfy it. Fix
+the red check by restoring the released section and recording the correction
+in a new fragment for the next release (#1306, #1417); a late fragment goes into
+the next cut, not into an already cut section. CI is never waived for it.
 To run locally: `python3 scripts/check-changelog-pr.py --base origin/main`.
 
 At the cut, `scripts/changelog-cut.py <version>` turns each fragment into one
