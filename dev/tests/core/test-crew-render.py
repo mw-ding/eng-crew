@@ -6,7 +6,8 @@ Covers the renderer on a fixture profile and inputs in `fixtures/render/`
 capability), the real tmux briefs rendered from `profiles/tmux.toml` against
 `fixtures/render/tmux/`, a pack's render/ overlay, declared placeholders and render-time notes (#580),
 and core memory in every role brief, inside a fenced routine prompt, left out of the size-budget render and
-failing closed on a lint problem (#1230), and the per-brief size_budget headroom lines and warning band (#1056).
+failing closed on a lint problem (#1230), read once per render at the remote default tip, named on stderr,
+in session briefs too and refusing a failed fetch (#1537), and the per-brief size_budget headroom lines and warning band (#1056).
 Run in CI.
 """
 import argparse
@@ -1068,6 +1069,57 @@ class PackOverlay(unittest.TestCase):
         self.assertEqual({rel for rel in got if got[rel] != upstream[rel]},
                          {"runtime/builder.md", "runtime/reviewer-lead.md"})
 
+    def git(self, *args, cwd=None):
+        return subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t", *args], cwd=cwd or self.tmp,
+                              check=True, capture_output=True, text=True).stdout.strip()
+
+    def memory_remote(self):
+        """self.tmp as a checkout of a bare origin; returns an upstream clone that lands reviewed memory (#1537)."""
+        origin, upstream = tempfile.mkdtemp(), tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, origin)
+        self.addCleanup(shutil.rmtree, upstream)
+        self.git("init", "-q", "--bare", "-b", "main", origin)
+        self.git("init", "-q", "-b", "main")
+        self.git("remote", "add", "origin", origin)
+        self.git("clone", "-q", origin, upstream)
+        self.git("commit", "-q", "--allow-empty", "-m", "base", cwd=upstream)
+        self.git("push", "-q", "origin", "HEAD:main", cwd=upstream)
+        self.git("pull", "-q", "origin", "main")
+        return upstream
+
+    def publish(self, upstream, files):
+        for rel, text in files.items():
+            os.makedirs(os.path.dirname(os.path.join(upstream, rel)), exist_ok=True)
+            with open(os.path.join(upstream, rel), "w") as f:
+                f.write(text)
+        self.git("add", "-A", cwd=upstream)
+        self.git("commit", "-q", "-m", "memory", cwd=upstream)
+        self.git("push", "-q", "origin", "HEAD:main", cwd=upstream)
+        return self.git("rev-parse", "HEAD", cwd=upstream)
+
+    def test_core_memory_revision_in_diagnostics_and_session(self):  # #1537 AC1/AC3
+        session = os.path.join(self.tmp, "session.toml")
+        with open(session, "w") as f:
+            f.write('[runtime]\nname = "session"\n')
+        upstream = self.memory_remote()
+        sha = self.publish(upstream, {"memory/owner.md": "# Owner\n\n- First.\n"})
+        err = io.StringIO()
+        with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+            self.assertEqual(cr.main(["--project", session, "--out", os.path.join(self.tmp, "s1")]), 0)
+        self.assertEqual(err.getvalue().count("crew-render: core memory from origin/main@%s (%s)\n" % (sha, self.tmp)), 1)
+        briefs = tree(os.path.join(self.tmp, "s1"))
+        self.assertIn("runtime/coordinator.md", briefs)
+        self.assertTrue(all("- First." in t for d, t in briefs.items() if "## Core memory" in t), briefs.keys())
+        self.publish(upstream, {"memory/owner.md": "# Owner\n\n- Second.\n"})  # the checkout does not move
+        code, out, out_dir = self.render(session)
+        self.assertEqual(code, 0, out)
+        self.assertIn("- Second.", tree(out_dir)["runtime/coordinator.md"])
+        self.git("remote", "set-url", "origin", os.path.join(self.tmp, "gone.git"))
+        code, out, out_dir = self.render(session)
+        self.assertEqual(code, 1)
+        self.assertIn(os.path.join(self.tmp, "memory") + ":1: [memory-source] cannot resolve origin/main", out)
+        self.assertFalse(os.path.exists(out_dir), "a failed fetch refuses rather than using stale memory")
+
     def test_core_memory_in_every_role_brief(self):  # #1230
         tmux, grok = self.project('[runtime.options.notes.render]\nbuilder = ["note.md"]\n'), \
             os.path.join(self.tmp, "grok.toml")
@@ -1079,12 +1131,17 @@ class PackOverlay(unittest.TestCase):
         before, grok_before = tree(before), tree(grok_before)
         files = {"memory/owner.md": "# Owner\n\n- Lead with the ask.\n", "memory/roles/builder.md": "# B\n\n- Build.\n",
                  "memory/roles/coordinator.md": "# C\n\n- Route.\n"}
-        for rel, text in files.items():
-            os.makedirs(os.path.dirname(os.path.join(self.tmp, rel)), exist_ok=True)
-            with open(os.path.join(self.tmp, rel), "w") as f:
-                f.write(text)
-        code, out, got = self.render(tmux)
+        upstream = self.memory_remote()
+        self.publish(upstream, files)
+        os.makedirs(os.path.join(self.tmp, "memory", "roles"))
+        with open(os.path.join(self.tmp, "memory", "owner.md"), "w") as f:
+            f.write("# Owner\n\n- Local, unmerged edit.\n")
+        snapshot, calls = cr.crew_memory.snapshot, []
+        with patch.object(cr.crew_memory, "snapshot", lambda *a: calls.append(a) or snapshot(*a)):
+            code, out, got = self.render(tmux)
         self.assertEqual(code, 0, out)
+        self.assertEqual(len(calls), 1, "one revision per render, shared by every role output (#1537)")
+        self.assertNotIn("Local, unmerged edit", "".join(tree(got).values()))
         got = tree(got)
 
         def section(role):
@@ -1110,8 +1167,7 @@ class PackOverlay(unittest.TestCase):
         self.assertEqual({rel for rel in grok_got if grok_got[rel] != grok_before[rel]},
                          {"runtime/builder-b1.md", "runtime/coordinator-after-merge.md", "runtime/reviewer-validator.md",
                           "runtime/synthesizer.md", "runtime/researcher.md"})
-        with open(os.path.join(self.tmp, "memory/roles/builder.md"), "a") as f:
-            f.write("- Mail ben@example.org.\n")
+        self.publish(upstream, {"memory/roles/builder.md": files["memory/roles/builder.md"] + "- Mail ben@example.org.\n"})
         code, out, out_dir = self.render(tmux)
         self.assertEqual(code, 1)
         self.assertEqual(out.count("[memory-personal]"), 1, out)

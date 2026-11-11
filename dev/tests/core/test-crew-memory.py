@@ -3,11 +3,13 @@
 
 Covers: the shipped memory/ passes; a stray file and an unregistered role fail the layout; each size limit at and
 over the boundary; each personal-data kind refused with the knowledge connector route, and placeholders and dates
-passing; the section's order, a missing role file, no memory at all, and problems returned with the section; the
+passing; the section's order, a missing role file, no memory at all, and problems returned with the section; the snapshot
+read at the remote default tip past a stale, edited checkout, and its refusals (#1537); the
 CLI's exit code and output. Stdlib only. Run in CI.
 """
 import importlib.util
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -83,20 +85,79 @@ class Memory(unittest.TestCase):
         self.assertEqual(memory.lint(self.root), [])
 
     def test_section(self):
-        self.assertEqual(memory.section(self.root, "builder"), ("", []))
-        self.write(memory.OWNER, "# Owner\n\n- A.\n")
-        text, problems = memory.section(self.root, "builder")
+        self.assertEqual(memory.section({}, "builder"), ("", []))
+        texts = {memory.OWNER: "# Owner\n\n- A.\n"}
+        text, problems = memory.section(texts, "builder")
         self.assertEqual(problems, [])
         self.assertTrue(text.startswith("\n## Core memory\n\n"), text)
         self.assertTrue(text.endswith("\n### memory/owner.md\n\n# Owner\n\n- A.\n"), text)
-        self.write(memory.ROLE % "builder", "# Builder\n\n- B.\n")
-        text, _ = memory.section(self.root, "builder")
+        texts[memory.ROLE % "builder"] = "# Builder\n\n- B.\n"
+        text, _ = memory.section(texts, "builder")
         self.assertTrue(text.endswith("\n### memory/owner.md\n\n# Owner\n\n- A.\n"
                                       "\n### memory/roles/builder.md\n\n# Builder\n\n- B.\n"), text)
-        self.assertNotIn("roles/builder.md", memory.section(self.root, "reviewer")[0])
-        self.write(memory.ROLE % "builder", "- Email ben@example.org.\n")
-        _, problems = memory.section(self.root, "builder")
+        self.assertNotIn("roles/builder.md", memory.section(texts, "reviewer")[0])
+        texts[memory.ROLE % "builder"] = "- Email ben@example.org.\n"
+        _, problems = memory.section(texts, "builder")
         self.assertEqual([(rel, rule) for rel, _, rule, _ in problems], [(memory.ROLE % "builder", "memory-personal")])
+
+    def git(self, *args, cwd=None):
+        return subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t", *args], cwd=cwd or self.root,
+                              check=True, capture_output=True, text=True).stdout.strip()
+
+    def remote(self):
+        """self.root as a clone of a bare origin; returns an upstream clone that pushes reviewed memory."""
+        origin, upstream = tempfile.mkdtemp(), tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, upstream)
+        self.addCleanup(shutil.rmtree, origin)
+        self.git("init", "-q", "--bare", "-b", "main", origin)
+        self.git("init", "-q", "-b", "main")
+        self.git("remote", "add", "origin", origin)
+        self.git("clone", "-q", origin, upstream)
+        self.git("commit", "-q", "--allow-empty", "-m", "base", cwd=upstream)
+        self.git("push", "-q", "origin", "HEAD:main", cwd=upstream)
+        self.git("pull", "-q", "origin", "main")
+        return upstream
+
+    def publish(self, upstream, files):
+        for rel, text in files.items():
+            os.makedirs(os.path.dirname(os.path.join(upstream, rel)), exist_ok=True)
+            with open(os.path.join(upstream, rel), "w") as f:
+                f.write(text)
+        self.git("add", "-A", cwd=upstream)
+        self.git("commit", "-q", "-m", "memory", cwd=upstream)
+        self.git("push", "-q", "origin", "HEAD:main", cwd=upstream)
+        return self.git("rev-parse", "HEAD", cwd=upstream)
+
+    def test_snapshot_reads_the_remote_default_tip(self):  # #1537 AC1/AC2
+        upstream = self.remote()
+        texts, source, problems = memory.snapshot(self.root, "main")
+        self.assertEqual((texts, problems), ({}, []), "a revision without memory/ keeps memory optional")
+        self.assertTrue(source.startswith("origin/main@"), source)
+        sha = self.publish(upstream, {memory.OWNER: "# Owner\n\n- Reviewed.\n", memory.ROLE % "builder": "- B1.\n"})
+        self.write(memory.OWNER, "# Owner\n\n- Local, unmerged.\n")  # the checkout stays old and edited
+        local = self.git("rev-parse", "HEAD")
+        self.assertEqual(memory.snapshot(self.root, "main"), (
+            {memory.OWNER: "# Owner\n\n- Reviewed.\n", memory.ROLE % "builder": "- B1.\n"}, "origin/main@" + sha, []))
+        sha2 = self.publish(upstream, {memory.ROLE % "builder": "- B2.\n"})
+        texts, source, _ = memory.snapshot(self.root, "main")
+        self.assertEqual((texts[memory.ROLE % "builder"], source), ("- B2.\n", "origin/main@" + sha2))
+        self.assertEqual((self.git("rev-parse", "HEAD"), self.git("status", "--porcelain")), (local, "?? memory/"),
+                         "the checkout's HEAD and tree are untouched")
+
+    def test_snapshot_refuses_instead_of_falling_back(self):  # #1537 AC2
+        self.assertEqual(memory.snapshot(self.root, "main"), ({}, None, []), "no git and no memory/: nothing")
+        self.write(memory.OWNER, "# Owner\n")
+        _, source, problems = memory.snapshot(self.root, "main")
+        self.assertEqual((source, [(rel, rule) for rel, _, rule, _ in problems]), (None, [("memory", "memory-source")]))
+        self.git("init", "-q", "-b", "main")  # a checkout without origin
+        texts, source, problems = memory.snapshot(self.root, "main")
+        self.assertEqual((texts, source, [rule for _, _, rule, _ in problems]), ({}, None, ["memory-source"]))
+        shutil.rmtree(os.path.join(self.root, "memory"))
+        self.assertEqual(memory.snapshot(self.root, "main"), ({}, None, []), "no origin and no memory/: nothing")
+        self.remote()
+        texts, source, problems = memory.snapshot(self.root, "trunk")  # no such default branch on the remote
+        self.assertEqual((texts, source), ({}, None))
+        self.assertIn("cannot resolve origin/trunk", problems[0][3])
 
     def test_cli(self):
         r = subprocess.run([sys.executable, SCRIPT, "--root", self.root], capture_output=True, text=True)

@@ -110,8 +110,7 @@ class Bootstrap(doctor_tests.DoctorBase):
 
     def test_apply_records_and_reruns_without_starting_tmux(self):
         # Real git is used only for .git/info/exclude and tracked-file checks.
-        os.remove(Path(self.bindir) / "git")
-        os.symlink(shutil.which("git"), Path(self.bindir) / "git")
+        self.real_git()
         subprocess.run(["git", "init", "-q", self.project_dir], check=True)
         for _ in range(2):
             r = self.bootstrap("--yes")
@@ -128,8 +127,7 @@ class Bootstrap(doctor_tests.DoctorBase):
                                                 size_budget="ok", deploy="pending mdstack up", targets="ok", doctor="ok"))
 
     def test_gitless_home_writes_the_scratch_exclude_in_its_checkout(self):  # #1178
-        os.remove(Path(self.bindir) / "git")
-        os.symlink(shutil.which("git"), Path(self.bindir) / "git")
+        self.real_git()
         repo = Path(self.tmp) / "checkout"
         subprocess.run(["git", "init", "-q", str(repo)], check=True)
         self.project_path.write_text(self.project_path.read_text() + 'checkout = "../checkout"\n')
@@ -175,6 +173,15 @@ class Bootstrap(doctor_tests.DoctorBase):
         self.real_git()
         subprocess.run(["git", "init", "-q", self.project_dir], check=True)
         subprocess.run(["git", "-C", self.project_dir, "remote", "add", "origin", remote], check=True)
+        origin = Path(self.tmp) / "origin.git"  # the rendered memory snapshot reads this, never the network (#1537)
+        subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(origin)], check=True)
+        tree = subprocess.check_output(["git", "-C", str(origin), "mktree"], input=b"").decode().strip()
+        base = subprocess.check_output(["git", "-C", str(origin), "-c", "user.name=t", "-c", "user.email=t",
+                                        "commit-tree", "-m", "base", tree]).decode().strip()
+        subprocess.run(["git", "-C", str(origin), "update-ref", "refs/heads/main", base], check=True)
+        for url in ("git@github.com:acme/widgets.git", "https://github.com/acme/widgets.git",
+                    "ssh://git@github.com/acme/widgets", remote):
+            subprocess.run(["git", "-C", self.project_dir, "config", "--add", "url.%s.insteadOf" % origin, url], check=True)
         self.project_path.unlink()
 
     def test_proposes_from_local_config_without_writes_or_network(self):
@@ -550,6 +557,9 @@ class Bootstrap(doctor_tests.DoctorBase):
     def real_git(self):
         os.remove(Path(self.bindir) / "git")
         os.symlink(shutil.which("git"), Path(self.bindir) / "git")
+        upload = Path(self.bindir) / "git-upload-pack"  # render resolves the checkout's origin (#1537)
+        if not upload.exists():
+            self.tool("git-upload-pack", 'exec "%s" upload-pack "$@"' % shutil.which("git"))
 
     def test_clone_requires_exact_stable_tag_or_explicit_dev(self):
         self.own_bundle()
@@ -943,7 +953,8 @@ class ReleaseSources(Bootstrap):
     def git_release(self, tag="v2.2.0"):
         """A local bare repository whose commit's stub release-bundle.py emits the fixture archive; tag at it."""
         destination, sha = self.mirror_release(tag)
-        os.symlink(shutil.which("git-upload-pack"), Path(self.bindir) / "git-upload-pack")
+        if not (Path(self.bindir) / "git-upload-pack").exists():
+            os.symlink(shutil.which("git-upload-pack"), Path(self.bindir) / "git-upload-pack")
         work, remote = Path(self.tmp) / "git-work", Path(self.tmp) / "release.git"
         stub = "import shutil, sys\nshutil.copy(%r, sys.argv[sys.argv.index('--out') + 1])\n" % str(
             Path(self.tmp) / "assets" / ("mdstack-%s.tar.gz" % tag[1:]))
