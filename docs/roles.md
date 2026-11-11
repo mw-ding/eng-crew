@@ -183,10 +183,9 @@ every role's prose: outcomes first, plain words, exact terms only in markers.
 
 The fixed status set is `pass`, `changes`, `landed`, `escalated` and
 `blocked`, each with a profile emoji (`[report.status]`, defaults ✅ 🔁 🚢 ⛔
-🚧; [profile](profile.md#report)). Role briefs carry it in one short line.
-Briefs at their size budget point here instead: the researcher's (its report
-form already runs headline, TL;DR, findings and follow-ups) and the tmux and
-Grok Bot synthesizers'. With `report.emoji = false` the status words and signatures
+🚧; [profile](profile.md#report)). Every role brief carries the resolved set
+in one short line; synthesizer briefs name the merge statuses (landed or
+blocked) from it. With `report.emoji = false` the status words and signatures
 render without emoji. Apart from the protocol's 🔴 / 🟡 / 🟢 finding ranks,
 emoji appear only in the headline status and the signature, never in
 findings, evidence or markers.

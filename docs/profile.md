@@ -516,7 +516,7 @@ so on). Name, title and emoji resolve from the profile; `report.emoji = false`
 drops the emoji ([`[report]`](#report)). The team is a
 [team file](configuration/team-files.md)'s resolved `team.name`, else its file
 name, else `identities.team`; a legacy single-repo install without
-`identities.team` omits the ` · <team>` part (#1291). Harness and model are
+`identities.team` omits the `· <team>` part (#1291). Harness and model are
 filled at run time by the authoring session, including fallback. Engine
 attribution still records effort; signatures change no marker or gate.
 
