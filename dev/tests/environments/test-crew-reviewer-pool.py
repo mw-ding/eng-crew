@@ -84,6 +84,39 @@ class ReviewerPool(route_tests.Route):
             print("completion: review reclaimed, retained output, fresh validation")
             print("validation completed: both workers reclaimed; lead stays; pending=0")
 
+    def test_malformed_work_ref_is_recorded_and_the_queue_drains(self):  # #1020
+        self.put("hold-note.md", "# hold #1001\n")
+        self.put("leads/reviewer-events/list.json", "[1]")
+        for bad in ("hold-note.md", "leads/reviewer-events/list.json", "leads/reviewer-events/gone.json"):
+            self.handoff("work", [os.path.join(self.state, bad)])
+        bad_ids = [m["id"] for m in self.messages()]
+        self.queue(self.event())
+        self.route()
+        self.pool()
+        self.assertIn("vera-12-r1-review", self.names())
+        self.assertEqual(self.messages(), [])
+        with open(os.path.join(self.state, "status", "vera-lead.status")) as f:
+            blocked = [l.split()[1:3] for l in f if l.startswith("blocked: ")]
+        self.assertEqual(blocked, [[i, "invalid-work-ref"] for i in bad_ids])
+
+    def test_deferred_valid_work_stays_replayable_beside_a_malformed_ref(self):  # #1020
+        self.gate("max_load = 4")
+        result = self.spawn("reviewer", "--pr", "12", "--round", "3")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.put("hold-note.md", "# hold #1001\n")
+        self.handoff("work", [os.path.join(self.state, "hold-note.md")])
+        self.queue(self.event())
+        self.route()
+        self.pool()  # first decision: T starts at the busy count, 1
+        self.assertNotIn("vera-12-r1-review", self.names())
+        self.target(4)
+        self.pool(load=4)
+        self.assertNotIn("vera-12-r1-review", self.names())
+        self.assertEqual([m["kind"] for m in self.messages()], ["work"])
+        self.pool()
+        self.assertIn("vera-12-r1-review", self.names())
+        self.assertEqual(self.messages(), [])
+
     def test_done_line_with_trailing_note_still_routes(self):  # #1343
         self.handoff("review", ["#12", self.sha, "1"])
         self.pool()
