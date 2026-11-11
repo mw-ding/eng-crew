@@ -2,7 +2,8 @@
 
 Covers, against a temp git repo: unique worktree, next free band index, identity by
 `CREW_IDENTITY` only, reviewer engine != builder engine (an Engine: line outside the trailer block, the PR-body
-builder marker or a builder run record names it; unknown refuses, #442), the
+builder marker or a builder run record names it; unknown refuses, #442), a private repo skips a contributor-tier engine
+for the next eligible one (#1074), the
 synthesizer engine ignores the builder engine, review and validate claims and worktrees per
 round and pass coexist, failed start cleaned up, a dead pane reads `dead` and fails fast, a
 Claude Code pane whose command reads as its version (`2.1.314`, a symlinked install) starts on
@@ -566,6 +567,24 @@ class Spawn(SpawnBase):
         r = self.spawn("reviewer", "--pr", "10")
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         self.assertIn("engine in engines.roles.reviewer.order differs from the builder's ['codex']", r.stdout)
+
+    def test_private_repo_skips_a_contributor_tier_engine(self):  # #1074: route to the next eligible engine
+        with open(self.project, "a") as f:
+            f.write('\n[engines.roles]\nreviewer = { order = ["muse/muse-1", "codex/gpt-6.1-sol"] }\n')
+        self.pr(9, "claude-code opus-5.5 default")
+        r = self.spawn("reviewer", "--pr", "9")  # the fake gh answers no repository JSON: unverified, so private
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual((self.record("vera-9-r1-review")["engine"], self.record("vera-9-r1-review")["model"]),
+                         ("codex", "gpt-6.1-sol"))
+        self.assertIn("codex gpt-6.1-sol medium", r.stdout)
+        self.write_profile()
+        with open(self.project, "a") as f:
+            f.write('\n[engines.roles]\nreviewer = { order = ["muse/muse-1"] }\n')
+        self.pr(10, "claude-code opus-5.5 default")
+        r = self.spawn("reviewer", "--pr", "10")  # none left: refused before any claim or window
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("contributor-tier engine needs a verified public repository", r.stdout)
+        self.assertFalse(os.path.exists(os.path.join(self.state, "runs", "vera-10-r1-review.json")))
 
     def test_dead_pane_reads_dead_not_its_launch_word(self):  # #139 F20
         self.env["FAKE_TMUX_PANE"] = "dead"

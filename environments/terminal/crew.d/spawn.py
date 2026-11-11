@@ -29,8 +29,8 @@ import re
 import shlex
 import time
 from crew_shared import (
-    BANDS, brief_src, checkout, commands, copy_claim, ENGINE_CMD, fetch, git, harness, identity, kill_run, LAUNCH, NAMES, over_cap, PASSES, POINTER,
-    load, profile, queue_lock, remote_run, role_notes, ROLES, runs, show_icon, tmux, wait_harness, window_env, open_trains,
+    BANDS, brief_src, checkout, commands, copy_claim, ENGINE_CMD, fetch, git, harness, harnesses, identity, kill_run, LAUNCH, NAMES, over_cap, PASSES, POINTER,
+    load, profile, public_repo, queue_lock, remote_run, role_notes, ROLES, runs, show_icon, tmux, wait_harness, window_env, open_trains,
     synthesizer_work)
 
 placement = load("crew_placement", "environments/terminal/crew.d/_placement.py")
@@ -46,14 +46,17 @@ def reflection_of(args):
 
 
 def engine_order(values, tier, avoid=None, role=None):
-    """Interactive engines in the role's override order, else the tier's (#597); a reviewer avoids every actual
-    builder engine of the PR (roles.md Reviewer engine selection)."""
+    """Eligible interactive engines in the role's override order, else the tier's (#597): a reviewer avoids every
+    actual builder engine of the PR (roles.md Reviewer engine selection), a restart every exhausted engine, and a
+    contributor-tier engine needs a verified public repository (#1074); the launch policy still refuses it."""
     key = "engines.roles.%s.order" % role if "engines.roles.%s.order" % role in values else "engines.%s.order" % tier
     order = [e.split("/", 1) for e in values[key]]
     order = [e for e in order if e[0] in ENGINE_CMD and e[0] not in (avoid or ())]
+    if any(getattr(harnesses.ADAPTERS[e[0]], "CONTRIBUTOR_TIER", False) for e in order) and not public_repo(values):
+        order = [e for e in order if not getattr(harnesses.ADAPTERS[e[0]], "CONTRIBUTOR_TIER", False)]
     if not order:
-        raise RuntimeError("crew: no %s engine in %s differs from the builder's %s" %
-                           ("/".join(ENGINE_CMD), key, sorted(avoid or ())))
+        raise RuntimeError("crew: no eligible %s engine in %s differs from the builder's %s (a contributor-tier "
+                           "engine needs a verified public repository)" % ("/".join(ENGINE_CMD), key, sorted(avoid or ())))
     return order
 
 
