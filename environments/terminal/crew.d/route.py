@@ -22,7 +22,9 @@ or self-gate at head, and approved merge-ups become durable `work` events in its
 wakes (a merge-up head's `ci-passed` counts its approved previous head, and a head-pinned coordinator `merge-ok`
 steer counts as the §7 approval override); a superseded one is dropped, and an
 unapproved `ci-passed` is consumed unless held CI refs for that PR
-(`ci/<n>-*.json`) still wait on it. Its waiting gate-status blocks are consumed like a synthesizer's; its other
+(`ci/<n>-*.json`) still wait on it. Before forwarding, a passing verdict at head from this runtime's reviewer sets
+`crew:approved` and drops a superseded `crew:changes`/`crew:in-review`, read back (#1464).
+Its waiting gate-status blocks are consumed like a synthesizer's; its other
 `blocked:` lines (owner merge-ok, sensitive, holds, `main red`) stay queued for the coordinator; a clean
 `train-report` (all landed, `dropped=none stop=none`) is consumed. After its land's close-out, route queues the
 away-only Slack `land` message itself and hands `crew:ready` dependents to the builder lead; only dependents that are
@@ -124,6 +126,29 @@ def merge_up_delta(pr, head):
         if re.search(r"(?<!no )\b(?:resolved|fixed|resolving)\b[^\n]*\bconflicts?\b|(?<!no )(?<!without a )\bdiffering patch\b", body, re.I):
             return True
     return False
+
+
+def reconcile_approval(values, repo, pr, own):
+    """This runtime's reviewer's passing verdict at head supersedes an earlier changes round (#1464): set
+    crew:approved, drop crew:changes and crew:in-review, and read the tags back before land work is forwarded. An open
+    rereview at head or a later formal changes request leaves the tags for the gate."""
+    head = pr["headRefOid"]
+    if commands()["poll"].pr_snapshot(own)["verdict"] != "pass" or open_rereview(own, head):  # a foreign verdict
+        return  # never settles a rereview (#1290)
+    last = max(i for i, r in enumerate(own["reviews"]) for m in markers(r["body"])
+               if m.get("role") == "reviewer-validator" and m.get("pass") == "verdict" and m.get("sha") == head)
+    if any(r.get("state") == "CHANGES_REQUESTED" and (r.get("author") or {}).get("login") ==
+           values["identities.reviewer.gh_user"] for r in own["reviews"][last + 1:]):
+        return
+    stale = {"crew:changes", "crew:in-review"}
+    labels = {label["name"] for label in pr["labels"]}
+    if "crew:approved" in labels and not labels & stale:
+        return
+    gh("pr", "edit", str(pr["number"]), "-R", repo, "--add-label", "crew:approved",
+       *[a for label in sorted(labels & stale) for a in ("--remove-label", label)])
+    back = {label["name"] for label in gh("pr", "view", str(pr["number"]), "-R", repo, "--json", "labels")["labels"]}
+    if "crew:approved" not in back or back & stale:
+        raise RuntimeError("crew: #%d tag readback after approval: %s" % (pr["number"], ",".join(sorted(back))))
 
 
 def approved_merge_up(pr, repo, default_branch):
@@ -484,6 +509,7 @@ def route_record(args, values, state, w):
                 not approved_merge_up(own, repo, values["repo.default_branch"]) and \
                 not commands()["poll"].express_lane(args, values, pr):  # poll gates an express ci-passed already
             return not glob.glob(os.path.join(state, "ci", "%d-*.json" % n))  # held CI refs: the coordinator drops them
+        reconcile_approval(values, repo, pr, own)
         return lead.event(args, "synthesizer", w) == 0
     delta = merge_up_delta(pr, head)
     if event == "merge-up" and (open_rereview(pr, head) or delta) and lead.enabled(state, "reviewer") and not getattr(args, "reviewer_lead", False):
