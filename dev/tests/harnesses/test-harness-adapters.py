@@ -5,7 +5,8 @@ harness is then an engine and coordinator choice, `mdstack up` launches and resu
 launches a worker with it, `mdstack upgrade` reloads it, the probe, watcher wake, dialog, transient-error and composer
 rules use its declarations, bootstrap installs its pointer, and `mdstack doctor` and remote readiness check its CLI.
 The shipped tables keep their order, each shipped adapter's title, CLI, login check and screen rules match its spec
-section (#1443), and the contributor-tier check stays in the core. Run in CI.
+section (#1443), and the contributor-tier check stays in the core; Claude's transient text matches connection loss and the gateway capacity
+line, never tool output or quoted text (#1633). Run in CI.
 """
 from argparse import ArgumentParser, Namespace
 import importlib.util
@@ -119,6 +120,13 @@ class ShippedTables(unittest.TestCase):
         self.assertRegex('■ {"type":"error","status":503,"message":"x"}', codex.FATAL)
         self.assertNotRegex('■ {"type":"error","status":503}', claude.FATAL)
         self.assertNotRegex('⎿  API Error: 400 {"type":"error"}', codex.FATAL)
+        for line in ["  ⎿  API Error (529 …) · Retrying in 2 seconds…", "  ⎿  API Error: Connection lost mid-response",
+                     "429 The shared model capacity behind AI Gateway is temporarily exhausted upstream",
+                     "  ⎿  API Error: 429 The shared model capacity behind AI Gateway is temporarily exhausted upstream"]:
+            self.assertRegex(line, claude.TRANSIENT)  # #1633: connection loss and the gateway capacity line
+        for line in ["     ⎿  API Error: Connection lost mid-response", "> 429 The shared model capacity is exhausted",
+                     "  ⎿  title: API Error: Connection lost mid-response", "• 429 capacity exhausted, quoted"]:
+            self.assertNotRegex(line, claude.TRANSIENT)  # tool output, a quoted prompt or issue text (#1366)
 
     def test_contributor_tier_is_core_policy(self):
         """Muse declares only CONTRIBUTOR_TIER; the core reads visibility and refuses before the adapter runs."""

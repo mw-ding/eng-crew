@@ -25,7 +25,9 @@ skipped, disabled, queued and failed spawns, never a wake, and closed milestones
 swept at once once the queued sweep was dequeued (#1175), and the timer
 running after the scan's `--source` commands, so a resumed crew's overdue slot reads the queue that scan's poll wrote
 (#1098); a run whose pane printed nothing for `idle_stall` waking stale with liveness `idle` despite a fresh claim,
-status file and live child, once per silence and never after `done:` (#1283); the reflection timer (#1521): disabled
+status file and live child, once per silence and never after `done:` (#1283); an alive builder with acked unfinished work and a claim
+silent past 900 s waking stale with liveness `claim` despite a fresh supervisor heartbeat, once per silence, never
+while mid-turn, held, after `done:` or without an ack (#1633); the reflection timer (#1521): disabled
 never reads or spawns, a weekly window queued or started never counts as complete until its posted report, a missed
 week caught up once and coalesced with a milestone close, a failed start retried under the same run ID with no second
 queue entry, and a run that ended without a report rerun, never over an unreadable log. Run in CI.
@@ -83,6 +85,38 @@ class Watch(LivenessBase):
                                            idle_stall=0), [])  # off
         self.put("status/ben-7.status", "done: #7 #12 %s\n" % HEAD)
         self.assertEqual([w["reason"] for w in self.scan(NOW)], ["status"])  # after done: it waits for its inbox
+
+    def test_silent_claim_with_acked_work_wakes_its_lead_despite_supervisor_heartbeat(self):  # #1633
+        claim = os.path.join(self.state, "claims", "builder-issue7")
+        self.put("claims/builder-issue7", "heartbeat: 2033-05-18T03:18:20Z\n")
+        os.utime(claim, (NOW - 900, NOW - 900))
+        self.put("status/ben-7.status", "ack: 20331118T031000Z-abc123\nheartbeat: x\n")
+        status = os.path.join(self.state, "status", "ben-7.status")
+        os.utime(status, (NOW - 10, NOW - 10))  # the supervisor heartbeat keeps the status file fresh
+        idle = "  ⎿  API Error: Connection lost mid-response\n\n❯ \n"
+        self.set_pane(10, activity=str(NOW - 60), screen=idle)
+        seen = {"offsets": {"ben-7": os.path.getsize(status)}, "keys": {}}
+        self.assertEqual(self.scan(NOW, dict(seen, keys={})), [])  # 900 s is not past the limit
+        wakes = self.scan(NOW + 1, json.loads(json.dumps(seen)))
+        self.assertEqual([(w["reason"], w["window"], w["liveness"], w["action"], w["silent"]) for w in wakes],
+                         [("stale", "ben-7", "claim", "escalate", 901)])
+        self.assertEqual(self.scan(NOW + 60, self.seen), [])  # once per claim silence
+        for name, screen_text, lines in [
+                ("busy", "✻ Running tests… (2m 3s · esc to interrupt)\n", "ack: x\n"),
+                ("done", idle, "ack: x\ndone: #7 #12 %s\n" % HEAD),
+                ("blocked", idle, "ack: x\nblocked: #7 hold\n"),
+                ("no ack", idle, "")]:
+            with self.subTest(name):
+                self.put("status/ben-7.status", lines + "heartbeat: x\n")
+                os.utime(status, (NOW - 10, NOW - 10))
+                self.set_pane(10, activity=str(NOW - 60), screen=screen_text)
+                state = {"offsets": {"ben-7": os.path.getsize(status)}, "keys": {}}
+                self.assertEqual(self.scan(NOW + 1, state), [])
+        self.put("status/ben-7.status", "ack: x\nheartbeat: x\n")
+        os.utime(status, (NOW - 10, NOW - 10))
+        self.set_pane(10, activity=str(NOW - 60), screen=idle)
+        self.put("poll-state.json", json.dumps({"held": ["#7"]}))
+        self.assertEqual(self.scan(NOW + 1, {"offsets": {"ben-7": os.path.getsize(status)}, "keys": {}}), [])
 
     def observations(self):
         path = os.path.join(self.state, "metrics", "observations.jsonl")

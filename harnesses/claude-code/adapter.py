@@ -22,7 +22,9 @@ PROMPTS = [(r"Do you want to .+\?", r"Esc to cancel"),
            (r"Accessing workspace:$", r"Enter to confirm · Esc to cancel")]
 FATAL = r'⎿\s+API Error: [45]\d\d\b.*"type": ?"error"'  # ⎿  API Error: 400 {"type":"error",...}
 # Its own error line only, at the result gutter's indent: never tool output, file names or quoted text (#1366).
-TRANSIENT = re.compile(r"^ {0,2}⎿\s+API Error\W{1,3}(?:429|5\d\d)\b")  # ⎿  API Error (529 …) · Retrying
+# ⎿  API Error (529 …) · Retrying, ⎿  API Error: Connection lost mid-response, and the gateway's capacity line (#1633).
+TRANSIENT = re.compile(r"^ {0,2}(?:⎿\s+API Error\W{1,3}(?:(?:429|5\d\d)\b|Connection lost\b)"
+                       r"|(?:⎿\s+)?429 .*\bcapacity\b.*\bexhausted\b)")
 COMPOSER = "❯"
 BUSY = re.compile(r"esc to interrupt|^[✽✻✶✢·*] .+… \([^\n]+\)", re.M)  # a lowercased screen mid-turn
 INSTALL_ROLES = ("coordinator", "builder", "reviewer", "synthesizer")
