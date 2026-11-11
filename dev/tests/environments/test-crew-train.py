@@ -195,6 +195,10 @@ class TrainBase(Base):
         with open(os.path.join(self.gh_dir, "issue-%d.json" % n), "w") as f:
             json.dump({"state": state}, f)
 
+    def require(self, *names):
+        with open(self.project, "a") as f:
+            f.write("\n[ci]\nrequired_checks = %s\n" % json.dumps(list(names)))
+
     def checks(self, *seq):
         with open(os.path.join(self.gh_dir, "checks.json"), "w") as f:
             json.dump(list(seq), f)
@@ -384,6 +388,29 @@ class Build(TrainBase):
         create, checks = self.gh_calls("pr", "create")[0], self.gh_calls("pr", "checks")
         self.assertEqual(len(checks), 3)
         self.assertGreaterEqual(checks[0]["t"] - create["t"], 0.5)
+
+    def test_ci_wait_holds_until_every_expected_check_registers(self):  # #1536
+        self.require("ci", "lint", "repo-guard")
+        self.pr(1, {"b.txt": "one\n"})
+        guard = {"name": "repo-guard", "bucket": "pass", "link": LINK + "/job/9"}
+        self.checks(PASS, PASS + [guard])
+        r = self.train("build", "1")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("ci=pass", r.stdout)
+        self.assertEqual(len(self.gh_calls("pr", "checks")), 2)
+
+    def test_ci_wait_missing_expected_check_times_out_never_green(self):  # #1536
+        self.require("ci", "lint", "repo-guard")
+        self.pr(1, {"b.txt": "one\n"})
+        self.checks(PASS)
+        r = self.train("build", "1", "--timeout", "0.2")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("ci=timeout", r.stdout)
+        self.assertNotIn("ci=pass", r.stdout)
+        self.checks(FAIL)  # a red check decides at once, missing names or not
+        self.pr(2, {"c.txt": "two\n"})
+        r = self.train("build", "2", "--timeout", "30")
+        self.assertIn("ci=fail", r.stdout)
 
     def test_red_ci_or_local_failure_lands_nothing(self):
         self.pr(1, {"b.txt": "one\n"})
@@ -745,6 +772,24 @@ class Precheck(TrainBase):
         self.assertIn('gate pr=2 sha=%s name=train-merge status=pass' % self.view(2)[0], r.stdout)
         self.assertFalse(os.path.exists(os.path.join(self.state, "trains")))
         self.assertEqual(self.gh_calls("pr", "create"), [])
+
+    def test_check_blocks_ci_missing_an_expected_check(self):  # #1536
+        self.require("markdownlint", "repo-guard")
+        self.pr(1, {"one.txt": "one"})
+        path, view = self.complete_view(1)
+        head = view["headRefOid"]
+        view["statusCheckRollup"] = [{"__typename": "CheckRun", "name": "repo-guard", "status": "COMPLETED",
+                                      "conclusion": "SUCCESS"}]
+        with open(path, "w") as f:
+            json.dump(view, f)
+        r = self.train("check", "1")
+        self.assertEqual(r.returncode, 1)
+        self.assertIn('gate pr=1 sha=%s name=ci status=blocked reason="checks pending; missing markdownlint"' % head,
+                      r.stdout)
+        view["statusCheckRollup"].append(dict(view["statusCheckRollup"][0], name="markdownlint"))
+        with open(path, "w") as f:
+            json.dump(view, f)
+        self.assertIn("gate pr=1 sha=%s name=ci status=pass" % head, self.train("check", "1").stdout)
 
     def test_failed_validate_marker_cannot_pass_precheck(self):
         self.pr(1, {"one.txt": "one"})
