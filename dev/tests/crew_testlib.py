@@ -183,6 +183,15 @@ class Base(unittest.TestCase):
             self.env.pop(name, None)
         self.env["MDSTACK_COPY_CLAIMS"] = os.path.join(self.tmp, "copy-claims")  # never the real host store (#391)
         self.env["CREW_WATCHER"] = "off"  # mdstack up/upgrade start no detached watcher unless a test asks (#1346)
+        # Stub engine CLIs, last on PATH: spawn and lead start pick only an engine whose executable is installed
+        # (#631), so the suite needs none installed; an installed real CLI, or a test's own in bin/, comes first.
+        self.engines = os.path.join(self.tmp, "engines")
+        os.makedirs(self.engines)
+        for cli in ENGINE_STUBS:
+            with open(os.path.join(self.engines, cli), "w") as f:
+                f.write("#!/bin/sh\nexit 0\n")
+            os.chmod(os.path.join(self.engines, cli), 0o755)
+        self.env["PATH"] += os.pathsep + self.engines
         self.project_dir = os.path.join(self.tmp, "project")
         os.makedirs(self.project_dir)
         self.state = os.path.join(self.tmp, "state", "acme__widgets")
@@ -230,7 +239,7 @@ class Base(unittest.TestCase):
 
 
 SECRET = "ghp_" + "S3cr3tT0kenValue0000000000000000000000"  # built at run time; never in a file
-ENGINE_STUBS = ("claude", "codex", "pi", "muse", "opencode")  # not cursor-agent: eng workers never use Cursor
+ENGINE_STUBS = ("claude", "codex", "pi", "muse", "opencode", "cursor-agent")
 
 
 class SpawnBase(Base):
@@ -259,15 +268,6 @@ class SpawnBase(Base):
                     "'closingIssuesReferences': [{'number': 7}], 'body': os.environ.get('FAKE_PR_BODY', '')}))\n"
                     "else:\n open(%r, 'a').write('called\\n')\n print(%r)\n" % (os.path.join(self.tmp, "gh.log"), SECRET))
         os.chmod(os.path.join(bindir, "gh"), 0o755)
-        # Stub engine CLIs, last on PATH: spawn picks only an engine whose executable is installed (#631), so the
-        # suite needs none installed; an installed real CLI still comes first, as before.
-        self.engines = os.path.join(self.tmp, "engines")
-        os.makedirs(self.engines)
-        for cli in ENGINE_STUBS:
-            with open(os.path.join(self.engines, cli), "w") as f:
-                f.write("#!/bin/sh\nexit 0\n")
-            os.chmod(os.path.join(self.engines, cli), 0o755)
-        self.env["PATH"] += os.pathsep + self.engines
         self.env["GH_TOKEN"] = SECRET
         self.assertEqual(self.up().returncode, 0)
 
