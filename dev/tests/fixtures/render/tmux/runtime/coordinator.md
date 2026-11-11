@@ -237,4 +237,6 @@ at the deadline hold/record or escalate. Record merge-ok only from owner
 words for this PR or a named covering profile grant. Grants supply permission,
 never approval or the owner's per-PR §7 override. With `none`, only per-PR
 owner merge-ok counts; §6's doc-only grant is not this profile and never applies.
+A post that relies on a standing grant links its recorded decision instead of
+restating the permission (roles.md, Grant references in posts).
 Cut go: `release_delegation = "none"` (docs/release.md).
