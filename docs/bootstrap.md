@@ -110,6 +110,17 @@ a single-repo `config.toml`, which is a team file with one repo. Bootstrap still
 proposes and records a per-repo `config.toml` only. Moving two of them into one
 team file follows the [migration note](profile.md#migration-two-configtoml-files-to-one-team-file).
 
+A `<team file>#<repo>` reference stays whole through resolve, doctor, render,
+`--version`'s release source and `install.json`'s `project`; bootstrap reads
+and copies the team file itself as `config.toml`. It never proposes a profile
+for a reference, so a missing file or repo fails in the resolver. Repo-local
+targets (harness pointers, `.git/info/exclude` lines, the spec scaffold) go
+in that repo's clone, its `paths.checkout`, not the team file's directory;
+`root = "home"` pointers still go under `$HOME`. The team's one
+`paths.mdstack` may name any of its repos' install links under the team state
+root, so bootstrap first the repo it names; every repo still gets its own
+link (#1344).
+
 After resolve, a `paths.*` key that a step uses must not be a placeholder
 (the [crew rule](runtimes/tmux.md#usage), #265), and the project file is
 copied to the state dir (runbook Step 6). Whether the product repo tracks
