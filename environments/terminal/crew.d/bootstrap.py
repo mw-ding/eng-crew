@@ -586,6 +586,28 @@ def bootstrap(args):
             exclude = Path(git(str(repo), "rev-parse", "--path-format=absolute", "--git-path", "info/exclude"))
             if exclude.is_symlink() or exclude.parent.is_symlink():
                 raise ValueError("symlink exclude or parent: " + str(exclude))
+        bundle_sha = os.environ.get("CREW_BOOTSTRAP_BUNDLE_SHA256")
+        if not bundle_sha and previous.get("source") == str(ROOT):
+            bundle_sha = previous.get("bundle_sha256")
+        record = dict(tag=tag, source=str(ROOT), project=reference, bundle_sha256=bundle_sha,
+                      runtime=values["runtime.name"],
+                      targets={**{p: sha for p, sha in old.items() if Path(p) not in stale},
+                               **{str(p): hashlib.sha256(text.encode()).hexdigest()
+                                  for p, text in targets.items()}}, harnesses=harnesses,
+                      launches=launches, pending_human_steps=pending, status="installed")
+        owned = {**{path: entry for path, entry in previous.get("harness_pointers", {}).items()
+                    if entry["harness"] not in harnesses}, **owned}
+        if owned:
+            record["harness_pointers"] = owned
+        transport = os.environ.get("CREW_BOOTSTRAP_TRANSPORT")
+        transport = json.loads(transport) if transport else (
+            previous.get("transport") if previous.get("source") == str(ROOT) else None)
+        if transport:
+            record["transport"] = transport
+        if pack:
+            record["pack"] = pack
+        if "smoke" in previous:
+            record["smoke"] = previous["smoke"]
         for path, text in {**targets, **rendered}.items():
             before = path.read_text() if path.exists() else ""
             print("".join(difflib.unified_diff(before.splitlines(True), text.splitlines(True),
@@ -645,27 +667,6 @@ def bootstrap(args):
         if link.is_symlink():
             link.unlink()
         link.symlink_to(ROOT, target_is_directory=True)
-        bundle_sha = os.environ.get("CREW_BOOTSTRAP_BUNDLE_SHA256")
-        if not bundle_sha and previous.get("source") == str(ROOT):
-            bundle_sha = previous.get("bundle_sha256")
-        record = dict(tag=tag, source=str(ROOT), project=reference, bundle_sha256=bundle_sha,
-                      runtime=values["runtime.name"],
-                      targets={**{p: sha for p, sha in old.items() if Path(p) not in stale},
-                               **{str(p): digest(p) for p in targets}}, harnesses=harnesses,
-                      launches=launches, pending_human_steps=pending, status="installed")
-        owned = {**{path: entry for path, entry in previous.get("harness_pointers", {}).items()
-                    if entry["harness"] not in harnesses}, **owned}
-        if owned:
-            record["harness_pointers"] = owned
-        transport = os.environ.get("CREW_BOOTSTRAP_TRANSPORT")
-        transport = json.loads(transport) if transport else (
-            previous.get("transport") if previous.get("source") == str(ROOT) else None)
-        if transport:
-            record["transport"] = transport
-        if pack:
-            record["pack"] = pack
-        if "smoke" in previous:
-            record["smoke"] = previous["smoke"]
         manifest.write_text(json.dumps(record, indent=2) + "\n")
     if tmux and not harnesses and getattr(args, "cmd", "bootstrap") == "upgrade":
         for path, text in rendered.items():
