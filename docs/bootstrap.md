@@ -118,8 +118,9 @@ targets (harness pointers, `.git/info/exclude` lines, the spec scaffold) go
 in that repo's clone, its `paths.checkout`, not the team file's directory;
 `root = "home"` pointers still go under `$HOME`. The team's one
 `paths.mdstack` may name any of its repos' install links under the team state
-root, so bootstrap first the repo it names; every repo still gets its own
-link (#1344).
+root, and every repo still gets its own link. Either repo may install first:
+doctor only warns about the named link until the repo that owns it has an
+install, then fails while it is missing (#1344).
 
 After resolve, a `paths.*` key that a step uses must not be a placeholder
 (the [crew rule](runtimes/tmux.md#usage), #265), and the project file is

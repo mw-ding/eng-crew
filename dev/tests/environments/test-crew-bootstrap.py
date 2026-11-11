@@ -1077,6 +1077,24 @@ class TeamReference(ReleaseSources):
                             str(self.manifest)], capture_output=True, text=True, env=self.env)
         self.assertEqual(r.stdout.strip(), self.project, r.stderr)
 
+    def test_the_repo_paths_mdstack_does_not_name_installs_first(self):  # AC1, review R1
+        self.select("gadgets")
+        r = self.bootstrap("--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("warn  mdstack link", r.stdout)
+        record = json.loads(self.manifest.read_text())
+        self.assertEqual((record["project"], record["status"]), (self.project, "installed"))
+        self.assertNotIn("fail", record["self_test"].values())
+        self.assertEqual((Path(self.state) / "mdstack").resolve(), self.bundle.resolve())
+        self.select("widgets")
+        r = self.bootstrap("--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(json.loads(self.manifest.read_text())["status"], "installed")
+        self.select("gadgets")
+        r = self.bootstrap("--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("ok    mdstack link", r.stdout)
+
     def test_uninstall_removes_pointers_and_excludes_from_the_selected_clone(self):  # AC2
         self.assertEqual(self.bootstrap("--harness", "claude-code", "--yes").returncode, 0)
         pointers = [p for p in json.loads(self.manifest.read_text())["targets"] if ".claude" in p]

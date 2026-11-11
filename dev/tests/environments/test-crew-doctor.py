@@ -12,7 +12,8 @@ written and read through the same read-item binding as the guard, #937), and the
 (off is ok; triage.enabled warns that no Grok timer is installed; no row on tmux), the pack row (the install's
 recorded pack name and version; no row without one), the install source row (a recorded non-github transport; no row
 without one), no latest-release query under a non-github source, the checkout row (a clone of another repo fails,
-no or a path origin warns, https and ssh URLs of [repo] pass), the install and mdstack link rows (#1323), and when gh
+no or a path origin warns, https and ssh URLs of [repo] pass), the install and mdstack link rows (#1323; a sibling repo's link fails only once it is installed, #1344),
+and when gh
 is needed: a github-bound concern or the github release source (#1123), and the sandbox row (#1544). Run in CI.
 """
 import importlib.machinery
@@ -262,6 +263,19 @@ class Doctor(DoctorBase):
         r = self.doctor()
         self.assertEqual(r.returncode, 0, r.stdout)
         self.assertEqual(self.rows(r)["mdstack link"], "ok", r.stdout)
+        # A team's shared paths.mdstack naming a sibling repo's link fails only once that repo is installed (#1344).
+        sibling = os.path.join(os.path.dirname(self.state), "acme__gadgets", "mdstack")
+        with open(self.project) as f:
+            text = f.read()
+        with open(self.project, "w") as f:
+            f.write(text.replace('mdstack = "%s"' % link, 'mdstack = "%s"' % sibling))
+        r = self.doctor()
+        self.assertEqual((r.returncode, self.rows(r)["mdstack link"]), (0, "warn"), r.stdout)
+        os.makedirs(os.path.dirname(sibling))
+        with open(os.path.join(os.path.dirname(sibling), "install.json"), "w") as f:
+            json.dump({"tag": "v2.1.0"}, f)
+        r = self.doctor()
+        self.assertEqual((r.returncode, self.rows(r)["mdstack link"]), (1, "fail"), r.stdout)
 
     def test_invalid_milestone_is_rejected(self):
         r = self.doctor("--fix", "--milestone", "release")
