@@ -567,8 +567,9 @@ mdstack connect [--project <config.toml>] <alias> [<session>] [-- <transport arg
 | `et` | `et <host>` | `et <host> -c 'tmux new-session -A -s <session>'` | Refused; set `ProxyCommand` in the SSH config |
 
 Profile options and passed-through arguments go between the transport and
-the host. The host name is the destination, as for every other call, so
-user, port and key come from the SSH config.
+the host. The destination is the host's `address` when set, else its name,
+as for every other call (#1034), so user, port and key come from the SSH
+config; `connect.alias` stays a lookup name only.
 
 **Laptop to server, end to end.** The owner's laptop holds a profile with
 the inventory; `host-b` is a Linux server reached over a reconnecting
