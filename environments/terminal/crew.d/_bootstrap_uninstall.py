@@ -10,7 +10,7 @@ import json
 from pathlib import Path
 import subprocess
 import sys
-from crew_shared import commands, crew_render, fetch, git, placeholder_paths
+from crew_shared import checkout, commands, crew_render, fetch, git, placeholder_paths
 
 
 def gh(repo, *args):
@@ -41,7 +41,9 @@ def uninstall(args):
     record = json.loads(manifest.read_text())
     if record["runtime"] != values["runtime.name"]:
         raise ValueError("runtime differs from install.json; restore the installed profile")
-    project = Path(args.project).absolute().parent
+    # The repo directory bootstrap wrote excludes and pointers in: for FILE#<repo>, that repo's clone (#1344).
+    selected = crew_render.crew_config.split_ref(args.project)[1]
+    project = Path(checkout(values, args.project)) if selected else Path(args.project).absolute().parent
     result = subprocess.run(["git", "-C", str(project), "rev-parse", "--path-format=absolute",
                              "--git-path", "info/exclude"], capture_output=True, text=True)
     exclude = Path(result.stdout.strip()) if result.returncode == 0 else None
