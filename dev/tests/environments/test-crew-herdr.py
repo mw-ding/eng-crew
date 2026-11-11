@@ -1,4 +1,5 @@
-"""Local herdr adapter tests: fake binary, profile dispatch, lifecycle, identity, input and isolation.
+"""Local herdr adapter tests: fake binary, profile dispatch, lifecycle, identity, input, isolation and the read-only
+shared-server pid read (#1469).
 
 Run with python3 dev/tests/environments/test-crew-herdr.py. No real server or harness is started.
 """
@@ -7,6 +8,8 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
+import subprocess
 import textwrap
 import unittest
 from unittest.mock import patch
@@ -100,6 +103,32 @@ class Herdr(SpawnBase):
     def probe(self, rec):
         with patch.dict(os.environ, self.env):
             return self.mod.probe("crew-acme-widgets", "ben-7", rec, {"ben-7": 10})
+
+    def test_server_pids_reads_status_and_socket_holders_only(self):
+        """Doctor's shared-server read: status --json, then lsof on its socket; never a server verb (#1469)."""
+        calls, out = [], {}
+
+        def run(argv, **kw):
+            calls.append(argv)
+            rc, stdout = out[argv[0]]
+            return subprocess.CompletedProcess(argv, rc, stdout, "boom")
+        sock = '{"running": true, "socket": "/s/herdr.sock"}'
+        with patch.object(self.backend.subprocess, "run", run):
+            out.update(herdr=(0, '{"running": false, "socket": "/s/herdr.sock"}'))
+            self.assertEqual(self.backend.server_pids(), [])
+            out.update(herdr=(0, sock), lsof=(0, "123\n456\n"))
+            self.assertEqual(self.backend.server_pids(), [123, 456])
+            self.assertEqual(calls[-2:], [["herdr", "status", "server", "--json"], ["lsof", "-t", "--", "/s/herdr.sock"]])
+            for herdr, lsof, error in [((1, ""), (0, ""), "herdr status server failed: boom"),
+                                       ((0, "not json"), (0, ""), "herdr server: "),
+                                       ((0, sock), (1, ""), "no process holds /s/herdr.sock")]:
+                out.update(herdr=herdr, lsof=lsof)
+                with self.assertRaisesRegex(RuntimeError, "^" + re.escape(error)):
+                    self.backend.server_pids()
+        with patch.object(self.backend.subprocess, "run", side_effect=FileNotFoundError("lsof")):
+            with self.assertRaisesRegex(RuntimeError, "^herdr server: lsof"):
+                self.backend.server_pids()
+        self.assertFalse([c for c in calls if c[0] == "herdr" and c[1:2] != ["status"]])
 
     def test_profile_dispatch_create_and_kill(self):
         r = self.spawn("builder", "--issue", "7")

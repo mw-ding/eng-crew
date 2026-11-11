@@ -2,7 +2,7 @@
 """Fixture test for scripts/campaign-run.py (offline, temp dirs only).
 
 Covers scenario selection, the five distinct statuses, the per-step guard recheck, the command exit captured apart from the capture, explicit
-completion waits (matched and deadline), the {source} placeholder and stub env, no operator forge or SSH agent credentials in a step (#1106), the guard refusal, the committed A03/A05 fixture steps failing closed on an earlier assertion, a step with an unhandled assertion refused before it runs while explicit refusal oracles still pass, expected-fail and accepted dispositions reported apart from PASS (a passing one FAILs; #1412), the A12 reproduction helper agreeing only with a capture at head, the A22 duplicate-key oracle passing on a run id with capitals (#1177), the A23 fake SSH transport's loopback and fault modes, the A19 ledger matching every shipped adapter and declared row and failing a gap claimed as conformant (#1443), a seeded rerun reproducing events and failure, and the
+completion waits (matched and deadline), the {source} placeholder and stub env, no operator forge or SSH agent credentials in a step (#1106), the guard refusal, the committed A03/A05 fixture steps failing closed on an earlier assertion, a step with an unhandled assertion refused before it runs while explicit refusal oracles still pass, expected-fail and accepted dispositions reported apart from PASS (a passing one FAILs; #1412), the A12 reproduction helper agreeing only with a capture at head, the A22 duplicate-key oracle passing on a run id with capitals (#1177), the A23 fake SSH transport's loopback and fault modes, the A19 ledger matching every shipped adapter and declared row and failing a gap claimed as conformant (#1443), the A19 smoke running in a linked worktree of its source and blocking on unmet checkout trust (#1470), a seeded rerun reproducing events and failure, and the
 decoy sentinel failing a run whose step reaches an inherited TMUX (#817; throwaway sockets only, with the runner's TMUX_TMPDIR restored after, #818). Run in CI.
 """
 import contextlib
@@ -513,6 +513,61 @@ class A19LedgerTest(unittest.TestCase):
         recs = [json.loads(line) for line in p.stdout.splitlines() if line.startswith("{")]
         self.assertEqual(len(recs), 12)
         self.assertTrue(all(r["result"] == "blocked" and r["block"].startswith("installation: ") for r in recs))
+
+    def smoke_claude(self, tmp, trusted):
+        """smoke.py --only claude-code/tmux on a shared clone of this source. The fake claude records its worktree's git
+        common dir and HEAD, says ready, acks the inbox line and sleeps; its symlink target is named `sleep`, so the
+        exec'd sleep is the expected foreground. Claude Code trust is read from a temp config dir (#1470)."""
+        src, cfg, bin_, real = (os.path.join(tmp, d) for d in ("src", "cfg", "bin", "real"))
+        subprocess.run(["git", "clone", "-q", "--shared", os.path.dirname(SCRIPTS), src], check=True)
+        for d in (cfg, bin_, real):
+            os.makedirs(d)
+        with open(os.path.join(cfg, ".claude.json"), "w") as fh:
+            json.dump({"projects": {os.path.realpath(src): {"hasTrustDialogAccepted": True}} if trusted else {}}, fh)
+        with open(os.path.join(real, "sleep"), "w") as fh:
+            fh.write('#!/bin/sh\ncase "$*" in *--version*) echo "fake 1.0"; exit 0;; esac\n'
+                     'git rev-parse --path-format=absolute --git-common-dir HEAD > "%s/seen"\n'
+                     'echo ready >> "$CREW_STATUS"\n'
+                     '(while ! [ -s "$CREW_INBOX" ]; do sleep 0.2; done\n'
+                     ' sed -n \'s/.*"id": "\\([^"]*\\)".*/ack: \\1/p\' "$CREW_INBOX" >> "$CREW_STATUS") &\n'
+                     'exec /bin/sleep 30\n' % tmp)
+        os.chmod(os.path.join(real, "sleep"), 0o755)
+        os.symlink(os.path.join(real, "sleep"), os.path.join(bin_, "claude"))
+        sock = tempfile.mkdtemp(prefix="a19", dir="/tmp")  # a socket path under a long temp dir is too long
+        self.addCleanup(shutil.rmtree, sock, True)
+        p = subprocess.run([sys.executable, os.path.join(self.A19, "smoke.py"), src, os.path.join(tmp, "runs"),
+                            "--only", "claude-code/tmux"], capture_output=True, text=True, timeout=120,
+                           env=dict(os.environ, PATH=bin_ + os.pathsep + os.environ["PATH"], CLAUDE_CONFIG_DIR=cfg,
+                                    TMUX_TMPDIR=sock))
+        recs = [json.loads(line) for line in p.stdout.splitlines() if line.startswith("{")]
+        return os.path.realpath(src), p, recs
+
+    def test_smoke_blocks_claude_on_unmet_checkout_trust(self):
+        """An untrusted source checkout blocks claude-code with doctor's role trust fix and creates no run (#1470)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            src, p, recs = self.smoke_claude(tmp, trusted=False)
+            self.assertFalse(os.path.exists(os.path.join(tmp, "runs")))
+        self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
+        self.assertEqual([r["result"] for r in recs], ["blocked"])
+        self.assertTrue(recs[0]["block"].startswith("precondition: claude role trust not accepted for %s: before "
+                                                    "dispatch, run claude once in %s" % (src, src)), recs[0]["block"])
+
+    @unittest.skipUnless(shutil.which("tmux"), "tmux not on PATH")
+    def test_smoke_runs_in_a_linked_worktree_of_the_source_and_removes_only_it(self):
+        """The run's worktree is a detached linked worktree of SOURCE at its HEAD, removed after the stop (#1470)."""
+        with tempfile.TemporaryDirectory() as tmp:
+            src, p, recs = self.smoke_claude(tmp, trusted=True)
+            with open(os.path.join(tmp, "seen")) as fh:
+                seen = fh.read().split()
+            head = subprocess.run(["git", "-C", src, "rev-parse", "HEAD"], capture_output=True, text=True).stdout
+            worktrees = subprocess.run(["git", "-C", src, "worktree", "list", "--porcelain"], capture_output=True,
+                                       text=True).stdout
+            self.assertFalse(os.path.exists(os.path.join(tmp, "runs", "tmux", "claude-code", "wt")))
+        self.assertEqual(seen, [os.path.join(src, ".git"), head.strip()], p.stdout + p.stderr)
+        self.assertEqual(worktrees.count("worktree "), 1, worktrees)
+        steps = recs[0]["steps"]
+        self.assertEqual((recs[0]["source"], steps["ready"], steps["ack"]), (head.strip(), "ok", "ok"))
+        self.assertTrue(steps["stop"].startswith("ok: "), steps)
 
 
 class A22OracleTest(unittest.TestCase):

@@ -190,5 +190,27 @@ def view(name, commands):
     raise RuntimeError("herdr: tiled builders attach unsupported; attach one run")
 
 
+def server_pids():
+    """The pids holding the local default server's API socket, [] when no server runs; RuntimeError when a read fails.
+    Read-only, for doctor's shared-server row: runs inherit that server's environment and sandbox, not the launcher's
+    (#1469). It never starts, stops or reconfigures the server."""
+    try:
+        r = subprocess.run(["herdr", "status", "server", "--json"], capture_output=True, text=True,
+                           stdin=subprocess.DEVNULL, timeout=30)
+        status = json.loads(r.stdout) if not r.returncode else None
+        if not status:
+            raise RuntimeError("herdr status server failed: " + r.stderr.strip())
+        if not status.get("running"):
+            return []
+        r = subprocess.run(["lsof", "-t", "--", status["socket"]], capture_output=True, text=True,
+                           stdin=subprocess.DEVNULL, timeout=30)
+    except (OSError, ValueError, subprocess.TimeoutExpired) as e:
+        raise RuntimeError("herdr server: %s" % e)
+    pids = [int(p) for p in r.stdout.split() if p.isdigit()]
+    if not pids:
+        raise RuntimeError("no process holds %s" % status["socket"])
+    return pids
+
+
 def tmux(*args):
     raise RuntimeError("herdr: tmux-specific operation unsupported")
