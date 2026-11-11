@@ -180,8 +180,6 @@ docs/verification.md :: ## Duties
 docs/verification.md :: ## Fail-open
 docs/verification.md :: ## Not required
 docs/verification.md :: ## Shapes
-examples/agentconnect/README.md
-examples/agentconnect/README.md :: # Worked example: the agentconnect pilot
 scripts/intake-sweep.py
 scripts/metrics-decide.py
 scripts/step-summary.py
