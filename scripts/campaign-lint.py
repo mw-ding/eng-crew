@@ -17,10 +17,17 @@ explicitly nonzero `exit N` (or `return N`); `if`/`case` with allowed branches; 
 (each body assertion carries `|| exit N`); `name() { ...; }` functions under the return analysis above; and
 subshells holding no assertion, `false`, `exit` or `return`. Everything else is refused by name: other brace
 groups, a subshell that can fail, a backgrounded (`&`) assertion or compound command, `eval`, `trap`, `return`
-outside a function, a non-brace function body, an assertion before `|` and an `exit`/`return` (or handler
-group) inside a multi-command pipeline, which runs in a child. In an `if`/`while`/`until` condition only the
-final item is the predicate; an earlier assertion there is dropped and refused. `|| false` and `|| exit 0` are
-not failure handlers. Nested interpreters (`sh -c`, `python3 -c`) are opaque commands.
+outside a function, a non-brace function body and an assertion before `|`. In an `if`/`while`/`until`
+condition only the final item is the predicate; an earlier assertion there is dropped and refused. `|| false`
+and `|| exit 0` are not failure handlers. Nested interpreters (`sh -c`, `python3 -c`) are opaque commands.
+
+Termination model (#1684): `exit` ends the step, and `return` its function, only when it runs in the step's own
+shell. A subshell, every command of a multi-command pipeline, a backgrounded (`&`) list and a command
+substitution run in a child, where `exit` ends only that child. A function call runs in its caller's shell, so
+a call to a function that can `exit` inherits the caller's context. Any `exit`, `return` or call to such a
+function in a child is refused, naming the child; a handler counts only when its `exit` runs in the step shell.
+A command substitution drops its status, so a call there to a function whose return can carry a failure is
+refused too. Helper discovery reads condition lists as well as bodies (for `return`, not a `false` predicate).
 
 A step may carry `"disposition": {"state": "expected-fail" | "accepted", "reason": TEXT}`: a required
 case that fails today and is either waiting for a fix (expected-fail) or accepted as is. The reason is
@@ -162,7 +169,7 @@ class Parser:
     an item is [(pipeline, "&&" | "||" | None)]; a pipeline is {"bang", "cmds"}."""
 
     def __init__(self, src):
-        self.t, self.i, self.bg = tokens(src), 0, set()
+        self.t, self.i = tokens(src), 0
 
     def peek(self):
         return self.t[self.i] if self.i < len(self.t) else (None, None)
@@ -202,7 +209,8 @@ class Parser:
                 self.skip("\n")
             out.append([tuple(x) for x in item])
             if self.peek() == ("op", "&"):
-                self.bg.add(id(out[-1]))
+                for p, _ in out[-1]:
+                    p["bg"] = True
 
     def pipeline(self, stops):
         bang = self.word("!")
@@ -249,18 +257,21 @@ class Parser:
             c = {"type": "branch", "bodies": bodies, "conds": conds}
         elif v in ("while", "until", "for"):
             self.i += 1
-            conds = []
+            conds, xwords = [], []
             if v == "for":
                 while not self.word("do"):
                     if self.peek()[0] is None:
                         raise ValueError("unterminated for")
+                    xwords.append(self.peek()[1])
                     self.i += 1
             else:
                 conds.append(self.items(stops=("do",)))
             self.expect("do")
-            c = {"type": "loop", "body": self.body("done"), "conds": conds}
+            c = {"type": "loop", "body": self.body("done"), "conds": conds, "xwords": xwords}
         elif v == "case":
+            xwords = []
             while not self.word("in"):
+                xwords.append(self.peek()[1])
                 self.i += 1
             self.i += 1
             bodies = []
@@ -274,7 +285,7 @@ class Parser:
                 self.i += 1
                 bodies.append(self.items(stops=("esac",), stop_op=";;"))
                 self.skip(";;")
-            c = {"type": "branch", "bodies": bodies}
+            c = {"type": "branch", "bodies": bodies, "xwords": xwords}
         else:
             words = []
             while self.peek()[0] == "w" and not (not words and self.peek()[1] in stops):
@@ -286,6 +297,7 @@ class Parser:
                 return {"type": "func", "name": words[0], "body": self.command(stops)}
             return {"type": "simple", "words": words}
         while self.peek()[0] == "w" and self.peek()[1] not in stops:
+            c.setdefault("xwords", []).append(self.peek()[1])
             self.i += 1
         return c
 
@@ -308,16 +320,18 @@ def _wrap(cmd):
     return [[({"bang": False, "cmds": [cmd]}, None)]]
 
 
-def _pipes(items):
-    """Every pipeline in ITEMS, nested bodies included, with the functions defined there."""
+def _pipes(items, conds=False):
+    """Every pipeline in ITEMS, nested bodies (and with CONDS, condition lists) included, with the functions
+    defined there."""
     for item in items:
         for p, _ in item:
             yield p
             for c in p["cmds"]:
                 if c["type"] == "func":
-                    yield from _pipes(_wrap(c["body"]))
-                for b in [c.get("body")] if c["type"] in ("group", "loop") else c.get("bodies", []):
-                    yield from _pipes(b)
+                    yield from _pipes(_wrap(c["body"]), conds)
+                for b in ([c["body"]] if c["type"] in ("group", "loop") else c.get("bodies", [])) + (
+                        c.get("conds", []) if conds else []):
+                    yield from _pipes(b, conds)
 
 
 def _tail_fails(items, fns):
@@ -334,20 +348,23 @@ def _tail_fails(items, fns):
     return any(op != "||" and is_assertion(p, fns) for p, op in item) or any(_tail_fails(b, fns) for b in bodies)
 
 
-def _returns_failure(items):
-    """A `false`, or a `return` that is nonzero or bare right after `||`, anywhere in a function body."""
+def _returns_failure(items, in_cond=False):
+    """A `false`, or a `return` that is nonzero or bare right after `||`, anywhere in a function body. In a
+    condition list only the `return` counts: there `false` is a predicate."""
     for item in items:
         for n, (p, _) in enumerate(item):
             w = _words(p) or [""]
-            if w[0] == "false" or (w[0] == "return" and (w[1:2] not in ([], ["0"]) or (
+            if (w[0] == "false" and not in_cond) or (w[0] == "return" and (w[1:2] not in ([], ["0"]) or (
                     not w[1:] and n and item[n - 1][1] == "||"))):
                 return True
             for c in p["cmds"]:
                 if c["type"] == "func":
                     continue
                 for b in [c["body"]] if c["type"] in ("group", "loop") else c.get("bodies", []):
-                    if _returns_failure(b):
+                    if _returns_failure(b, in_cond):
                         return True
+                if any(_returns_failure(cond, True) for cond in c.get("conds", [])):
+                    return True
     return False
 
 
@@ -385,8 +402,8 @@ def _handler(c):
     `return N` (a bare one would keep the status of the command before it)."""
     if c["type"] != "group" or c.get("subshell") or not c["body"] or len(c["body"][-1]) != 1:
         return False
-    last = c["body"][-1][0][0]["cmds"]
-    w = last[0].get("words") or [] if len(last) == 1 else []
+    last = c["body"][-1][0][0]
+    w = last["cmds"][0].get("words") or [] if len(last["cmds"]) == 1 and not last.get("bg") else []
     return w[:1] in (["exit"], ["return"]) and len(w) == 2 and w[1] != "0"
 
 
@@ -435,7 +452,7 @@ def _lint(items, kept, found, fns):
                     _lint(_wrap(c["body"]), True, found, fns)
 
 
-def _unsupported(items, fns, bg, found, in_func=False):
+def _unsupported(items, fns, found, in_func=False):
     """The allowlist (#1677, fail closed): simple commands, pipelines and `&&`/`||` chains of them; a simple
     `|| exit N`/`|| return N` or `|| { ...; exit N; }` handler; `if`/`case`; `for`/`while`/`until` loops;
     `name() { ...; }` functions; subshells that cannot fail. Every other construct is refused by name."""
@@ -443,7 +460,7 @@ def _unsupported(items, fns, bg, found, in_func=False):
         found.append("unsupported: %s: %s" % (what, _show(item)))
 
     for item in items:
-        if id(item) in bg and any(is_assertion(p, fns) or any(c["type"] != "simple" for c in p["cmds"])
+        if item[0][0].get("bg") and any(is_assertion(p, fns) or any(c["type"] != "simple" for c in p["cmds"])
                                   for p, _ in item):
             refuse("a backgrounded (`&`) assertion or compound command", item)
         for n, (p, _) in enumerate(item):
@@ -451,8 +468,6 @@ def _unsupported(items, fns, bg, found, in_func=False):
                 cmd = [x for x in c.get("words") or [] if not ASSIGN.match(x)]
                 if k < len(p["cmds"]) - 1 and is_assertion({"bang": False, "cmds": [c]}, fns):
                     refuse("an assertion before `|` loses its exit", item)
-                if len(p["cmds"]) > 1 and cmd[:1] in (["exit"], ["return"]):
-                    refuse("`%s` in a pipeline runs in a child and does not end the step" % cmd[0], item)
                 if cmd[:1] in (["eval"], ["trap"]) or (cmd[:1] == ["return"] and not in_func):
                     refuse("`%s`%s" % (cmd[0], " outside a function" if cmd[0] == "return" else ""), item)
                 if c["type"] == "func":
@@ -460,7 +475,7 @@ def _unsupported(items, fns, bg, found, in_func=False):
                         refuse("function %s: only a `%s() { ...; }` body is supported" % (c["name"], c["name"]),
                                item)
                     for b in [c["body"].get("body")] if c["body"]["type"] == "group" else []:
-                        _unsupported(b, fns, bg, found, True)
+                        _unsupported(b, fns, found, True)
                     continue
                 if c.get("subshell") and any(_fails(q, fns) for q in _pipes(c["body"])):
                     refuse("a subshell with an assertion, `false`, `exit` or `return` (its failure stays local; "
@@ -469,7 +484,71 @@ def _unsupported(items, fns, bg, found, in_func=False):
                         n and item[n - 1][1] == "||" and len(p["cmds"]) == 1 and _handler(c)):
                     refuse("a brace group other than a `|| { ...; exit N; }` handler", item)
                 for b in ([c["body"]] if c["type"] in ("group", "loop") else c.get("bodies", [])) + c.get("conds", []):
-                    _unsupported(b, fns, bg, found, in_func)
+                    _unsupported(b, fns, found, in_func)
+
+
+def exiting(items):
+    """Names of the functions defined in ITEMS that can run `exit`, directly or through another such call, in a
+    body or a condition list."""
+    fns = {c["name"]: c["body"] for p in _pipes(items, True) for c in p["cmds"] if c["type"] == "func"}
+    out = set()
+    while True:
+        more = {name for name, body in fns.items() if name not in out and any(
+            (_words(p) or [""])[0] in out | {"exit"} for p in _pipes(_wrap(body), True))}
+        if not more:
+            return out
+        out |= more
+
+
+def _substitutions(w):
+    """The source of each `$( ... )` and backtick command substitution in word W (not `$(( ))` arithmetic)."""
+    i, dq = 0, False
+    while i < len(w):
+        if w[i] == "\\":
+            i += 2
+        elif w[i] == "'" and not dq:
+            i = _sq(w, i)
+        elif w[i] == '"':
+            dq, i = not dq, i + 1
+        elif w.startswith("$((", i):
+            i += 3
+        elif w.startswith("$(", i) or w[i] == "`":
+            j = _sub(w, i) if w[i] == "$" else _bt(w, i)
+            yield w[i + (2 if w[i] == "$" else 1):j - 1]
+            i = j
+        else:
+            i += 1
+
+
+def _children(items, exits, fails, found, child=None):
+    """The termination model: `exit` ends the step, and `return` its function, only in the step's own shell. A
+    subshell, every command of a multi-command pipeline, a backgrounded (`&`) list and a command substitution
+    run in a child, where they end only that child. A function call runs in its caller's shell, so a call to a
+    function that can `exit` inherits the caller's context. Refuse each `exit`, `return` or such call in a
+    child, naming the child. A command substitution's status is dropped, so a call there to a function in
+    FAILS (one whose return can carry a failure) is refused too."""
+    for item in items:
+        bg = child or ("a background job" if item[0][0].get("bg") else None)
+        for p, _ in item:
+            for c in p["cmds"]:
+                ctx = bg or ("a pipeline" if len(p["cmds"]) > 1 else None) or ("a subshell" if c.get("subshell") else None)
+                w = [x for x in c.get("words") or [] if not ASSIGN.match(x)]
+                if ctx and w[:1] and w[0] in exits | {"exit", "return"}:
+                    found.append("unsupported: %s in %s runs in a child and does not end the step: %s" % (
+                        "`%s`" % w[0] if w[0] in ("exit", "return") else "a call to %s, which can `exit`," % w[0],
+                        ctx, _show(item)))
+                elif ctx == "a command substitution" and w[:1] and w[0] in fails:
+                    found.append("unsupported: a call to %s, whose return can carry a failure, in a command "
+                                 "substitution loses its status: %s" % (w[0], _show(item)))
+                for x in (c.get("words") or []) + c.get("xwords", []):
+                    for src in _substitutions(x):
+                        sub = Parser(src).parse()
+                        _children(sub, exits | exiting(sub), fails | fallible(sub), found, "a command substitution")
+                if c["type"] == "func":
+                    _children(_wrap(c["body"]), exits, fails, found)
+                    continue
+                for b in ([c["body"]] if c["type"] in ("group", "loop") else c.get("bodies", [])) + c.get("conds", []):
+                    _children(b, exits, fails, found, ctx)
 
 
 def _fails(pipe, fns):
@@ -485,7 +564,8 @@ def lint_step(src):
         parser = Parser(src)
         tree = parser.parse()
         fns = fallible(tree)
-        _unsupported(tree, fns, parser.bg, found)
+        _unsupported(tree, fns, found)
+        _children(tree, exiting(tree), fns, found)
         _lint(tree, True, found, fns)
     except (IndexError, AttributeError) as e:
         raise ValueError("unterminated quote, substitution or here-document (%s)" % type(e).__name__)

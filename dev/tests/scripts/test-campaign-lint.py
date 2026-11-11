@@ -9,7 +9,9 @@ exiting trap, top-level return, an assertion before `|`, a backgrounded assertio
 handler, `&& break`-style control flow, if conditions, quotes, `$()` and here-documents); a step that does not
 parse; the disposition shape; every committed campaign scenario linting clean; and the base/head retention
 check: a deleted case, a case deleted with its disposition and a deleted scenario fail unless retired with a
-reason. Run in CI.
+reason. The termination model (#1684): an `exit`, `return` or call to a function that can `exit` in a subshell,
+pipeline, background job or command substitution is refused, while a foreground exiting helper stays allowed.
+Run in CI.
 """
 import importlib.util
 import json
@@ -133,6 +135,48 @@ class StepLintTest(unittest.TestCase):
         self.good("while ! grep -q done f; do sleep 1; done; true")
         self.good("if git merge x; then false; else test $? -eq 1; fi && echo conflicted")
         self.bad("mk() { (cd d && test -e a || exit 1); }; mk x; echo tail")
+
+    def test_termination_model_children(self):
+        # #1684: `exit` ends the step, and `return` its function, only in the step's own shell. A subshell, a
+        # pipeline member, a background job and a command substitution are children; a call to a function that
+        # can `exit` inherits its caller's context.
+        for src, ctx in (
+                ("f() { test 1 -eq 2 || exit 1; }; f | cat; echo tail", "a call to f, which can `exit`, in a pipeline"),
+                ("f() { test 1 -eq 2 || exit 1; }; cat /dev/null | f; echo tail", "in a pipeline"),
+                ("g() { f; }; f() { test 1 -eq 2 || exit 1; }; g | cat; echo tail", "a call to g"),
+                ("test 1 -eq 2 || { echo bad; exit 1 & }; echo tail", "`exit` in a background job"),
+                ("test 1 -eq 2 || exit 1 & wait; echo tail", "backgrounded"),
+                ("f() { test 1 -eq 2 || exit 1; }; f & wait; echo tail", "in a background job"),
+                ("for r in a; do test -e $r || exit 1; done | cat; echo tail", "`exit` in a pipeline"),
+                ("if test -e a; then :; else exit 1; fi | cat; echo tail", "`exit` in a pipeline"),
+                ("x=$(test -e a || exit 1); echo tail", "`exit` in a command substitution"),
+                ("f() { test 1 -eq 2 || exit 1; }; echo \"$(f)\"; echo tail", "in a command substitution"),
+                ("f() { test 1 -eq 2 || exit 1; }; for x in $(f); do :; done; echo tail", "in a command substitution"),
+                ("f() { test 1 -eq 2 || exit 1; }; case `f` in *) : ;; esac; echo tail", "in a command substitution"),
+                ("(test -e a || exit 1); echo tail", "`exit` in a subshell"),
+                # #1687 r1: an `exit` in a helper's condition list makes it an exiting helper too.
+                ("f() { if test 1 -eq 2 || exit 1; then :; fi; }; f | cat; echo tail", "a call to f"),
+                ("f() { while test 1 -eq 2 || exit 1; do break; done; }; f | cat; echo tail", "a call to f"),
+                ("f() { if test 1 -eq 2 || exit 1; then :; fi; }; x=$(f); echo tail", "a call to f"),
+                ("g() { until f; do :; done; }; f() { test 1 -eq 2 || exit 1; }; g | cat; echo tail", "a call to g"),
+                # #1687 r2: a condition-list `return` makes a helper fallible; a substitution drops its status.
+                ("f() { if test 1 -eq 2 || return 1; then :; fi; }; f | cat; echo tail", "before `|`"),
+                ("f() { if test 1 -eq 2 || return 1; then :; fi; }; x=$(f); echo tail", "in a command substitution"),
+                ("f() { test 1 -eq 2 || return 1; }; echo \"$(f)\"; echo tail", "in a command substitution")):
+            found = cl.lint_step(src)
+            self.assertTrue(any(f.startswith("unsupported: ") and ctx in f for f in found), (src, found))
+        self.good("f() { test 1 -eq 2 || exit 1; }; f; echo tail")  # a foreground exiting helper ends the step
+        self.good("g() { f; }; f() { test 1 -eq 2 || exit 1; }; g; echo tail")
+        self.good("f() { test 1 -eq 2 || exit 1; }; if true; then f; fi; echo tail")
+        self.good("f() { if test 1 -eq 2 || exit 1; then :; fi; }; f; echo tail")
+        self.good("(if test -e a; then echo y; fi) | cat; true")  # a predicate in a subshell is control flow
+        self.bad("f() { while test 1 -eq 2 || return 1; do break; done; }; f; echo tail")
+        self.good("f() { if test 1 -eq 2 || return 1; then :; fi; }; f || exit 1; echo tail")
+        self.good("f() { if false; then :; fi; echo ok; }; f; echo tail")  # `false` in a condition is a predicate
+        self.good("for r in a; do test -e $r || exit 1; done > out; echo tail")
+        self.good("x=$(git rev-parse HEAD); n=$((n+1)); echo \"$x `date`\"")
+        self.good("say() { echo hi; }; say | cat; x=$(say); echo \"$x\"")
+        self.good("sh -c 'exit 1' | cat; true")  # a nested interpreter is opaque
 
     def test_unparseable_step_refused(self):
         for src in ("echo 'open", "if true; then echo", "echo $(open", "for x in a; do true"):
