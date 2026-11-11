@@ -70,6 +70,12 @@ Every problem prints as `file:line: [rule] reason`; the exit code is 1 if there
 is any problem, 0 otherwise. CI runs both commands in the `repo-guard` job
 (`.github/workflows/ci.yml`) on every pull request and push to `main`.
 
+In a git work tree the checks read tracked files only (`git ls-files`), so
+`check-repo.py` also prints `check-repo: warning: N untracked file(s) not
+checked ...` on stderr, naming each non-ignored untracked file (ignored files
+stay quiet). It is a warning, not a failure: `git add` new files, then rerun
+before claiming a passing check (#1414).
+
 ## What it checks
 
 | Rule | Fails on |
