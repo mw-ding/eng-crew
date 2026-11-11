@@ -27,6 +27,14 @@ Use a trivial, low-risk issue that touches only docs, so a failure costs
 nothing. It should be small enough for the trivial tier ([roles.md](../roles.md#tiers))
 and should exercise every stage once.
 
+Before the first `crew:ready`, meet the
+[plan gate](../protocol.md#6-duties-on-wake-all-roles): create the first `M*`
+milestone with its scope and order in the description (this smoke-test
+issue, executor runtime, trivial tier, no owner prerequisites), propose it to
+the owner, and record the owner's OK as the signed
+`[<CoordinatorBot>/steer] plan approved` comment with its `cmd=plan-ok` marker
+on the milestone's tracking issue.
+
 ### Template issue
 
 Title: `crew smoke test: add docs/crew-smoke-test.md`

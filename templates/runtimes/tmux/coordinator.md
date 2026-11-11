@@ -28,6 +28,8 @@ never `/tmp` or outside the state dir.
 
 <include:policy/coordinator/milestone-admission.md>
 
+<include:policy/coordinator/plan-gate.md>
+
 <include:policy/coordinator/memory-capture.md>
 
 Answer owner messages briefly before routing; long status goes in the

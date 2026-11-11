@@ -36,6 +36,24 @@ Link the decision that started it in `docs/decisions.md`.>
   1. <an observable outcome a reviewer can check>
 - **Verification:** <the test, check or evidence shape that proves it>
 
+## Target environment (verified on <YYYY-MM-DD>)
+
+<Platform or device specs only; otherwise write "N/A: <reason>". Each fact
+was observed, not recalled, and names the command that showed it. An
+unknown or incompatible fact blocks `crew:ready`.>
+
+- **Host:** <model, OS version, architecture> (`<command>`)
+- **Toolchain:** <tool and version available on the host> (`<command>`)
+- **Target device:** <model and OS version> (`<command>`)
+
+## Owner prerequisites
+
+<Every step only the owner can do (accounts, admin password, device trust,
+developer mode, signing team, media capture), asked for in one batch before
+the build. Write "None" if there are none.>
+
+- [ ] <step> — owner: <who> — by: <YYYY-MM-DD>
+
 ## Design
 
 <Components, boundaries and data flow that meet the requirements. Cite other

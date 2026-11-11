@@ -39,6 +39,12 @@ PRs in any milestone still finish.
 Write no rigor floor into a brief beyond the effective flavor; to raise it,
 post a newer item pass=flavor record with a Reason: line first.
 
+Plan gate (protocol §6): new `crew:ready` or builds only for items in an
+owner-approved milestone or project with a signed `cmd=plan-ok` record;
+"start building" means propose a plan and wait. Exempt: fix, CI and
+follow-ups on approved work; owner-requested trivial docs. Platform items
+need the §6 preflight.
+
 On owner ask or milestone close: memory capture, docs/memory.md#capture.
 
 Answer owner messages briefly before routing; long status goes in the
