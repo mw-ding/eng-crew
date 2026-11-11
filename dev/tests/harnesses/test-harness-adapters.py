@@ -128,6 +128,25 @@ class ShippedTables(unittest.TestCase):
                      "  ⎿  title: API Error: Connection lost mid-response", "• 429 capacity exhausted, quoted"]:
             self.assertNotRegex(line, claude.TRANSIENT)  # tool output, a quoted prompt or issue text (#1366)
 
+    def test_claude_root_bypass_refused_locally_not_for_remote(self):
+        """#738: Claude Code bypass as euid 0 refuses before any argv; other modes, uids and engines are unchanged, and a
+        remote launch leaves the uid check to its host."""
+        shared = cli().harness.__globals__
+        claude = shared["harnesses"].ADAPTERS["claude-code"]
+        self.assertIsNone(claude.launch_refusal("bypass", 501))
+        self.assertIsNone(claude.launch_refusal("auto", 0))
+        self.assertIsNone(claude.launch_refusal("safe", 0))
+        with mock.patch.object(shared["os"], "geteuid", return_value=0):
+            with self.assertRaisesRegex(RuntimeError, r"Claude Code refuses permission_mode=bypass when running as root"):
+                shared["harness"]("claude-code", "m", "high", "/wt", "/state", "bypass", {})
+            self.assertEqual(shared["harness"]("claude-code", "m", "high", "/wt", "/state", "bypass", {}, False)[0], "claude")
+            self.assertEqual(shared["harness"]("claude-code", "m", "high", "/wt", "/state", "auto", {})[-1], "auto")
+            with mock.patch.object(shared["subprocess"], "run", return_value=Namespace(returncode=0, stdout='{"private": false}')):
+                values = {"repo.owner": "acme", "repo.name": "widgets"}
+                for engine in ("codex", "pi", "cursor", "muse"):  # no launch_refusal: the default launches as root
+                    self.assertFalse(hasattr(shared["harnesses"].ADAPTERS[engine], "launch_refusal"), engine)
+                    self.assertTrue(shared["harness"](engine, "m", "high", "/wt", "/state", "bypass", values), engine)
+
     def test_contributor_tier_is_core_policy(self):
         """Muse declares only CONTRIBUTOR_TIER; the core reads visibility and refuses before the adapter runs."""
         shared = cli().harness.__globals__
