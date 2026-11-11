@@ -4,7 +4,8 @@
 Covers the unhandled-assertion rule (a failed chain before a passing tail, a lone assertion, loop bodies,
 groups and functions, and a dropped call to a function whose return can carry a failure); the fail-closed
 refusal of constructs it cannot prove (a dropped subshell that can fail, non-brace function bodies, eval, a
-exiting trap, top-level return, an assertion before `|`, a backgrounded assertion, a dropped `|| false`) and what stays allowed (the step's own result, a `VAR=$?` capture, `|| exit`, a `||`
+exiting trap, top-level return, an assertion before `|`, a backgrounded assertion or compound command, any `trap`, a brace group other than an unconditional
+`|| { ...; exit N; }` handler, a dropped `|| false`) and what stays allowed (the step's own result, a `VAR=$?` capture, `|| exit`, a `||`
 handler, `&& break`-style control flow, if conditions, quotes, `$()` and here-documents); a step that does not
 parse; the disposition shape; every committed campaign scenario linting clean; and the base/head retention
 check: a deleted case, a case deleted with its disposition and a deleted scenario fail unless retired with a
@@ -61,7 +62,7 @@ class StepLintTest(unittest.TestCase):
         self.good("(cd d && git status); true")
         self.good("f() { (cd d && make); }; f; true")
         self.good("f() { test 1 -eq 2 || return 0; }; f; true")
-        self.good("f() { (test 1 -eq 2 || exit 1); }; f || exit 1; echo tail")
+        self.bad("f() { (test 1 -eq 2 || exit 1); }; f || exit 1; echo tail")
         self.bad("f() { false; }; for x in a; do f; done; true")
         self.good("f() { test 1 -eq 2; }; f")
         self.good("f() { test 1 -eq 2; }; f || exit 1; echo tail")
@@ -95,7 +96,18 @@ class StepLintTest(unittest.TestCase):
                 ("f() if true; then test -e a; fi; f", "function f"),
                 ("f() ( test -e a ); f", "function f"),
                 ("eval 'test 1 = 2'; true", "`eval`"),
-                ("trap 'exit 0' EXIT; test 1 = 2", "`trap` whose action exits"),
+                ("trap 'exit 0' EXIT; test 1 = 2", "`trap`"),
+                ("trap 'kill $L 2>/dev/null' EXIT; test 1 = 1", "`trap`"),
+                ("test 1 -eq 2 || { true || exit 1; }; echo tail", "brace group"),
+                ("test 1 -eq 2 || { false && exit 1; }; echo tail", "brace group"),
+                ("test 1 -eq 2 || { echo bad; exit; }; echo tail", "brace group"),
+                ("f() { test 1 -eq 2 || { true || exit 1; }; }; f; echo tail", "brace group"),
+                ("{ test 1 -eq 2; } &", "backgrounded"),
+                ("(sleep 1; echo x) & wait", "backgrounded"),
+                ("{ echo a; echo b; } > out", "brace group"),
+                ("mk() { (cd d && for e in a; do git add $e || exit 1; done); }; mk x || exit 1", "subshell"),
+                ("(cd d && test -e a || exit 1)", "subshell"),
+                ("if ! { test -e a && test -e b; }; then exit 1; fi", "brace group"),
                 ("test 1 = 2 || return 1", "`return` outside a function"),
                 ("grep -q x f | cat", "before `|`"),
                 ("test -e a &", "backgrounded"),
@@ -104,11 +116,13 @@ class StepLintTest(unittest.TestCase):
             self.assertTrue(found, src)
             if what:
                 self.assertTrue(any(f.startswith("unsupported: ") and what in f for f in found), (src, found))
-        self.good("trap 'kill $L 2>/dev/null' EXIT; test 1 = 1")
         self.good("test 1 -eq 2 || exit 0; echo tail")  # an explicit swallow, like `|| true`
-        self.good("mk() { (cd d && for e in a; do git add $e || exit 1; done); }; mk x || exit 1; echo tail")
-        self.good("(cd d && test -e a || exit 1)")
         self.good("test 1 -eq 1 || { echo bad; exit 1; }; echo tail")
+        self.good("f() { test 1 -eq 1 || { echo bad; return 1; }; }; f || exit 1; echo tail")
+        self.good("mk() { git -C d add a || return 1; }; mk x || exit 1; echo tail")
+        self.good("sh -c 'sleep 1; exec \"$@\"' sh echo x & wait")
+        self.good("test -e / && echo foreground")
+        self.good("if git merge x; then false; else test $? -eq 1; fi && echo conflicted")
         self.bad("mk() { (cd d && test -e a || exit 1); }; mk x; echo tail")
 
     def test_unparseable_step_refused(self):

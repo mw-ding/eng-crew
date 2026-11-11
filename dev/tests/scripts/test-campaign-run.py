@@ -251,11 +251,15 @@ class CampaignRunTest(unittest.TestCase):
         res = self.one({"name": "fn-if", "run": "f() if true; then test 1 -eq 2; fi; f; echo tail"})
         self.assertEqual((res["status"], res["events"]), ("FAIL", []), "an if-bodied function (#1677 review r2)")
         for src in ("f() (test 1 -eq 2 || exit 1); f; echo tail", "f() { test 1 -eq 2 || return; }; f; echo tail",
-                    "test 1 -eq 2 || (exit 1); echo tail", "f() { test 1 -eq 2 || (exit 1); }; f; echo tail"):
+                    "test 1 -eq 2 || (exit 1); echo tail", "f() { test 1 -eq 2 || (exit 1); }; f; echo tail",
+                    "test 1 -eq 2 || { true || exit 1; }; echo tail", "{ test 1 -eq 2; } &"):
             res = self.one({"name": "local-exit", "run": src})
-            self.assertEqual((res["status"], res["events"]), ("FAIL", []), "%s (#1677 review r3, r4)" % src)
-        res = self.one({"name": "guarded", "run": "test 1 -eq 1 || exit 1; echo tail"})
-        self.assertEqual(res["status"], "PASS", "the supported `|| exit 1` guard")
+            self.assertEqual((res["status"], res["events"]), ("FAIL", []), "%s (#1677 review r3-r5)" % src)
+        for src in ("test 1 -eq 1 || exit 1; echo tail", "test 1 -eq 1 || { echo bad; exit 1; }; echo tail",
+                    "test -e / && echo foreground"):
+            self.assertEqual(self.one({"name": "supported", "run": src})["status"], "PASS", src)
+        res = self.one({"name": "handler", "run": "test 1 -eq 2 || { echo bad; exit 1; }; echo tail"})
+        self.assertEqual((res["status"], res["steps"][0]["exit"]), ("FAIL", 1), "an unconditional handler fails the step")
 
     def test_explicit_refusal_oracles_still_pass(self):
         capture = "sh -c 'echo no >&2; exit 1' 2> o.txt; rc=$?; cat o.txt; test $rc -eq 1 && grep -qx no o.txt"
