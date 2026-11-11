@@ -84,11 +84,18 @@ class Upgrade(bootstrap_tests.Bootstrap):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("New reviewed rule.", (Path(self.state) / "render/runtime/builder.md").read_text())
 
-    def test_core_memory_near_its_limits_upgrades_and_deploys(self):  # #1230 review R1
-        memory = Path(self.project).parent / "memory"
+    def test_core_memory_near_its_limits_upgrades_and_deploys(self):  # #1230 review R1; #1537 remote revision
+        checkout, upstream, origin = Path(self.project).parent, Path(self.tmp) / "upstream", Path(self.tmp) / "origin.git"
+        git = ["git", "-c", "user.name=t", "-c", "user.email=t"]
+        subprocess.run(git + ["init", "-q", "--bare", "-b", "main", str(origin)], check=True)
+        subprocess.run(git + ["clone", "-q", str(origin), str(upstream)], check=True, capture_output=True)
+        memory = upstream / "memory"
         (memory / "roles").mkdir(parents=True)
         (memory / "owner.md").write_text("# Owner\n\n" + "A" * 2980 + "\n")
         (memory / "roles/coordinator.md").write_text("# C\n\n" + "B" * 1990 + "\n")
+        for args in (["add", "-A"], ["commit", "-q", "-m", "memory"], ["push", "-q", "origin", "HEAD:main"]):
+            subprocess.run(git + ["-C", str(upstream)] + args, check=True)
+        subprocess.run(git + ["-C", str(checkout), "remote", "add", "origin", str(origin)], check=True)  # never pulled
         result = self.upgrade("--yes")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertNotIn("exceeds", result.stdout)
@@ -325,10 +332,11 @@ class Upgrade(bootstrap_tests.Bootstrap):
                 mock.patch.object(bootstrap, "run", return_value=0) as apply, \
                 mock.patch.object(upgrade, "busy", side_effect=["ben-7", None]) as busy, \
                 mock.patch.object(upgrade, "reload") as reload, \
-                mock.patch.object(upgrade.time, "sleep") as sleep, \
+                mock.patch.object(upgrade, "time", mock.Mock(wraps=upgrade.time, sleep=mock.Mock())) as clock, \
                 mock.patch.object(cli.commands()["down"], "stop_watcher", return_value=None) as stop, \
                 mock.patch.object(cli.commands()["up"], "watcher") as start, \
                 mock.patch.dict(os.environ, self.env):
+            sleep = clock.sleep  # upgrade's own wait only: render's git calls poll the real time.sleep (#1537)
             calls = mock.Mock()
             calls.attach_mock(stop, "stop"), calls.attach_mock(reload, "reload"), calls.attach_mock(start, "start")
             self.assertEqual(upgrade.run(args), 0)

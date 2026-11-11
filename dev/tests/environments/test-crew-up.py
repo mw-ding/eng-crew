@@ -129,6 +129,13 @@ class Up(Base):
         self.assertFalse(any(c[0] == "new-session" for c in self.calls()))
         subprocess.run(["git", "-C", self.project_dir, "remote", "set-url", "origin",
                         "https://github.com/acme/widgets"], check=True)
+        origin = os.path.join(self.tmp, "origin.git")  # the memory snapshot resolves origin locally (#1537)
+        subprocess.run(["git", "init", "-q", "--bare", origin], check=True)
+        subprocess.run(["git", "-C", self.project_dir, "-c", "user.name=t", "-c", "user.email=t", "commit", "-q",
+                        "--allow-empty", "-m", "base"], check=True)
+        subprocess.run(["git", "-C", self.project_dir, "push", "-q", origin, "HEAD:refs/heads/main"], check=True)
+        subprocess.run(["git", "-C", self.project_dir, "config", "url.%s.insteadOf" % origin,
+                        "https://github.com/acme/widgets"], check=True)
         r = self.up()
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.new_session()
