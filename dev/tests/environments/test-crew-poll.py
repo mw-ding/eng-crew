@@ -146,9 +146,32 @@ class PollDecide(unittest.TestCase):
         self.assertEqual(sorted(self.crew.CONSUMER), sorted(["new-head", "ci-passed", "ci-failed", "ci-infra", "review-changes-requested",
                                                              "review-approved", "pr-merged", "pr-closed",
                                                              "issue-assigned", "fix-at-head", "merge-up",
-                                                             "selfgate-passed"]))
+                                                             "selfgate-passed", "pr-conflicting"]))
         self.assertTrue(all(isinstance(v, str) for v in self.crew.CONSUMER.values()))
 
+
+    def test_conflict_at_unchanged_head_wakes_builder_once_per_head_and_conflict(self):  # #1398
+        def poll(state, mergeable, head=HEAD, verdict=True):
+            prs = fixture("prs-approved.json" if verdict else "prs-pending.json")
+            prs[0].update(mergeable=mergeable, headRefOid=head)
+            events, state = self.crew.decide(state, prs, [])
+            return [(e["event"], e["consumer"], e["refs"]) for e in events if e["event"] == "pr-conflicting"], state
+        _, state = poll({}, "MERGEABLE")
+        hit = [("pr-conflicting", "builder", ["#171", HEAD])]
+        events, state = poll(state, "CONFLICTING")  # another land made the approved head conflict, no checks yet
+        self.assertEqual(events, hit)
+        for mergeable in ("CONFLICTING", "UNKNOWN", "CONFLICTING", None):  # repeats and UNKNOWN never multiply
+            events, state = poll(state, mergeable)
+            self.assertEqual(events, [], mergeable)
+        self.assertEqual(state["prs"]["171"]["mergeable"], "CONFLICTING")
+        events, state = poll(state, "MERGEABLE")
+        self.assertEqual((events, state["prs"]["171"]["mergeable"]), ([], "MERGEABLE"))
+        self.assertEqual(poll(state, "CONFLICTING")[0], hit)  # resolved, then conflicting again: a new handoff
+        self.assertEqual(poll(state, "UNKNOWN")[0], [])  # UNKNOWN is not a conflict
+        new = "b" * 40
+        events, state = poll(state, "CONFLICTING", head=new, verdict=False)
+        self.assertEqual(events, [("pr-conflicting", "builder", ["#171", new])])
+        self.assertNotIn("mergeable", poll({}, "UNKNOWN", head=new)[1]["prs"]["171"])
 
     def marked(self, name, *markers, at=None):
         """A fixture with one more review (or one inserted at index at) holding the given crew:v1 lines."""
