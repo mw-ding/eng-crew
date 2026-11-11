@@ -1,6 +1,6 @@
 """`mdstack send` messages a role window by reference: a refs-only inbox line and a fixed nudge, typed once with its
 submit confirmed (earlier nudges stacked in the composer cleared, `Enter` retried, exit 4 when it never submits; no
-key at all into a window showing a dialog, #315).
+key at all into a window showing a dialog, #315). An unsubmitted nudge's id goes to inbox/<window>.undelivered.
 The window lookup and inbox append share the queue lock with route's synthesizer check and reap.
 Solo findings/CI/merge-up refs are never delivered to builder windows. An `unblocked` to the coordinator that matches an
 earlier `blocked` message's refs is recorded in its inbox without a nudge (#578). A run on a role host gets the message
@@ -165,7 +165,9 @@ def run(args):
         print("crew: recorded %s to %s; block resolved itself, no nudge" % (msg["id"], args.window))
         return 0
     failed = nudge(session, index, "inbox: " + msg["id"])  # a nudge only; the inbox file is the message
-    if failed:
+    if failed:  # kept until the window acks it or the operator clears it: mdstack upgrade waits on it (#1618)
+        with open(os.path.join(state, "inbox", args.window + ".undelivered"), "a", encoding="utf-8") as f:
+            f.write(msg["id"] + "\n")
         print("crew: nudge not submitted: %s to %s: %s; the message is in the inbox; treat %s as ambiguous" % (
             msg["id"], args.window, failed, args.window))
         return 4

@@ -27,8 +27,9 @@ import shlex
 import tempfile
 import time
 from crew_shared import (
-    brief_src, BUSY, commands, coordinator_harness, crew_render, ENGINE_CMD, harness, identity, LAUNCH,
-    POINTER, proc, profile, require_ownership, role_notes, runs, stop_pane, tmux, wait_harness, window_env)
+    brief_src, BUSY, commands, coordinator_harness, crew_render, dialog, ENGINE_CMD, harness, harnesses, identity,
+    LAUNCH, POINTER, proc, profile, require_ownership, role_notes, runs, stop_pane, tmux, unacked, wait_harness,
+    window_env)
 
 
 def register(sub):
@@ -38,22 +39,50 @@ def register(sub):
     p.add_argument("--timeout", type=float, default=15)
 
 
-def busy(state, session, windows):
+def busy(values, state, session, windows):
+    """The first window still running a pass, as `name: reason`, or None. A window whose harness adapter declares a
+    COMPOSER is idle only on its idle screen: a row opening with that glyph, no mid-turn text, no dialog and no
+    unsubmitted `inbox:` nudge on the composer (the coordinator's only delivery state), whatever processes live under
+    the pane (a launcher wrapper's harness and MCP servers, #1618). Other adapters stay busy on a live child. A failed
+    probe or an unrecognized screen stays busy."""
     records = dict(runs(state))
     leads = dict(commands()["lead"].records(state))
     for index, name in windows:
         if index != 0 and name not in records and name not in leads:
-            return name
+            return name + ": no run record"
         path = Path(state) / "status" / (name + ".status")
         lines = [s for s in path.read_text().splitlines() if not s.startswith("heartbeat:")] if path.exists() else []
         if name in records and (not lines or not lines[-1].startswith(("done:", "blocked:", "failed:"))):
-            return name
+            return name + ": status not finished"
+        if name in records and unacked(state, name, lines):
+            return name + ": unacknowledged inbox message"
         if name in leads and commands()["lead"].pending(state, name):
-            return name
+            return name + ": pending inbox message"
+        undelivered = Path(state) / "inbox" / (name + ".undelivered")  # a failed send's nudge (the coordinator's too)
+        acks = {line[5:] for line in lines if line.startswith("ack: ")}
+        if undelivered.exists() and (ids := [i for i in undelivered.read_text().split() if i not in acks]):
+            return name + ": undelivered inbox message %s (%s)" % (ids[0], undelivered)
         pane = tmux.pane(session, index)
-        screen = tmux.capture(session, index).lower()
-        if not pane or proc.live_child(pane["pid"], pane["command"]) or any(b.search(screen) for b in BUSY):
-            return name
+        if not pane:
+            return name + ": pane probe failed"
+        screen = tmux.capture(session, index)
+        if any(b.search(screen.lower()) for b in BUSY):
+            return name + ": harness mid-turn"
+        try:
+            child = proc.live_child(pane["pid"], pane["command"])
+        except RuntimeError as e:
+            return name + ": " + str(e)
+        rec = records.get(name) or leads.get(name)
+        executable = rec.get("harness") if rec else ENGINE_CMD.get(values.get("engines.coordinator"))
+        glyph = getattr(harnesses.BY_EXECUTABLE.get(executable), "COMPOSER", "")
+        if glyph:
+            rows = [row for row in screen.splitlines() if row.startswith(glyph)]
+            if not rows or dialog(session, index):
+                return name + ": no idle prompt on screen"
+            if any(commands()["send"].NUDGE.search(row) for row in rows):
+                return name + ": unsubmitted inbox nudge on screen"
+        elif child:
+            return name + ": live child process"
     return None
 
 
@@ -214,7 +243,7 @@ def run(args):
                       "the new briefs")
                 return 0
             deadline = time.monotonic() + args.wait_timeout
-            while active := busy(state, session, tmux.list_windows(session)):
+            while active := busy(values, state, session, tmux.list_windows(session)):
                 if time.monotonic() >= deadline:
                     raise ValueError("in-flight pass " + active + "; wait timed out; no install written")
                 time.sleep(0.2)
