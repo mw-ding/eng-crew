@@ -39,6 +39,9 @@ milestone-close windows into a persistent ledger, one researcher reflection run 
 Each scan also scales idle lifecycle role instances down to their min (`mdstack up`'s scale_down, #1231) and runs due
 role routines (`mdstack up`'s routine_tick, #1247); the triage, docs and backstop timers take their cadence from the
 researcher's and coordinator's routine files (docs/routines.md#terminal).
+While every recorded run's item is held or owner-blocked (an open ask, or `held` in poll-state.json) and no lead has
+pending work, the backstop waits its idle cap, at least 4 h; a run or lead message that can move restores the short
+backstop on the next scan, and ask deadlines and poll wakes are unchanged (#394).
 
 Usage: mdstack watch --project FILE [--org-profile FILE]
 """
@@ -60,6 +63,7 @@ from crew_shared import checkout, commands, CREW_BIN, dialog, ownership_module, 
 # Fields route adds to a record it leaves queued; a kept record still matches its candidate and wakes window 0 (#814).
 ROUTE_NOTES = ("at", "route_error", "consumer", "dependents")
 RATE_LIMITED = re.compile(r"rate-limited until (\S+Z)")  # mdstack poll's exit-75 line for a GitHub quota refusal
+HELD_BACKSTOP = 4 * 3600  # seconds; the shortest backstop while every run is held or owner-blocked (#394)
 RATE_HOLD_MAX = 3600  # seconds; GitHub's primary quota window, so a bad reset time never parks the sources for longer
 
 def asks(state):
@@ -83,6 +87,25 @@ def asks(state):
 def pause(state, now, interval):
     """Seconds to the next scan: --interval, cut short so that a scan lands on the next open ask's deadline."""
     return min([interval] + [due - now for _, _, due in asks(state) if due > now])
+
+
+def held(state):
+    """Refs parked on the owner (#394): each open ask in asks/<n>.json and `held` in mdstack poll's last snapshot."""
+    refs = {"#" + n for n, _, _ in asks(state)}
+    with contextlib.suppress(OSError, ValueError, AttributeError, TypeError):
+        with open(os.path.join(state, "poll-state.json")) as f:
+            refs |= set(json.load(f).get("held", []))
+    return refs
+
+
+def in_flight(state):
+    """"work" while anything can move without the owner: a lead's pending message, or a run whose item is not
+    positively held (an unparsable item counts); "held" while every run is parked on the owner; else "nothing"."""
+    if any(commands()["lead"].pending(state, n) for n, _ in commands()["lead"].records(state)):
+        return "work"
+    parked, items = held(state), [rec["item"] for _, rec in runs(state)]
+    refs = [m.group(1) if (m := re.fullmatch(r"(?:issue|pr) (#\d+)", str(i), re.I)) else None for i in items]
+    return "nothing" if not refs else "held" if all(r in parked for r in refs) else "work"
 
 
 def work(state, name, rec):
@@ -556,12 +579,13 @@ def run(args):
 
     for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):  # a killed watcher removes its PID file, saves offsets
         signal.signal(sig, stop)
-    busy = any(runs(state)) or any(commands()["lead"].pending(state, n) for n, _ in commands()["lead"].records(state))
-    seen["idle"] = 0 if busy else seen["idle"]
+    flight = in_flight(state)
+    seen["idle"] = 0 if flight == "work" else seen["idle"]
     sweep = routine("coordinator", "stale-sweep")  # the team head's backstop (#1247)
     backstop = args.backstop or commands()["up"].crew_routines.interval(sweep, values)
     backoff = sweep.get("idle_backoff", 1)
-    deadline = time.monotonic() + min(backstop * 2 ** seen["idle"], backstop * backoff)  # backs off when idle
+    deadline = time.monotonic() + (max(backstop * backoff, HELD_BACKSTOP) if flight == "held" else
+                                   min(backstop * 2 ** seen["idle"], backstop * backoff))  # backs off when idle
     code = code_sig()
     source_interval = values["runtime.options.poll_interval"] if args.source_interval is None else args.source_interval
     try:
@@ -608,9 +632,12 @@ def run(args):
             others = queued(state, wake, trial)
             if code_sig() != code and not held:  # before route resolves the live profile with old code (#702)
                 reexec()  # trial is not committed, so the new image finds this scan's status lines and records again
+            if flight != "work" and in_flight(state) == "work":  # live work again: the short backstop (#394)
+                flight, trial["idle"] = "work", 0
+                deadline = min(deadline, time.monotonic() + backstop)
             if not wakes and not others and time.monotonic() > deadline:
-                trial["idle"] += 0 if busy else 1
-                wakes = [{"reason": "backstop", "event": "due (%s in flight)" % ("work" if busy else "nothing")}]
+                trial["idle"] += 0 if flight == "work" else 1
+                wakes = [{"reason": "backstop", "event": "due (%s in flight)" % flight}]
             if wakes:
                 with queue_lock(state), open(os.path.join(wake, "queue.jsonl"), "a") as f:
                     for w in wakes:

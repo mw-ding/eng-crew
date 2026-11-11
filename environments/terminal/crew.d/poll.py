@@ -20,6 +20,8 @@ binding, once per `triage.trackers` id (`<tracker>`), and has no milestone list.
 and nothing else, on a tmux or session profile, so a hosted routine can refresh the queue before a sweep (#1404).
 Each crew PR whose ready sample (head, CI, verdict, mergeable, hold) changed is one line in
 `metrics/observations.jsonl` with the poll's time and the previous poll's, its sampling bound (self-improve.md, #1524).
+`poll-state.json`'s `held` lists the refs parked on the owner: open crew PRs and crew:ready issues labelled
+crew:hold, crew:escalated or crew:needs-md, and the issues such a PR closes; `mdstack watch` backs off for them (#394).
 
 Usage: mdstack poll [--once | --triage-only] --project FILE
 """
@@ -38,8 +40,9 @@ from crew_shared import commands, crew_render, ownership_module, profile, queue_
 # against poll-state.json; each change becomes one wake record in wake/queue.jsonl naming one consuming role
 # (protocol §8). The coordinator drains the queue and routes each record by mdstack send or mdstack spawn.
 CONSUMER = {event: role for role, data in ROLES.items() for event in data["events"]["tmux"]}
-PR_FIELDS = "number,state,headRefOid,labels,statusCheckRollup,reviews"
+PR_FIELDS = "number,state,headRefOid,labels,statusCheckRollup,reviews,closingIssuesReferences"
 HOLDS = {"crew:hold", "crew:escalated"}  # a known hold: an approved, green, mergeable PR is still not ready (#1524)
+OWNER_BLOCKED = HOLDS | {"crew:needs-md"}  # nothing moves until the owner answers (#394)
 CREW_LINE = re.compile(r"<!-- crew:v1 ([^>]*?) -->")
 CI_OK, CI_BAD = {"SUCCESS", "NEUTRAL", "SKIPPED"}, {"FAILURE", "ERROR", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED",
                                                     "STARTUP_FAILURE"}
@@ -156,6 +159,11 @@ def decide(prev, prs, issues, merge_ups=None, express=()):
             emit("fix-at-head", "#" + n, cur["head"], round=cur["round"])
     state["issues"] = sorted(i["number"] for i in issues if i["assignees"] and
                              any(label["name"] == "crew:ready" for label in i["labels"]))
+    held = set()
+    for item in prs + issues:
+        if item.get("state", "OPEN") == "OPEN" and {label["name"] for label in item["labels"]} & OWNER_BLOCKED:
+            held |= {item["number"]} | {i["number"] for i in item.get("closingIssuesReferences", [])}
+    state["held"] = ["#%d" % n for n in sorted(held)]
     for n in state["issues"]:
         if n not in prev.get("issues", []):
             emit("issue-assigned", "#%d" % n)

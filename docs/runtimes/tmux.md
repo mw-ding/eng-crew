@@ -2053,7 +2053,14 @@ neither that file nor the watch state, #591), then scans every `--interval` seco
   to their `min` with `mdstack kill` ([role lifecycle](../roles-registry.md#lifecycle), #1231);
 - `backstop:` none of these within `--backstop` seconds (default 1800). While
   no run is recorded the interval doubles per idle backstop, capped at 16 ×
-  `--backstop`, so waiting costs no model turns.
+  `--backstop`, so waiting costs no model turns. While every recorded run's
+  item is held or owner-blocked (an open `asks/<n>.json`, or a ref in
+  `poll-state.json`'s `held`, which `mdstack poll` fills from `crew:hold`,
+  `crew:escalated` and `crew:needs-md`) and no lead has pending work, the
+  backstop waits that cap, at least 4 h (`due (held in flight)`). A live,
+  unrelated or unclassified run, or a pending lead message, keeps the short
+  backstop, restored on the next scan once such work appears; ask deadlines
+  and poll wakes still wake at once (#394).
 
 It appends each wake to `wake/queue.jsonl` as one JSON line (under
 `wake/queue.lock`), saves `wake/watch-state.json` after every scan, and runs

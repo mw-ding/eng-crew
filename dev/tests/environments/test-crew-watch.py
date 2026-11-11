@@ -756,6 +756,43 @@ class Watch(LivenessBase):
                 idle.append(json.load(f)["idle"])
         self.assertEqual(idle, [1, 2])
 
+    def test_in_flight_counts_only_work_that_can_move_without_the_owner(self):  # #394
+        self.assertEqual(self.mod.in_flight(self.state), "work")  # ben-7 on issue #7, nothing held
+        self.ask("7", "2033-05-18T10:00:00-07:00")
+        self.assertEqual(self.mod.in_flight(self.state), "held")  # its only run waits on an owner ask
+        os.remove(os.path.join(self.state, "asks", "7.json"))
+        self.put("poll-state.json", json.dumps({"prs": {}, "issues": [], "held": ["#7"]}))
+        self.assertEqual(self.mod.in_flight(self.state), "held")  # a hold label in the poll snapshot
+        rec = dict.fromkeys(("index", "repo", "worktree", "claim", "engine", "model", "effort", "harness"), "x")
+        self.put("runs/vera-9.json", json.dumps(dict(rec, role="reviewer", item="PR #9", **{"pass": "review"})))
+        self.assertEqual(self.mod.in_flight(self.state), "work")  # mixed held and live runs do not back off
+        self.put("runs/vera-9.json", json.dumps(dict(rec, role="reviewer", item="a sweep", **{"pass": "review"})))
+        self.assertEqual(self.mod.in_flight(self.state), "work")  # an unclassified item counts as live
+        os.remove(os.path.join(self.state, "runs", "vera-9.json"))
+        self.put("poll-state.json", json.dumps({"prs": {}, "issues": [], "held": ["#8"]}))
+        self.assertEqual(self.mod.in_flight(self.state), "work")  # an unrelated hold does not back off
+        self.put("poll-state.json", "{not json")
+        self.assertEqual(self.mod.in_flight(self.state), "work")  # unreadable snapshot: nothing positively held
+        self.assertEqual(self.crew("kill", "ben-7", "--project", self.project).returncode, 0)
+        self.assertEqual(self.mod.in_flight(self.state), "nothing")
+
+    def test_watch_backstop_waits_hours_while_only_held_work_is_open(self):  # #394
+        self.ask("7", "2033-05-18T10:00:00-07:00")  # ben-7's issue is parked on the owner
+        p = self.watch("--backstop", "0.1")
+        self.armed(p)
+        time.sleep(1)  # ten short backstops
+        self.assertIsNone(p.poll())  # backed off to max(16 x 0.1 s, 4 h)
+        os.remove(os.path.join(self.state, "asks", "7.json"))  # the owner answered: live work again
+        out, err = p.communicate(timeout=10)
+        self.assertEqual(out, "backstop: due (work in flight)\n", err)
+        with open(os.path.join(self.state, "wake", "watch-state.json")) as f:
+            self.assertEqual(json.load(f)["idle"], 0)
+
+    def test_watch_ask_deadline_wakes_while_only_held_work_is_open(self):  # #394, #287
+        self.ask("7", "2020-01-01T09:00:00-08:00")  # past due: held, and its deadline still wakes
+        out, err = self.watch("--backstop", "3600").communicate(timeout=10)
+        self.assertEqual(out, "ask: 7 deadline 2020-01-01T09:00:00-08:00\n", err)
+
     def armed(self, p):
         for _ in range(100):
             if os.path.exists(os.path.join(self.state, "wake", "watch-state.json")):

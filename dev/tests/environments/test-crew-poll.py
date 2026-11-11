@@ -111,6 +111,20 @@ class PollDecide(unittest.TestCase):
         prs[0]["statusCheckRollup"].append({"status": "COMPLETED", "conclusion": "FAILURE", "steps": [{}]})
         self.assertEqual(self.crew.pr_snapshot(prs[0])["ci"], "failed")
 
+    def test_held_lists_owner_blocked_prs_their_issues_and_held_issues(self):  # #394
+        prs = fixture("prs-pending.json")
+        prs[0]["labels"] = [{"name": "crew:in-review"}]
+        self.assertEqual(self.crew.decide({}, prs, [])[1]["held"], [])
+        prs[0]["labels"] = [{"name": "crew:in-review"}, {"name": "crew:hold"}]
+        prs[0]["closingIssuesReferences"] = [{"number": 41}]
+        ready = {"assignees": [{"login": "a"}], "labels": [{"name": "crew:ready"}, {"name": "crew:needs-md"}]}
+        issues = [dict(ready, number=9), dict(ready, number=10, labels=[{"name": "crew:ready"}])]
+        events, state = self.crew.decide({}, prs, issues)
+        self.assertEqual(state["held"], ["#9", "#41", "#171"])
+        self.assertNotIn("held", [e["event"] for e in events])  # a hold label alone emits no wake
+        closed = dict(prs[0], state="CLOSED")
+        self.assertEqual(self.crew.decide(state, [closed], [])[1]["held"], [])
+
     def test_changes_verdict_to_builder(self):
         self.assertEqual(self.only("prs-ci-passed.json", "prs-changes.json"),
                          [("review-changes-requested", "builder", ["#171", HEAD])])
@@ -444,7 +458,7 @@ class Poll(Base):
             calls = [json.loads(line) for line in f]
         self.assertTrue(all(c[:2] in (["pr", "list"], ["issue", "list"], ["pr", "view"]) for c in calls), calls)
         self.assertIn(["pr", "view", "171", "-R", "acme/widgets", "--json",
-                       "number,state,headRefOid,labels,statusCheckRollup,reviews,mergeable"], calls)
+                       "number,state,headRefOid,labels,statusCheckRollup,reviews,closingIssuesReferences,mergeable"], calls)
 
     def test_ready_samples_written_on_change_with_the_polling_bound(self):  # #1524
         def poll(labels, mergeable, state="OPEN"):
