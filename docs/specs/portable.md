@@ -626,42 +626,58 @@ Opened by the spec slice #1669, part of
 tracked as GitHub milestones only. Scope comes from
 [Riley's readiness pass](https://github.com/mw-ding/mdstack/issues/1645#issuecomment-6793843567):
 seven survivor items and one follow-up, so that each check runs the path
-it claims to prove. Admitted after M45 closes; no item below dispatches
-before this slice merges. Every row is planned: its issue is `open`.
-B1 and B2 go first; the others follow as capacity permits.
+it claims to prove. Statuses were set by the status-sync slice #1690:
+every build row has shipped; B7's owner-run A19 proof is still pending.
 
 | ID | Issue | Scope | Depends on | Status |
 |---|---|---|---|---|
-| B1 | #1614 | Synthesizer refusal lab: the production session synthesizer against a stub stack backend | #1669 | open |
-| B2 | #1412 | Campaign assertions and retained failing cases | #1669 | open |
-| B3 | #1411 | Discovery-path absence tests | #1669, after B1 and B2 start | open |
-| B4 | #1413 | Production template test helper | #1669, after B1 and B2 start | open |
-| B5 | #1414 | Visible untracked files in `check-repo.py` | #1669, after B1 and B2 start | open |
-| B6 | #1493 | Unbuffered lab status-pull input | #1669, after B1 and B2 start | open |
-| B7 | #1470, #1469 | Faithful A19 source (linked worktree) and shared-server preconditions; owner-run proof after its fix lands | #1669, after B1 and B2 start | open |
-| F1 | #1649 | Detached-fixture capture-pipe lesson (docs) | #1669 | open |
+| B1 | #1614 | Synthesizer refusal lab: the production session synthesizer against a stub stack backend (PR #1680) | #1669 | done |
+| B2 | #1412, #1684 | Campaign assertions and retained failing cases (PR #1677); remaining failure-propagation forms split to #1684 under the stop rule (PR #1687) | #1669 | done |
+| B3 | #1411 | Discovery-path absence tests (PR #1673) | #1669, after B1 and B2 start | done |
+| B4 | #1413 | Production template test helper (PR #1674) | #1669, after B1 and B2 start | done |
+| B5 | #1414 | Visible untracked files in `check-repo.py` (PR #1676) | #1669, after B1 and B2 start | done |
+| B6 | #1493 | Unbuffered lab status-pull input (PR #1675) | #1669, after B1 and B2 start | done |
+| B7 | #1470, #1469 | Faithful A19 source (linked worktree) and shared-server preconditions (PR #1681); the owner-run pinned-source A19 proof is still pending | #1669, after B1 and B2 start | done |
+| F1 | #1649 | Detached-fixture capture-pipe lesson (docs) (PR #1672) | #1669 | done |
+| F2 | #1688 | M45 close capture (PR #1689, approved, not yet merged) | — | open |
 
-Decisions M46 settles:
+Decisions M46 settled:
 
 - **#1469 consolidated into #1470.** The same A19 journey needs source and
   trust parity and the shared-server precondition before its failed
-  bindings rerun; B7 carries both issues' criteria and evidence.
+  bindings rerun; B7 carried both issues' criteria and evidence.
 - **#1649 is a learning only.** Its fixture fix already shipped in #1637;
-  F1 records the lesson and changes no test.
-- **No protocol or merge-gate change.** B1 exercises the existing gate. A
-  fix that changes what counts as a verdict, permission, CI pass or proof
-  becomes gate-contract work under the protocol's existing rules.
+  F1 recorded the lesson and changed no test.
+- **The #1677 split.** B2's rounds 3–7 each closed one failure-propagation
+  form and the next review found another. Under the
+  [cap-2 stop rule](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6795892864),
+  #1677 landed the proven parts and #1684 took the remaining forms.
+- **One termination model.** #1684 replaced per-form patches with one rule:
+  `exit` ends the step, and `return` its function, only in the step's own
+  shell; an `exit`, `return` or exiting helper in a child shell (subshell,
+  pipeline, background list, command substitution) is refused by name
+  ([campaign harness](../campaign-harness.md)).
+- **No protocol or merge-gate change.** B1 exercised the existing gate.
 - **Owner steps for B7.** Checkout trust is already accepted for the
   checkout; the owner re-accepts it only if doctor reports it unmet. The
   live proof is a pinned-source A19 run from an ordinary terminal opened
-  outside any agent session, after B7's fix lands. mdstack never stops or
-  restarts the shared server.
+  outside any agent session. mdstack never stops or restarts the shared
+  server.
 
-Merge permission for M46 spec, protocol, template and gate-contract text is
+Lessons:
+
+- **Fail closed early.** When each review round finds a new edge case,
+  switch to rejecting what cannot be proven, and set a stop rule that
+  splits the proven part from a follow-up (#1677, #1684).
+- **Measure fixture impact before a sweeping lint rule.** A lint that
+  changes what existing scenarios may contain needs its effect on those
+  fixtures measured before it is tightened, not discovered round by round.
+
+Merge permission for M46 spec, protocol, template and gate-contract text was
 the owner's
 [M45–M48 grant](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6789266394),
-recorded at each head. M46 has no release cut of its own. A status-sync
-slice closes the milestone.
+recorded at each head. M46 has no release cut of its own; v7.9.0 follows
+M47. M46 closes after this slice merges.
 
 ## 6. Decisions
 
