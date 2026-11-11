@@ -22,6 +22,10 @@ through a reviewed memory PR (`docs/memory.md`).
   reason; the owner answers in bulk, and a per-PR merge-ok is recorded at
   each listed head from that reply. A merge-ok never supplies missing AC
   evidence (#985 c6729351370, c6746709060).
+- The owner's "all my approvals" for named milestones covers template,
+  protocol, gate-contract and spec text; record the merge-ok per PR at
+  head. `crew:sensitive` still needs a per-change reason (#985
+  c6783489747, c6789266394, c6789083159).
 
 ## Work
 
