@@ -39,3 +39,6 @@ through a reviewed memory PR (`docs/memory.md`).
   c6726893407, c6696039050, c6755491250, c6757500956).
 - Batch work that needs a temporary owner resource (such as the Docker
   daemon) first, then pause, so the owner can release it (#985 c6734826673).
+- Express is an available item flavor, used only when the owner names it
+  for an item or milestone; items default to the project flavor
+  (standard) (#985 c6777665345).
