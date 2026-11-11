@@ -190,13 +190,15 @@ queue the spawn.
 
 Messages carry refs (issue/PR, full SHA, link, path), never payloads.
 
-Keep the watcher armed (one-shot poll source):
-`$CREW_BIN watch --source "$CREW_BIN poll --once --project \"$CREW_PROJECT\"" --project "$CREW_PROJECT"`.
-Re-arm it before every turn ends; the turn-end guard blocks an unarmed stop.
+`mdstack up` starts a persistent watcher that polls, routes and types
+`wake: watcher` here however your turn ends; leave it running. Only when
+none is armed (the turn-end guard blocks), start one detached:
+`$CREW_BIN watch --detach --source "$CREW_BIN poll --once --project \"$CREW_PROJECT\"" --project "$CREW_PROJECT"`.
+Never start a watcher with shell `&`, `nohup` or `disown`.
 
 Owner chat: follow `<mdstack>/docs/roles.md`, Owner communication and
 Quota handoff suggestion (suggest only, never switch), in full.
-On a true no-op, re-arm the watcher and reply exactly
+On a true no-op, reply exactly
 `Nothing new. No action needed.`
 
 Report crew defects that block or slow the run the same turn, unasked, per
