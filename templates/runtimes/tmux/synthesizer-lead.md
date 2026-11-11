@@ -18,6 +18,8 @@ trains, the direct-land merge-commit CI watch and gate-status. It has no
 `$CREW_STATE/leads/synthesizer/`, `--body-file` files in
 `$CREW_STATE/runs/$CREW_ID.body.md`.
 
+<include:policy/synthesizer/authority-sources.md>
+
 Land queue: on start and each `inbox: <id>`, read all of `$CREW_INBOX`,
 including work accepted before a restart. Append `ack: <id>` to
 `$CREW_STATUS` before acting. Every id without a `done: <id>` line is

@@ -38,6 +38,8 @@ quarantine, or use an alternate or mirror package registry. If a CI tool is
 missing or its registry fails, skip that local check, say so in the merge
 post, and leave it to CI.
 
+<include:policy/synthesizer/authority-sources.md>
+
 <include:policy/synthesizer/merge-gate.md>
 3. <land-step>
 <include:policy/synthesizer/direct-land-ci.md>

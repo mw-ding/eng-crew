@@ -579,7 +579,12 @@ line is pending, across restarts and `mdstack down`. The lead lands
 serially under the existing land lock (`locks/merge.pid`, never taken
 from a live holder), trains two or more ready PRs per the land rule, and
 re-checks every [§7](../protocol.md#7-merge-gate-synthesizer) gate live
-before each land (F3). After a direct land it settles the id only once the
+before each land (F3). Staying long-lived does not carry authority between
+lands: for every land it re-reads the head-pinned gate and permission
+sources (marker lines, CI, labels and the recorded `merge_grant` with its
+source decision, scope and exclusions). Inbox and ref payloads, event files
+and narrative summaries only name a candidate; they supply no approval or
+permission, and with `merge_grant = "none"` no standing grant exists (#314). After a direct land it settles the id only once the
 merge commit's CI is green or `blocked: main red after #<n> <run-url>` is
 written. A replayed id whose land already happened finds the PR merged at
 step 1; after a direct land it resumes the merge-commit CI watch before
@@ -1334,6 +1339,7 @@ exactly one consuming role ([protocol §8](../protocol.md#8-safety)):
 | Owner lifts `crew:hold`, `crew:escalated` or `crew:needs-md` from an open crew PR or `crew:ready` issue (it leaves `poll-state.json`'s `held`) | `hold-released` | coordinator (#394) |
 | A held item (in `held`) gains an owner comment or PR review, the hold label unchanged | `owner-answer` | coordinator (#394) |
 | `crew:ready` issue newly assigned | `issue-assigned` | builder |
+| Open crew PR head turns `CONFLICTING` (`UNKNOWN` is no conflict), including after another land | `pr-conflicting` | builder (merge-up via the builder lead, before any CI) |
 | Express change: new builder `pass=selfgate verdict=pass` at head with CI green | `selfgate-passed` | synthesizer |
 
 A change that resolves express ([express lane](../express-lane.md#routing),
@@ -1390,7 +1396,14 @@ synthesizer reports `no-verified-base`, the coordinator re-reads head/holds
 and dispatches normal review and independent validation at that head to
 record the base, then retries portability.
 Conflicts or differing patches route through the builder, then delta
-re-review and independent validation at the updated head. An open rereview
+re-review and independent validation at the updated head. GitHub runs no
+`pull_request` CI on a conflicting PR, so poll emits `pr-conflicting` once
+per head and conflict (an `UNKNOWN` read keeps the head's last known value),
+and `mdstack route` re-reads the PR and hands the builder lead one `merge-up`
+handoff (`#<pr> <head-sha>`) without waiting for checks or a sweep (#1398).
+A closed PR, moved head or resolved conflict consumes the wake; held,
+escalated, draft, solo or lead-less work stays queued for the coordinator.
+A conflict that clears and returns emits again. An open rereview
 steer at head always routes full review and validation. Explicit `recheck`
 recovery and CI-fix passes remain available; they are not required for an
 identical clean base update. A `recheck escalate` status routes full review at
