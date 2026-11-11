@@ -565,7 +565,12 @@ line is pending, across restarts and `mdstack down`. The lead lands
 serially under the existing land lock (`locks/merge.pid`, never taken
 from a live holder), trains two or more ready PRs per the land rule, and
 re-checks every [§7](../protocol.md#7-merge-gate-synthesizer) gate live
-before each land (F3). After a direct land it settles the id only once the
+before each land (F3). Staying long-lived does not carry authority between
+lands: for every land it re-reads the head-pinned gate and permission
+sources (marker lines, CI, labels and the recorded `merge_grant` with its
+source decision, scope and exclusions). Inbox and ref payloads, event files
+and narrative summaries only name a candidate; they supply no approval or
+permission, and with `merge_grant = "none"` no standing grant exists (#314). After a direct land it settles the id only once the
 merge commit's CI is green or `blocked: main red after #<n> <run-url>` is
 written. A replayed id whose land already happened finds the PR merged at
 step 1; after a direct land it resumes the merge-commit CI watch before
