@@ -28,7 +28,8 @@ that conflicts), and union merge attributes (#1112): present, missing, commented
 out, skipped when the doc is absent, the current tree, and two branches that
 each append a scenario line at the same place merging with both lines kept,
 and core memory (#1230): clean, personal data, a stray file and the current tree,
-and role routines (#1247): the contract's vocabulary, an action and event outside it, and the current tree.
+and role routines (#1247): the contract's vocabulary, an action and event outside it, and the current tree,
+and campaign scenarios (#1412): no origin/main, kept cases, an unhandled assertion and a deleted case, and the current tree.
 Run in CI.
 """
 import ast
@@ -1060,6 +1061,33 @@ with tempfile.TemporaryDirectory() as d:
 
 rc, out = run(os.path.dirname(SCRIPTS), "--only", "routines")
 expect("routines: the current tree passes", rc == 0, out)
+
+# Campaign scenarios (#1412): an unhandled assertion, a deleted required case and no origin/main fail.
+def git(d, *args):
+    subprocess.run(["git", "-C", d, "-c", "user.name=t", "-c", "user.email=t@t", *args], check=True,
+                   capture_output=True)
+
+
+SC = "dev/tests/scripts/fixtures/campaign/"
+with tempfile.TemporaryDirectory() as d:
+    git(d, "init", "-q", "-b", "main")
+    write(d, SC + "A01.json", '{"steps": [{"name": "a", "run": "true"}, {"name": "b", "run": "true"}]}')
+    git(d, "add", "-A")
+    git(d, "commit", "-qm", "base")
+    rc, out = run(d, "--only", "campaign")
+    expect("campaign: no origin/main fails closed",
+           rc == 1 and "[campaign] cannot check retained cases: cannot find the merge base of origin/main" in out, out)
+    git(d, "update-ref", "refs/remotes/origin/main", "HEAD")
+    rc, out = run(d, "--only", "campaign")
+    expect("campaign: kept cases pass", rc == 0, out)
+    write(d, SC + "A01.json", '{"steps": [{"name": "a", "run": "test 1 = 2 && echo x; true"}]}')
+    rc, out = run(d, "--only", "campaign")
+    expect("campaign: an unhandled assertion and a deleted case fail",
+           rc == 1 and SC.rstrip("/") + ":1: [campaign] A01/a: unhandled assertion" in out
+           and "[campaign] A01/b: required case at" in out, out)
+
+rc, out = run(os.path.dirname(SCRIPTS), "--only", "campaign")
+expect("campaign: the current tree passes", rc == 0, out)
 
 if failed:
     print("test-check-repo: %d FAILED" % len(failed))
