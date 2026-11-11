@@ -1091,6 +1091,34 @@ step 1, the band cap queue, is under [mdstack dequeue](#mdstack-dequeue) (#136):
   worktrees; a trusted parent directory did not (Claude Code 2.1.310). An
   untrusted window waits at the dialog with `claude` in the foreground,
   which liveness probes `ambiguous`.
+- <a id="confinement"></a>Confinement (#1252, the
+  [M47 B5 boundary](../specs/portable.md#m47-installs-and-working-copies)):
+  a builder's worktree is its own copy, not a linked worktree. Spawn runs
+  `git init`, points `objects/info/alternates` at the shared checkout's
+  object store (read-only borrowing), adds `origin` with the checkout's
+  fetch and push URLs, sets `origin/<default>` to the fetched default head
+  and detaches at the run's head. Its refs, index and worktree list belong
+  to the run; a nested evidence worktree registers in the copy. Other roles
+  keep linked worktrees. A builder launch is **confined** when its harness
+  applies an OS write sandbox whose writable roots mdstack sets: today Codex
+  with `permission_mode` `safe` or `auto`. Its roots are then the worktree,
+  its own `.git` and the state dir: the launch adds
+  `-c sandbox_workspace_write.exclude_slash_tmp=true -c sandbox_workspace_write.exclude_tmpdir_env_var=true`
+  and sets `TMPDIR=<worktree>/.crew/tmp`, so sibling copies and the shared
+  checkout, its `.git` included, are read-only and a raw
+  `git -C <shared> worktree remove`, `rm -rf` of a sibling or a write into
+  its metadata fails. Unconfined: `bypass` on any harness, Claude Code, Pi,
+  Cursor, Muse, a role-host builder, a `paths.worktree_root` or checkout
+  inside the state dir, and a restart in a worktree spawned before #1252.
+  `runtime.options.confinement = "enforce"` refuses an unconfined builder
+  spawn or restart before any claim or window, naming the reason; `off`
+  (default) launches it and records `"confined": false` with the reason in
+  the run record, and `mdstack doctor` warns with each unconfined live
+  builder run. #1252's guarantee is never claimed for an unconfined run.
+  Owner step for a confined crew: none beyond a Codex that can apply its
+  sandbox on the host; a launcher that already sandboxes the coordinator
+  session (#1544) still needs its own writable roots to cover the worktree
+  root and state dir.
 - Sandbox inheritance: `runtime.options.sandbox_env = "<NAME>=<value>"`
   sets the sandbox variable for every window, including window 0. The
   launching environment's `CREW_SANDBOX_ENV=<NAME>=<value>` overrides it.
