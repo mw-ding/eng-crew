@@ -244,6 +244,16 @@ def land_open(state, name, n):
                    for w in lines)
 
 
+def branch_retained(values, pr, default):
+    """Why a PR's head branch must not be deleted (fork, default or base branch), or None when it may be."""
+    if pr["isCrossRepository"] or pr["headRepositoryOwner"]["login"] != values["repo.owner"] or \
+            not pr["headRepository"] or pr["headRepository"]["name"] != values["repo.name"]:
+        return "fork"
+    if pr["headRefName"] in (default, pr["baseRefName"]):
+        return "default or base branch"
+    return None
+
+
 def close_out(args, values, state, pr):
     repo = "%s/%s" % (values["repo.owner"], values["repo.name"])
     labels = {label["name"] for label in pr["labels"]}
@@ -262,9 +272,7 @@ def close_out(args, values, state, pr):
                    values.get("identities.coordinator.name", "Ash"), pr["number"]))
     default = gh("repo", "view", repo, "--json", "defaultBranchRef")["defaultBranchRef"]["name"]
     branch = pr["headRefName"]
-    if not pr["isCrossRepository"] and pr["headRepositoryOwner"]["login"] == values["repo.owner"] and \
-            pr["headRepository"] and pr["headRepository"]["name"] == values["repo.name"] and \
-            branch not in (default, pr["baseRefName"]):
+    if not branch_retained(values, pr, default):
         ref = "repos/%s/git/refs/heads/%s" % (repo, quote(branch, safe="/"))
         r = subprocess.run(["gh", "api", ref], capture_output=True, text=True)
         if r.returncode and "404" not in r.stderr:
