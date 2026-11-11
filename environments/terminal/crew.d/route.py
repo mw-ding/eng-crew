@@ -10,6 +10,9 @@ and a merge that an open issue's `Depends on` names stays queued so the coordina
 one that closes an active milestone's last open item or is a release cut, noted `milestone-complete` (#1559). Progress lines are ignored. Judgement records remain in the queue,
 including red CI, changes, stale heads, holds, failed commands, dialogs, blocked runs and owner asks. Red CI for a
 superseded head and synthesizer gate-status blocks that only wait (`wait=ci,review,validation,selfgate,train`) are consumed.
+A lead's or gone run's `blocked:` line whose typed items are all closed or merged, or whose pinned head or round is
+superseded, is consumed (#1476); an open issue, a current head or an unreadable item keeps it. A dead or missing stale
+wake whose run identity an idle reclaim recorded is consumed; a replacement under the same name still wakes (#1552).
 Routing is serialized; interrupted batches survive in wake/queue.jsonl.route-* and are retried. Reviewer spawns
 are deduplicated by PR/head/pass/round against live and queued runs, section files and pass markers posted by this
 runtime's reviewer (its login and signature; #1290); the head-verdict check that gates a reviewer spawn counts only
@@ -50,6 +53,9 @@ WAITING = re.compile(r"blocked: #\d+ [0-9a-f]{40} gate-status \S+ wait=(?:ci|rev
 REFLECTION_DONE = re.compile(r"done: reflection (\S+) (https?://\S+)")
 # A finished train with every member landed and nothing dropped: a train-report the coordinator need not read.
 TRAIN_CLEAN = re.compile(r"train-report n=\d+ members=\S+ landed=\S+ dropped=none stop=none path=\S+")
+# A block's typed items: optional handoff IDs or window names, its #refs, then an optional head and round (#1476).
+BLOCKED = re.compile(r"blocked: (?:(?:\d{8}T\d{6}Z-[0-9a-f]+|[a-z]+-\d+\S*) )*((?:#\d+ ?)+)"
+                     r"(?:([0-9a-f]{40})(?: |$))?(?:r(\d+)\b)?")
 LAND_EVENTS = ("review-approved", "selfgate-passed", "ci-passed")
 # A release cut's CHANGELOG.md patch adds a version section heading (scripts/changelog-cut.py).
 RELEASE_HEADING = re.compile(r"^\+## \[\d+\.\d+\.\d+\]", re.M)
@@ -340,8 +346,57 @@ def milestone_complete(repo, pr):
     return False
 
 
+def reclaimed(state, w):
+    """A dead or missing stale wake for the very run an idle reclaim removed (#1552); a replacement run under the same
+    window name has another identity and still wakes."""
+    if w.get("reason") != "stale" or w.get("liveness") not in ("dead", "missing") or not w.get("run"):
+        return False
+    for path in glob.glob(os.path.join(state, "retained", "builders", w["window"] + "-*", "run.json")):
+        with open(path) as f:
+            rec = json.load(f)
+        if rec.get("window") == w["window"] and rec.get("run") == w["run"]:
+            return True
+    return False
+
+
+def obsolete_block(values, line):
+    """A `blocked:` line whose typed items are all terminal, or whose pinned head or round is superseded (#1476):
+    `blocked: [<handoff-id>|<window>...] #n... [<sha>] [r<k>] ...`. An open issue, an untyped line or an unreadable
+    item keeps it."""
+    m = BLOCKED.match(line)
+    if not m:
+        return False
+    refs, head, round_ = [int(n) for n in re.findall(r"\d+", m[1])], m[2], m[3]
+    repo = "%s/%s" % (values["repo.owner"], values["repo.name"])
+    items = {}
+    for n in refs:
+        r = subprocess.run(["gh", "api", "repos/%s/issues/%d" % (repo, n)], capture_output=True, text=True)
+        if r.returncode:
+            raise RuntimeError("crew: gh api issue #%d: %s" % (n, r.stderr.strip()))
+        items[n] = json.loads(r.stdout)
+    if head and any("pull_request" in i for i in items.values()):
+        items = {n: i for n, i in items.items() if "pull_request" in i}  # the head pins its PR; closed issues follow
+    for n, item in items.items():
+        if item.get("state") == "closed":
+            continue
+        if not head or "pull_request" not in item:
+            return False
+        pr = gh("pr", "view", str(n), "-R", repo, "--json", "state,headRefOid,reviews")
+        if pr["state"] != "OPEN" or pr["headRefOid"] != head:
+            continue
+        verdicts = [int(v["round"]) for v in markers("\n".join(r["body"] for r in own_reviews(values, pr)))
+                    if v.get("role") == "reviewer-validator" and v.get("pass") == "verdict" and v.get("sha") == head
+                    and v.get("round", "").isdigit()]
+        if not (round_ and verdicts and max(verdicts) > int(round_)):
+            return False
+    return bool(items)
+
+
 def route_record(args, values, state, w):
     line = w.get("line", "")
+    if reclaimed(state, w):
+        print("crew: route: %s was reclaimed idle; its stale wake is consumed" % w["window"])
+        return True
     if w.get("reason") == "status" and line.startswith(("ack:", "heartbeat:")):
         if line.startswith("ack:"):
             rec = dict(runs(state)).get(w.get("window"))
@@ -357,6 +412,9 @@ def route_record(args, values, state, w):
     leader = dict(lead.records(state)).get(w.get("window"))
     if leader and w.get("reason") == "status" and line.startswith(("done:", "deferred:")):
         return True
+    if w.get("reason") == "status" and rec is None and obsolete_block(values, line):
+        print("crew: route: %s: terminal or superseded item; consumed" % line[:60])
+        return True  # a lead's or a gone run's block; a live worker's block still reaches the coordinator
     if (rec and rec["role"] == "synthesizer" or leader and leader["role"] == "synthesizer-lead") and \
             WAITING.fullmatch(line):
         return True  # recorded in the status file and gate-status review; CI or a pass will wake it again (#578)
