@@ -84,6 +84,26 @@ class ReviewerPool(route_tests.Route):
             print("completion: review reclaimed, retained output, fresh validation")
             print("validation completed: both workers reclaimed; lead stays; pending=0")
 
+    def test_resumed_fix_head_dispatches_the_round_poll_emits(self):  # #1005: vera-991-r4-review was round 1
+        def marker(text, login="acme-reviewer", name="Vera"):
+            return dict(author={"login": login}, body="<!-- crew:v1 %s -->\n— 🔍 %s (Role) · codex · m" % (text, name))
+        self.live["reviews"] = [marker("role=reviewer-validator pass=verdict pr=12 sha=%s round=%d verdict=changes"
+                                       % (str(k) * 40, k)) for k in (1, 2, 3)]
+        self.live["reviews"] += [
+            marker("role=coordinator pass=steer pr=12 sha=%s round=n/a verdict=n/a cmd=resume cmd-id=chat" % ("3" * 40),
+                   "acme-bot", "Ash"),
+            marker("role=builder pass=fix pr=12 sha=%s round=1 verdict=n/a" % self.sha, "acme-bot", "Ben")]
+        self.save()
+        values = self.mod.profile(self.args)[0]
+        events, _ = self.mod.commands()["poll"].decide({}, [dict(self.live, labels=[{"name": "crew:in-review"}])], [],
+                                                         values=values)
+        self.assertEqual([(e["event"], e["round"]) for e in events], [("new-head", 1)])
+        self.queue(dict(reason="status", window="ben-7", line="done: #7 #12 " + self.sha))
+        self.route()
+        self.pool()
+        self.assertIn("vera-12-r1-review", self.names())
+        self.assertNotIn("vera-12-r4-review", self.names())
+
     def test_malformed_work_ref_is_recorded_and_the_queue_drains(self):  # #1020
         self.put("hold-note.md", "# hold #1001\n")
         self.put("leads/reviewer-events/list.json", "[1]")

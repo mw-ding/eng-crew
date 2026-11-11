@@ -99,6 +99,21 @@ def landing_steers(reviews):
     return {"urgent": urgent, "stops": sorted(stops)}
 
 
+def signed_by(values, role, review):
+    """The review's author login and visible signature are this runtime's `role` identity (#1290, #1005)."""
+    login, name = values.get("identities.%s.gh_user" % role), values.get("identities.%s.name" % role)
+    return (review.get("author") or {}).get("login") == login and \
+        (not name or bool(re.search(r"^— .*\b%s \(" % re.escape(name), review["body"], re.M)))
+
+
+def round_reset(values, review, m):
+    """A coordinator `steer cmd=resume|cutover` record (protocol §9), or a legacy `pass=resume|cutover` one, restarts
+    the round count (§5). With values, only this runtime's coordinator identity resets it (#1005)."""
+    canonical = m.get("pass") == "steer" and m.get("cmd") in ("resume", "cutover")
+    return m.get("role") == "coordinator" and (canonical or m.get("pass") in ("resume", "cutover")) and \
+        (values is None or signed_by(values, "coordinator", review))
+
+
 def required_checks(values):
     """The expected-check baseline: `[ci] required_checks` from the project profile, or () when unset (#1536)."""
     return tuple(values.get("ci.required_checks") or ())
@@ -111,10 +126,12 @@ def missing_checks(checks, required):
     return sorted(set(required) - seen)
 
 
-def pr_snapshot(pr, required=()):
+def pr_snapshot(pr, required=(), values=None):
     """Head, CI rollup, the latest verdict at head, round k (protocol §5) and whether a builder fix note sits at head
     after a changes verdict there (an evidence-only fix), and the latest builder selfgate verdict at head, from the
-    hidden crew:v1 lines only (protocol §4). An expected check absent at head keeps green CI pending (#1536)."""
+    hidden crew:v1 lines only (protocol §4). An expected check absent at head keeps green CI pending (#1536). With the
+    profile values, round k counts only this runtime's reviewer and coordinator records, so poll emission and reviewer
+    dispatch derive the same round (#1005)."""
     head = pr["headRefOid"]
     results = [c.get("state") if c.get("__typename") == "StatusContext" else
                "INFRA" if c.get("status") == "COMPLETED" and c.get("conclusion") in CI_BAD and
@@ -127,10 +144,10 @@ def pr_snapshot(pr, required=()):
     for review in pr["reviews"]:
         for line in CREW_LINE.findall(review["body"]):
             m = dict(kv.split("=", 1) for kv in line.split() if "=" in kv)
-            if m.get("pass") in ("cutover", "resume"):
+            if round_reset(values, review, m):
                 changes = 0
             elif m.get("role") == "reviewer-validator" and m.get("pass") == "verdict":
-                changes += m.get("verdict") == "changes"
+                changes += m.get("verdict") == "changes" and (values is None or signed_by(values, "reviewer", review))
                 if m.get("sha") == head:
                     verdict, fixed = m.get("verdict"), False
             elif m.get("role") == "builder" and m.get("pass") == "fix" and m.get("sha") == head:
@@ -161,17 +178,17 @@ def owner_answers(prs, issues, owners, read, asked=()):
     return answers
 
 
-def decide(prev, prs, issues, merge_ups=None, express=(), answers=None, required=()):
+def decide(prev, prs, issues, merge_ups=None, express=(), answers=None, required=(), values=None):
     """Pure: previous poll state plus gh JSON (open PRs, tracked PRs now merged or closed, open issues), the PR
-    numbers that resolve express, held refs' owner-answer counts and the expected checks -> (events, new state). A
-    change emits one event; no change emits nothing."""
+    numbers that resolve express, held refs' owner-answer counts, the expected checks and the profile values for
+    round identities -> (events, new state). A change emits one event; no change emits nothing."""
     events, state = [], {"prs": {}, "issues": []}
 
     def emit(event, *refs, **extra):
         events.append({"event": event, "consumer": CONSUMER[event], "refs": list(refs), **extra})
 
     for pr in prs:
-        n, cur = str(pr["number"]), pr_snapshot(pr, required)
+        n, cur = str(pr["number"]), pr_snapshot(pr, required, values)
         if pr["state"] != "OPEN":
             emit("pr-merged" if pr["state"] == "MERGED" else "pr-closed", "#" + n, cur["head"])
             continue
@@ -395,7 +412,7 @@ def poll_once(values, state, args):
     asked = [int(n) for n, _, _ in commands()["watch"].asks(state) if n.isdigit()]  # asks/<n>.json park n too
     answers = owner_answers(prs, issues, owners, lambda kind, n, fields: gh_json(
         kind, "view", str(n), "-R", repo, "--json", ",".join(fields), retry=RETRY_DELAYS), asked)
-    events, new = decide(prev or {}, prs, issues, merge_ups, express, answers, required_checks(values))
+    events, new = decide(prev or {}, prs, issues, merge_ups, express, answers, required_checks(values), values)
     if prev is None:  # first run: record a baseline only; the §6 step 3 sweep covers what happened before it
         events = []
         print("crew: poll: baseline of %d PRs, %d issues" % (len(new["prs"]), len(new["issues"])))
