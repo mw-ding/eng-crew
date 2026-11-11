@@ -176,7 +176,7 @@ class PollDecide(unittest.TestCase):
         self.assertEqual(sorted(self.crew.CONSUMER), sorted(["new-head", "ci-passed", "ci-failed", "ci-infra", "review-changes-requested",
                                                              "review-approved", "pr-merged", "pr-closed",
                                                              "issue-assigned", "fix-at-head", "merge-up",
-                                                             "selfgate-passed"]))
+                                                             "selfgate-passed", "hold-released"]))
         self.assertTrue(all(isinstance(v, str) for v in self.crew.CONSUMER.values()))
 
 

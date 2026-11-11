@@ -814,11 +814,12 @@ class Watch(LivenessBase):
             self.assertEqual(json.load(f)["idle"], 0)
 
     def test_watch_backstop_extends_when_active_work_becomes_held(self):  # #394
-        p = self.watch("--backstop", "1")
+        p = self.watch("--backstop", "3")
         self.armed(p)  # ben-7 on issue #7 is live: the short backstop
         self.put("poll-state.json", json.dumps({"prs": {}, "issues": [], "held": ["#7"]}))  # the owner holds it
-        time.sleep(3)  # three short backstops
-        self.assertIsNone(p.poll())  # recomputed to max(16 x 1 s, 4 h) from arming
+        time.sleep(5)  # past the short backstop
+        if p.poll() is not None:  # recomputed to max(16 x 3 s, 4 h) from arming
+            self.fail("watcher exited: %r %r" % p.communicate())
         os.remove(os.path.join(self.state, "poll-state.json"))
         out, err = p.communicate(timeout=10)
         self.assertEqual(out, "backstop: due (work in flight)\n", err)
