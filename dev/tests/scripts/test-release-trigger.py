@@ -25,6 +25,7 @@ PR = {"number": 7, "head": {"sha": HEAD}, "merge_commit_sha": MERGE,
       "merged_at": "2026-11-01T12:00:00Z", "base": {"ref": "main", "repo": {"full_name": "owner/repo"}}}
 MARKER = "<!-- crew:v1 role=synthesizer pass=steer cmd=merge-ok pr=7 sha=%s round=n/a verdict=n/a -->" % HEAD
 POST = {"user": {"login": "owner"}, "body": MARKER}
+BODY = "## Context\n\nCuts v1.2.3. Refs #4\n\nRelease issue: #4\n\nCloses #9\n"
 
 
 class ReleaseTriggerTest(unittest.TestCase):
@@ -93,10 +94,15 @@ class ReleaseTriggerTest(unittest.TestCase):
         for reviews, comments in [([[POST]], [[]]), ([[]], [[], [POST]])]:
             with self.subTest(reviews=reviews, comments=comments), patch.dict(os.environ, env):
                 with patch.object(rt, "gh", side_effect=[[[PR]], [[{"filename": "CHANGELOG.md"}]], reviews, comments,
-                                  {"closingIssuesReferences": [{"number": 4, "url": "https://github.com/owner/repo/issues/4"}]}]) as gh:
-                    self.assertEqual(rt.authorize(), ["4"])
+                                  {"body": BODY, "closingIssuesReferences": [{"number": 9}]}]) as gh:
+                    self.assertEqual(rt.authorize(), "4")
+                    self.assertIn("body,closingIssuesReferences", gh.call_args_list[4].args)
                     self.assertIn("--paginate", gh.call_args_list[2].args)
                     self.assertIn("--slurp", gh.call_args_list[3].args)
+        with patch.dict(os.environ, env), patch.object(rt, "gh", side_effect=[[[PR]], [[{"filename": "CHANGELOG.md"}]], [[POST]], [[]],
+                                                                                {"body": BODY, "closingIssuesReferences": [{"number": 4}]}]):
+            with self.assertRaisesRegex(rt.rc.Failed, "closing keyword names release issue #4"):
+                rt.authorize()
         with patch.dict(os.environ, env), patch.object(rt, "gh", side_effect=[[[PR]], [[{"filename": "CHANGELOG.md"}]], [[]], [[]]]):
             with self.assertRaisesRegex(rt.rc.Failed, "missing owner merge-ok"):
                 rt.authorize()
@@ -108,6 +114,65 @@ class ReleaseTriggerTest(unittest.TestCase):
                 with self.assertRaisesRegex(rt.rc.Failed, "actor"):
                     rt.authorize()
                 gh.assert_not_called()
+
+    def test_release_issue_accepts_only_the_release_only_non_closing_form(self):
+        """#1416: one same-repo `Release issue:` line plus `Refs`, never closed by a keyword."""
+        self.assertEqual(rt.release_issue(BODY, "owner/repo"), "4")
+        url = "Refs https://github.com/owner/repo/issues/4\nRelease issue: https://github.com/owner/repo/issues/4\n"
+        self.assertEqual(rt.release_issue(url.replace("Refs https://github.com/owner/repo/issues/4", "Refs #4"), "owner/repo"), "4")
+        cases = [("", "no `Release issue: #N` line"), ("Closes #4\n", "no `Release issue: #N` line"),
+                 (BODY + "Release issue: #5\n", "2 `Release issue:` lines"),
+                 (BODY.replace("Release issue: #4", "Release issue: other/repo#4"), "not a same-repository"),
+                 (BODY.replace("Release issue: #4", "Release issue: https://github.com/other/repo/issues/4"),
+                  "not a same-repository"),
+                 (BODY.replace("Release issue: #4", "Release issue: #4 and #5"), "not a same-repository"),
+                 (BODY.replace("Refs #4", "Refs #45"), "no `Refs #4`"),
+                 (BODY + "Fixes #4\n", "closing keyword names release issue #4"),
+                 (BODY + "closes: https://github.com/owner/repo/issues/4\n", "closing keyword names release issue #4")]
+        for body, error in cases:
+            with self.subTest(body=body), self.assertRaisesRegex(rt.rc.Failed, error) as caught:
+                rt.release_issue(body, "owner/repo")
+            self.assertIn("correct the cut PR body", str(caught.exception))
+        with self.assertRaisesRegex(rt.rc.Failed, "closing keyword"):
+            rt.release_issue(BODY, "owner/repo", [4])
+        self.assertEqual(rt.release_issue(BODY, "owner/repo", [9]), "4")
+
+    def test_linkage_mode_reads_pr_body(self):
+        env = {"GITHUB_REPOSITORY": "owner/repo"}
+        with patch.dict(os.environ, dict(env, PR_BODY=BODY)), contextlib.redirect_stdout(io.StringIO()) as out:
+            self.assertEqual(rt.main(["linkage"]), 0)
+        self.assertIn("release issue #4", out.getvalue())
+        with patch.dict(os.environ, dict(env, PR_BODY="Closes #4\n")), contextlib.redirect_stderr(io.StringIO()) as err:
+            self.assertEqual(rt.main(["linkage"]), 1)
+        self.assertIn("refused: no `Release issue: #N` line", err.getvalue())
+
+    def test_publish_posts_release_url_before_closing_and_failure_leaves_issue_open(self):
+        """#1416: the issue closes only after the release exists and its notice posts."""
+        root = Path(__file__).resolve().parents[3]
+        publish = (root / '.github/workflows/release.yml').read_text().split('  publish:\n', 1)[1]
+        def step(name):
+            block = publish.split('      - name: %s\n' % name, 1)[1].split('\n      - ', 1)[0]
+            return '\n'.join(line[10:] for line in block.split('        run: |\n', 1)[1].splitlines())
+        script = step('Tag the validated SHA and publish the release') + '\n' + step('Notify and close the release issue')
+        with tempfile.TemporaryDirectory() as tmp:
+            log = Path(tmp, 'log')
+            gh = Path(tmp, 'gh')
+            gh.write_text('#!/bin/sh\necho "$1 $2" >> "$LOG"\ncase "$1 $2" in "$FAIL") exit 1;; esac\n'
+                          'case "$1 $2" in "api repos/owner/repo/git/tags") echo tagsha;; '
+                          '"release view") echo https://example.test/releases/v1.2.3;; esac\n')
+            gh.chmod(0o755)
+            env = dict(os.environ, PATH=tmp + os.pathsep + os.environ['PATH'], LOG=str(log), VERSION='1.2.3',
+                       ISSUE='4', GITHUB_REPOSITORY='owner/repo', GITHUB_SHA=MERGE)
+            for fail, calls in [('', ['release create', 'release view', 'issue comment', 'issue close']),
+                                ('release create', ['release create']),
+                                ('issue comment', ['release create', 'release view', 'issue comment'])]:
+                with self.subTest(fail=fail):
+                    log.write_text('')
+                    run = subprocess.run(['bash', '-e', '-c', script], cwd=tmp, env=dict(env, FAIL=fail),
+                                         capture_output=True, text=True)
+                    self.assertEqual(run.returncode, 1 if fail else 0, run.stderr)
+                    seen = [c for c in log.read_text().splitlines() if not c.startswith('api ')]
+                    self.assertEqual(seen, calls)
 
     def test_ci_state_needs_latest_green_run_at_sha(self):
         def run(status="completed", conclusion="success", sha=MERGE, created="2026-11-01T12:00:00Z"):
@@ -183,18 +248,20 @@ class ReleaseTriggerTest(unittest.TestCase):
             git.write_text('#!/bin/sh\ncase "$1" in tag) echo "$FIXTURE_TAGS";; diff) echo "$FIXTURE_DIFF";; esac\n')
             git.chmod(0o755)
             env = dict(os.environ, PATH=tmp + os.pathsep + os.environ['PATH'], BASE_SHA=HEAD,
+                       GITHUB_REPOSITORY='owner/repo',
                        GITHUB_OUTPUT=str(stage / 'output'), GITHUB_STEP_SUMMARY=str(stage / 'summary'))
-            cases = [('workflow_dispatch', '', '', '2.0.0-rc.1', 0, 'version=2.0.0-rc.1'),
-                     ('push', '', '', '', 0, 'version=1.2.3'),
-                     ('push', '', 'v1.2.3', '', 0, 'ready=false'),
-                     ('pull_request', 'CHANGELOG.md', '', '', 0, 'version=1.2.3'),
-                     ('pull_request', 'CHANGELOG.md', 'v1.2.3', '', 1, ''),
-                     ('pull_request', '', '', '', 0, 'simulated=true')]
-            for event, diff, tags, version, code, expected in cases:
-                with self.subTest(event=event, diff=diff, tags=tags):
+            cases = [('workflow_dispatch', '', '', '2.0.0-rc.1', BODY, 0, 'version=2.0.0-rc.1'),
+                     ('push', '', '', '', BODY, 0, 'version=1.2.3'),
+                     ('push', '', 'v1.2.3', '', BODY, 0, 'ready=false'),
+                     ('pull_request', 'CHANGELOG.md', '', '', BODY, 0, 'version=1.2.3'),
+                     ('pull_request', 'CHANGELOG.md', 'v1.2.3', '', BODY, 1, ''),
+                     ('pull_request', 'CHANGELOG.md', '', '', 'Closes #4', 1, 'version=1.2.3'),
+                     ('pull_request', '', '', '', 'Closes #4', 0, 'simulated=true')]
+            for event, diff, tags, version, body, code, expected in cases:
+                with self.subTest(event=event, diff=diff, tags=tags, body=body):
                     (stage / 'output').write_text('')
                     run = subprocess.run(['bash', '-e', '-o', 'pipefail', '-c', script], cwd=tmp,
-                                         env=dict(env, EVENT=event, INPUT_VERSION=version,
+                                         env=dict(env, EVENT=event, INPUT_VERSION=version, PR_BODY=body,
                                                   FIXTURE_DIFF=diff, FIXTURE_TAGS=tags), capture_output=True, text=True)
                     self.assertEqual(run.returncode, code, run.stderr)
                     self.assertIn(expected, (stage / 'output').read_text())
