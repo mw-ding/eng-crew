@@ -209,7 +209,9 @@ to such a helper in a child and names the child, for example
 `f() { test -e a || exit 1; }; f | cat` or
 `test -e a || { echo bad; exit 1 & }`. A `|| exit N` or
 `|| { ...; exit N; }` handler counts only when its `exit` runs in the step
-shell. To keep a loop's output, redirect it to a file rather than piping
+shell. A command substitution's status is dropped, so a call there to a
+helper whose return can carry a failure (including a `return` in an `if`
+or `while` condition) is refused too. To keep a loop's output, redirect it to a file rather than piping
 it; to use a helper's output, have the helper fail through its status
 (`a && b`) and assert the value.
 Restructure such a step into the allowed forms. The runner checks

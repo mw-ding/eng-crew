@@ -158,7 +158,11 @@ class StepLintTest(unittest.TestCase):
                 ("f() { if test 1 -eq 2 || exit 1; then :; fi; }; f | cat; echo tail", "a call to f"),
                 ("f() { while test 1 -eq 2 || exit 1; do break; done; }; f | cat; echo tail", "a call to f"),
                 ("f() { if test 1 -eq 2 || exit 1; then :; fi; }; x=$(f); echo tail", "a call to f"),
-                ("g() { until f; do :; done; }; f() { test 1 -eq 2 || exit 1; }; g | cat; echo tail", "a call to g")):
+                ("g() { until f; do :; done; }; f() { test 1 -eq 2 || exit 1; }; g | cat; echo tail", "a call to g"),
+                # #1687 r2: a condition-list `return` makes a helper fallible; a substitution drops its status.
+                ("f() { if test 1 -eq 2 || return 1; then :; fi; }; f | cat; echo tail", "before `|`"),
+                ("f() { if test 1 -eq 2 || return 1; then :; fi; }; x=$(f); echo tail", "in a command substitution"),
+                ("f() { test 1 -eq 2 || return 1; }; echo \"$(f)\"; echo tail", "in a command substitution")):
             found = cl.lint_step(src)
             self.assertTrue(any(f.startswith("unsupported: ") and ctx in f for f in found), (src, found))
         self.good("f() { test 1 -eq 2 || exit 1; }; f; echo tail")  # a foreground exiting helper ends the step
@@ -166,6 +170,9 @@ class StepLintTest(unittest.TestCase):
         self.good("f() { test 1 -eq 2 || exit 1; }; if true; then f; fi; echo tail")
         self.good("f() { if test 1 -eq 2 || exit 1; then :; fi; }; f; echo tail")
         self.good("(if test -e a; then echo y; fi) | cat; true")  # a predicate in a subshell is control flow
+        self.bad("f() { while test 1 -eq 2 || return 1; do break; done; }; f; echo tail")
+        self.good("f() { if test 1 -eq 2 || return 1; then :; fi; }; f || exit 1; echo tail")
+        self.good("f() { if false; then :; fi; echo ok; }; f; echo tail")  # `false` in a condition is a predicate
         self.good("for r in a; do test -e $r || exit 1; done > out; echo tail")
         self.good("x=$(git rev-parse HEAD); n=$((n+1)); echo \"$x `date`\"")
         self.good("say() { echo hi; }; say | cat; x=$(say); echo \"$x\"")
