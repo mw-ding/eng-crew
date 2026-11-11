@@ -33,7 +33,8 @@ from crew_testlib import Base, CREW, SCRIPTS, write_pack
 
 POLL = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures", "poll")
 HEAD = "1" * 40
-# Fake gh: serves $FAKE_GH_DIR/{prs,issues,pr-<n>}.json for pr list / issue list / pr view; logs every call.
+# Fake gh: serves $FAKE_GH_DIR/{prs,issues,pr-<n>}.json for pr list / issue list / pr view; logs every call. A held
+# ref's comments view without pr-<n>.json serves answers-<n>.json, else {} (#394).
 FAKE_GH = textwrap.dedent("""\
     #!/usr/bin/env python3
     import json, os, sys
@@ -43,7 +44,10 @@ FAKE_GH = textwrap.dedent("""\
     name = ("job" if "/actions/jobs/" in args[1] else "commit" if "/commits/" in args[1] else "files" if "/files" in args[1]
             else "compare") if args[0] == "api" else (
         {("pr", "list"): "prs", ("issue", "list"): "issues"}.get(tuple(args[:2])) or args[0] + "-" + args[2])
-    sys.stdout.write(open(os.path.join(d, name + ".json")).read())
+    path = os.path.join(d, name + ".json")
+    if not os.path.exists(path) and args[-1] in ("comments", "comments,reviews"):  # a held ref's owner answers (#394)
+        path = os.path.join(d, "answers-" + args[2] + ".json") if os.path.exists(os.path.join(d, "answers-" + args[2] + ".json")) else os.devnull
+    sys.stdout.write(open(path).read() or "{}")
     """)
 
 
@@ -111,6 +115,68 @@ class PollDecide(unittest.TestCase):
         prs[0]["statusCheckRollup"].append({"status": "COMPLETED", "conclusion": "FAILURE", "steps": [{}]})
         self.assertEqual(self.crew.pr_snapshot(prs[0])["ci"], "failed")
 
+    def test_held_lists_owner_blocked_prs_their_issues_and_held_issues(self):  # #394
+        prs = fixture("prs-pending.json")
+        prs[0]["labels"] = [{"name": "crew:in-review"}]
+        self.assertEqual(self.crew.decide({}, prs, [])[1]["held"], [])
+        prs[0]["labels"] = [{"name": "crew:in-review"}, {"name": "crew:hold"}]
+        prs[0]["closingIssuesReferences"] = [{"number": 41}]
+        ready = {"assignees": [{"login": "a"}], "labels": [{"name": "crew:ready"}, {"name": "crew:needs-md"}]}
+        issues = [dict(ready, number=9), dict(ready, number=10, labels=[{"name": "crew:ready"}])]
+        events, state = self.crew.decide({}, prs, issues)
+        self.assertEqual(state["held"], ["#9", "#41", "#171"])
+        self.assertNotIn("held", [e["event"] for e in events])  # a hold label alone emits no wake
+        closed = dict(prs[0], state="CLOSED")
+        self.assertEqual(self.crew.decide(state, [closed], [])[1]["held"], [])
+
+    def test_owner_unhold_is_one_prompt_coordinator_wake(self):  # #394
+        prs = fixture("prs-pending.json")
+        prs[0]["labels"] = [{"name": "crew:in-review"}, {"name": "crew:hold"}]
+        ready = {"assignees": [{"login": "a"}], "number": 9, "labels": [{"name": "crew:ready"}, {"name": "crew:needs-md"}]}
+        _, state = self.crew.decide({}, prs, [ready])
+        self.assertEqual(state["held"], ["#9", "#171"])
+        self.assertEqual(self.crew.decide(state, prs, [ready])[0], [])  # still held: no wake
+        prs[0]["labels"] = [{"name": "crew:in-review"}]  # only the label changes; head, CI and verdict do not
+        ready["labels"] = [{"name": "crew:ready"}]
+        events, after = self.crew.decide(state, prs, [ready])
+        self.assertEqual([(e["event"], e["consumer"], e["refs"]) for e in events],
+                         [("hold-released", "coordinator", ["#9", "#171"])])
+        self.assertEqual(after["held"], [])
+        closed = dict(prs[0], state="CLOSED", labels=[{"name": "crew:hold"}])
+        self.assertEqual([e["event"] for e in self.crew.decide(state, [closed], [])[0]], ["pr-closed"])  # gone, not unheld
+
+    def test_owner_comment_on_a_held_pr_is_one_prompt_wake_and_keeps_the_hold(self):  # #394
+        prs = fixture("prs-pending.json")
+        prs[0]["labels"] = [{"name": "crew:in-review"}, {"name": "crew:hold"}]
+        _, state = self.crew.decide({}, prs, [], answers={"#171": 0})
+        self.assertEqual(self.crew.decide(state, prs, [], answers={"#171": 0})[0], [])  # no answer yet: no wake
+        events, after = self.crew.decide(state, prs, [], answers={"#171": 1})  # only an owner comment changed
+        self.assertEqual([(e["event"], e["consumer"], e["refs"]) for e in events], [("owner-answer", "coordinator", ["#171"])])
+        self.assertEqual((after["held"], after["answers"]), (["#171"], {"#171": 1}))  # the hold stays for reconciliation
+        self.assertEqual(self.crew.decide(after, prs, [], answers={"#171": 1})[0], [])  # once per answer
+
+    def test_owner_comment_on_an_asked_item_without_a_hold_label_wakes(self):  # #394
+        prs = fixture("prs-pending.json")
+        prs[0]["labels"] = [{"name": "crew:in-review"}]  # parked by an open ask only
+        _, state = self.crew.decide({}, prs, [], answers={"#171": 0})
+        self.assertEqual((state["held"], state["answers"]), ([], {"#171": 0}))
+        events, after = self.crew.decide(state, prs, [], answers={"#171": 1})
+        self.assertEqual([(e["event"], e["refs"]) for e in events], [("owner-answer", ["#171"])])
+        self.assertEqual(self.crew.owner_answers(prs, [], {"mw"}, lambda kind, n, fields: {"comments": []}, [171]),
+                         {"#171": 0})  # an asked ref is read with no hold label
+
+    def test_owner_answers_reads_only_held_items_and_counts_owner_posts(self):  # #394
+        prs = fixture("prs-pending.json")
+        prs[0]["labels"], prs[0]["closingIssuesReferences"] = [{"name": "crew:hold"}], [{"number": 41}]
+        reads, owner, bot = [], {"author": {"login": "mw"}}, {"author": {"login": "crew-bot"}}
+        posts = {171: {"comments": [owner, bot], "reviews": [owner]}, 41: {"comments": [bot]}}
+
+        def read(kind, n, fields):
+            reads.append((kind, n, fields))
+            return posts[n]
+        self.assertEqual(self.crew.owner_answers(prs, [], {"mw"}, read), {"#41": 0, "#171": 2})
+        self.assertEqual(reads, [("issue", 41, ["comments"]), ("pr", 171, ["comments", "reviews"])])  # PR #300 is not held: unread
+
     def test_changes_verdict_to_builder(self):
         self.assertEqual(self.only("prs-ci-passed.json", "prs-changes.json"),
                          [("review-changes-requested", "builder", ["#171", HEAD])])
@@ -146,7 +212,7 @@ class PollDecide(unittest.TestCase):
         self.assertEqual(sorted(self.crew.CONSUMER), sorted(["new-head", "ci-passed", "ci-failed", "ci-infra", "review-changes-requested",
                                                              "review-approved", "pr-merged", "pr-closed",
                                                              "issue-assigned", "fix-at-head", "merge-up",
-                                                             "selfgate-passed", "pr-conflicting"]))
+                                                             "selfgate-passed", "pr-conflicting", "hold-released", "owner-answer"]))
         self.assertTrue(all(isinstance(v, str) for v in self.crew.CONSUMER.values()))
 
 
@@ -467,7 +533,23 @@ class Poll(Base):
             calls = [json.loads(line) for line in f]
         self.assertTrue(all(c[:2] in (["pr", "list"], ["issue", "list"], ["pr", "view"]) for c in calls), calls)
         self.assertIn(["pr", "view", "171", "-R", "acme/widgets", "--json",
-                       "number,state,headRefOid,labels,statusCheckRollup,reviews,mergeable"], calls)
+                       "number,state,headRefOid,labels,statusCheckRollup,reviews,closingIssuesReferences,mergeable"], calls)
+
+    def test_owner_comment_on_a_held_pr_queues_one_owner_answer(self):  # #394
+        self.serve("prs-none.json")
+        self.serve("prs-pending.json")  # PR #171 carries crew:hold
+        before = len(self.queue())
+        self.serve("prs-pending.json")
+        self.assertEqual(len(self.queue()), before)  # no owner answer yet
+        with open(os.path.join(self.gh_dir, "answers-171.json"), "w") as f:
+            json.dump({"comments": [{"author": {"login": "acme-owner"}, "body": "Please proceed with option A."}],
+                       "reviews": []}, f)
+        self.assertIn("owner-answer -> coordinator #171", self.serve("prs-pending.json"))
+        self.assertEqual([r["event"] for r in self.queue()[before:]], ["owner-answer"])
+        with open(os.path.join(self.state, "poll-state.json")) as f:
+            self.assertEqual(json.load(f)["held"], ["#171"])  # the hold stays for the coordinator to reconcile
+        with open(os.path.join(self.gh_dir, "gh.log")) as f:
+            self.assertIn(["pr", "view", "171", "-R", "acme/widgets", "--json", "comments,reviews"], map(json.loads, f))
 
     def test_once_conflict_wakes_builder_once_per_head_and_conflict(self):  # #1398: through the shipped CLI
         self.transcript = []
@@ -497,6 +579,20 @@ class Poll(Base):
         self.assertEqual([(w["event"], w["consumer"], w["refs"]) for w in self.queue()
                           if w["event"] == "pr-conflicting"],
                          [("pr-conflicting", "builder", ["#171", h]) for h in (HEAD, HEAD, new)])
+
+    def test_owner_comment_on_an_asked_pr_without_a_hold_queues_one_owner_answer(self):  # #394
+        pr = dict(fixture("prs-pending.json")[0], labels=[{"name": "crew:in-review"}])
+        with open(os.path.join(self.gh_dir, "prs.json"), "w") as f:
+            json.dump([pr], f)
+        shutil.copy(os.path.join(POLL, "issues-none.json"), os.path.join(self.gh_dir, "issues.json"))
+        self.put("asks/171.json", json.dumps({"deadline": "2033-05-18T10:00:00-07:00"}))  # the coordinator's open ask
+        for _ in range(2):  # baseline, then the ask's answer count
+            self.assertEqual(self.crew("poll", "--once", "--project", self.project).returncode, 0)
+        with open(os.path.join(self.gh_dir, "answers-171.json"), "w") as f:
+            json.dump({"comments": [{"author": {"login": "acme-owner"}, "body": "Option A."}], "reviews": []}, f)
+        r = self.crew("poll", "--once", "--project", self.project)
+        self.assertIn("owner-answer -> coordinator #171", r.stdout, r.stderr)
+        self.assertTrue(os.path.exists(os.path.join(self.state, "asks", "171.json")))  # the ask stays for the coordinator
 
     def test_ready_samples_written_on_change_with_the_polling_bound(self):  # #1524
         def poll(labels, mergeable, state="OPEN"):

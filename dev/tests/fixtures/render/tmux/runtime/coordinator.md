@@ -146,6 +146,7 @@ On every wake (watcher, owner, start), run
   `$CREW_BIN lead ensure synthesizer --project "$CREW_PROJECT"`.
   CI green alone never spawns review or supplies approval; the lead
   still checks every §7 gate, including CI green at head.
+- `hold-released`, `owner-answer`: resume the item per §6.
 - `pr-merged` / `pr-closed`: hand off builder cleanup with
   `$CREW_BIN lead handoff builder terminal '#<n>' --wait-ack 30 --project "$CREW_PROJECT"`
   and reviewer cleanup to its lead (durable terminal event), which releases
