@@ -270,6 +270,18 @@ def resume_ok(values):
     return True
 
 
+def watcher(args, state, project=None):
+    """Start the persistent watcher (`mdstack watch --persistent --detach`), which polls, routes and wakes the
+    coordinator however its turns end (#1346); a no-op while one is armed. CREW_WATCHER=off leaves arming to the
+    coordinator's one-shot watcher."""
+    if os.environ.get("CREW_WATCHER") == "off":
+        return
+    project = os.path.abspath(project or args.project)
+    org = ["--org-profile", os.path.abspath(args.org_profile)] if getattr(args, "org_profile", None) else []
+    poll = shlex.join([CREW_BIN, "poll", "--once", "--project", project] + org)
+    commands()["watch"].start_persistent(state, ["--source", poll, "--project", project] + org)
+
+
 def coordinator_cmd(values, project_dir, state):
     """The coordinator's harness command; RuntimeError when the harness refuses the profile."""
     # ask opens the harness picker, which would take the pointer as a search term or id
@@ -346,6 +358,7 @@ def run(args):
                                                    "CREW_PROJECT": os.path.abspath(args.project)}):
         return 1
     reconcile(state)
+    watcher(args, state)
     roles = "none" if args.coordinator_only else launch(values, "roles")
     if roles != "tmux":
         print("crew: launch.roles = %s; started no role windows" % roles)
@@ -447,6 +460,7 @@ def team(args):
     if start(values, session, root, project_dir, {"CREW_BRIEF": brief, "CREW_PROJECT": os.path.abspath(repos[0][0]),
                                                   "CREW_TEAM": os.path.abspath(args.team)}):
         return 1
-    for _, _, state in repos:
+    for ref, _, state in repos:
         reconcile(state)
+        watcher(args, state, ref)
     return 0

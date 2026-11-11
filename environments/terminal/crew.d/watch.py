@@ -49,6 +49,7 @@ Usage: mdstack watch --project FILE [--org-profile FILE]
 import argparse
 import contextlib
 import datetime
+import fcntl
 import glob
 import hashlib
 import json
@@ -59,12 +60,13 @@ import signal
 import subprocess
 import sys
 import time
-from crew_shared import checkout, commands, CREW_BIN, dialog, ownership_module, ENGINE_CMD, foreground_matches, finished, gateway_error, HERE, heartbeat, idle_builder, probe, proc, profile, queue_lock, remember_pr, remote_run, ROOT, runs, TRANSIENT, tmux, transient_lines
+from crew_shared import checkout, commands, CREW_BIN, dialog, ownership_module, ENGINE_CMD, foreground_matches, finished, GLYPHS, PROMPTS, gateway_error, HERE, heartbeat, idle_builder, probe, proc, profile, queue_lock, remember_pr, remote_run, ROOT, runs, TRANSIENT, tmux, transient_lines
 
 # Fields route adds to a record it leaves queued; a kept record still matches its candidate and wakes window 0 (#814).
 ROUTE_NOTES = ("at", "route_error", "consumer", "dependents")
 RATE_LIMITED = re.compile(r"rate-limited until (\S+Z)")  # mdstack poll's exit-75 line for a GitHub quota refusal
 HELD_BACKSTOP = 4 * 3600  # seconds; the shortest backstop while every run is held or owner-blocked (#394)
+LOCK_ENV = "MDSTACK_WATCH_LOCK"  # "<pid>:<fd>" of the held wake/watcher.lock, kept across a re-exec (#399)
 RATE_HOLD_MAX = 3600  # seconds; GitHub's primary quota window, so a bad reset time never parks the sources for longer
 
 def asks(state):
@@ -286,7 +288,7 @@ def scan(state, session, now, stale, seen, idle_ttl=1800, stuck_after=1800, idle
         key = "stale %s" % beat  # not the class: an ambiguous -> alive flip is the same silence (#234 N4)
         if seen["keys"].get(name) != key:
             seen["keys"][name] = key
-            wakes.append({"reason": "stale", "window": name, "liveness": cls, "silent": int(now - beat),
+            wakes.append({"reason": "stale", "window": name, "liveness": cls, "silent": int(now - beat), "run": identity,
                           "action": "restart" if cls in ("dead", "missing") and not rec.get("restarts") else "escalate"})
             stall(state, seen, name, now, utc(beat), cls)
     for n, text, due in asks(state):  # whatever the backstop: the ask's §6 auto-apply time (tmux.md C8)
@@ -456,6 +458,52 @@ def armed(pidfile):
     return pid if "watch" in command.split() else None
 
 
+def hold_lock(wake):
+    """Take wake/watcher.lock exclusively for this process's life (#399); the fd, or None while another watcher holds
+    it. A re-exec'd watcher (same PID) reuses the fd it inherited, so the lock is never released in between. A short
+    retry outlasts `mdstack guard`'s instant probe."""
+    pid, _, fd = os.environ.get(LOCK_ENV, "").partition(":")
+    if pid == str(os.getpid()) and fd.isdigit():
+        return int(fd)
+    fd = os.open(os.path.join(wake, "watcher.lock"), os.O_RDWR | os.O_CREAT, 0o644)
+    deadline = time.monotonic() + 1
+    while True:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            os.ftruncate(fd, 0)  # the holder's PID, which survives a lost wake/watcher.pid (holder)
+            os.write(fd, b"%d\n" % os.getpid())
+            return fd
+        except BlockingIOError:
+            if time.monotonic() >= deadline:
+                os.close(fd)
+                return None
+            time.sleep(0.05)
+
+
+def holder(wake):
+    """The live watcher holding wake/watcher.lock: its PID from the lock file, -1 when held under an unreadable or
+    foreign PID, None when free. Works with wake/watcher.pid lost (#399); the probe holds the lock for an instant."""
+    try:
+        fd = os.open(os.path.join(wake, "watcher.lock"), os.O_RDONLY)
+    except OSError:
+        return None
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return None
+    except BlockingIOError:
+        return armed(os.path.join(wake, "watcher.lock")) or -1
+    finally:
+        os.close(fd)
+
+
+def prompt_open(session, index):
+    """A blocking harness prompt on the pane, whose Enter could approve a command (#315). Unlike dialog(), a fatal API
+    error over an idle composer is not one: a coordinator stopped by a gateway error still gets its wake (#1346)."""
+    lines = [line.strip().lstrip(GLYPHS + "> ") for line in tmux.capture(session, index).splitlines() if line.strip()]
+    return bool(lines) and any(foot.match(lines[-1]) and any(head.match(line) for line in lines)
+                               for head, foot in PROMPTS)
+
+
 def reason(w):
     if "event" in w:
         return "%s: %s" % (w["reason"], w["event"])
@@ -499,8 +547,11 @@ def code_sig():
     return sorted((p, os.stat(p).st_mtime_ns) for p in paths if os.path.exists(p))
 
 
-def reexec():
-    """Replace this process with a fresh `mdstack watch` on the same argv; the PID, so wake/watcher.pid, is kept."""
+def reexec(lock):
+    """Replace this process with a fresh `mdstack watch` on the same argv; the PID, so wake/watcher.pid, and the held
+    wake/watcher.lock are kept."""
+    os.set_inheritable(lock, True)
+    os.environ[LOCK_ENV] = "%d:%d" % (os.getpid(), lock)
     sys.stdout.flush()
     print("crew: watch: crew code changed on disk; re-exec", file=sys.stderr, flush=True)
     os.execv(sys.executable, [sys.executable, *sys.argv])
@@ -527,6 +578,65 @@ def source_failure(wake, seen, cmd, error, limit):
     return [{"reason": "source-failing", "event": "%s: %d failures in a row, last: %s" % (cmd, n, error)}]
 
 
+def nudge(args, session, state, wake, seen):
+    """Type `wake: watcher` into an idle window-0 coordinator; one showing a dialog gets a queued `dialog` wake
+    instead, which is returned (#315); an API error over an idle composer gets the wake (#1346)."""
+    p = None if args.no_nudge else tmux.pane(session, 0)
+    if not (p and foreground_matches(ENGINE_CMD.values(), {p["command"], *tmux.foreground(p["tty"])}) and
+            time.time() - float(p["activity"]) > args.idle):
+        return None
+    if prompt_open(session, 0):  # never type into a prompt: its Enter could approve a command (#315)
+        w = {"reason": "dialog", "window": dict(tmux.list_windows(session)).get(0, "0"),
+             "liveness": "ambiguous", "silent": int(time.time() - float(p["activity"])), "action": "escalate"}
+        with queue_lock(state), open(os.path.join(wake, "queue.jsonl"), "a") as f:
+            f.write(json.dumps(dict(w, at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))) + "\n")
+            f.flush()
+            seen["queue"] = queue_sig(wake)
+        return w
+    if "doorbell" in tmux.CAPABILITIES:
+        if error := commands()["send"].nudge(session, 0, "wake: watcher"):
+            print("crew: coordinator nudge not submitted: " + error)
+    else:
+        tmux.send_keys(session, 0, "wake: watcher")  # the Codex-recipe path, for when exit alone wakes nobody
+    return None
+
+
+def announce(args, session, state, wake, seen, wakes):
+    """Wake the coordinator for retained wakes: the nudge, then one reason line and the schedule summary."""
+    wakes = wakes + [w for w in [nudge(args, session, state, wake, seen)] if w]
+    print(reason(wakes[0]) + (" (+%d more in wake/queue.jsonl)" % (len(wakes) - 1) if len(wakes) > 1 else ""))
+    if (line := commands()["schedule"].read(commands()["schedule"].summary, state)) not in (None, "unknown"):
+        print(line)
+    sys.stdout.flush()
+
+
+def start_persistent(state, argv):
+    """Start `mdstack watch --persistent ARGV` in its own session, so it outlives the shell or coordinator turn that
+    started it, its output appended to wake/watcher.log (#1346); prints and returns 0, also when one is armed."""
+    wake = os.path.join(state, "wake")
+    os.makedirs(wake, exist_ok=True)
+    if pid := armed(os.path.join(wake, "watcher.pid")):
+        print("crew: a watcher is already armed (pid %d)" % pid)
+        return 0
+    with open(os.path.join(wake, "watcher.log"), "a") as log:
+        p = subprocess.Popen([sys.executable, CREW_BIN, "watch", "--persistent", *argv], stdin=subprocess.DEVNULL,
+                             stdout=log, stderr=log, start_new_session=True)
+    print("crew: persistent watcher started (pid %d, log %s)" % (p.pid, os.path.join(wake, "watcher.log")))
+    return 0
+
+
+def backstop_wait(flight, idle, backstop, backoff):
+    """Seconds to the backstop: x2 per idle wake up to backoff times; held-only work waits that cap, at least 4 h."""
+    return max(backstop * backoff, HELD_BACKSTOP) if flight == "held" else min(backstop * 2 ** idle, backstop * backoff)
+
+
+def backstop_deadline(state, seen, backstop, backoff):
+    """(in_flight, monotonic arm time, monotonic time of the next backstop wake); work resets the idle count."""
+    flight, now = in_flight(state), time.monotonic()
+    seen["idle"] = 0 if flight == "work" else seen["idle"]
+    return flight, now, now + backstop_wait(flight, seen["idle"], backstop, backoff)
+
+
 def register(sub):
     p = sub.add_parser("watch")
     p.add_argument("--stale", type=float, default=900, help="seconds without status progress before a stale wake")
@@ -544,6 +654,12 @@ def register(sub):
                    help="one-shot event command (mdstack poll --once); each stdout line is a poll wake")
     p.add_argument("--no-nudge", action="store_true", help="do not type the wake line into an idle coordinator")
     p.add_argument("--idle", type=float, default=30, help="seconds with no coordinator output that count as idle")
+    p.add_argument("--persistent", action="store_true",
+                   help="nudge the coordinator and keep scanning instead of exiting on a coordinator wake (#1346)")
+    p.add_argument("--renudge", type=float, default=300,
+                   help="with --persistent, seconds before an undrained wake/queue.jsonl is nudged again")
+    p.add_argument("--detach", action="store_true",
+                   help="start a --persistent watcher in its own session (log: wake/watcher.log) and return")
     p.add_argument("--project")
     p.add_argument("--org-profile")
 
@@ -552,13 +668,24 @@ def run(args):
     """Zero-token watcher: block on status files, liveness, owner-ask deadlines, one-shot --source commands and
     queue growth; queue wakes, then exit."""
     values, session, state = profile(args)
+    if args.detach:
+        argv = sys.argv[sys.argv.index("watch") + 1:]
+        return start_persistent(state, [a for a in argv if a not in ("--detach", "--persistent")])
     wake = os.path.join(state, "wake")
     os.makedirs(wake, exist_ok=True)
     path, pidfile = os.path.join(wake, "watch-state.json"), os.path.join(wake, "watcher.pid")
-    if other := armed(pidfile):  # leave its PID file and state alone (#591)
-        print("crew: a watcher is already armed (pid %d)" % other)
-        return 1
+    lock = hold_lock(wake)
+    if lock is None:  # one watcher per state dir: leave its PID file and state alone (#591, #399)
+        other = "unknown"
+        with contextlib.suppress(OSError):
+            with open(pidfile) as f:
+                other = f.read().strip() or other
+        print("crew: a watcher is already armed (pid %s)" % other)
+        return 0
+    with open(pidfile, "w") as f:  # published under the lock, so a refused start can name this watcher
+        f.write("%d\n" % os.getpid())
     if ownership_module.status(values) == "lost":  # prompt stop: never re-armed once ownership moved away
+        os.remove(pidfile)
         print("crew: ownership: lost; watcher not armed (run mdstack down, then mdstack handoff stopped)")
         return 1
     seen = {"offsets": {}, "keys": {}, "idle": 0, "queue": None}
@@ -580,21 +707,13 @@ def run(args):
 
     for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):  # a killed watcher removes its PID file, saves offsets
         signal.signal(sig, stop)
-    flight = in_flight(state)
-    seen["idle"] = 0 if flight == "work" else seen["idle"]
     sweep = routine("coordinator", "stale-sweep")  # the team head's backstop (#1247)
     backstop = args.backstop or commands()["up"].crew_routines.interval(sweep, values)
     backoff = sweep.get("idle_backoff", 1)
-    armed_at = time.monotonic()
-
-    def wait(flight, idle):  # backs off when idle; held-only work waits the cap, at least 4 h (#394)
-        return max(backstop * backoff, HELD_BACKSTOP) if flight == "held" else min(backstop * 2 ** idle, backstop * backoff)
-    deadline = armed_at + wait(flight, seen["idle"])
+    flight, armed_at, deadline = backstop_deadline(state, seen, backstop, backoff)  # backs off when idle
     code = code_sig()
     source_interval = values["runtime.options.poll_interval"] if args.source_interval is None else args.source_interval
     try:
-        with open(pidfile, "w") as f:
-            f.write("%d\n" % os.getpid())
         while True:
             docs_tick(values, state, time.time(), args.project, args.org_profile)
             commands()["up"].scale_down(values, session, state, time.time())  # idle lifecycle instances (#1231)
@@ -607,6 +726,9 @@ def run(args):
             due = args.source and time.time() >= seen.get("sources_next", 0)
             if due:  # GitHub reads at most once per source interval, however short the scan --interval (#1300)
                 seen["sources_next"] = time.time() + source_interval
+                if args.persistent and ownership_module.status(values) == "lost":  # prompt stop (#212)
+                    print("crew: ownership: lost; persistent watcher stopped", flush=True)
+                    return 1
             for cmd in args.source if due else []:  # one-shot commands, each cut off at the source timeout
                 before = queue_sig(wake)
                 try:
@@ -635,17 +757,19 @@ def run(args):
                          values["runtime.options.stuck_after"], args.idle_stall) + found
             others = queued(state, wake, trial)
             if code_sig() != code and not held:  # before route resolves the live profile with old code (#702)
-                reexec()  # trial is not committed, so the new image finds this scan's status lines and records again
+                reexec(lock)  # trial is not committed, so the new image finds this scan's status lines and records again
             if (now_flight := in_flight(state)) != flight:  # recomputed each scan, both ways (#394)
                 if now_flight == "work":  # live work again: the short backstop from now
                     trial["idle"] = 0
                     deadline = min(deadline, time.monotonic() + backstop)
                 else:
-                    deadline = armed_at + wait(now_flight, trial["idle"])
+                    deadline = armed_at + backstop_wait(now_flight, trial["idle"], backstop, backoff)
                 flight = now_flight
             if not wakes and not others and time.monotonic() > deadline:
                 trial["idle"] += 0 if flight == "work" else 1
                 wakes = [{"reason": "backstop", "event": "due (%s in flight)" % flight}]
+                if args.persistent:  # the next backstop, as a re-armed one-shot watcher would start it
+                    flight, armed_at, deadline = backstop_deadline(state, trial, backstop, backoff)
             if wakes:
                 with queue_lock(state), open(os.path.join(wake, "queue.jsonl"), "a") as f:
                     for w in wakes:
@@ -674,8 +798,19 @@ def run(args):
                         wakes.insert(0, w)
                         candidates.remove(key)
                 others = []
-                if wakes:
+                if wakes and not args.persistent:
                     break
+                if wakes:  # persistent: wake the coordinator by its nudge and keep scanning (#1346)
+                    announce(args, session, state, wake, seen, wakes)
+                    seen["nudged"] = time.time()
+                    flight, armed_at, deadline = backstop_deadline(state, seen, backstop, backoff)
+                    save(seen)
+            if args.persistent and not wakes and time.time() - seen.get("nudged", 0) >= args.renudge and \
+                    os.path.exists(queue := os.path.join(wake, "queue.jsonl")) and os.path.getsize(queue):
+                # a coordinator turn that ended without draining (a gateway error, #1346) is nudged again
+                announce(args, session, state, wake, seen, [{"reason": "renudge", "event": "wake/queue.jsonl not drained"}])
+                seen["nudged"] = time.time()
+                save(seen)
             sleeping = True
             if held:
                 raise SystemExit(128 + held[0])
@@ -683,27 +818,7 @@ def run(args):
             sleeping = False
         if held:  # held during the last scan, whose wakes are queued
             raise SystemExit(128 + held[0])
-        p = None if args.no_nudge else tmux.pane(session, 0)
-        if p and foreground_matches(ENGINE_CMD.values(), {p["command"], *tmux.foreground(p["tty"])}) and \
-                time.time() - float(p["activity"]) > args.idle:
-            if dialog(session, 0):  # never type into a prompt: its Enter could approve a command (#315)
-                w = {"reason": "dialog", "window": dict(tmux.list_windows(session)).get(0, "0"),
-                     "liveness": "ambiguous", "silent": int(time.time() - float(p["activity"])), "action": "escalate"}
-                with queue_lock(state), open(os.path.join(wake, "queue.jsonl"), "a") as f:
-                    f.write(json.dumps(dict(w, at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))) + "\n")
-                    f.flush()
-                    seen["queue"] = queue_sig(wake)
-                wakes.append(w)
-            else:
-                if "doorbell" in tmux.CAPABILITIES:
-                    if error := commands()["send"].nudge(session, 0, "wake: watcher"):
-                        print("crew: coordinator nudge not submitted: " + error)
-                else:
-                    tmux.send_keys(session, 0, "wake: watcher")  # the Codex-recipe path, for when exit alone wakes nobody
-        wakes += others
-        print(reason(wakes[0]) + (" (+%d more in wake/queue.jsonl)" % (len(wakes) - 1) if len(wakes) > 1 else ""))
-        if (line := commands()["schedule"].read(commands()["schedule"].summary, state)) not in (None, "unknown"):
-            print(line)
+        announce(args, session, state, wake, seen, wakes + others)
         return 0
     finally:
         save(seen)

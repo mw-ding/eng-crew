@@ -62,12 +62,13 @@ class DoctorBase(Base):
             f.write("#!/bin/sh\n%s\n" % body)
         os.chmod(path, 0o755)
 
-    def gh(self, logins, latest):
+    def gh(self, logins, latest, labels=None):
         lines = "".join("echo '  ✓ Logged in to github.com account %s (keyring)'\n" % u for u in logins)
-        labels = [{"name": n, "color": c, "description": d} for n, c, d in
+        labels = labels if labels is not None else [{"name": n, "color": c, "description": d} for n, c, d in
                   re.findall(r"^(crew:[^|]+)\|([^|]+)\|(.+)$", read(os.path.join(os.path.dirname(CREW), "..", "docs", "runbooks", "github-tracking.md")), re.M)]
         self.tool("gh", 'case "$1 $2" in\n"auth status") echo github.com\n%s;;\n"auth token") echo fixture-token;;\n"release view") echo %s;;\n'
                   '"api repos/acme/widgets/labels?per_page=100") echo \'%s\';;\n'
+                  '"label create") echo "$*" >> "$HOME/gh-label.log";;\n'
                   '"api repos/acme/widgets/collaborators/acme-reviewer/permission") echo \'{"permission":"write"}\';;\n'
                   '"api repos/acme/widgets/milestones?state=all&per_page=100") echo \'[[{"title":"M1","state":"open"}]]\';;\n'
                   '"project list") echo \'{"totalCount":1,"projects":[{"id":"P1","number":1,"title":"widgets crew board","closed":false}]}\';;\n'
@@ -379,6 +380,32 @@ class ToolDrift(DoctorBase):
         self.assertEqual(self.rows(r)["tool example"], "ok")
         self.assertEqual(self.detail(r, "tool example"), "running 2.10.0, installed 2.10.0, pin >= 2.9.0")
 
+    def test_fix_canonicalizes_a_hand_made_crew_label(self):  # #1616
+        labels = [{"name": n, "color": c, "description": d} for n, c, d in self.crew_labels()]
+        express = next(x for x in labels if x["name"] == "crew:express")
+        express.update(color="000000", description="hand made")
+        log = os.path.join(self.home, "gh-label.log")
+        self.gh(["acme-bot", "acme-reviewer"], "v2.1.0", labels)
+        r = self.doctor()  # negative control: read-only reports it and writes nothing
+        self.assertEqual(self.rows(r)["crew labels"], "fail", r.stdout)
+        self.assertFalse(os.path.exists(log))
+        r = self.doctor("--fix")
+        self.assertEqual(self.rows(r)["crew labels"], "ok", r.stdout)
+        self.assertEqual(read(log).splitlines(), ["label create crew:express -R acme/widgets --color %s --description %s "
+                                                  "--force" % next((c, d) for n, c, d in self.crew_labels()
+                                                                   if n == "crew:express")])
+        os.remove(log)
+        self.gh(["acme-bot", "acme-reviewer"], "v2.1.0", labels + [{"name": "crew:foreign", "color": "000000",
+                                                                     "description": "x"}])
+        r = self.doctor("--fix")  # an extra crew:* name still collides and writes nothing
+        self.assertEqual(self.rows(r)["crew labels"], "fail", r.stdout)
+        self.assertIn("crew namespace collision", r.stdout)
+        self.assertFalse(os.path.exists(log))
+
+    def crew_labels(self):
+        return re.findall(r"^(crew:[^|]+)\|([^|]+)\|(.+)$", read(os.path.join(
+            os.path.dirname(CREW), "..", "docs", "runbooks", "github-tracking.md")), re.M)
+
     def test_dry_run_keeps_state_read_only_and_reports_repo_and_tool_checks(self):
         self.probes(running="2.9.0", pin=None)
         os.rmdir(os.path.join(self.state, "inbox"))
@@ -618,5 +645,58 @@ class Sandbox(DoctorBase):
                 self.assertEqual(sandbox(values, self.project)[0], ("ok", "sandbox", "sandbox_env set", ""))
 
 
+LABELS_PY = """import json, sys
+path = sys.argv[1]
+labels = json.load(open(path))
+if sys.argv[2] == "list":
+    print(json.dumps([labels]))
+else:
+    a = sys.argv[2:]
+    new = dict(name=a[2], color=a[a.index("--color") + 1], description=a[a.index("--description") + 1])
+    json.dump([x for x in labels if x["name"] != a[2]] + [new], open(path, "w"))
+"""
+
+
+def label_evidence():
+    """#1616 lifecycle: a hand-made crew:express label on a stateful fake GitHub is repaired by doctor --fix, then
+    the fake host is deleted."""
+    fixture = ToolDrift("test_fix_canonicalizes_a_hand_made_crew_label")
+    fixture.setUp()
+    try:
+        store = os.path.join(fixture.tmp, "labels.json")
+        labels = [{"name": n, "color": c, "description": d} for n, c, d in fixture.crew_labels()]
+        canonical = dict(next(x for x in labels if x["name"] == "crew:express"))
+        next(x for x in labels if x["name"] == "crew:express").update(color="000000", description="hand made")
+        with open(store, "w") as f:
+            json.dump(labels, f)
+        with open(os.path.join(fixture.tmp, "labels.py"), "w") as f:
+            f.write(LABELS_PY)
+        fixture.gh(["acme-bot", "acme-reviewer"], "v2.1.0")
+        os.rename(os.path.join(fixture.bindir, "gh"), os.path.join(fixture.bindir, "gh-std"))
+        py = "%s %s %s" % (sys.executable, os.path.join(fixture.tmp, "labels.py"), store)
+        fixture.tool("gh", 'case "$1 $2" in\n"api repos/acme/widgets/labels?per_page=100") exec %s list;;\n'
+                     '"label create") exec %s "$@";;\n*) exec %s "$@";;\nesac' % (
+                         py, py, os.path.join(fixture.bindir, "gh-std")))
+
+        def express():
+            return next(x for x in json.load(open(store)) if x["name"] == "crew:express")
+        print("create: fake GitHub crew:express = %s" % json.dumps(express(), sort_keys=True))
+        r = fixture.doctor()
+        print("doctor: exit %d; crew labels %s; crew:express unchanged: %s" % (
+            r.returncode, fixture.rows(r)["crew labels"], express()["color"] == "000000"))
+        r = fixture.doctor("--fix")
+        print("doctor --fix: exit %d; crew labels %s" % (r.returncode, fixture.rows(r)["crew labels"]))
+        print("update: fake GitHub crew:express = %s; canonical: %s" % (
+            json.dumps(express(), sort_keys=True), express() == canonical))
+        r = fixture.doctor()
+        print("doctor (rerun): exit %d; crew labels %s" % (r.returncode, fixture.rows(r)["crew labels"]))
+    finally:
+        fixture.doCleanups()
+    print("delete: fake host and label store removed: %s" % (not os.path.exists(fixture.tmp)))
+
+
 if __name__ == "__main__":
-    unittest.main()
+    if sys.argv[1:] == ["--evidence-labels"]:
+        label_evidence()
+    else:
+        unittest.main()

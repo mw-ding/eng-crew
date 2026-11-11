@@ -224,6 +224,49 @@ class Upgrade(bootstrap_tests.Bootstrap):
         self.assertFalse(list(Path(self.tmp).glob(".crew-refetch-*")))
         self.assertFalse(self.gh_log.exists())
 
+    def test_adopts_a_verified_user_level_install_without_a_record(self):  # #1616
+        self.manifest.unlink()
+        result = self.upgrade("--yes")  # negative control: no releases/current beside the bundle
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("foreign layout", result.stdout)
+        self.assertFalse(self.manifest.exists())
+        (self.bundle.parent / "current").symlink_to(self.bundle.name, target_is_directory=True)
+        result = self.upgrade("--dry-run")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("would adopt the v2.1.0 install", result.stdout)
+        self.assertFalse(self.manifest.exists())
+        source = self.bundle / "templates/runtimes/tmux/builder.md"
+        source.write_text(source.read_text() + "\nNew reviewed rule.\n")
+        result = self.upgrade("--yes")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("adopted the v2.1.0 install", result.stdout)
+        record = json.loads(self.manifest.read_text())  # the upgrade's bootstrap rewrote the adopted record
+        self.assertEqual((record["tag"], record["status"], record["source"]), ("v2.1.0", "installed", str(self.bundle.resolve())))
+        self.assertIn("New reviewed rule.", (Path(self.state) / "render/runtime/builder.md").read_text())
+        self.assertIn("crew upgrade: no changes", self.upgrade("--yes").stdout)  # no refuse/bootstrap loop
+
+    def test_unverified_install_without_a_record_is_not_adopted(self):  # #1616
+        self.manifest.unlink()
+        (self.bundle.parent / "current").symlink_to(self.bundle.name, target_is_directory=True)
+        state = Path(self.state)
+        empty = Path(self.tmp) / "mdstack-v0.0.0"
+        empty.mkdir()
+        cases = [("VERSION mismatch", lambda: (state / "VERSION").write_text("v2.0.0\n"),
+                  lambda: (state / "VERSION").write_text("v2.1.0\n")),
+                 ("mismatched project", lambda: (state / "config.toml").write_text("# other\n"),
+                  lambda: (state / "config.toml").write_bytes(Path(self.project).read_bytes())),
+                 ("missing release", lambda: ((state / "mdstack").unlink(), (state / "mdstack").symlink_to(empty)),
+                  lambda: ((state / "mdstack").unlink(), (state / "mdstack").symlink_to(self.bundle)))]
+        for message, break_it, restore in cases:
+            with self.subTest(message):
+                break_it()
+                result = self.upgrade("--yes")
+                self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+                self.assertIn("does not verify: " + message, result.stdout)
+                self.assertFalse(self.manifest.exists())
+                restore()
+        self.assertEqual(self.upgrade("--dry-run").returncode, 0)  # positive control once restored
+
     def test_upgrade_deploys_without_harness_pointers(self):
         record = json.loads(self.manifest.read_text())
         record["harnesses"] = []
@@ -283,12 +326,54 @@ class Upgrade(bootstrap_tests.Bootstrap):
                 mock.patch.object(upgrade, "busy", side_effect=["ben-7", None]) as busy, \
                 mock.patch.object(upgrade, "reload") as reload, \
                 mock.patch.object(upgrade.time, "sleep") as sleep, \
+                mock.patch.object(cli.commands()["down"], "stop_watcher", return_value=None) as stop, \
+                mock.patch.object(cli.commands()["up"], "watcher") as start, \
                 mock.patch.dict(os.environ, self.env):
+            calls = mock.Mock()
+            calls.attach_mock(stop, "stop"), calls.attach_mock(reload, "reload"), calls.attach_mock(start, "start")
             self.assertEqual(upgrade.run(args), 0)
             self.assertEqual(busy.call_count, 2)
             sleep.assert_called_once_with(0.2)
             self.assertEqual(apply.call_count, 2)
             reload.assert_called_once()
+            # #1346: the watcher is stopped before the install and started again after the reload
+            self.assertEqual([c[0] for c in calls.mock_calls], ["stop", "reload", "start"])
+            apply.reset_mock(), start.reset_mock()
+            stop.return_value = 4242
+            busy.side_effect = [None]
+            self.assertEqual(upgrade.run(args), 1)  # a watcher outliving its grace: nothing installed
+            self.assertEqual(apply.call_count, 1)  # the dry run only
+            start.assert_not_called()
+
+    def test_upgrade_stops_a_lock_holding_watcher_whose_pid_file_was_lost(self):  # #1346 review R2
+        wake = Path(self.state) / "wake"
+        wake.mkdir(parents=True, exist_ok=True)
+        code = ("import fcntl, os, sys, time\nf = open(sys.argv[1], 'w')\nfcntl.flock(f, fcntl.LOCK_EX)\n"
+                "f.write('%d\\n' % os.getpid()); f.flush()\nprint('ready', flush=True)\ntime.sleep(60)\n")
+        holder = subprocess.Popen([sys.executable, "-c", code, str(wake / "watcher.lock"), "watch"],
+                                  stdout=subprocess.PIPE, text=True)  # a watcher with no wake/watcher.pid
+        self.addCleanup(lambda: holder.poll() is None and holder.kill())
+        self.assertEqual(holder.stdout.readline(), "ready\n")
+        args = Namespace(project=self.project, org_profile=None, version=None, dev=False, pre=False,
+                         uninstall=False, remove_labels=False, routines_removed=False, smoke=False,
+                         dry_run=False, yes=True, wait_timeout=5, timeout=1)
+        bootstrap = cli.commands()["bootstrap"]
+        values, _ = cli.crew_render.resolve(self.project, None)
+        installs = []
+
+        def apply(a):
+            installs.append(a.dry_run or holder.poll())  # the real install runs only once the watcher exited
+            return 0
+        with mock.patch.object(upgrade, "profile", return_value=(values, "session", self.state)), \
+                mock.patch.object(upgrade, "require_ownership", return_value=True), \
+                mock.patch.object(bootstrap, "source", return_value="v2.2.0"), \
+                mock.patch.object(bootstrap, "run", side_effect=apply), \
+                mock.patch.object(upgrade, "busy", return_value=None), \
+                mock.patch.object(upgrade, "reload"), \
+                mock.patch.object(cli.commands()["up"], "watcher"), \
+                mock.patch.dict(os.environ, dict(self.env, PATH=self.env["PATH"] + os.pathsep + "/bin")):  # ps
+            self.assertEqual(upgrade.run(args), 0)
+        self.assertEqual(installs, [True, -15])  # the dry run, then the install after SIGTERM
 
     def test_active_pane_waits_after_terminal_status(self):
         self.put("status/ben-7.status", "done: #7 #9 head\n")
@@ -394,8 +479,38 @@ def evidence():
     print("delete: temporary project, install, state and fake host removed")
 
 
+def adopt_evidence():
+    """#1616 lifecycle: a user-level install with no install.json is adopted and upgraded, upgraded again, then the
+    fake host is deleted."""
+    fixture = Upgrade("test_adopts_a_verified_user_level_install_without_a_record")
+    fixture.setUp()
+    try:
+        fixture.manifest.unlink()
+        (fixture.bundle.parent / "current").symlink_to(fixture.bundle.name, target_is_directory=True)
+        state = Path(fixture.state)
+        print("create: user-level install v2.1.0; install.json exists: %s; link -> %s" % (
+            fixture.manifest.exists(), (state / "mdstack").resolve().name))
+        builder = fixture.bundle / "templates/runtimes/tmux/builder.md"
+        deployed = state / "render/runtime/builder.md"
+        for rule in ("Adopted rule.", "Second rule."):
+            builder.write_text(builder.read_text() + "\n%s\n" % rule)
+            result = fixture.upgrade("--yes")
+            lines = [line for line in result.stdout.splitlines() if line.startswith("crew upgrade: adopted")]
+            record = json.loads(fixture.manifest.read_text())
+            print("upgrade --yes: exit %d; %s" % (result.returncode, lines[0] if lines else "(record already present)"))
+            print("update: record tag=%s status=%s; %r deployed: %s" % (
+                record["tag"], record["status"], rule, rule in deployed.read_text()))
+        result = fixture.upgrade("--yes")
+        print("upgrade --yes: exit %d; %s" % (result.returncode, result.stdout.strip().splitlines()[-1]))
+    finally:
+        fixture.doCleanups()
+    print("delete: fake host, install record and state removed: %s" % (not Path(fixture.tmp).exists()))
+
+
 if __name__ == "__main__":
     if sys.argv[1:] == ["--evidence"]:
         evidence()
+    elif sys.argv[1:] == ["--evidence-adopt"]:
+        adopt_evidence()
     else:
         unittest.main()
