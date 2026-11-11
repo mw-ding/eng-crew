@@ -280,7 +280,10 @@ Rules:
 - A breaking CHANGELOG entry starts with `**Breaking:**` and carries a
   one-line migration step. The entries since the last tag decide the
   smallest allowed bump; the release approver checks the cut PR's version
-  against them ([release.md](release.md#steps)).
+  against them ([release.md](release.md#steps)). Release validation also
+  refuses a minor or patch when a manifest the published predecessor's
+  validator accepted fails the new one
+  ([manifest compatibility](release.md#manifest-compatibility)).
 - Pre-release versions (`vX.Y.Z-rc.N`) are allowed for a smoke run and never
   satisfy a pin, whatever the release id.
 - Only the latest release is supported. Fixes go forward as a new release;
