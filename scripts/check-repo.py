@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Repo guard for mdstack (spec R1, R6): secret scan, required docs/sections,
 relative markdown links, crew marker SHAs, optional name denylist,
-deliverables manifest coverage, spec slice status, CHANGELOG fragments,
+deliverables manifest coverage, spec slice status, design headers naming an
+open milestone, CHANGELOG fragments,
 per-script docs, index files (inventory fresh, entries sorted, docs index
 complete), no committed evidence directory, union merge for append-only docs
 (`.gitattributes`), markdown lint (check-markdown.py on every tracked *.md
@@ -9,7 +10,7 @@ file), tests per module, and the team spec's dependency rules with the
 runtime-word lint, core memory (layout, size limits, no personal data) and role routines.
 Python 3 stdlib only, no network.
 
-Usage: check-repo.py [--root DIR] [--config FILE] [--fix] [--only secrets|docs|links|markers|blockers|shapes|denylist|deliverables|spec-status|fragments|script-docs|index|evidence|attributes|markdown|test-layout|deps|memory|routines]...
+Usage: check-repo.py [--root DIR] [--config FILE] [--fix] [--only secrets|docs|links|markers|blockers|shapes|denylist|deliverables|spec-status|design-headers|fragments|script-docs|index|evidence|attributes|markdown|test-layout|deps|memory|routines]...
 Every failure prints `file:line: [rule] reason`; exit 1 if any, else 0.
 """
 import argparse
@@ -396,6 +397,86 @@ def check_spec_status(root, fail):
                  "slice row Status must be open, done or dropped, got '%s'" % value)
     if tables == 0:
         fail(SPEC_DOC, 1, "spec-status", "no slice tables under '%s'" % SPEC_SECTION)
+
+
+DESIGN_ALLOW = "scripts/design-headers.txt"
+DESIGN_WORDING = re.compile(r"\(design\)|\bin design\b", re.I)
+DESIGN_REF = re.compile(r"(?<![\w#/])#(\d+)\b|\b((?:M|R)\d+(?:\.\d+)?)\b")
+
+
+def spec_milestones(lines):
+    """Map issue numbers and milestone names in the spec's section 5 to a
+    milestone, and each milestone to `open` (any row open) or `closed`."""
+    visible, _ = scan_fences(lines, unclosed_as_text=False)
+    in_section, milestone, refs, rows = False, None, {}, {}
+    for _, line in strip_html_comments(visible):
+        if line.startswith("## "):
+            in_section = line.rstrip() == SPEC_SECTION
+            continue
+        if not in_section:
+            continue
+        if line.startswith("### "):
+            milestone = line[4:].split(":")[0].strip()
+            refs.setdefault(milestone.split()[0], milestone)
+            continue
+        cells = table_cells(line) if milestone and line.lstrip().startswith("|") else []
+        if len(cells) < 3 or cells[0] == "ID" or all(set(c) <= set("-: ") for c in cells):
+            continue
+        rows.setdefault(milestone, set()).add(cells[-1])
+        for issue in re.findall(r"#(\d+)", cells[1]):
+            refs.setdefault("#" + issue, milestone)
+    status = {m: "open" if "open" in s else "closed" for m, s in rows.items()}
+    return {ref: (m, status[m]) for ref, m in refs.items() if m in status}
+
+
+def check_design_headers(root, fail):
+    """Issue #259: a doc whose H1 says '(design)' or 'in design' names, in the
+    H1 or the blockquote banner under it, an issue or milestone of the spec's
+    section 5 whose milestone is still open. The first reference the spec
+    knows decides. A closed milestone or no known reference (unknown status)
+    fails unless the doc is listed in scripts/design-headers.txt with a
+    reason; a listed doc without a design header fails too. Docs under
+    changes/ and dev/ are skipped, and so is the check when the spec is absent."""
+    spec = read_lines(os.path.join(root, SPEC_DOC))
+    if spec is None:
+        return
+    known = spec_milestones(spec)
+    allowed = {}
+    for n, line in enumerate(read_lines(os.path.join(root, DESIGN_ALLOW)) or [], 1):
+        if line.strip() and not line.startswith("#"):
+            path, _, reason = line.partition("\t")
+            allowed[path.strip()] = n
+            if not reason.strip():
+                fail(DESIGN_ALLOW, n, "design-headers", "entry '%s' needs a tab and a reason" % path.strip())
+    headed = set()
+    for full, rel in walk(root):
+        if not rel.endswith(".md") or rel.startswith(("changes/", "dev/")):
+            continue
+        visible, _ = scan_fences(read_lines(full) or [], unclosed_as_text=False)
+        block, n = [], None
+        for i, line in visible:
+            if n is None and line.startswith("# "):
+                n, block = i, [line]
+            elif n is not None and (line.startswith(">") or (not line.strip() and len(block) == 1)):
+                block.append(line)
+            elif n is not None:
+                break
+        if n is None or not DESIGN_WORDING.search(block[0]):
+            continue
+        headed.add(rel)
+        if rel in allowed:
+            continue
+        refs = ["#" + m.group(1) if m.group(1) else m.group(2) for m in DESIGN_REF.finditer(" ".join(block))]
+        hit = next((known[r] for r in refs if r in known), None)
+        if hit is None:
+            fail(rel, n, "design-headers", "design header names no issue or milestone of %s section 5 "
+                 "(unknown status); name one or list the doc in %s" % (SPEC_DOC, DESIGN_ALLOW))
+        elif hit[1] != "open":
+            fail(rel, n, "design-headers", "design header names %s, closed in %s; drop the design wording "
+                 "or list the doc in %s" % (hit[0], SPEC_DOC, DESIGN_ALLOW))
+    for path, n in sorted(allowed.items()):
+        if path not in headed:
+            fail(DESIGN_ALLOW, n, "design-headers", "'%s' has no design header; drop the entry" % path)
 
 
 def check_denylist(root, fail):
@@ -969,13 +1050,13 @@ def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--root", default=os.path.dirname(here), help="repo root (default: parent of scripts/)")
     ap.add_argument("--config", help="required-docs config (default: <script dir>/required-docs.txt)")
-    ap.add_argument("--only", action="append", choices=["secrets", "docs", "links", "markers", "blockers", "shapes", "denylist", "deliverables", "spec-status", "fragments", "script-docs", "index", "evidence", "attributes", "markdown", "test-layout", "deps", "memory", "routines"],
+    ap.add_argument("--only", action="append", choices=["secrets", "docs", "links", "markers", "blockers", "shapes", "denylist", "deliverables", "spec-status", "design-headers", "fragments", "script-docs", "index", "evidence", "attributes", "markdown", "test-layout", "deps", "memory", "routines"],
                     help="run only these checks (repeatable)")
     ap.add_argument("--fix", action="store_true", help="rewrite the generated inventory table (index check) in place")
     args = ap.parse_args(argv)
     root = os.path.abspath(args.root)
     config = os.path.abspath(args.config or os.path.join(here, "required-docs.txt"))
-    checks = set(args.only or ["secrets", "docs", "links", "markers", "blockers", "shapes", "denylist", "deliverables", "spec-status", "fragments", "script-docs", "index", "evidence", "attributes", "markdown", "test-layout", "deps", "memory", "routines"])
+    checks = set(args.only or ["secrets", "docs", "links", "markers", "blockers", "shapes", "denylist", "deliverables", "spec-status", "design-headers", "fragments", "script-docs", "index", "evidence", "attributes", "markdown", "test-layout", "deps", "memory", "routines"])
 
     failures = []
 
@@ -1002,6 +1083,8 @@ def main(argv=None):
         check_deliverables(root, fail)
     if "spec-status" in checks:
         check_spec_status(root, fail)
+    if "design-headers" in checks:
+        check_design_headers(root, fail)
     if "fragments" in checks:
         check_fragments(root, fail)
     if "script-docs" in checks:
