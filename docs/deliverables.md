@@ -1,4 +1,4 @@
-# Deliverables and versioning (design)
+# Deliverables and versioning
 
 > - **Status:** built
 > - **Applies to:** every release bundle from `v2.0.0`
@@ -182,6 +182,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `scripts/crew-precheck.py` | Deliverable | all | Role helper: check enabled builder pre-review markers at head |
 | `scripts/deliverables.txt` | Internal | n/a | Guards and tests: the manifest this inventory is generated from |
 | `scripts/deps-baseline.txt` | Internal | n/a | Guards and tests: dependency-rule baseline of known couplings, run by CI, not installed |
+| `scripts/design-headers.txt` | Internal | n/a | Guards and tests: design-header allowlist for the `design-headers` check, run by CI, not installed ([#259](https://github.com/mw-ding/eng-crew/issues/259)) |
 | `scripts/docs-scan.py` | Deliverable | all | Role helper: zero-model project docs scan ([#1025](https://github.com/mw-ding/eng-crew/issues/1025)) |
 | `scripts/evidence-cli.py` | Deliverable | all | Role helper: capture CLI evidence pairs mechanically ([#652](https://github.com/mw-ding/eng-crew/issues/652)) |
 | `scripts/flavor-suggest.py` | Deliverable | all | Role helper: offline flavor signals and owner-decided suggestions |

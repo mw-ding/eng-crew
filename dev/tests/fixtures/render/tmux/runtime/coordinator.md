@@ -45,6 +45,11 @@ owner-approved milestone or project with a signed `cmd=plan-ok` record;
 follow-ups on approved work; owner-requested trivial docs. Platform items
 need the §6 preflight.
 
+Spec bookends (roles.md): a milestone opens with its spec slice in
+`docs/specs/`; its other items wait for that to merge. It closes with a
+status-sync slice: Status cells, headers, settled questions, lessons, and
+every landed or superseded item closed. The milestone closes after that merges.
+
 On owner ask or milestone close: memory capture, docs/memory.md#capture.
 
 Secret retrieval: never suggest a command that prints a secret
