@@ -356,7 +356,7 @@ default starts at 2, still within the ceiling.
 | `alive` | Window present with the recorded run identity, pane live, expected harness in the foreground | None; a wedge timer with no status progress turns it `ambiguous` |
 | `dead` | Window present with the recorded pane id and pid, pane dead or harness gone, no `failed:` (nor `done:` for a reviewer or synthesizer run) | Restart once |
 | `missing` | Run record or claim present, and no window, or a window whose pane id, pane pid or that pid's start time differs from the run record | Restart once |
-| `quota` | Window present with the recorded run identity, pane live, and the run's own harness adapter's usage-limit line (`QUOTA`) on screen (#631) | Restart once on the next eligible engine in the role's order, skipping every engine the run exhausted; none left refuses and escalates |
+| `quota` | Window present with the recorded run identity, pane live, and the run's own harness adapter's usage-limit line (`QUOTA`) on screen (#631) | Restart once, in place (same worktree, head, claim and inbox), on the next eligible engine in the role's order, skipping every engine the run exhausted; a reviewer whose PR head moved, or none left, refuses and escalates |
 | `ambiguous` | Probe failed, unexpected foreground process, a blocking prompt (trust, hooks review, Codex approval, Claude Code permission) or a fatal API error on screen, or wedge timer expired | Re-probe; after a bounded time escalate to the coordinator; never restart, except one kill-and-respawn of the synthesizer after a failed nudge (below) |
 
 **Failed nudge** (#308, #312). A window that `mdstack send` could not nudge
