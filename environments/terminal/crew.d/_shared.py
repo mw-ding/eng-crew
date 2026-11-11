@@ -644,8 +644,9 @@ def heartbeat(state, name):
 
 
 def probe(session, name, rec, windows):
-    """C5 liveness from tmux, never from the agent: alive | dead | missing | ambiguous (tmux.md Q7). A run on a role host
-    has no pane here: ambiguous, which never restarts; its host answers remote_run.probe (#345)."""
+    """C5 liveness from tmux, never from the agent: alive | dead | missing | ambiguous | quota (tmux.md Q7). quota: the
+    run's own harness shows its adapter's usage-limit line, so it idles until the account resets (#631). A run on a
+    role host has no pane here: ambiguous, which never restarts; its host answers remote_run.probe (#345)."""
     if remote_run.host_of(rec):
         return "ambiguous"
     if windows.get(name) != rec.get("index"):
@@ -661,6 +662,8 @@ def probe(session, name, rec, windows):
         return "dead"
     if proc.proc_start(p["pid"]) != rec.get("pane_start"):
         return "missing"
+    if rec.get("harness") in QUOTA and quota_line(tmux.capture(session, rec["index"]), rec["harness"]):
+        return "quota"
     return harness_up(session, rec["index"], p, [rec["harness"]])
 
 
@@ -689,6 +692,15 @@ def dialog(session, index):
 # adapter's declared transient-error text on its pane (harness-adapters.md); a harness with none declared adds nothing.
 GATEWAY = re.compile(r"\bHTTP\s+(?:429|5\d\d)\b|rate.?limit", re.I)
 TRANSIENT = {e: a.TRANSIENT for e, a in harnesses.BY_EXECUTABLE.items() if getattr(a, "TRANSIENT", None)}
+
+
+QUOTA = {e: a.QUOTA for e, a in harnesses.BY_EXECUTABLE.items() if getattr(a, "QUOTA", None)}
+
+
+def quota_line(screen, harness):
+    """The harness's own usage-limit line on its screen (harness-adapters.md QUOTA), else None (#631)."""
+    pattern = QUOTA.get(harness)
+    return next((line.strip() for line in screen.splitlines() if pattern and pattern.search(line)), None)
 
 
 def transient_lines(screen, harness):

@@ -147,6 +147,21 @@ class ShippedTables(unittest.TestCase):
                     self.assertFalse(hasattr(shared["harnesses"].ADAPTERS[engine], "launch_refusal"), engine)
                     self.assertTrue(shared["harness"](engine, "m", "high", "/wt", "/state", "bypass", values), engine)
 
+    def test_quota_lines_per_adapter(self):
+        """Claude Code's, Codex's and Cursor's own usage-limit lines (#631); quoted or indented text never matches."""
+        h = load("crew_harness_quota", os.path.join(os.path.dirname(SCRIPTS), "harnesses", "crew-harness.py"))
+        rows = {"claude-code": (["  ⎿  You've hit your limit · resets 3pm (America/Los_Angeles)",
+                                 "⎿  Claude usage limit reached. Your limit will reset at 5pm"],
+                                ["> You've hit your limit", "  ⎿  API Error: 529 overloaded", "      ⎿  You've hit your limit"]),
+                "codex": (["■ You've hit your usage limit. Upgrade to Pro or try again in 2 days."],
+                          ["• You've hit your usage limit", "  ■ You've hit your usage limit"]),
+                "cursor": (["Error: Weekly usage limit reached. It resets in 1 day."],
+                           ["printed `Error: Weekly usage limit reached`", "Weekly usage limit reached"])}
+        for engine, (hits, misses) in rows.items():
+            with self.subTest(engine):
+                quota = h.ADAPTERS[engine].QUOTA
+                self.assertEqual([bool(quota.search(x)) for x in hits + misses], [True] * len(hits) + [False] * len(misses))
+
     def test_contributor_tier_is_core_policy(self):
         """Muse declares only CONTRIBUTOR_TIER; the core reads visibility and refuses before the adapter runs."""
         shared = cli().harness.__globals__

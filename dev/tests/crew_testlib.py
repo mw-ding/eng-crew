@@ -1,6 +1,7 @@
 """Shared fixtures for the dev/tests/environments/test-crew-<cmd>.py tests: a fake `tmux` binary on PATH, a temp profile,
 a temp git repo with a bare origin and PR refs, a fake `gh`, fake panes and a fake `ps` for liveness (stdlib
 only). No tests here."""
+import argparse
 import importlib.machinery
 import importlib.util
 import json
@@ -144,6 +145,19 @@ def example_profile(directory, name="tmux.toml"):
     return path
 
 
+def render_template(project, dst, inputs=os.path.join(ROOT_DIR, "templates")):
+    """(text, problems) for one rendered file, dst as `briefs/builder.md` or `runtime/builder-b1.md`, through the
+    production path (#1413): crew-render's render() expands includes and filters control, backend and strategy lines
+    before it fills placeholders. Template tests use this, never Renderer.line on raw template text; token-level
+    Renderer.line tests stay as unit coverage."""
+    spec = importlib.util.spec_from_file_location("crew_render", os.path.join(ROOT_DIR, "core", "crew-render.py"))
+    cr = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(cr)
+    args = argparse.Namespace(project=project, org_profile=None, inputs=inputs)
+    _, rendered, problems = cr.render(args, None, normalize_paths=False)
+    return rendered.get(dst), problems
+
+
 PROFILE = textwrap.dedent("""\
     [repo]
     owner = "acme"
@@ -183,6 +197,15 @@ class Base(unittest.TestCase):
             self.env.pop(name, None)
         self.env["MDSTACK_COPY_CLAIMS"] = os.path.join(self.tmp, "copy-claims")  # never the real host store (#391)
         self.env["CREW_WATCHER"] = "off"  # mdstack up/upgrade start no detached watcher unless a test asks (#1346)
+        # Stub engine CLIs, last on PATH: spawn and lead start pick only an engine whose executable is installed
+        # (#631), so the suite needs none installed; an installed real CLI, or a test's own in bin/, comes first.
+        self.engines = os.path.join(self.tmp, "engines")
+        os.makedirs(self.engines)
+        for cli in ENGINE_STUBS:
+            with open(os.path.join(self.engines, cli), "w") as f:
+                f.write("#!/bin/sh\nexit 0\n")
+            os.chmod(os.path.join(self.engines, cli), 0o755)
+        self.env["PATH"] += os.pathsep + self.engines
         self.project_dir = os.path.join(self.tmp, "project")
         os.makedirs(self.project_dir)
         self.state = os.path.join(self.tmp, "state", "acme__widgets")
@@ -230,6 +253,7 @@ class Base(unittest.TestCase):
 
 
 SECRET = "ghp_" + "S3cr3tT0kenValue0000000000000000000000"  # built at run time; never in a file
+ENGINE_STUBS = ("claude", "codex", "pi", "muse", "opencode", "cursor-agent")
 
 
 class SpawnBase(Base):

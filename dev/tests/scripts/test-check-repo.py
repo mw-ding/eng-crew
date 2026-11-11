@@ -29,7 +29,8 @@ out, skipped when the doc is absent, the current tree, and two branches that
 each append a scenario line at the same place merging with both lines kept,
 and core memory (#1230): clean, personal data, a stray file and the current tree,
 and role routines (#1247): the contract's vocabulary, an action and event outside it, and the current tree,
-and campaign scenarios (#1412): no origin/main, kept cases, an unhandled assertion and a deleted case, a deleted scenario directory, and the current tree.
+and campaign scenarios (#1412): no origin/main, kept cases, an unhandled assertion and a deleted case, a deleted scenario directory, and the current tree,
+and untracked files (#1414): a non-ignored one named as a warning, an ignored one quiet, and checked after `git add`.
 Run in CI.
 """
 import ast
@@ -570,6 +571,31 @@ with tempfile.TemporaryDirectory() as d:
 rc, out = run(os.path.dirname(SCRIPTS), "--only", "deliverables")
 expect("deliverables: the current tree passes", rc == 0, out)
 
+# Untracked files (#1414): path checks read `git ls-files`, so a default run
+# names non-ignored untracked files on stderr (a warning, exit unchanged) and
+# stays quiet about ignored ones; after `git add` they are checked.
+with tempfile.TemporaryDirectory() as d:
+    if git(d, "init", "-q"):
+        deliverables_tree(d, MANIFEST_ROWS + ".gitignore\tinternal\tn/a\n", "docs/a.md")
+        write(d, ".gitignore", "scratch/\n")
+        git(d, "add", "-A")
+        write(d, "docs/new.txt", "x\n")
+        write(d, "scratch/log.txt", "x\n")
+        p = subprocess.run([sys.executable, CHECK, "--root", d, "--only", "deliverables"],
+                           capture_output=True, text=True)
+        expect("untracked: a non-ignored untracked file is named as a warning; exit unchanged",
+               p.returncode == 0 and "check-repo: warning: 1 untracked file" in p.stderr
+               and "docs/new.txt" in p.stderr and "git add" in p.stderr, p.stdout + p.stderr)
+        expect("untracked: an ignored file stays quiet", "scratch/" not in p.stderr, p.stderr)
+        git(d, "add", "docs/new.txt")
+        p = subprocess.run([sys.executable, CHECK, "--root", d, "--only", "deliverables"],
+                           capture_output=True, text=True)
+        expect("untracked: after git add the file is checked and the warning is gone",
+               p.returncode == 1 and "docs/new.txt:1: [unclassified]" in p.stdout
+               and "untracked" not in p.stderr, p.stdout + p.stderr)
+    else:
+        print("skip untracked tests (git unavailable)")
+
 # Per-script docs (#325): every script documents itself in its module docstring;
 # one run directly or a crew command also needs a `Usage:` line.
 SCRIPT = '#!/usr/bin/env python3\n"""Do a thing.\n\nUsage: tool.py [--x]\n"""\nif __name__ == "__main__":\n    pass\n'
@@ -1063,21 +1089,21 @@ rc, out = run(os.path.dirname(SCRIPTS), "--only", "routines")
 expect("routines: the current tree passes", rc == 0, out)
 
 # Campaign scenarios (#1412): an unhandled assertion, a deleted required case and no origin/main fail.
-def git(d, *args):
+def cgit(d, *args):
     subprocess.run(["git", "-C", d, "-c", "user.name=t", "-c", "user.email=t@t", *args], check=True,
                    capture_output=True)
 
 
 SC = "dev/tests/scripts/fixtures/campaign/"
 with tempfile.TemporaryDirectory() as d:
-    git(d, "init", "-q", "-b", "main")
+    cgit(d, "init", "-q", "-b", "main")
     write(d, SC + "A01.json", '{"steps": [{"name": "a", "run": "true"}, {"name": "b", "run": "true"}]}')
-    git(d, "add", "-A")
-    git(d, "commit", "-qm", "base")
+    cgit(d, "add", "-A")
+    cgit(d, "commit", "-qm", "base")
     rc, out = run(d, "--only", "campaign")
     expect("campaign: no origin/main fails closed",
            rc == 1 and "[campaign] cannot check retained cases: cannot find the merge base of origin/main" in out, out)
-    git(d, "update-ref", "refs/remotes/origin/main", "HEAD")
+    cgit(d, "update-ref", "refs/remotes/origin/main", "HEAD")
     rc, out = run(d, "--only", "campaign")
     expect("campaign: kept cases pass", rc == 0, out)
     write(d, SC + "A01.json", '{"steps": [{"name": "a", "run": "test 1 = 2 && echo x; true"}]}')
@@ -1087,14 +1113,14 @@ with tempfile.TemporaryDirectory() as d:
            and "[campaign] A01/b: required case at" in out, out)
 
 with tempfile.TemporaryDirectory() as d:
-    git(d, "init", "-q", "-b", "main")
+    cgit(d, "init", "-q", "-b", "main")
     write(d, SC + "A01.json", '{"steps": [{"name": "req", "run": "exit 1", "disposition": '
                               '{"state": "expected-fail", "reason": "waits for #9"}}]}')
-    git(d, "add", "-A")
-    git(d, "commit", "-qm", "base")
-    git(d, "update-ref", "refs/remotes/origin/main", "HEAD")
-    git(d, "rm", "-q", SC + "A01.json")
-    git(d, "commit", "-qm", "removal")
+    cgit(d, "add", "-A")
+    cgit(d, "commit", "-qm", "base")
+    cgit(d, "update-ref", "refs/remotes/origin/main", "HEAD")
+    cgit(d, "rm", "-q", SC + "A01.json")
+    cgit(d, "commit", "-qm", "removal")
     rc, out = run(d, "--only", "campaign")
     expect("campaign: deleting the whole scenario directory still fails (#1677 review)",
            rc == 1 and not os.path.isdir(os.path.join(d, SC)) and "[campaign] A01/req: required case at" in out, out)
