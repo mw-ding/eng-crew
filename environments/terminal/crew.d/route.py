@@ -191,17 +191,11 @@ def review(args, state, pr, head, pass_, round_):
         admit(args, "#%d" % pr["number"])
     try:
         invoke(args, "spawn", role="reviewer", issue=None, pr=pr["number"], pass_=pass_, round=round_,
-               tier="default", head=head)
+               tier="default", head=head, rereview_id=steer if lead else None)
     except RuntimeError:
         if lead:
             commands()["schedule"].schedule_release(scheduler(args, refs=["#%d" % pr["number"]]))
         raise
-    if steer and getattr(args, "reviewer_lead", False):
-        for name, rec in runs(state):
-            if rec["role"] == "reviewer" and rec.get("head") == head and rec["pass"] == pass_ and \
-                    rec["args"].get("pr") == pr["number"] and rec["args"].get("round") == round_:
-                rec["rereview_id"] = steer
-                commands()["lead"].save_record(os.path.join(state, "runs", name + ".json"), rec)
 
 
 def reap(args, name, state=None, dequeue=True):
