@@ -179,7 +179,10 @@ is its last command's exit. `scripts/campaign-lint.py` refuses a step with
 an unhandled assertion: a `test`, `[`, `grep -q` or `!` pipeline whose exit
 is neither the step's result, nor captured by a following `rc=$?`, nor
 handled by a `||` after it, nor guarded by a trailing `|| exit 1`. An
-assertion in a loop body must carry its own `|| exit 1`. The runner checks
+assertion in a loop body must carry its own `|| exit 1`. A call to a
+function defined in the step counts as an assertion when the function's
+return can carry a failure (a nonzero `return`, `false`, or an unguarded
+assertion at its tail); a helper that runs `exit 1` itself ends the step. The runner checks
 each step before it runs and `FAIL`s a refused one unrun, and so does a
 step that does not parse. A deliberate refusal keeps its explicit oracle:
 capture the exit with `rc=$?` and assert it in the final chain, or declare

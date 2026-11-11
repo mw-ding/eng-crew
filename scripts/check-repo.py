@@ -1052,10 +1052,12 @@ CAMPAIGN = "dev/tests/scripts/fixtures/campaign"
 def check_campaign(root, fail):
     """Issue #1412: every committed campaign step fails closed on an assertion and
     every required case at the merge base with origin/main is kept, given a
-    disposition or retired with a reason (scripts/campaign-lint.py)."""
+    disposition or retired with a reason (scripts/campaign-lint.py). A missing
+    scenario directory is still compared with the base."""
     d = os.path.join(root, CAMPAIGN)
-    if not os.path.isdir(d):
-        return
+    base = subprocess.run(["git", "-C", root, "rev-parse", "--verify", "-q", "origin/main"], capture_output=True)
+    if not os.path.isdir(d) and base.returncode:
+        return  # no scenarios and no base to have deleted them from: not a campaign checkout
     spec = importlib.util.spec_from_file_location(
         "campaign_lint", os.path.join(os.path.dirname(os.path.abspath(__file__)), "campaign-lint.py"))
     lint = importlib.util.module_from_spec(spec)

@@ -246,6 +246,8 @@ class CampaignRunTest(unittest.TestCase):
         self.assertTrue(res["reason"].startswith("step masked refused: unhandled assertion"), res["reason"])
         self.assertEqual(res["events"], ["run ok: exit 0 (want 0)"], "the refused step does not run")
         self.assertEqual(self.one({"name": "lone", "run": "test 1 -eq 2; echo tail"})["status"], "FAIL")
+        res = self.one({"name": "fn", "run": "f() { test 1 -eq 2; }; f; echo tail"})
+        self.assertEqual((res["status"], res["events"]), ("FAIL", []), "a dropped failing function call (#1677 review)")
 
     def test_explicit_refusal_oracles_still_pass(self):
         capture = "sh -c 'echo no >&2; exit 1' 2> o.txt; rc=$?; cat o.txt; test $rc -eq 1 && grep -qx no o.txt"

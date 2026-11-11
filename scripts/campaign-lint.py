@@ -7,7 +7,9 @@ failing the step (A03, A05). This lint parses each step and refuses an unhandled
 by a following `VAR=$?`, nor handled by a `||` after it, nor guarded by a trailing `|| exit`. A
 non-final list item, any item in a loop body and an item in a group whose own exit is dropped all drop
 their exit. A `COND && break` (or continue, return, exit, or an assignment) is control flow, not an
-assertion. A step that does not parse is refused too. campaign-run.py refuses such a step at run time.
+assertion. A call to a function defined in the step is an assertion when that function's return can carry
+a failure (a nonzero `return`, `false`, or an unguarded assertion at its tail); a helper that runs `exit 1`
+itself ends the step. A step that does not parse is refused too. campaign-run.py refuses such a step at run time.
 
 A step may carry `"disposition": {"state": "expected-fail" | "accepted", "reason": TEXT}`: a required
 case that fails today and is either waiting for a fix (expected-fail) or accepted as is. The reason is
@@ -267,7 +269,7 @@ class Parser:
             if len(words) == 1 and self.t[self.i:self.i + 2] == [("op", "("), ("op", ")")]:
                 self.i += 2
                 self.skip("\n")
-                return {"type": "func", "body": self.command(stops)}
+                return {"type": "func", "name": words[0], "body": self.command(stops)}
             return {"type": "simple", "words": words}
         while self.peek()[0] == "w" and self.peek()[1] not in stops:
             self.i += 1
@@ -279,12 +281,54 @@ def _words(pipe):
     return [w for w in c.get("words", []) if not ASSIGN.match(w)] if c["type"] == "simple" else None
 
 
-def is_assertion(pipe):
+def is_assertion(pipe, fns=()):
     w = _words(pipe)
-    if pipe["bang"] or (w and w[0] in ("test", "[")):
+    if pipe["bang"] or (w and (w[0] in ("test", "[") or w[0] in fns)):
         return True
     return bool(w) and w[0] in ("grep", "egrep", "fgrep") and any(
         a in ("--quiet", "--silent") or re.match(r"-[A-Za-z]*q", a) for a in w[1:])
+
+
+def _pipes(items):
+    """Every pipeline in ITEMS, nested bodies included, with the functions defined there."""
+    for item in items:
+        for p, _ in item:
+            yield p
+            for c in p["cmds"]:
+                if c["type"] == "func":
+                    yield from _pipes([[({"bang": False, "cmds": [c["body"]]}, None)]])
+                for b in [c.get("body")] if c["type"] in ("group", "loop") else c.get("bodies", []):
+                    yield from _pipes(b)
+
+
+def _tail_fails(items, fns):
+    """Whether the exit of ITEMS (a body whose result is kept) can be an assertion's failure."""
+    if not items:
+        return False
+    item = items[-1]
+    if len(item) > 1 and item[-2][1] == "||" and _exits(item[-1][0]):
+        return False
+    c = item[-1][0]["cmds"][-1]
+    bodies = [c["body"]] if c["type"] == "group" else c["bodies"] if c["type"] == "branch" else []
+    return any(is_assertion(p, fns) for p, _ in item) or any(_tail_fails(b, fns) for b in bodies)
+
+
+def fallible(items):
+    """Names of the functions defined in ITEMS whose return status can carry a failure: a nonzero `return`
+    or `false` in the body, or an unguarded assertion (or call to another such function) at its tail. A
+    function that exits on failure ends the step itself, so it does not count."""
+    fns = {c["name"]: c["body"] for p in _pipes(items) for c in p["cmds"] if c["type"] == "func"}
+    out = set()
+    while True:
+        more = set()
+        for name, body in fns.items():
+            words = [_words(p) or [""] for p in _pipes([[({"bang": False, "cmds": [body]}, None)]])]
+            if name not in out and (any(w[0] == "false" or (w[0] == "return" and w[1:2] not in ([], ["0"]))
+                                        for w in words) or (body["type"] == "group" and _tail_fails(body["body"], out))):
+                more.add(name)
+        if not more:
+            return out
+        out |= more
 
 
 def _exits(pipe):
@@ -314,31 +358,32 @@ def _show(item):
     return text if len(text) <= 160 else text[:157] + "..."
 
 
-def _lint(items, kept, found):
+def _lint(items, kept, found, fns):
     for n, item in enumerate(items):
         ok = (kept and n == len(items) - 1) or (n + 1 < len(items) and _captures(items[n + 1])) or (
             len(item) > 1 and item[-2][1] == "||" and _exits(item[-1][0]))
-        if not ok and not _control(item) and any(op != "||" and is_assertion(p) for p, op in item):
+        if not ok and not _control(item) and any(op != "||" and is_assertion(p, fns) for p, op in item):
             found.append(_show(item))
         for p, _ in item:
             for k, c in enumerate(p["cmds"]):
                 kept_here = ok and k == len(p["cmds"]) - 1
                 if c["type"] == "group":
-                    _lint(c["body"], kept_here, found)
+                    _lint(c["body"], kept_here, found, fns)
                 elif c["type"] == "branch":
                     for b in c["bodies"]:
-                        _lint(b, kept_here, found)
+                        _lint(b, kept_here, found, fns)
                 elif c["type"] == "loop":
-                    _lint(c["body"], False, found)
+                    _lint(c["body"], False, found, fns)
                 elif c["type"] == "func" and c["body"]["type"] == "group":
-                    _lint(c["body"]["body"], True, found)
+                    _lint(c["body"]["body"], True, found, fns)
 
 
 def lint_step(src):
     """The unhandled assertions in one step's shell, as short text; raises ValueError if it does not parse."""
     found = []
     try:
-        _lint(Parser(src).parse(), True, found)
+        tree = Parser(src).parse()
+        _lint(tree, True, found, fallible(tree))
     except (IndexError, AttributeError) as e:
         raise ValueError("unterminated quote, substitution or here-document (%s)" % type(e).__name__)
     return found
@@ -366,8 +411,9 @@ def cases(docs):
 
 
 def load_dir(d):
+    """Scenarios and retired cases in D; a missing D has none (deleting every scenario is still checked)."""
     docs = {}
-    for name in sorted(os.listdir(d)):
+    for name in sorted(os.listdir(d)) if os.path.isdir(d) else []:
         if SCENARIO.fullmatch(name):
             with open(os.path.join(d, name)) as fh:
                 docs[name[:-5]] = json.load(fh)

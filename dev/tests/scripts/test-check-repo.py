@@ -29,7 +29,7 @@ out, skipped when the doc is absent, the current tree, and two branches that
 each append a scenario line at the same place merging with both lines kept,
 and core memory (#1230): clean, personal data, a stray file and the current tree,
 and role routines (#1247): the contract's vocabulary, an action and event outside it, and the current tree,
-and campaign scenarios (#1412): no origin/main, kept cases, an unhandled assertion and a deleted case, and the current tree.
+and campaign scenarios (#1412): no origin/main, kept cases, an unhandled assertion and a deleted case, a deleted scenario directory, and the current tree.
 Run in CI.
 """
 import ast
@@ -1085,6 +1085,19 @@ with tempfile.TemporaryDirectory() as d:
     expect("campaign: an unhandled assertion and a deleted case fail",
            rc == 1 and SC.rstrip("/") + ":1: [campaign] A01/a: unhandled assertion" in out
            and "[campaign] A01/b: required case at" in out, out)
+
+with tempfile.TemporaryDirectory() as d:
+    git(d, "init", "-q", "-b", "main")
+    write(d, SC + "A01.json", '{"steps": [{"name": "req", "run": "exit 1", "disposition": '
+                              '{"state": "expected-fail", "reason": "waits for #9"}}]}')
+    git(d, "add", "-A")
+    git(d, "commit", "-qm", "base")
+    git(d, "update-ref", "refs/remotes/origin/main", "HEAD")
+    git(d, "rm", "-q", SC + "A01.json")
+    git(d, "commit", "-qm", "removal")
+    rc, out = run(d, "--only", "campaign")
+    expect("campaign: deleting the whole scenario directory still fails (#1677 review)",
+           rc == 1 and not os.path.isdir(os.path.join(d, SC)) and "[campaign] A01/req: required case at" in out, out)
 
 rc, out = run(os.path.dirname(SCRIPTS), "--only", "campaign")
 expect("campaign: the current tree passes", rc == 0, out)

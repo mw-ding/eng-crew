@@ -2,7 +2,7 @@
 """Fixture test for scripts/campaign-lint.py (offline, temp dirs only; #1412).
 
 Covers the unhandled-assertion rule (a failed chain before a passing tail, a lone assertion, loop bodies,
-groups and functions) and what stays allowed (the step's own result, a `VAR=$?` capture, `|| exit`, a `||`
+groups and functions, and a dropped call to a function whose return can carry a failure) and what stays allowed (the step's own result, a `VAR=$?` capture, `|| exit`, a `||`
 handler, `&& break`-style control flow, if conditions, quotes, `$()` and here-documents); a step that does not
 parse; the disposition shape; every committed campaign scenario linting clean; and the base/head retention
 check: a deleted case, a case deleted with its disposition and a deleted scenario fail unless retired with a
@@ -40,6 +40,20 @@ class StepLintTest(unittest.TestCase):
         self.bad("check() { grep -q x f; echo after; }; check")
         self.bad("if true; then test -e a; echo b; fi")
         self.bad("x=$(cat f) && test -n \"$x\"; true")
+
+    def test_dropped_calls_to_fallible_functions(self):
+        # #1677 review: a function's assertion reaches its caller through the function's return status.
+        self.bad("f() { test 1 -eq 2; }; f; echo tail")
+        self.bad("g() { f; }; f() { grep -q x y; }; g; true")
+        self.bad("w() { grep -q x f && return 0; return 1; }; w a; true")
+        self.bad("f() { if true; then test -e a; fi; }; f; true")
+        self.bad("f() ( test -e a ); f; true")
+        self.bad("f() { false; }; for x in a; do f; done; true")
+        self.good("f() { test 1 -eq 2; }; f")
+        self.good("f() { test 1 -eq 2; }; f || exit 1; echo tail")
+        self.good("eq() { [ \"$1\" = \"$2\" ] || { echo bad; exit 1; }; }; eq a b; true")
+        self.good("say() { echo \"$1\"; return 0; }; say hi; true")
+        self.good("w() { grep -q x f && return 0; return 1; }; until w a; do sleep 1; done; true")
 
     def test_handled_or_not_assertions(self):
         self.good("cd d && test 1 -eq 1 && grep -q x f")
