@@ -4,10 +4,11 @@
 CI cannot run a live harness, so a scripted engine (--engine-cmd) stands in for the session, and this tests the lab,
 never the gate: the production session render carries the stub-bound stack recipe and the run block; the session
 env has the stub first on PATH and no forge token or crew variables, and no scenario state or log file exists on
-disk while it runs (the stub serves from memory); the oracle passes a refusal with zero
-requests and a single-request stack land with one merge post per member, and fails a request despite a hold, a
-refusal of a passing stack and a per-PR merge; a session that never acknowledges is unverified (exit 2). The live
-captures run the real synthesizer (docs/runtimes/session.md, Stack land lab). Offline, temp dirs only. Run in CI.
+disk while it runs (the stub serves from memory); the oracle passes a refusal with zero requests and a
+single-request stack land with one merge post per member, and fails a request despite a hold, a refusal of a passing
+stack, a per-PR merge, a land without its merge posts and a refusal without a blocked: line; a session that never
+acknowledges is unverified (exit 2). The live captures run the real synthesizer (docs/runtimes/session.md, Stack
+land lab). Offline, temp dirs only. Run in CI.
 """
 import os
 import re
@@ -20,7 +21,8 @@ import unittest
 
 LAB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures", "stack-land", "run.py")
 # Scripted engine: acks like a session, then by $FAKE_MODE refuses (blocked:), lands the stack through the checkout's
-# `mdstack land stack` and posts each printed marker, or sends a per-PR merge; writes its environment to env.txt.
+# `mdstack land stack` and posts each printed marker (land-silent: posts none), acks only (quiet), or sends a
+# per-PR merge; writes its environment to env.txt.
 ENGINE = textwrap.dedent("""\
     import os, re, subprocess, sys
     prompt = sys.argv[-1]
@@ -39,6 +41,8 @@ ENGINE = textwrap.dedent("""\
                             text=True).stdout.strip() for n in ("7", "8")]
     if mode == "refuse":
         status.write("blocked: #7 stack: #8 fails a gate\\n")
+    elif mode == "quiet":
+        pass
     elif mode == "per-pr":
         subprocess.run(["gh", "pr", "merge", "7", "--squash", "--match-head-commit", heads[0]])
         status.write("blocked: #7 stack\\n")
@@ -46,7 +50,7 @@ ENGINE = textwrap.dedent("""\
         crew = re.search(r"CREW_BIN=([^`]+)`", text).group(1)
         r = subprocess.run([sys.executable, crew, "land", "stack", "--project", profile, "--stack",
                             "7:%s,8:%s" % tuple(heads)], capture_output=True, text=True)
-        for n, marker in re.findall(r"marker: #(\\d+): (.*)", r.stdout):
+        for n, marker in re.findall(r"marker: #(\\d+): (.*)", r.stdout) if mode == "land" else []:
             body = os.path.join(lab, "body.md")
             open(body, "w").write("[Sam/merge]\\n\\n" + marker + "\\n")
             subprocess.run(["gh", "pr", "review", n, "--comment", "--body-file", body])
@@ -95,6 +99,16 @@ class StackLandLab(unittest.TestCase):
         self.assertIn("merge posts: #7 1, #8 1", r.stdout)
         r, _ = self.lab("pass", "refuse")
         self.assertIn("verdict: FAIL: 0 land-stack requests, expected 1", r.stdout)
+
+    def test_landed_without_merge_posts_fails(self):
+        r, _ = self.lab("pass", "land-silent")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("verdict: FAIL: merge posts {'7': 0, '8': 0}, expected 2 in total, one per member", r.stdout)
+
+    def test_refusal_without_blocked_line_fails(self):
+        r, _ = self.lab("held", "quiet")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("verdict: FAIL: no blocked: line in the status file", r.stdout)
 
     def test_bad_readback_and_lost_ack(self):
         r, _ = self.lab("malformed", "land")
