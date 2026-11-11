@@ -1120,6 +1120,17 @@ class PackOverlay(unittest.TestCase):
         self.assertIn(os.path.join(self.tmp, "memory") + ":1: [memory-source] cannot resolve origin/main", out)
         self.assertFalse(os.path.exists(out_dir), "a failed fetch refuses rather than using stale memory")
 
+    def test_core_memory_for_a_profile_below_the_git_root(self):  # #1537 review R1
+        upstream = self.memory_remote()
+        self.publish(upstream, {"sub/memory/owner.md": "# Owner\n\n- Reviewed subdirectory lesson.\n"})
+        os.makedirs(os.path.join(self.tmp, "sub"))
+        project = os.path.join(self.tmp, "sub", "crew.toml")
+        with open(project, "w") as f:
+            f.write('[runtime]\nname = "session"\n')
+        code, out, out_dir = self.render(project)
+        self.assertEqual(code, 0, out)
+        self.assertIn("- Reviewed subdirectory lesson.", tree(out_dir)["runtime/coordinator.md"])
+
     def test_core_memory_in_every_role_brief(self):  # #1230
         tmux, grok = self.project('[runtime.options.notes.render]\nbuilder = ["note.md"]\n'), \
             os.path.join(self.tmp, "grok.toml")

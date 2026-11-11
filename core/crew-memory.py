@@ -110,7 +110,7 @@ def snapshot(root, branch, remote="origin"):
             if fetched.returncode or git(root, "cat-file", "-e", sha + "^{commit}").returncode:
                 return {}, None, [("memory", 1, "memory-source", "cannot fetch %s/%s at %s: %s" % (
                     remote, branch, sha, fetched.stderr.decode().strip() or "commit missing after fetch"))]
-        listing = git(root, "ls-tree", "-r", "--name-only", sha, "--", prefix + "memory/")
+        listing = git(root, "ls-tree", "-r", "--full-tree", "--name-only", sha, "--", prefix + "memory/")
         if listing.returncode:
             return {}, None, [("memory", 1, "memory-source", "cannot list memory/ at %s" % sha)]
         present, texts, problems = set(listing.stdout.decode().splitlines()), {}, []
