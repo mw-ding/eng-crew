@@ -188,9 +188,30 @@ The lint is an allowlist (#1677): simple commands, pipelines and
 ending in an unconditional `exit N`; `if`/`case`; loops; `name() { ...; }`
 functions; subshells with no assertion, `exit` or `return`. Anything else
 is refused by name, including other brace groups, a subshell that can fail,
-a backgrounded compound command or assertion, `eval`, `trap` and an
-`exit` in a pipeline. In a condition list only the final item is the
-predicate; an earlier assertion there is refused.
+a backgrounded compound command or assertion, `eval` and `trap`. In a
+condition list only the final item is the predicate; an earlier assertion
+there is refused.
+
+Termination model (#1684): the lint decides where an `exit` or `return`
+stops by one rule, not per form. `exit` ends the step, and `return` its
+function, only when it runs in the step's own shell. These run in a child
+shell, where `exit` ends only the child and the step goes on:
+
+- a subshell, `( ... )`;
+- every command of a multi-command pipeline, `a | b`;
+- a backgrounded list, `... &`;
+- a command substitution, `$( ... )` or backticks.
+
+A function call runs in its caller's shell, so a helper that can `exit`
+ends the step when called in the step shell and only the child when called
+in one of the forms above. The lint refuses any `exit`, `return` or call
+to such a helper in a child and names the child, for example
+`f() { test -e a || exit 1; }; f | cat` or
+`test -e a || { echo bad; exit 1 & }`. A `|| exit N` or
+`|| { ...; exit N; }` handler counts only when its `exit` runs in the step
+shell. To keep a loop's output, redirect it to a file rather than piping
+it; to use a helper's output, have the helper fail through its status
+(`a && b`) and assert the value.
 Restructure such a step into the allowed forms. The runner checks
 each step before it runs and `FAIL`s a refused one unrun, and so does a
 step that does not parse. A deliberate refusal keeps its explicit oracle:
