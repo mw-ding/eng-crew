@@ -805,9 +805,11 @@ session. If any
 window holds unlanded work, it keeps that worktree, names the windows, keeps
 the session and exits 1. With no session and no watcher running it is a no-op.
 
-After the land-lock refusal, both forms first stop the armed watcher
-(SIGTERM; refusing while it is still armed after a short grace), even when
-no session is left, so a persistent watcher never restarts what down stops
+After the land-lock refusal, both forms first stop the armed watcher, the
+live PID in `wake/watcher.pid` or else the `wake/watcher.lock` holder's
+(SIGTERM, then waiting for the lock to be released; refusing while it is
+still armed after a short grace, or when a lock holder names no live
+`mdstack watch`, which is never signalled), even when no session is left, so a persistent watcher never restarts what down stops
 (#1346).
 
 `mdstack down --preserve` is the maintenance stop before a migration (#1178).
@@ -1951,7 +1953,8 @@ The zero-token watcher of [Q1](#q1-wake) (#135). `mdstack up` (and
 session, its output appended to `wake/watcher.log`; `CREW_WATCHER=off` skips
 that, for a coordinator that arms its own one-shot watcher (#1346). One
 watcher runs per state dir: it holds `wake/watcher.lock` (flock) for its
-whole life, so a second start, simultaneous or not, exits 0 with
+whole life and writes its PID into that file too, so a second start,
+simultaneous or not, exits 0 with
 `crew: a watcher is already armed (pid N)` and touches neither the PID file
 nor the watch state (#591, #399). Under that lock it writes its PID to
 `wake/watcher.pid` (removed on exit only while it holds its own PID), then scans every `--interval` seconds
@@ -2088,8 +2091,10 @@ row 4), it also types the fixed line `wake: watcher` into window 0 when the
 coordinator is idle: `claude` or `codex` in the foreground and no output for
 `--idle` seconds (default 30), the path the Codex recipe uses; like the
 `mdstack send` nudge, it waits 0.3 s before `Enter`. When window 0 shows a
-dialog it types nothing (#315) and queues a `dialog:` wake for window 0
-instead (liveness `ambiguous`, action `escalate`). `--no-nudge`
+blocking prompt it types nothing (#315) and queues a `dialog:` wake for window 0
+instead (liveness `ambiguous`, action `escalate`). A fatal API error over an
+idle composer is not a prompt, so a coordinator stopped by a gateway error
+still gets the wake line (#1346). `--no-nudge`
 turns this off, for a Claude Code coordinator whose exit wake works and
 which would otherwise take a second, empty turn per wake. On SIGTERM,
 SIGINT or SIGHUP it removes `wake/watcher.pid`, saves `wake/watch-state.json` and exits

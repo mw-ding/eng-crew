@@ -56,7 +56,7 @@ import signal
 import subprocess
 import sys
 import time
-from crew_shared import checkout, commands, CREW_BIN, dialog, ownership_module, ENGINE_CMD, foreground_matches, finished, gateway_error, HERE, heartbeat, idle_builder, probe, proc, profile, queue_lock, remember_pr, remote_run, ROOT, runs, TRANSIENT, tmux, transient_lines
+from crew_shared import checkout, commands, CREW_BIN, dialog, ownership_module, ENGINE_CMD, foreground_matches, finished, GLYPHS, PROMPTS, gateway_error, HERE, heartbeat, idle_builder, probe, proc, profile, queue_lock, remember_pr, remote_run, ROOT, runs, TRANSIENT, tmux, transient_lines
 
 # Fields route adds to a record it leaves queued; a kept record still matches its candidate and wakes window 0 (#814).
 ROUTE_NOTES = ("at", "route_error", "consumer", "dependents")
@@ -446,12 +446,38 @@ def hold_lock(wake):
     while True:
         try:
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            os.ftruncate(fd, 0)  # the holder's PID, which survives a lost wake/watcher.pid (holder)
+            os.write(fd, b"%d\n" % os.getpid())
             return fd
         except BlockingIOError:
             if time.monotonic() >= deadline:
                 os.close(fd)
                 return None
             time.sleep(0.05)
+
+
+def holder(wake):
+    """The live watcher holding wake/watcher.lock: its PID from the lock file, -1 when held under an unreadable or
+    foreign PID, None when free. Works with wake/watcher.pid lost (#399); the probe holds the lock for an instant."""
+    try:
+        fd = os.open(os.path.join(wake, "watcher.lock"), os.O_RDONLY)
+    except OSError:
+        return None
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return None
+    except BlockingIOError:
+        return armed(os.path.join(wake, "watcher.lock")) or -1
+    finally:
+        os.close(fd)
+
+
+def prompt_open(session, index):
+    """A blocking harness prompt on the pane, whose Enter could approve a command (#315). Unlike dialog(), a fatal API
+    error over an idle composer is not one: a coordinator stopped by a gateway error still gets its wake (#1346)."""
+    lines = [line.strip().lstrip(GLYPHS + "> ") for line in tmux.capture(session, index).splitlines() if line.strip()]
+    return bool(lines) and any(foot.match(lines[-1]) and any(head.match(line) for line in lines)
+                               for head, foot in PROMPTS)
 
 
 def reason(w):
@@ -530,12 +556,12 @@ def source_failure(wake, seen, cmd, error, limit):
 
 def nudge(args, session, state, wake, seen):
     """Type `wake: watcher` into an idle window-0 coordinator; one showing a dialog gets a queued `dialog` wake
-    instead, which is returned (#315)."""
+    instead, which is returned (#315); an API error over an idle composer gets the wake (#1346)."""
     p = None if args.no_nudge else tmux.pane(session, 0)
     if not (p and foreground_matches(ENGINE_CMD.values(), {p["command"], *tmux.foreground(p["tty"])}) and
             time.time() - float(p["activity"]) > args.idle):
         return None
-    if dialog(session, 0):  # never type into a prompt: its Enter could approve a command (#315)
+    if prompt_open(session, 0):  # never type into a prompt: its Enter could approve a command (#315)
         w = {"reason": "dialog", "window": dict(tmux.list_windows(session)).get(0, "0"),
              "liveness": "ambiguous", "silent": int(time.time() - float(p["activity"])), "action": "escalate"}
         with queue_lock(state), open(os.path.join(wake, "queue.jsonl"), "a") as f:

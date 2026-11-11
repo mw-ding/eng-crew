@@ -17,7 +17,9 @@ runs wake immediately; a run record reaped between listing and stat skipped, a s
 without touching the armed one's PID file, simultaneous starts leaving exactly one watcher through `wake/watcher.lock` (#399), and a watcher removing the PID file only when it holds its own PID
 (#591); a `--persistent` watcher nudging the coordinator and scanning on, nudging an undrained queue again
 after `--renudge` and stopping once it is drained, and `--detach` starting one in its own session, a second a no-op
-(#1346); finishing work deferred past `stuck_after` waking once as `schedule-stuck` with the snapshot, and the exit
+(#1346), a gateway-error screen over an idle composer still woken and re-nudged, never a
+`dialog` wake, and `mdstack down` stopping a watcher whose PID file was lost through its lock, refusing an
+unidentified holder without a signal (#1346 review); finishing work deferred past `stuck_after` waking once as `schedule-stuck` with the snapshot, and the exit
 line followed by the schedule summary (#628); the triage sweep timer (#748): due, overdue on wake, an empty queue
 skipped, disabled, queued and failed spawns, never a wake, and closed milestones swept at once and kept until a started sweep takes them (#374), a later closed milestone
 swept at once once the queued sweep was dequeued (#1175), and the timer
@@ -732,7 +734,8 @@ class Watch(LivenessBase):
 
     def test_watch_never_types_into_a_coordinator_prompt(self):  # #315
         source = ["--source", "printf 'pr-merged #9\\n'"]
-        for name in STUCK:  # idle coordinator showing a prompt: queue a dialog wake instead of the wake line
+        prompts = [n for n in STUCK if not n.endswith("-api-error")]  # an API error over a composer is no prompt (#1346)
+        for name in prompts:  # idle coordinator showing a prompt: queue a dialog wake instead of the wake line
             with self.subTest(name):
                 self.set_pane(0, command="claude", screen=screen(name))
                 out, err = self.watch(*source).communicate(timeout=10)
@@ -748,6 +751,23 @@ class Watch(LivenessBase):
                 self.assertEqual(out, "poll: pr-merged #9\n")
         self.assertEqual(self.calls().count(["send-keys", "-t", "=crew-acme-widgets:0", "-l", "wake: watcher"]),
                          len(WORKING))  # a normal screen still gets the wake line
+
+    def test_persistent_watcher_wakes_a_coordinator_stopped_by_a_gateway_error(self):  # #1346 review R1
+        nudge = ["send-keys", "-t", "=crew-acme-widgets:0", "-l", "wake: watcher"]
+        for name in ("claude-api-error", "codex-api-error"):
+            with self.subTest(name):
+                os.makedirs(os.path.join(self.tmp, name))
+                flag = shlex.quote(os.path.join(self.tmp, name, "polled"))
+                once = "test -e %s || { touch %s; printf 'pr-merged #9\\n'; }" % (flag, flag)
+                self.set_pane(0, command=name.split("-")[0], screen=screen(name))
+                before = self.calls().count(nudge)
+                p = self.watch("--persistent", "--renudge", "0.5", "--source", "sh -c %s" % shlex.quote(once))
+                self.addCleanup(lambda p=p: p.poll() is None and p.kill())
+                self.wait_for(lambda: self.calls().count(nudge) >= before + 2)  # the wake, then a re-nudge
+                self.assertIsNone(p.poll())
+                p.send_signal(signal.SIGTERM)
+                p.communicate(timeout=10)
+                self.assertNotIn("dialog", [w["reason"] for w in self.queue_lines()])
 
     def test_watch_backstop_backs_off_while_idle(self):
         self.assertEqual(self.crew("kill", "ben-7", "--project", self.project).returncode, 0)
@@ -987,6 +1007,35 @@ class Watch(LivenessBase):
         self.assertEqual((again.returncode, again.stdout), (0, "crew: a watcher is already armed (pid %d)\n" % pid))
         os.kill(pid, signal.SIGTERM)
         self.wait_for(lambda: not os.path.exists(pidfile))
+
+    def test_down_stops_a_watcher_whose_pid_file_was_lost(self):  # #1346 review R2: the lock names it
+        p = self.watch("--persistent")
+        self.addCleanup(lambda: p.poll() is None and p.kill())
+        self.armed(p)
+        os.remove(os.path.join(self.state, "wake", "watcher.pid"))
+        with open(self.ps, "w") as f:
+            json.dump({"command": {str(p.pid): "python3 cli/mdstack watch --persistent"}}, f)
+        with open(self.state_file, "w") as f:
+            json.dump({}, f)  # no session left
+        r = self.crew("down", "--project", self.project)
+        self.assertEqual((r.returncode, r.stdout), (0, "crew: crew-acme-widgets not running; watcher stopped\n"),
+                         r.stderr)
+        p.communicate(timeout=10)
+        self.assertEqual(p.returncode, 128 + signal.SIGTERM)
+        self.assertEqual(self.crew("down", "--project", self.project).stdout, "crew: crew-acme-widgets not running\n")
+
+    def test_stop_watcher_never_signals_an_unidentified_lock_holder(self):  # #1346 review R2: refuse, never guess
+        p = self.watch("--persistent")
+        self.addCleanup(lambda: p.poll() is None and p.kill())
+        self.armed(p)
+        os.remove(os.path.join(self.state, "wake", "watcher.pid"))  # and the fake ps names no watch command
+        with open(self.state_file, "w") as f:
+            json.dump({}, f)
+        r = self.crew("down", "--project", self.project)
+        self.assertEqual((r.returncode, r.stdout), (1, "crew: refusing down: the watcher (pid unknown) is still armed\n"))
+        self.assertIsNone(p.poll())  # never signalled
+        p.send_signal(signal.SIGTERM)
+        p.communicate(timeout=10)
 
     def test_simultaneous_starts_leave_exactly_one_watcher(self):  # #399: the lock, not a check-then-write
         first, second = self.watch(), self.watch()

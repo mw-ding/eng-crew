@@ -302,6 +302,36 @@ class Upgrade(bootstrap_tests.Bootstrap):
             self.assertEqual(apply.call_count, 1)  # the dry run only
             start.assert_not_called()
 
+    def test_upgrade_stops_a_lock_holding_watcher_whose_pid_file_was_lost(self):  # #1346 review R2
+        wake = Path(self.state) / "wake"
+        wake.mkdir(parents=True, exist_ok=True)
+        code = ("import fcntl, os, sys, time\nf = open(sys.argv[1], 'w')\nfcntl.flock(f, fcntl.LOCK_EX)\n"
+                "f.write('%d\\n' % os.getpid()); f.flush()\nprint('ready', flush=True)\ntime.sleep(60)\n")
+        holder = subprocess.Popen([sys.executable, "-c", code, str(wake / "watcher.lock"), "watch"],
+                                  stdout=subprocess.PIPE, text=True)  # a watcher with no wake/watcher.pid
+        self.addCleanup(lambda: holder.poll() is None and holder.kill())
+        self.assertEqual(holder.stdout.readline(), "ready\n")
+        args = Namespace(project=self.project, org_profile=None, version=None, dev=False, pre=False,
+                         uninstall=False, remove_labels=False, routines_removed=False, smoke=False,
+                         dry_run=False, yes=True, wait_timeout=5, timeout=1)
+        bootstrap = cli.commands()["bootstrap"]
+        values, _ = cli.crew_render.resolve(self.project, None)
+        installs = []
+
+        def apply(a):
+            installs.append(a.dry_run or holder.poll())  # the real install runs only once the watcher exited
+            return 0
+        with mock.patch.object(upgrade, "profile", return_value=(values, "session", self.state)), \
+                mock.patch.object(upgrade, "require_ownership", return_value=True), \
+                mock.patch.object(bootstrap, "source", return_value="v2.2.0"), \
+                mock.patch.object(bootstrap, "run", side_effect=apply), \
+                mock.patch.object(upgrade, "busy", return_value=None), \
+                mock.patch.object(upgrade, "reload"), \
+                mock.patch.object(cli.commands()["up"], "watcher"), \
+                mock.patch.dict(os.environ, dict(self.env, PATH=self.env["PATH"] + os.pathsep + "/bin")):  # ps
+            self.assertEqual(upgrade.run(args), 0)
+        self.assertEqual(installs, [True, -15])  # the dry run, then the install after SIGTERM
+
     def test_active_pane_waits_after_terminal_status(self):
         self.put("status/ben-7.status", "done: #7 #9 head\n")
         with mock.patch.object(upgrade, "runs", return_value=[("ben-7", {"role": "builder"})]), \

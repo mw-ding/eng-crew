@@ -25,17 +25,23 @@ def register(sub):
     p.add_argument("--preserve", action="store_true", help="stop the watcher and panes; keep every run's work")
 
 
+def watcher(state):
+    """The armed watcher: the live PID in wake/watcher.pid, else wake/watcher.lock's holder (-1: unidentified), else
+    None; a lost PID file never hides a live watcher (#1346)."""
+    watch, wake = commands()["watch"], os.path.join(state, "wake")
+    return watch.armed(os.path.join(wake, "watcher.pid")) or watch.holder(wake)
+
+
 def stop_watcher(state):
-    """SIGTERM the armed watcher and wait for it to exit; its PID if it is still armed after the grace."""
-    armed = commands()["watch"].armed
-    pidfile = os.path.join(state, "wake", "watcher.pid")
-    pid = armed(pidfile)
-    if pid:
+    """SIGTERM the armed watcher and wait for it to exit and release its lock; what watcher() still finds after the
+    grace (-1 when the lock holder cannot be identified, which is never signalled)."""
+    pid = watcher(state)
+    if pid and pid > 0:
         os.kill(pid, signal.SIGTERM)
         deadline = time.monotonic() + WATCHER_GRACE
-        while armed(pidfile) and time.monotonic() < deadline:
+        while watcher(state) and time.monotonic() < deadline:
             time.sleep(0.1)
-    return armed(pidfile)
+    return watcher(state)
 
 
 def land_locked(state):
@@ -55,7 +61,7 @@ def run(args):
     preserve = getattr(args, "preserve", False)
     live = tmux.has_session(session)
     remote = any(remote_run.host_of(rec) for _, rec in runs(state))  # they outlive the primary's session
-    watching = commands()["watch"].armed(os.path.join(state, "wake", "watcher.pid"))
+    watching = watcher(state)
     if not live and not preserve and not remote and not watching:
         print("crew: %s not running" % session)
         return 0
@@ -65,7 +71,7 @@ def run(args):
         return 1
     pid = stop_watcher(state)  # first: a persistent watcher would restart what down stops (#1346)
     if pid:
-        print("crew: refusing down: the watcher (pid %d) is still armed" % pid)
+        print("crew: refusing down: the watcher (pid %s) is still armed" % (pid if pid > 0 else "unknown"))
         return 1
     if preserve:
         args.keep_work = True
