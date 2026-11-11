@@ -48,6 +48,11 @@ Signed control comments: stops have cmd-id; resumes name it as stop-id. Read bef
 control comments/PR reviews; unmatched stop/unreadable control blocks.
 Urgent/merge-ok/grants never waive stops.
 
+Secret retrieval: never suggest a command that prints a secret value
+(`printenv API_KEY`, `cat .env`); `!`-run output enters the transcript, so
+say so. Give a clipboard pipe (`| pbcopy`, `| xclip -selection clipboard`)
+or the revealing UI; verify by fingerprint, length or last 4, never the value.
+
 Sweep open PRs and issues in <owner>/<repo>. Re-read live state every run.
 First inspect all crew:hold / crew:escalated items (PRs and issues). Promote
 only items whose latest hold/escalation asks the user for a decision, not
