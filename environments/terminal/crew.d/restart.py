@@ -204,6 +204,8 @@ def run(args):
     argv = ["spawn", rec["role"], *mode, "--round", str(a["round"]), "--tier", a["tier"],
             "--project", args.project] + (["--org-profile", args.org_profile] if args.org_profile else [])
     argv += (["--issue", str(a["issue"])] if a["issue"] else []) + (["--pr", str(a["pr"])] if a["pr"] else [])
+    if rec.get("rereview_id"):  # same PR/head/pass/round keeps its steer; a moved head refuses as stale (#1477)
+        argv += ["--rereview-id", rec["rereview_id"], "--head", rec["head"]]
     r = a.get("reflection")
     argv += ["--reflection", r["window"], "--run-id", r["run"], "--input-sha", r["sha"]] + (
         ["--log", str(r["log"])] if r["log"] else []) if r else []

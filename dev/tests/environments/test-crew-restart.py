@@ -194,6 +194,28 @@ class Restart(LivenessBase):
         self.assertEqual(self.git("status", "--porcelain", cwd=wt), "")
         self.assertEqual(len(self.windows()), 2)
 
+    def test_restart_clean_reviewer_keeps_its_rereview_id(self):  # #1477
+        sha = self.pr(9, "claude-code opus-5.5 default")
+        self.assertEqual(self.spawn("reviewer", "--pr", "9", "--head", sha, "--rereview-id", "42").returncode, 0)
+        self.set_pane(self.record("vera-9-r1-review")["index"], dead="1")
+        r = self.crew("restart", "vera-9-r1-review", "--project", self.project, "--timeout", "1")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        after = self.record("vera-9-r1-review")
+        self.assertEqual((after["restarts"], after["rereview_id"], after["head"]), (1, "42", sha))
+
+    def test_restart_clean_reviewer_refuses_a_moved_head(self):  # #1477: a moved head never inherits the steer
+        sha = self.pr(9, "claude-code opus-5.5 default")
+        self.assertEqual(self.spawn("reviewer", "--pr", "9", "--head", sha, "--rereview-id", "42").returncode, 0)
+        self.git("checkout", "-q", "--detach", sha)  # the PR head moves on while the reviewer is dead; the old
+        self.git("commit", "-q", "--allow-empty", "-m", "newer")  # head stays reachable, so the worktree is clean
+        self.git("push", "-q", "origin", "HEAD:refs/pull/9/head")
+        self.git("checkout", "-q", "main")
+        self.set_pane(self.record("vera-9-r1-review")["index"], dead="1")
+        r = self.crew("restart", "vera-9-r1-review", "--project", self.project, "--timeout", "1")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("stale spawn", r.stdout)
+        self.assertFalse(os.path.exists(os.path.join(self.state, "runs", "vera-9-r1-review.json")))
+
     def test_restart_dead_train_worker_respawns_with_its_train(self):  # #1391 AC 4: the one restart through the lead
         self.assertEqual(self.spawn("builder", "--train", "3").returncode, 0)
         before = self.record("ben-train3")
