@@ -266,6 +266,24 @@ class Up(Base):
         self.assertIn("exec codex -c %s " % shlex.quote(trust), launch)
         self.assertNotIn('projects."', launch)
 
+    def test_up_starts_one_persistent_watcher_with_the_poll_source(self):  # #1346
+        self.env["CREW_WATCHER"] = ""
+        r = self.up()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        line = [x for x in r.stdout.splitlines() if x.startswith("crew: persistent watcher started")]
+        self.assertEqual(len(line), 1, r.stdout)
+        pid = int(line[0].split("pid ")[1].split(",")[0])
+        self.addCleanup(lambda: subprocess.run(["kill", str(pid)], capture_output=True))
+        command = subprocess.run(["ps", "-ww", "-o", "command=", "-p", str(pid)], capture_output=True, text=True).stdout
+        self.assertIn("watch --persistent --source", command)
+        self.assertIn("poll --once --project " + os.path.abspath(self.project), command)
+        pidfile = os.path.join(self.state, "wake", "watcher.pid")
+        deadline = time.monotonic() + 20
+        while not (os.path.exists(pidfile) and open(pidfile).read().strip() == str(pid)):
+            self.assertLess(time.monotonic(), deadline)
+            time.sleep(0.05)
+        os.kill(pid, signal.SIGTERM)
+
     def test_up_is_idempotent(self):
         self.assertEqual(self.up().returncode, 0)
         r = self.up()

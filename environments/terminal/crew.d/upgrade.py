@@ -10,7 +10,7 @@ same state root, runs from that releases directory (a record from before #1317 b
 step), then flips that root's releases/current, so its <root>/bin launcher follows and another root's stays (#1317,
 #1324). A release already on disk is reused once a fresh fetch matches it: that is rollback.
 Run from a separate operator terminal with dispatch paused. Waits for every current pass to finish
-before applying; a timeout leaves the install and sessions untouched. Restarts preserve worktrees,
+before applying, then stops the watcher and starts the persistent one again after the reload (#1346); a timeout leaves the install and sessions untouched. Restarts preserve worktrees,
 claims, inboxes and run metadata. Coordinator is last. Grok Bot routine reload remains manual.
 A session profile (runtime.name = "session", #1541) applies the install with no in-flight wait or window reload, since
 it has no role windows; restart the coordinator (exit it, then mdstack up) to load the new briefs.
@@ -176,9 +176,14 @@ def run(args):
                     raise ValueError("in-flight pass " + active + "; wait timed out; no install written")
                 time.sleep(0.2)
             windows = tmux.list_windows(session)
-            if not require_ownership(values) or bootstrap.run(args):
-                return 1
-            reload(values, session, state, args, windows)
+            if pid := commands()["down"].stop_watcher(state):  # it would re-exec on half-written code (#1346)
+                raise ValueError("the watcher (pid %s) is still armed; no install written" % (pid if pid > 0 else "unknown"))
+            try:
+                if not require_ownership(values) or bootstrap.run(args):
+                    return 1
+                reload(values, session, state, args, windows)
+            finally:
+                commands()["up"].watcher(args, state)  # the persistent watcher, on the installed code
         return 0
     except (OSError, ValueError, RuntimeError) as e:
         print("crew upgrade: " + str(e))

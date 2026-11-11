@@ -182,6 +182,7 @@ class Base(unittest.TestCase):
         for name in ("CREW_PROJECT", "MDSTACK_CONFIG", "CREW_ROOT"):  # a crew window's own config never leaks in (#1324)
             self.env.pop(name, None)
         self.env["MDSTACK_COPY_CLAIMS"] = os.path.join(self.tmp, "copy-claims")  # never the real host store (#391)
+        self.env["CREW_WATCHER"] = "off"  # mdstack up/upgrade start no detached watcher unless a test asks (#1346)
         self.project_dir = os.path.join(self.tmp, "project")
         os.makedirs(self.project_dir)
         self.state = os.path.join(self.tmp, "state", "acme__widgets")
