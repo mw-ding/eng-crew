@@ -62,12 +62,13 @@ class DoctorBase(Base):
             f.write("#!/bin/sh\n%s\n" % body)
         os.chmod(path, 0o755)
 
-    def gh(self, logins, latest):
+    def gh(self, logins, latest, labels=None):
         lines = "".join("echo '  ✓ Logged in to github.com account %s (keyring)'\n" % u for u in logins)
-        labels = [{"name": n, "color": c, "description": d} for n, c, d in
+        labels = labels if labels is not None else [{"name": n, "color": c, "description": d} for n, c, d in
                   re.findall(r"^(crew:[^|]+)\|([^|]+)\|(.+)$", read(os.path.join(os.path.dirname(CREW), "..", "docs", "runbooks", "github-tracking.md")), re.M)]
         self.tool("gh", 'case "$1 $2" in\n"auth status") echo github.com\n%s;;\n"auth token") echo fixture-token;;\n"release view") echo %s;;\n'
                   '"api repos/acme/widgets/labels?per_page=100") echo \'%s\';;\n'
+                  '"label create") echo "$*" >> "$HOME/gh-label.log";;\n'
                   '"api repos/acme/widgets/collaborators/acme-reviewer/permission") echo \'{"permission":"write"}\';;\n'
                   '"api repos/acme/widgets/milestones?state=all&per_page=100") echo \'[[{"title":"M1","state":"open"}]]\';;\n'
                   '"project list") echo \'{"totalCount":1,"projects":[{"id":"P1","number":1,"title":"widgets crew board","closed":false}]}\';;\n'
@@ -378,6 +379,32 @@ class ToolDrift(DoctorBase):
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertEqual(self.rows(r)["tool example"], "ok")
         self.assertEqual(self.detail(r, "tool example"), "running 2.10.0, installed 2.10.0, pin >= 2.9.0")
+
+    def test_fix_canonicalizes_a_hand_made_crew_label(self):  # #1616
+        labels = [{"name": n, "color": c, "description": d} for n, c, d in self.crew_labels()]
+        express = next(x for x in labels if x["name"] == "crew:express")
+        express.update(color="000000", description="hand made")
+        log = os.path.join(self.home, "gh-label.log")
+        self.gh(["acme-bot", "acme-reviewer"], "v2.1.0", labels)
+        r = self.doctor()  # negative control: read-only reports it and writes nothing
+        self.assertEqual(self.rows(r)["crew labels"], "fail", r.stdout)
+        self.assertFalse(os.path.exists(log))
+        r = self.doctor("--fix")
+        self.assertEqual(self.rows(r)["crew labels"], "ok", r.stdout)
+        self.assertEqual(read(log).splitlines(), ["label create crew:express -R acme/widgets --color %s --description %s "
+                                                  "--force" % next((c, d) for n, c, d in self.crew_labels()
+                                                                   if n == "crew:express")])
+        os.remove(log)
+        self.gh(["acme-bot", "acme-reviewer"], "v2.1.0", labels + [{"name": "crew:foreign", "color": "000000",
+                                                                     "description": "x"}])
+        r = self.doctor("--fix")  # an extra crew:* name still collides and writes nothing
+        self.assertEqual(self.rows(r)["crew labels"], "fail", r.stdout)
+        self.assertIn("crew namespace collision", r.stdout)
+        self.assertFalse(os.path.exists(log))
+
+    def crew_labels(self):
+        return re.findall(r"^(crew:[^|]+)\|([^|]+)\|(.+)$", read(os.path.join(
+            os.path.dirname(CREW), "..", "docs", "runbooks", "github-tracking.md")), re.M)
 
     def test_dry_run_keeps_state_read_only_and_reports_repo_and_tool_checks(self):
         self.probes(running="2.9.0", pin=None)

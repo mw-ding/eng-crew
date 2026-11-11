@@ -9,6 +9,8 @@ releases/current present), a --version upgrade also upgrades every other project
 same state root, runs from that releases directory (a record from before #1317 by its `Run mdstack up --project`
 step), then flips that root's releases/current, so its <root>/bin launcher follows and another root's stays (#1317,
 #1324). A release already on disk is reused once a fresh fetch matches it: that is rollback.
+A tmux install with no install.json is adopted first when its link, release VERSION (beside releases/current)
+and profile copy verify; otherwise the refusal names the mismatch (#1616).
 Run from a separate operator terminal with dispatch paused. Waits for every current pass to finish
 before applying; a timeout leaves the install and sessions untouched. Restarts preserve worktrees,
 claims, inboxes and run metadata. Coordinator is last. Grok Bot routine reload remains manual.
@@ -111,6 +113,47 @@ def same_pointers(args, previous, live, preview):
             and all(path.is_file() and path.read_bytes() == text.encode() for path, text in registry.items()))
 
 
+def adopt(args, values, state):
+    """install.json for a running user-level install that has none (#1616): `mdstack install` + `layout --write` +
+    `up` never write one. Adopts only a tmux install whose link, release VERSION and profile copy all verify."""
+    bootstrap = commands()["bootstrap"]
+    state, project = Path(state), Path(args.project).absolute()
+    link, version, copy = state / "mdstack", state / "VERSION", state / "config.toml"
+    bundle = link.resolve()
+    if values["runtime.name"] != "tmux":
+        problem = "runtime %s: adoption covers a tmux install only" % values["runtime.name"]
+    elif not link.is_symlink():
+        problem = "no install link at %s" % link
+    elif Path(values["paths.mdstack"]).absolute() != link:
+        problem = "paths.mdstack names %s, not the install link %s" % (values["paths.mdstack"], link)
+    elif not (bundle / "VERSION").is_file() or not (bundle / "cli/mdstack").is_file():
+        problem = "missing release: %s has no VERSION or cli/mdstack" % bundle
+    elif not (bundle.parent / "current").is_symlink():
+        problem = "foreign layout: %s has no releases/current link beside it" % bundle
+    elif not version.is_file() or version.read_text() != (bundle / "VERSION").read_text():
+        problem = "VERSION mismatch: %s does not match %s/VERSION" % (version, bundle)
+    elif not copy.is_file() or copy.read_bytes() != project.read_bytes():
+        problem = "mismatched project: %s differs from %s" % (copy, project)
+    else:
+        problem = None
+    if problem:
+        raise ValueError("no install record in %s and the live install does not verify: %s; run mdstack bootstrap "
+                         "--project %s" % (state, problem, project))
+    tag = (bundle / "VERSION").read_text().strip()
+    if args.dry_run or not args.yes:
+        print("crew upgrade: would adopt the %s install at %s (no install.json yet)" % (tag, bundle))
+        if args.dry_run:
+            print("crew upgrade: dry-run; rerun with --yes to adopt it and upgrade")
+            return 0
+        raise ValueError("confirmation required; review --dry-run then use --yes")
+    record = dict(tag=tag, source=str(bundle), project=str(project), bundle_sha256=None, runtime="tmux",
+                  targets={str(version): bootstrap.digest(version), str(copy): bootstrap.digest(copy)},
+                  harnesses=[], launches=[], pending_human_steps=[], status="installed", adopted=True)
+    (state / "install.json").write_text(json.dumps(record, indent=2) + "\n")
+    print("crew upgrade: adopted the %s install at %s into %s" % (tag, bundle, state / "install.json"), flush=True)
+    return None
+
+
 def run(args):
     bootstrap = commands()["bootstrap"]
     try:
@@ -121,6 +164,9 @@ def run(args):
             raise ValueError("%s: in-place upgrade unsupported; stop the crew and restart the updated install" % tmux.name)
         if not require_ownership(values):
             return 1
+        manifest = Path(state) / "install.json"
+        if not manifest.exists() and adopt(args, values, state) == 0:
+            return 0
         if getattr(args, "latest", False):  # an in-process caller may build args without it
             if args.version or values.get("install.source", "github") != "github":
                 raise ValueError("--latest needs the github source and no --version")
@@ -129,9 +175,6 @@ def run(args):
             if args.dev:
                 raise ValueError("--version and --dev cannot be combined")
             return bootstrap.fetch(args)
-        manifest = Path(state) / "install.json"
-        if not manifest.exists():
-            raise ValueError("no install; run mdstack bootstrap first")
         tag = bootstrap.source(args.dev, args.pre)
         bootstrap.pack_pin(args.org_profile, tag, args.project)
         previous = json.loads(manifest.read_text())

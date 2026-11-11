@@ -130,13 +130,11 @@ class Fixers(unittest.TestCase):
         self.assertEqual(len(self.writes), writes)
         self.assertEqual(len(self.invitations), 1)
 
-    def test_unknown_namespace_or_mismatch_blocks_all_label_writes(self):
-        for name in ("crew:foreign", "crew:ready"):
-            self.labels.append({"name": name, "color": "000000", "description": "foreign"})
-            result = self.check(fix=True)
-            self.assertEqual(result["crew labels"][0], "fail")
-            self.assertFalse(any(a[0] == "label" for a in self.writes))
-            self.labels.pop()
+    def test_unknown_namespace_blocks_all_label_writes(self):
+        self.labels.append({"name": "crew:foreign", "color": "000000", "description": "foreign"})
+        result = self.check(fix=True)
+        self.assertEqual(result["crew labels"][0], "fail")
+        self.assertFalse(any(a[0] == "label" for a in self.writes))
 
     def test_sensitive_label_passes_and_unknown_still_collides(self):
         self.labels.append({"name": "crew:sensitive", "color": "B60205",
@@ -160,15 +158,17 @@ class Fixers(unittest.TestCase):
         self.assertEqual(len(label_writes), 1)
         self.assertIn("--force", label_writes[0])
 
-    def test_unrelated_install_record_does_not_allow_label_update(self):
+    def test_unowned_mismatch_is_canonicalized_only_with_fix(self):  # #1616
         self.ready_labels()
-        self.labels[1]["color"] = "000000"
-        state = os.path.join(self.tmp.name, "acme__widgets")
-        os.makedirs(state)
-        with open(os.path.join(state, "install.json"), "w") as f:
-            json.dump({"runtime": "grok-bot", "tag": "v2.1.0"}, f)
-        self.assertEqual(self.check(fix=True)["crew labels"][0], "fail")
-        self.assertFalse(any(a[0] == "label" for a in self.writes))
+        self.labels[1].update(color="000000", description="hand made")
+        self.assertEqual(self.check()["crew labels"][0], "fail")
+        self.assertEqual(self.writes, [])
+        self.assertEqual(self.check(fix=True)["crew labels"][0], "ok")
+        name, color, desc = repo.LABELS[0]
+        self.assertEqual(self.labels[1], {"name": name, "color": color, "description": desc})
+        self.assertEqual([a for a in self.writes if a[0] == "label"],
+                         [["label", "create", name, "-R", "acme/widgets", "--color", color, "--description", desc,
+                           "--force"]])
 
     def test_missing_milestone_needs_confirmation_and_closed_stays_frozen(self):
         self.assertEqual(self.check(fix=True)["milestone"][0], "human")

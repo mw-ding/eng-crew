@@ -224,6 +224,49 @@ class Upgrade(bootstrap_tests.Bootstrap):
         self.assertFalse(list(Path(self.tmp).glob(".crew-refetch-*")))
         self.assertFalse(self.gh_log.exists())
 
+    def test_adopts_a_verified_user_level_install_without_a_record(self):  # #1616
+        self.manifest.unlink()
+        result = self.upgrade("--yes")  # negative control: no releases/current beside the bundle
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("foreign layout", result.stdout)
+        self.assertFalse(self.manifest.exists())
+        (self.bundle.parent / "current").symlink_to(self.bundle.name, target_is_directory=True)
+        result = self.upgrade("--dry-run")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("would adopt the v2.1.0 install", result.stdout)
+        self.assertFalse(self.manifest.exists())
+        source = self.bundle / "templates/runtimes/tmux/builder.md"
+        source.write_text(source.read_text() + "\nNew reviewed rule.\n")
+        result = self.upgrade("--yes")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("adopted the v2.1.0 install", result.stdout)
+        record = json.loads(self.manifest.read_text())
+        self.assertEqual((record["tag"], record["status"], record["adopted"]), ("v2.1.0", "installed", True))
+        self.assertIn("New reviewed rule.", (Path(self.state) / "render/runtime/builder.md").read_text())
+        self.assertIn("crew upgrade: no changes", self.upgrade("--yes").stdout)  # no refuse/bootstrap loop
+
+    def test_unverified_install_without_a_record_is_not_adopted(self):  # #1616
+        self.manifest.unlink()
+        (self.bundle.parent / "current").symlink_to(self.bundle.name, target_is_directory=True)
+        state = Path(self.state)
+        empty = Path(self.tmp) / "mdstack-v0.0.0"
+        empty.mkdir()
+        cases = [("VERSION mismatch", lambda: (state / "VERSION").write_text("v2.0.0\n"),
+                  lambda: (state / "VERSION").write_text("v2.1.0\n")),
+                 ("mismatched project", lambda: (state / "config.toml").write_text("# other\n"),
+                  lambda: (state / "config.toml").write_bytes(Path(self.project).read_bytes())),
+                 ("missing release", lambda: ((state / "mdstack").unlink(), (state / "mdstack").symlink_to(empty)),
+                  lambda: ((state / "mdstack").unlink(), (state / "mdstack").symlink_to(self.bundle)))]
+        for message, break_it, restore in cases:
+            with self.subTest(message):
+                break_it()
+                result = self.upgrade("--yes")
+                self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+                self.assertIn("does not verify: " + message, result.stdout)
+                self.assertFalse(self.manifest.exists())
+                restore()
+        self.assertEqual(self.upgrade("--dry-run").returncode, 0)  # positive control once restored
+
     def test_upgrade_deploys_without_harness_pointers(self):
         record = json.loads(self.manifest.read_text())
         record["harnesses"] = []
