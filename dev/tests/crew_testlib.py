@@ -1,6 +1,7 @@
 """Shared fixtures for the dev/tests/environments/test-crew-<cmd>.py tests: a fake `tmux` binary on PATH, a temp profile,
 a temp git repo with a bare origin and PR refs, a fake `gh`, fake panes and a fake `ps` for liveness (stdlib
 only). No tests here."""
+import argparse
 import importlib.machinery
 import importlib.util
 import json
@@ -142,6 +143,19 @@ def example_profile(directory, name="tmux.toml"):
     with open(path, "w", encoding="utf-8") as f:
         f.write(text)
     return path
+
+
+def render_template(project, dst, inputs=os.path.join(ROOT_DIR, "templates")):
+    """(text, problems) for one rendered file, dst as `briefs/builder.md` or `runtime/builder-b1.md`, through the
+    production path (#1413): crew-render's render() expands includes and filters control, backend and strategy lines
+    before it fills placeholders. Template tests use this, never Renderer.line on raw template text; token-level
+    Renderer.line tests stay as unit coverage."""
+    spec = importlib.util.spec_from_file_location("crew_render", os.path.join(ROOT_DIR, "core", "crew-render.py"))
+    cr = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(cr)
+    args = argparse.Namespace(project=project, org_profile=None, inputs=inputs)
+    _, rendered, problems = cr.render(args, None, normalize_paths=False)
+    return rendered.get(dst), problems
 
 
 PROFILE = textwrap.dedent("""\
