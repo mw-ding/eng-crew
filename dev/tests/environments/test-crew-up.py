@@ -24,7 +24,7 @@ import time
 import unittest
 from unittest import mock
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # dev/tests/: crew_testlib
-from crew_testlib import Base, CREW, SCRIPTS, INPUTS, LivenessBase, write_pack
+from crew_testlib import Base, CREW, FAKE_PS, FAKE_TMUX_PANES, SCRIPTS, INPUTS, LivenessBase, write_pack
 
 
 class Up(Base):
@@ -539,6 +539,39 @@ class PackOwnershipRead(Base):
                 self.assertFalse(any(c[0] == "new-window" for c in self.calls()))
                 self.assertEqual(self.reads("gh"), [])
                 self.crew("down", "--project", self.project)
+
+    def test_up_after_the_ack_starts_the_leads_refused_before_it(self):
+        """#1082: an up before the handoff ack starts window 0 and refuses the leads; the up after the ack finds the
+        session running and starts them; a further up starts no duplicate; --coordinator-only stays respected."""
+        self.mapping()
+        bindir = Path(self.tmp, "bin")  # live panes for lead.ensure's probe, as LivenessBase
+        (bindir / "tmux").rename(bindir / "tmux-base")
+        for name, text in (("tmux", FAKE_TMUX_PANES), ("ps", FAKE_PS)):
+            (bindir / name).write_text(text)
+            os.chmod(bindir / name, 0o755)
+        self.env.update(FAKE_PANES=str(Path(self.tmp, "panes.json")), FAKE_PS=str(Path(self.tmp, "ps.json")))
+        up = ("up", "--project", self.project, "--inputs", str(self.inputs))
+        windows = lambda: [c for c in self.calls() if c[0] == "new-window"]
+        r = self.crew(*up, EXAMPLE_EXIT="1")  # pre-ack: the control item reads read-only
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("ownership: read-only; refusing start", r.stdout)
+        self.new_session()
+        self.assertEqual(windows(), [])
+        r = self.crew(*up, "--coordinator-only")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("already running", r.stdout)
+        self.assertEqual(windows(), [])
+        r = self.crew(*up)  # post-ack: ownership active
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("already running", r.stdout)
+        self.assertIn("crew: started lead", r.stdout)
+        started = windows()
+        self.assertTrue(started)
+        r = self.crew(*up)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertNotIn("crew: started lead", r.stdout)
+        self.assertEqual(windows(), started)
+        self.new_session()
 
     def test_team_records_the_binding_for_every_repo(self):
         """#606 AC4 with --team: each repo's ownership read uses the pack binding after startup."""
