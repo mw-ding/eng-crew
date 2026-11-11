@@ -8,8 +8,9 @@ untouched), `raw/` URLs for images, `--repo` over the remote, a dangling link
 failing the link check, refusals, and a build of the current repo, extracted to
 a temp dir, where `cli/mdstack --help`, `core/crew-config.py validate
 profiles/default.toml` and `core/crew-render.py --project
-profiles/default.toml --out <tmp>` and `scripts/check-repo.py --only markdown`
-(its `check-markdown.py` dependency ships, #644) must exit 0, and the bundled
+profiles/default.toml --out <tmp>`, `scripts/check-markdown.py` (#644) and
+`scripts/docs-scan.py --help` must exit 0 with the internal repo guard
+`scripts/check-repo.py` absent from the bundle (#281), and the bundled
 `scripts/changelog-cut.py` cuts a scratch pack's changelog from the bundle
 alone (#1033). Run in CI.
 """
@@ -179,12 +180,16 @@ class ReleaseBundleTest(unittest.TestCase):
         self.assertEqual(code, 0, err.getvalue())
         with tarfile.open(os.path.join(out, "mdstack-0.0.0.tar.gz")) as tar:
             self.assertIn("mdstack-0.0.0/roles/eng/builder.toml", tar.getnames())
+            self.assertNotIn("mdstack-0.0.0/scripts/check-repo.py", tar.getnames())
+            for core in ("secret-patterns.py", "path-glob.py", "markdown-scan.py"):
+                self.assertIn("mdstack-0.0.0/core/" + core, tar.getnames())
             tar.extractall(out, filter="data")
         render = os.path.join(self.tmp.name, "render")
         for cmd in (["cli/mdstack", "--help"],
                     ["core/crew-config.py", "validate", "profiles/default.toml"],
                     ["core/crew-render.py", "--project", "profiles/default.toml", "--out", render],
-                    ["scripts/check-repo.py", "--only", "markdown"]):
+                    ["scripts/check-markdown.py", "README.md"],
+                    ["scripts/docs-scan.py", "--help"]):
             with self.subTest(cmd=" ".join(cmd)):
                 run = subprocess.run([sys.executable, *cmd], cwd=os.path.join(out, "mdstack-0.0.0"),
                                      capture_output=True, text=True)

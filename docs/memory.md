@@ -32,7 +32,16 @@ The renderer, `core/crew-render.py`, appends a `## Core memory` section
 to each role's rendered brief: the owner profile, then that role's file.
 A pool lead's brief carries its pool role's file. The memory comes from
 `memory/` in the checkout the profile names (`paths.checkout`, else the
-profile's directory); with neither file present, nothing is added.
+profile's directory), read at the tip of that checkout's remote default
+branch (`repo.default_branch` on `origin`), never from its local tree
+(#1537). Each render resolves that tip once, fetching its objects if needed,
+and every role output of the render shares the one revision; the
+checkout's branch, index and files stay as they are. The render names the
+revision on stderr (`crew-render: core memory from origin/main@<sha>`).
+With neither file at that revision, nothing is added. If the remote cannot
+be resolved, fetched or read, the render fails closed rather than use stale
+or local memory. A root with no `origin` remote (or outside git) adds
+nothing when it has no `memory/` directory and fails closed when it has one.
 
 | Environment | Where the section lands |
 |---|---|
@@ -44,7 +53,7 @@ A memory lint problem in either file fails the render closed, so a bad
 memory file never reaches a brief. The brief size budget (`[size_budget]`)
 does not count this section; the memory limits above bound it instead. A
 merged memory PR reaches running roles at the next render (`mdstack up` or
-`mdstack upgrade`), like any template change.
+`mdstack upgrade`), even when the local checkout has not been pulled.
 
 ## Lint
 

@@ -1,7 +1,8 @@
 """Offline bootstrap tests on a fake host and extracted bundle, including dry-run, confirmation, failures,
 tmux record/idempotency, Grok Bot deployment, protected targets, clone version selection and url/mirror/git release
 sources (no gh release call, local HTTP server, local bare git repository, refused bundles keep the previous
-install), and a GitHub-free pack installing with no gh on PATH while a GitHub-bound one still fails (#1123). Run in CI.
+install), a GitHub-free pack installing with no gh on PATH while a GitHub-bound one still fails (#1123), and a
+<team file>#<repo> reference installing, fetching and uninstalling the selected repo of a two-repo team (#1344). Run in CI.
 Use --evidence or --fetch-evidence for deterministic install/verify/delete CLI transcripts, with paths scrubbed.
 Use --self-test-evidence for post-apply success, failure and opt-in smoke evidence on a fake host.
 Use --size-budget-evidence for deterministic size-budget success/failure and cleanup evidence.
@@ -110,8 +111,7 @@ class Bootstrap(doctor_tests.DoctorBase):
 
     def test_apply_records_and_reruns_without_starting_tmux(self):
         # Real git is used only for .git/info/exclude and tracked-file checks.
-        os.remove(Path(self.bindir) / "git")
-        os.symlink(shutil.which("git"), Path(self.bindir) / "git")
+        self.real_git()
         subprocess.run(["git", "init", "-q", self.project_dir], check=True)
         for _ in range(2):
             r = self.bootstrap("--yes")
@@ -128,8 +128,7 @@ class Bootstrap(doctor_tests.DoctorBase):
                                                 size_budget="ok", deploy="pending mdstack up", targets="ok", doctor="ok"))
 
     def test_gitless_home_writes_the_scratch_exclude_in_its_checkout(self):  # #1178
-        os.remove(Path(self.bindir) / "git")
-        os.symlink(shutil.which("git"), Path(self.bindir) / "git")
+        self.real_git()
         repo = Path(self.tmp) / "checkout"
         subprocess.run(["git", "init", "-q", str(repo)], check=True)
         self.project_path.write_text(self.project_path.read_text() + 'checkout = "../checkout"\n')
@@ -175,6 +174,15 @@ class Bootstrap(doctor_tests.DoctorBase):
         self.real_git()
         subprocess.run(["git", "init", "-q", self.project_dir], check=True)
         subprocess.run(["git", "-C", self.project_dir, "remote", "add", "origin", remote], check=True)
+        origin = Path(self.tmp) / "origin.git"  # the rendered memory snapshot reads this, never the network (#1537)
+        subprocess.run(["git", "init", "-q", "--bare", "-b", "main", str(origin)], check=True)
+        tree = subprocess.check_output(["git", "-C", str(origin), "mktree"], input=b"").decode().strip()
+        base = subprocess.check_output(["git", "-C", str(origin), "-c", "user.name=t", "-c", "user.email=t",
+                                        "commit-tree", "-m", "base", tree]).decode().strip()
+        subprocess.run(["git", "-C", str(origin), "update-ref", "refs/heads/main", base], check=True)
+        for url in ("git@github.com:acme/widgets.git", "https://github.com/acme/widgets.git",
+                    "ssh://git@github.com/acme/widgets", remote):
+            subprocess.run(["git", "-C", self.project_dir, "config", "--add", "url.%s.insteadOf" % origin, url], check=True)
         self.project_path.unlink()
 
     def test_proposes_from_local_config_without_writes_or_network(self):
@@ -550,6 +558,9 @@ class Bootstrap(doctor_tests.DoctorBase):
     def real_git(self):
         os.remove(Path(self.bindir) / "git")
         os.symlink(shutil.which("git"), Path(self.bindir) / "git")
+        upload = Path(self.bindir) / "git-upload-pack"  # render resolves the checkout's origin (#1537)
+        if not upload.exists():
+            self.tool("git-upload-pack", 'exec "%s" upload-pack "$@"' % shutil.which("git"))
 
     def test_clone_requires_exact_stable_tag_or_explicit_dev(self):
         self.own_bundle()
@@ -943,7 +954,8 @@ class ReleaseSources(Bootstrap):
     def git_release(self, tag="v2.2.0"):
         """A local bare repository whose commit's stub release-bundle.py emits the fixture archive; tag at it."""
         destination, sha = self.mirror_release(tag)
-        os.symlink(shutil.which("git-upload-pack"), Path(self.bindir) / "git-upload-pack")
+        if not (Path(self.bindir) / "git-upload-pack").exists():
+            os.symlink(shutil.which("git-upload-pack"), Path(self.bindir) / "git-upload-pack")
         work, remote = Path(self.tmp) / "git-work", Path(self.tmp) / "release.git"
         stub = "import shutil, sys\nshutil.copy(%r, sys.argv[sys.argv.index('--out') + 1])\n" % str(
             Path(self.tmp) / "assets" / ("mdstack-%s.tar.gz" % tag[1:]))
@@ -983,6 +995,151 @@ class ReleaseSources(Bootstrap):
         self.assertFalse(destination.exists())
         self.assertEqual(self.manifest.read_bytes(), previous)
         self.assertFalse(list(Path(self.tmp).glob(".crew-fetch-*")))
+        self.assertFalse(self.gh_log.exists())
+
+
+class TeamReference(ReleaseSources):
+    """A <team file>#<repo> reference (#1344): a two-repo team file outside both clones bootstraps either repo; the
+    reference reaches resolve, doctor, render and install.json while the file is read and copied as TOML, and
+    repo-local targets go in the selected repo's clone."""
+
+    def setUp(self):
+        super().setUp()
+        root, state = Path(self.tmp), Path(self.tmp) / "state"
+        self.gadgets = root / "gadgets"
+        subprocess.run(["git", "init", "-q", str(self.gadgets)], check=True)
+        self.team = root / "config" / "teams" / "md.toml"
+        self.team.parent.mkdir(parents=True)
+        self.team.write_text(
+            '[team]\n[team.runtime]\nname = "tmux"\n[team.identities]\nowners = ["acme-owner"]\n'
+            'coordinator = { gh_user = "acme-bot", name = "Ash" }\nbuilder = { gh_user = "acme-bot", name = "Ben" }\n'
+            'reviewer = { gh_user = "acme-reviewer", name = "Vera" }\n'
+            'synthesizer = { gh_user = "acme-bot", name = "Sam" }\n[team.engines]\ncoordinator = "claude-code"\n'
+            '[team.paths]\nstate_dir = "%s"\nworktree_root = "%s/wt"\ntoolchain_bin = "/opt/node/bin"\n'
+            'mdstack = "%s/md/acme__widgets/mdstack"\nlive_dir = "%s/live"\n'
+            '[repos.widgets]\nrepo = "acme/widgets"\ncheckout = "%s"\n'
+            '[repos.gadgets]\nrepo = "acme/gadgets"\ncheckout = "%s"\n'
+            % (state, state, state, root, self.project_dir, self.gadgets))
+        for repo in ("widgets", "gadgets"):
+            for d in ("claims", "inbox", "status", "wake", "locks"):
+                (state / "md" / ("acme__" + repo) / d).mkdir(parents=True)
+            (state / "md" / ("acme__" + repo) / "locks/merge.lock").touch()
+        # The doctor fixture's gh answers for acme/widgets only; serve acme/gadgets the same answers.
+        (Path(self.bindir) / "gh").rename(Path(self.bindir) / "gh-widgets")
+        self.tool("gh", 'exec %s - "$@" <<\'PY\'\nimport os, sys\nargs = [a.replace("acme/gadgets", "acme/widgets") '
+                  'for a in sys.argv[1:]]\nos.execv(%r, [%r] + args)\nPY' % ((sys.executable,) +
+                                                                      (str(Path(self.bindir) / "gh-widgets"),) * 2))
+        self.select("widgets")
+
+    def select(self, repo):
+        self.project = "%s#%s" % (self.team, repo)
+        self.state = str(Path(self.tmp) / "state" / "md" / ("acme__" + repo))
+        self.manifest = Path(self.state) / "install.json"
+
+    def snapshot(self):
+        """Bytes of the team file and every file in both clones and the team-config directory."""
+        return {str(p): p.read_bytes() for d in (self.team.parent.parent, Path(self.project_dir), self.gadgets)
+                for p in d.rglob("*") if p.is_file()}
+
+    def test_dry_run_of_either_repo_writes_nothing(self):  # AC1
+        before = self.snapshot()
+        for repo in ("widgets", "gadgets"):
+            self.select(repo)
+            r = self.bootstrap("--dry-run")
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertIn("Human step: Run mdstack up --project %s#%s" % (self.team, repo), r.stdout)
+            self.assertIn("no install written", r.stdout)
+            self.assertNotIn("Project proposal", r.stdout)
+            self.assertFalse(self.manifest.exists())
+        self.assertEqual(self.snapshot(), before)
+        self.assertEqual(sorted(p.name for p in self.team.parent.iterdir()), ["md.toml"])
+
+    def test_apply_keeps_the_reference_and_targets_the_selected_clone(self):  # AC1, AC2
+        team_bytes = self.team.read_bytes()
+        r = self.bootstrap("--harness", "claude-code", "--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        record = json.loads(self.manifest.read_text())
+        self.assertEqual((record["project"], record["status"]), (self.project, "installed"))
+        self.assertEqual(set(record["self_test"].values()), {"ok"})
+        self.assertEqual((Path(self.state) / "config.toml").read_bytes(), team_bytes)
+        self.assertIn("Run mdstack up --project " + self.project, record["pending_human_steps"])
+        skill = Path(self.project_dir) / ".claude/skills/crew-coordinator/SKILL.md"
+        self.assertIn(str(skill), record["targets"])
+        self.assertFalse((self.team.parent / ".claude").exists())
+        exclude = (Path(self.project_dir) / ".git/info/exclude").read_text().splitlines()
+        self.assertIn(".crew/", exclude)
+        self.assertIn("/.claude/skills/crew-coordinator/SKILL.md", exclude)
+        self.select("gadgets")
+        r = self.bootstrap("--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        record = json.loads(self.manifest.read_text())
+        self.assertEqual(record["project"], self.project)
+        self.assertEqual(set(record["self_test"].values()), {"ok", "pending mdstack up"})  # no harness: up deploys
+        self.assertEqual((Path(self.state) / "mdstack").resolve(), self.bundle.resolve())
+        self.assertIn(".crew/", (self.gadgets / ".git/info/exclude").read_text().splitlines())
+        self.assertEqual(self.team.read_bytes(), team_bytes)
+        # `mdstack upgrade --version` follows this install: its recorded reference names a readable project.
+        code = ("import importlib.util, json, sys; from pathlib import Path\n"
+                "spec = importlib.util.spec_from_file_location('crew_shared', sys.argv[1])\n"
+                "shared = sys.modules['crew_shared'] = importlib.util.module_from_spec(spec)\n"
+                "spec.loader.exec_module(shared)\nm = Path(sys.argv[2])\n"
+                "print(shared.commands()['install'].recorded_project(m, json.loads(m.read_text())))")
+        r = subprocess.run([sys.executable, "-c", code, str(self.bundle / "environments/terminal/crew.d/_shared.py"),
+                            str(self.manifest)], capture_output=True, text=True, env=self.env)
+        self.assertEqual(r.stdout.strip(), self.project, r.stderr)
+
+    def test_the_repo_paths_mdstack_does_not_name_installs_first(self):  # AC1, review R1
+        self.select("gadgets")
+        r = self.bootstrap("--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("warn  mdstack link", r.stdout)
+        record = json.loads(self.manifest.read_text())
+        self.assertEqual((record["project"], record["status"]), (self.project, "installed"))
+        self.assertNotIn("fail", record["self_test"].values())
+        self.assertEqual((Path(self.state) / "mdstack").resolve(), self.bundle.resolve())
+        self.select("widgets")
+        r = self.bootstrap("--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(json.loads(self.manifest.read_text())["status"], "installed")
+        self.select("gadgets")
+        r = self.bootstrap("--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("ok    mdstack link", r.stdout)
+
+    def test_uninstall_removes_pointers_and_excludes_from_the_selected_clone(self):  # AC2
+        self.assertEqual(self.bootstrap("--harness", "claude-code", "--yes").returncode, 0)
+        pointers = [p for p in json.loads(self.manifest.read_text())["targets"] if ".claude" in p]
+        self.tool("gh", 'case "$1 $2" in "pr list"|"issue list") echo "[]";; *) exit 1;; esac')
+        r = self.bootstrap("--uninstall", "--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertTrue(pointers)
+        self.assertFalse([p for p in pointers if Path(p).exists()])
+        exclude = (Path(self.project_dir) / ".git/info/exclude").read_text().splitlines()
+        self.assertEqual([line for line in exclude if line.startswith("/") or line == ".crew/"], [])
+
+    def test_bad_selectors_fail_in_the_resolver_and_write_nothing(self):  # AC3
+        before = self.snapshot()
+        for project, error in (("%s#nope" % self.team, "names no repo 'nope'"),
+                               (str(self.team), "lists 2 repos; select one as"),
+                               ("%s#widgets" % self.team.with_name("missing.toml"), "No such file or directory")):
+            self.project = project
+            r = self.bootstrap("--dry-run")
+            self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+            self.assertIn(error, r.stderr)
+            self.assertNotIn("Project proposal", r.stdout)
+        self.assertEqual(self.snapshot(), before)
+        self.assertEqual(sorted(p.name for p in self.team.parent.iterdir()), ["md.toml"])
+
+    def test_version_fetches_from_the_selected_repos_source(self):  # AC3
+        destination, sha = self.mirror_release()
+        org = Path(self.org("v2.2.0"))
+        org.write_text('[install]\nsource = "mirror"\nlocation = "%s"\n' % self.mirror)
+        r = self.bootstrap("--version", "v2.2.0", "--org-profile", str(org), "--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        record = json.loads(self.manifest.read_text())
+        self.assertEqual((record["project"], record["bundle_sha256"], record["transport"]["kind"]),
+                         (self.project, sha, "mirror"))
+        self.assertEqual((Path(self.state) / "mdstack").resolve(), destination.resolve())
         self.assertFalse(self.gh_log.exists())
 
 

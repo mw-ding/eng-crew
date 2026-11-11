@@ -161,7 +161,7 @@ def adopt(args, values, state):
         problem = "foreign layout: %s has no releases/current link beside it" % bundle
     elif not version.is_file() or version.read_text() != (bundle / "VERSION").read_text():
         problem = "VERSION mismatch: %s does not match %s/VERSION" % (version, bundle)
-    elif not copy.is_file() or copy.read_bytes() != project.read_bytes():
+    elif not copy.is_file() or copy.read_bytes() != bootstrap.profile_file(project).read_bytes():
         problem = "mismatched project: %s differs from %s" % (copy, project)
     else:
         problem = None
@@ -227,7 +227,7 @@ def run(args):
                     and previous["source"] == str(bootstrap.ROOT) and bootstrap.same_source(previous, install)
                     and previous.get("bundle_sha256") == (fetched or previous.get("bundle_sha256"))
                     and previous.get("pack") == bootstrap.pack_record(args.org_profile, args.project)
-                    and (Path(state) / "config.toml").read_bytes() == Path(args.project).read_bytes()):
+                    and (Path(state) / "config.toml").read_bytes() == bootstrap.profile_file(args.project).read_bytes()):
                 print("crew upgrade: no changes")
                 return 0
             if bootstrap.run(Namespace(**{**vars(args), "dry_run": True})):

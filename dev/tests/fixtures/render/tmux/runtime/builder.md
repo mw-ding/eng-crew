@@ -191,9 +191,9 @@ It writes `<worktree>/.crew/runs/issue-<n>/build/summary.md`; in fix round
 
 - **Branch:** `<role>/<issue#>-<short-slug>`, for example
   `infra/187-align-rust-base-images`; tooling routes follow-ups by it.
-- **Commits:** follow the repo's existing commit-message convention. End every
-  commit with the trailer `Engine: <engine> <model> <effort>` naming the engine
-  that actually wrote it (see Actual builder engine).
+- **Commits:** one PR per issue, in logical commits that pass their tests.
+  Follow repo convention; end each with `Engine: <engine> <model> <effort>`,
+  the engine that actually wrote it (Actual builder engine).
 - **Evidence:** for behaviour changes, embed runtime proof inline in the body
   or signed fix / ci-fix reviews (verification); never
   commit evidence. Docs-only PRs state N/A and why.

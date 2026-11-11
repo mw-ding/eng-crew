@@ -185,17 +185,21 @@ def checkout_repo(values, project):
 
 def install(values):
     """Bootstrap's install.json and the paths.mdstack link whose docs the briefs cite (#1323). Before bootstrap both
-    only warn, since bootstrap runs this report before it writes them; a recorded install without the link fails."""
+    only warn, since bootstrap runs this report before it writes them; a recorded install without the link fails. A
+    team's shared paths.mdstack may name a sibling repo's link: it fails only once that repo has an install (#1344)."""
     state = os.path.join(os.path.abspath(values["paths.state_dir"]), "%s__%s" % (values["repo.owner"], values["repo.name"]))
     recorded = os.path.exists(os.path.join(state, "install.json"))
     rows = [("ok", "install", os.path.join(state, "install.json"), "") if recorded else
             ("warn", "install", "no install.json in %s" % state, "run mdstack bootstrap")]
     if not re.search(r"<[^<>]+>", values.get("paths.mdstack", "<unset>")):  # an unset or placeholder value: no link
         link = os.path.abspath(os.path.expanduser(values["paths.mdstack"]))
+        owner = os.path.dirname(link)  # a sibling's state directory under the same state root, else this repo's
+        owned = os.path.exists(os.path.join(owner, "install.json")) if os.path.dirname(owner) == os.path.dirname(
+            state) else recorded
         if os.path.isdir(link):
             rows.append(("ok", "mdstack link", link, ""))
         else:
-            rows.append(("fail" if recorded else "warn", "mdstack link", "paths.mdstack %s is missing" % link,
+            rows.append(("fail" if owned else "warn", "mdstack link", "paths.mdstack %s is missing" % link,
                          "run mdstack bootstrap, which links the installed release there"))
     return rows
 

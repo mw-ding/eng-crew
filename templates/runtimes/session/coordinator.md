@@ -73,6 +73,8 @@ a lower limit.
 
 <include:policy/coordinator/secret-retrieval.md>
 
+<include:policy/coordinator/owner-config.md>
+
 <session-backend:local>
 Session backend `<session-backend>`: `native` starts each worker as a
 harness subagent with a unique task handle; `cli` starts an external harness

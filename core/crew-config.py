@@ -36,9 +36,12 @@ import types
 import urllib.parse
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_spec = importlib.util.spec_from_file_location("check_repo", os.path.join(_ROOT, "scripts", "check-repo.py"))
-check_repo = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(check_repo)
+_spec = importlib.util.spec_from_file_location("secret_patterns", os.path.join(_ROOT, "core", "secret-patterns.py"))
+secret_patterns = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(secret_patterns)
+_spec = importlib.util.spec_from_file_location("path_glob", os.path.join(_ROOT, "core", "path-glob.py"))
+path_glob = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(path_glob)
 _spec = importlib.util.spec_from_file_location(  # harness adapters: engine choices and install pointers
     "crew_harness", os.path.join(_ROOT, "harnesses", "crew-harness.py"))
 harnesses = importlib.util.module_from_spec(_spec)
@@ -233,12 +236,12 @@ def type_name(value):
 
 
 def token_reasons(value):
-    """Secret-scan reasons for one string, using check-repo.py's patterns."""
-    reasons = [reason for _, rx, reason in check_repo.PATTERNS if rx.search(value)]
-    if any(not check_repo.is_placeholder(m.group(1)) for m in check_repo.BEARER.finditer(value)):
+    """Secret-scan reasons for one string, using core/secret-patterns.py (shared with check-repo.py)."""
+    reasons = [reason for _, rx, reason in secret_patterns.PATTERNS if rx.search(value)]
+    if any(not secret_patterns.is_placeholder(m.group(1)) for m in secret_patterns.BEARER.finditer(value)):
         reasons.append("bearer auth header with a literal value")
-    if any(not (check_repo.is_placeholder(m.group(1)) and check_repo.is_placeholder(m.group(2)))
-           for m in check_repo.URL_CRED.finditer(value)):
+    if any(not (secret_patterns.is_placeholder(m.group(1)) and secret_patterns.is_placeholder(m.group(2)))
+           for m in secret_patterns.URL_CRED.finditer(value)):
         reasons.append("URL with embedded credentials")
     return reasons
 
@@ -1568,8 +1571,8 @@ def resolve_main(args):
 def sensitive_matches(profile, paths):
     """Match repo-relative diff paths against mandatory defaults plus profile additions."""
     rules = SENSITIVE_PATHS + profile.get("sensitive", {}).get("paths", [])
-    return {path: [rule for rule in rules if check_repo.glob_regex(rule).fullmatch(path)]
-            for path in sorted(set(paths)) if any(check_repo.glob_regex(rule).fullmatch(path) for rule in rules)}
+    return {path: [rule for rule in rules if path_glob.glob_regex(rule).fullmatch(path)]
+            for path in sorted(set(paths)) if any(path_glob.glob_regex(rule).fullmatch(path) for rule in rules)}
 
 
 EXTENSION_TIMEOUT = 120  # seconds a bound sensitivity extension may run (docs/interfaces.md#bindable-sensitivity-design)
@@ -1714,7 +1717,7 @@ def content_matches(profile, lines):
         scope, pattern = rule.get("paths"), re.compile(rule["pattern"])
         records += [{"rule": rule["name"], "path": path, "side": side, "line": number}
                     for path, side, number, body in lines
-                    if (scope is None or any(check_repo.glob_regex(g).fullmatch(path) for g in scope))
+                    if (scope is None or any(path_glob.glob_regex(g).fullmatch(path) for g in scope))
                     and pattern.search(body)]
     return sorted(records, key=lambda r: (r["path"], r["side"], r["line"], r["rule"]))
 
@@ -1722,8 +1725,8 @@ def content_matches(profile, lines):
 def spec_matches(profile, paths):
     """{path: [matching spec globs]}; [spec] paths replaces the default globs, [] leaves only the crew:spec label."""
     rules = profile.get("spec", {}).get("paths", SPEC_PATHS)
-    return {path: [rule for rule in rules if check_repo.glob_regex(rule).fullmatch(path)]
-            for path in sorted(set(paths)) if any(check_repo.glob_regex(rule).fullmatch(path) for rule in rules)}
+    return {path: [rule for rule in rules if path_glob.glob_regex(rule).fullmatch(path)]
+            for path in sorted(set(paths)) if any(path_glob.glob_regex(rule).fullmatch(path) for rule in rules)}
 
 
 def stricter(a, b):
@@ -1749,7 +1752,7 @@ def class_flavor(profile, paths, express=False):
         if not path.strip() or path.startswith("/") or any(p in ("", ".", "..") for p in path.split("/")):
             raise ValueError("expected nonempty repo-relative paths without . or ..: %r" % path)
         indexes = [i for i, rule in enumerate(flavor.get("classes", []))
-                   if any(check_repo.glob_regex(pattern).fullmatch(path) for pattern in rule["paths"])]
+                   if any(path_glob.glob_regex(pattern).fullmatch(path) for pattern in rule["paths"])]
         matches[path] = indexes
         choices.extend(named[flavor["classes"][i]["flavor"]] for i in indexes)
         if not indexes:
@@ -1782,7 +1785,7 @@ def precheck_scope(precheck, paths):
         if run.returncode:
             raise RuntimeError("owners query failed (exit %d) for %r: %s" % (run.returncode, path, run.stderr.strip()))
         targets = [t.strip() for t in run.stdout.splitlines() if t.strip()]
-        ok = any(check_repo.glob_regex(g).fullmatch(path) for g in precheck.get("no_owner_ok", []))
+        ok = any(path_glob.glob_regex(g).fullmatch(path) for g in precheck.get("no_owner_ok", []))
         entries.append({"path": path, "class": "owned" if targets else "no-owner-ok" if ok else "unowned",
                         "targets": targets})
     unowned = [e["path"] for e in entries if e["class"] == "unowned"]

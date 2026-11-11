@@ -10,9 +10,12 @@ Pack overlay: a render/ directory in the org profile's directory (else paths.pac
 before the inputs. runtime.options.notes.render files are appended verbatim to that role's rendered brief.
 Core memory (docs/memory.md): each role's rendered brief (a lead's carries its pool role's; on a runtime whose
 briefs are per-routine files, the role's discovery file) gets the owner profile and the role's memory file from
-memory/ in the checkout (paths.checkout, else the profile's directory), before any render note; inside the
-closing fence when the brief ends in one (a fenced routine prompt). A memory lint problem fails closed. The
-size-budget render (normalize_paths) leaves memory out: its files have their own limits.
+memory/ in the checkout (paths.checkout, else the profile's directory), read at the tip of its remote default
+branch (repo.default_branch on origin), resolved once per render and never from the local tree (#1537); stderr
+names the revision. Before any render note; inside the closing fence when the brief ends in one (a fenced routine
+prompt). A memory lint problem or a failed resolve, fetch or read fails closed; a root with no origin remote (or no
+git) and no memory/ adds none. The size-budget render (normalize_paths) leaves memory out: its files have their
+own limits.
 Budget headroom (#1056): after a successful render, stderr gets one line per role brief with its path-normalized
 bytes against [size_budget] (the bootstrap measure) and its delivered bytes (core memory and render notes
 included), and a WARNING inside BUDGET_BAND of the budget or over it. Output paths and exit codes are unchanged.
@@ -615,7 +618,7 @@ def render(args, paths, normalize_paths):
         jobs += [(os.path.join(rt, rel), os.path.join("runtime", rel), None)
                  for rel in sorted(found, key=lambda rel: [(1, d) for d in rel.split(os.sep)[:-1]] + [(0, rel)])
                  if os.path.join(rt, rel) not in unused] + moved
-    renderer, rendered = Renderer(values, args.inputs, normalize_paths, overlay), {}
+    renderer, rendered, snap = Renderer(values, args.inputs, normalize_paths, overlay), {}, None
     for rel, dst, role in jobs:
         src = renderer.find(rel)
         parts = rel.split(os.sep)
@@ -660,9 +663,13 @@ def render(args, paths, normalize_paths):
             (r for r, d in ROLES.items() if d.get("discovery", {}).get(values["runtime.name"]) == note_role), None)
         if memory_role and not normalize_paths and dst in ("briefs/%s.md" % note_role, "runtime/%s.md" % note_role):
             root = memory_root(args.project, values)
-            memory, issues = crew_memory.section(root, memory_role)
+            if snap is None:  # one remote-default revision per render, shared by every role output (#1537)
+                snap = crew_memory.snapshot(root, values.get("repo.default_branch", "main"))
+                if snap[1]:
+                    print("crew-render: core memory from %s (%s)" % (snap[1], root), file=sys.stderr)
+            memory, issues = crew_memory.section(snap[0], memory_role)
             problems += [m for m in ("%s:%d: [%s] %s" % (os.path.join(root, rel), n, rule, why)
-                                     for rel, n, rule, why in issues) if m not in problems]  # once, not per brief
+                                     for rel, n, rule, why in snap[2] + issues) if m not in problems]  # once each
             body, fence, tail = "".join(out).rpartition("\n```")
             out = [body, memory.replace("```", "~~~"), fence, tail] if fence and not tail.strip() else out + [memory]
         if dst in ("briefs/%s.md" % note_role, "runtime/%s.md" % note_role):

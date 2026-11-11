@@ -130,16 +130,21 @@ def harness_targets(harnesses, project, state, live, preview, old, doctor, notes
     return targets, harness_launches(harnesses, project, live, preview, notes)
 
 
+def profile_file(project):
+    """The TOML file a project reference names: FILE for FILE#<repo> (docs/configuration/team-files.md)."""
+    return Path(crew_render.crew_config.split_ref(str(project))[0])
+
+
 def pack_manifest(org_profile, project=None):
     """The org pack's manifest.toml path, or None without a pack."""
     if org_profile:
         return Path(org_profile).absolute().parent / "manifest.toml"
     if project:
-        with open(project, "rb") as f:
+        with open(profile_file(project), "rb") as f:
             paths = tomllib.load(f).get("paths", {})
         pack = paths.get("pack") if isinstance(paths, dict) else None
         if isinstance(pack, str) and pack.strip():
-            return Path(project).absolute().parent / Path(pack).expanduser() / "manifest.toml"
+            return profile_file(project).absolute().parent / Path(pack).expanduser() / "manifest.toml"
     return None
 
 
@@ -161,9 +166,10 @@ def target_root(entry, project):
     return Path.home() if entry.get("root") == "home" else project.parent
 
 
-def pack_pointers(harnesses, org_profile, project):
+def pack_pointers(harnesses, org_profile, project, anchor=None):
     """The pack.harness registry entries of the selected harnesses (docs/bootstrap.md#pack-harness-pointers-design):
-    {target: text}, Codex launch notes, and harness_pointers records. Sources are read as data, never run."""
+    {target: text}, Codex launch notes, and harness_pointers records. Sources are read as data, never run. anchor,
+    whose directory roots project-relative targets, defaults to the project file."""
     targets, notes, owned = {}, [], {}
     manifest = pack_manifest(org_profile, project)
     pack = pack_table(org_profile, project) or {}
@@ -182,7 +188,7 @@ def pack_pointers(harnesses, org_profile, project):
             notes.append(str(root / entry["launch_note"]))
             continue
         mode, source = entry.get("mode", "copy"), root / entry["source"]
-        path = target_root(entry, project) / entry["target"]
+        path = target_root(entry, Path(anchor or project)) / entry["target"]
         targets[path] = source.read_bytes().decode() if mode == "copy" else "Read %s and follow it.\n" % source
         owned[str(path)] = dict(harness=entry["harness"], source=entry["source"], mode=mode)
         if "root" in entry:
@@ -236,7 +242,7 @@ def fetch(args):
     tag = release_tag(args.version, args.pre)
     pack_pin(args.org_profile, tag, args.project)
     install = {}
-    if Path(args.project).is_file():
+    if profile_file(args.project).is_file():
         values, problems = crew_render.resolve(args.project, args.org_profile)
         if problems:
             raise ValueError("\n".join(problems))
@@ -472,15 +478,18 @@ def bootstrap(args):
             raise ValueError("--version and --dev cannot be combined")
         return fetch(args)
     tag = source(args.dev, args.pre)
-    project = Path(args.project).absolute()
-    if not project.is_file():
-        if not propose_project(args, project):
+    reference = str(Path(args.project).absolute())  # FILE or FILE#<repo>, kept for resolve, doctor, render and record
+    profile, selected = profile_file(reference), crew_render.crew_config.split_ref(reference)[1]
+    if not profile.is_file() and selected is None:  # a missing FILE#<repo> fails in the resolver (#1344)
+        if not propose_project(args, profile):
             return 0
     pack_pin(args.org_profile, tag, args.project)
     pack = pack_record(args.org_profile, args.project)  # a pack.toml pack must pin at a commit before any write
-    values, problems = crew_render.resolve(str(project), args.org_profile)
+    values, problems = crew_render.resolve(reference, args.org_profile)
     if problems:
         raise ValueError("\n".join(problems))
+    # project anchors repo-local targets by its directory: the profile, or for FILE#<repo> that repo's clone (#1344).
+    project = Path(checkout(values, reference)) / profile.name if selected else profile
     tmux = values["runtime.name"] == "tmux"
     keys = ("state_dir", "worktree_root", "toolchain_bin", "mdstack" if tmux else "live_dir")
     problems = placeholder_paths(args, values, keys)
@@ -489,7 +498,7 @@ def bootstrap(args):
     state = Path(values["paths.state_dir"]).absolute() / (values["repo.owner"] + "__" + values["repo.name"])
     doctor = commands()["doctor"]
     with contextlib.redirect_stdout(io.StringIO()) as report:
-        code = doctor.run(Namespace(project=str(project), org_profile=args.org_profile, fix=False,
+        code = doctor.run(Namespace(project=reference, org_profile=args.org_profile, fix=False,
                                     dry_run=False, milestone=None))
     print(report.getvalue(), end="")
     if code:
@@ -497,7 +506,7 @@ def bootstrap(args):
     human = report.getvalue().partition("Steps only a person can take:\n")[2].splitlines()
     pending = [line.removeprefix("- ") for line in human]
     pending += (["Create the routines from the rendered files (docs/bootstrap.md Q4)"]
-                if values["runtime.name"] == "grok-bot" else ["Run mdstack up --project " + str(project)])
+                if values["runtime.name"] == "grok-bot" else ["Run mdstack up --project " + reference])
     manifest = state / "install.json"
     previous = json.loads(manifest.read_text()) if manifest.exists() else {}
     harnesses = args.harness if args.harness is not None else previous.get("harnesses", [])
@@ -505,14 +514,17 @@ def bootstrap(args):
         raise ValueError("harness pointers need tmux role briefs; a session binding is not implemented")
     old = previous.get("targets", {})
     link = state / "mdstack"
-    if tmux and Path(values["paths.mdstack"]).absolute() != link:
+    named = Path(values["paths.mdstack"]).absolute()
+    # A team file's one paths.mdstack names one repo's link under the team state root; each repo still gets its own.
+    shared = selected and named.name == "mdstack" and named.parent.parent == state.parent
+    if tmux and named != link and not shared:
         raise ValueError("paths.mdstack must name the install link: " + str(link))
     if link.exists() or link.is_symlink():
         if not link.is_symlink() or str(link.resolve()) != previous.get("source"):
             raise ValueError("target edited or unowned: " + str(link))
     with tempfile.TemporaryDirectory(prefix="crew-bootstrap-") as tmp:
         preview = Path(tmp)
-        argv = ["--project", str(project), "--out", tmp]
+        argv = ["--project", reference, "--out", tmp]
         if args.org_profile:
             argv += ["--org-profile", args.org_profile]
         with contextlib.redirect_stdout(io.StringIO()) as out, contextlib.redirect_stderr(out):
@@ -520,9 +532,9 @@ def bootstrap(args):
         if code:
             raise ValueError(out.getvalue())
         live = Path(values["paths.live_dir"]).absolute() if not tmux else state / "render"
-        targets = {state / "VERSION": tag + "\n", state / "config.toml": project.read_text()}
+        targets = {state / "VERSION": tag + "\n", state / "config.toml": profile.read_text()}
         rendered = {live / p.relative_to(preview): p.read_text() for p in preview.rglob("*") if p.is_file()}
-        registry, notes, owned = pack_pointers(harnesses, args.org_profile, project)
+        registry, notes, owned = pack_pointers(harnesses, args.org_profile, reference, project)
         pointers, launches = harness_targets(harnesses, project, state, live, preview, old, doctor, notes)
         bases = {Path(p): target_root(e, project) for p, e in {**previous.get("harness_pointers", {}),
                                                                 **owned}.items()}
@@ -562,7 +574,7 @@ def bootstrap(args):
                 raise ValueError("live copy has extra files; reconcile before bootstrap")
         for path, text in targets.items():
             check_target(path, old, doctor, project, bases.get(path))
-        repo = Path(checkout(values, str(project)))  # a non-git runtime home excludes in its checkout (#1178)
+        repo = Path(checkout(values, reference))  # a non-git runtime home excludes in its checkout (#1178)
         scaffold = spec_scaffold(values, repo)
         for path in scaffold:
             check_target(path, {}, doctor, project)
@@ -606,7 +618,7 @@ def bootstrap(args):
             return 0
         if not args.yes and (not sys.stdin.isatty() or input("Apply this plan? [y/N] ").lower() != "y"):
             raise ValueError("confirmation required; review --dry-run, then use --yes")
-        if doctor.run(Namespace(project=str(project), org_profile=args.org_profile, fix=True,
+        if doctor.run(Namespace(project=reference, org_profile=args.org_profile, fix=True,
                                 dry_run=False, milestone=None)):
             return 1
         if excludes:
@@ -636,7 +648,7 @@ def bootstrap(args):
         bundle_sha = os.environ.get("CREW_BOOTSTRAP_BUNDLE_SHA256")
         if not bundle_sha and previous.get("source") == str(ROOT):
             bundle_sha = previous.get("bundle_sha256")
-        record = dict(tag=tag, source=str(ROOT), project=str(project), bundle_sha256=bundle_sha,
+        record = dict(tag=tag, source=str(ROOT), project=reference, bundle_sha256=bundle_sha,
                       runtime=values["runtime.name"],
                       targets={**{p: sha for p, sha in old.items() if Path(p) not in stale},
                                **{str(p): digest(p) for p in targets}}, harnesses=harnesses,
@@ -659,7 +671,7 @@ def bootstrap(args):
         for path, text in rendered.items():
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(text)
-    record["self_test"] = self_test(project, args.org_profile, live, record, doctor)
+    record["self_test"] = self_test(reference, args.org_profile, live, record, doctor)
     failed = [name for name, status in record["self_test"].items() if status == "fail"]
     record["status"] = "failed" if failed else "installed"
     manifest.write_text(json.dumps(record, indent=2) + "\n")
