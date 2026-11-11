@@ -22,7 +22,8 @@ Each crew PR whose ready sample (head, CI, verdict, mergeable, hold) changed is 
 `metrics/observations.jsonl` with the poll's time and the previous poll's, its sampling bound (self-improve.md, #1524).
 `poll-state.json`'s `held` lists the refs parked on the owner: open crew PRs and crew:ready issues labelled
 crew:hold, crew:escalated or crew:needs-md, and the issues such a PR closes; `mdstack watch` backs off for them, and
-open refs that leave it are one `hold-released` record for the coordinator (#394).
+open refs that leave it are one `hold-released` record for the coordinator; for held refs only, a changed count of
+owner comments (and PR reviews) is one `owner-answer` record for the coordinator while the hold stays (#394).
 
 Usage: mdstack poll [--once | --triage-only] --project FILE
 """
@@ -123,9 +124,29 @@ def pr_snapshot(pr):
             "selfgate": selfgate}
 
 
-def decide(prev, prs, issues, merge_ups=None, express=()):
-    """Pure: previous poll state plus gh JSON (open PRs, tracked PRs now merged or closed, open issues) and the PR
-    numbers that resolve express -> (events, new state). A change emits one event; no change emits nothing."""
+def held_numbers(prs, issues):
+    """Open crew PRs and crew:ready issues labelled OWNER_BLOCKED, and the issues such a PR closes (#394)."""
+    held = set()
+    for item in prs + issues:
+        if item.get("state", "OPEN") == "OPEN" and {label["name"] for label in item["labels"]} & OWNER_BLOCKED:
+            held |= {item["number"]} | {i["number"] for i in item.get("closingIssuesReferences", [])}
+    return sorted(held)
+
+
+def owner_answers(prs, issues, owners, read):
+    """{"#n": owner comments (and PR reviews) on n} for each held n only, so the extra reads stay bounded (#394)."""
+    pr_numbers, answers = {pr["number"] for pr in prs}, {}
+    for n in held_numbers(prs, issues):
+        item = read("pr" if n in pr_numbers else "issue", n, ["comments", "reviews"] if n in pr_numbers else ["comments"])
+        answers["#%d" % n] = sum((c.get("author") or {}).get("login") in owners
+                                 for c in item.get("comments", []) + item.get("reviews", []))
+    return answers
+
+
+def decide(prev, prs, issues, merge_ups=None, express=(), answers=None):
+    """Pure: previous poll state plus gh JSON (open PRs, tracked PRs now merged or closed, open issues), the PR
+    numbers that resolve express and held refs' owner-answer counts -> (events, new state). A change emits one event;
+    no change emits nothing."""
     events, state = [], {"prs": {}, "issues": []}
 
     def emit(event, *refs, **extra):
@@ -160,14 +181,14 @@ def decide(prev, prs, issues, merge_ups=None, express=()):
             emit("fix-at-head", "#" + n, cur["head"], round=cur["round"])
     state["issues"] = sorted(i["number"] for i in issues if i["assignees"] and
                              any(label["name"] == "crew:ready" for label in i["labels"]))
-    held = set()
-    for item in prs + issues:
-        if item.get("state", "OPEN") == "OPEN" and {label["name"] for label in item["labels"]} & OWNER_BLOCKED:
-            held |= {item["number"]} | {i["number"] for i in item.get("closingIssuesReferences", [])}
-    state["held"] = ["#%d" % n for n in sorted(held)]
+    state["held"] = ["#%d" % n for n in held_numbers(prs, issues)]
     open_refs = {"#%s" % i["number"] for i in prs + issues if i.get("state", "OPEN") == "OPEN"}
     if released := sorted(set(prev.get("held", [])) - set(state["held"]) & open_refs, key=lambda r: int(r[1:])):
         emit("hold-released", *released)  # the owner lifted a hold: wake at once, not at the backstop (#394)
+    answers, before = answers or {}, prev.get("answers", {})
+    state["answers"] = {r: answers[r] for r in state["held"] if r in answers}
+    if answered := [r for r in state["held"] if r in before and r in answers and answers[r] != before[r]]:
+        emit("owner-answer", *answered)  # the owner answered on a held item: wake while the hold stays (#394)
     for n in state["issues"]:
         if n not in prev.get("issues", []):
             emit("issue-assigned", "#%d" % n)
@@ -345,7 +366,10 @@ def poll_once(values, state, args):
                 merge_ups[str(pr["number"])] = approved
     for pr in prs:
         observe_ci(pr, repo)
-    events, new = decide(prev or {}, prs, issues, merge_ups, express)
+    owners = set(values.get("identities.owners") or []) or {values["repo.owner"]}
+    answers = owner_answers(prs, issues, owners, lambda kind, n, fields: gh_json(
+        kind, "view", str(n), "-R", repo, "--json", ",".join(fields), retry=RETRY_DELAYS))
+    events, new = decide(prev or {}, prs, issues, merge_ups, express, answers)
     if prev is None:  # first run: record a baseline only; the §6 step 3 sweep covers what happened before it
         events = []
         print("crew: poll: baseline of %d PRs, %d issues" % (len(new["prs"]), len(new["issues"])))
