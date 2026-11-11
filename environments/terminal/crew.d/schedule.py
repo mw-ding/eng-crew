@@ -6,6 +6,7 @@ one-line summary of the latest decision (docs/scheduling.md#observability).
 
 Usage: mdstack schedule snapshot|decide|release|summary [--pool builder|reviewer] [REF...] --project FILE [--org-profile FILE]
 """
+import argparse
 import datetime
 import fcntl
 import json
@@ -465,6 +466,15 @@ def evaluate(args, values, session, state, now):
         actions = walk(args.pool, rank(snap), snap, reserved, doc, target_options(values),
                        {} if leads == UNKNOWN else leads, ceiling_hit(snap, values))
     return snap, reserved, doc, actions, unreadable
+
+
+def admissible(args, pool):
+    """Refs of `pool` one decision would admit now, reserved ones included, without writing schedule state: the lead
+    backstop's token-free re-check of acknowledged deferred handoffs (#1502). Unreadable inputs admit nothing."""
+    values, session, state = profile(args)
+    actions = evaluate(argparse.Namespace(**dict(vars(args), pool=pool)), values, session, state,
+                       datetime.datetime.now(datetime.timezone.utc))[3]
+    return {a["ref"] for a in actions if a["action"] == "admit"}
 
 
 def schedule_decide(args):

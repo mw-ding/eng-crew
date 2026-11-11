@@ -363,7 +363,7 @@ def route_record(args, values, state, w):
     if leader and leader["role"] == "synthesizer-lead" and TRAIN_CLEAN.fullmatch(line):
         return True  # every member landed and none dropped: nothing for the coordinator (#1569)
     if w.get("reason") == "lead-backstop":
-        lead.retry_pending(args, w["window"])
+        lead.retry_pending(args, w["window"], recheck=True)
         return True
     if w.get("reason") == "idle-builder":
         if lead.enabled(state, "builder"):

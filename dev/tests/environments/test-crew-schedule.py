@@ -2,6 +2,7 @@
 JSON object, `unknown` per failed read, memory pressure on macOS and Linux; the summary line, defer `since` times and
 stuck finishing work (docs/scheduling.md#observability). Fake tmux and gh; run in CI.
 """
+import argparse
 import datetime
 import importlib.machinery
 import importlib.util
@@ -651,6 +652,26 @@ class DecideCommand(Fixture):
         self.assertEqual((out["admit"], [d["reasons"] for d in out["deferred"]], out["held"]),
                          ([], [["holds-unreadable"]], []))
         self.assertRegex(self.crew("schedule", "summary", "--project", self.project).stdout, r"; held unknown; ")
+
+    def test_admissible_walks_without_writing_schedule_state(self):  # #1502
+        loader = importlib.machinery.SourceFileLoader("crew_cli", CREW)
+        mod = importlib.util.module_from_spec(importlib.util.spec_from_loader("crew_cli", loader))
+        loader.exec_module(mod)
+        sched = os.path.join(self.state, "schedule")
+        def files():
+            found = {}
+            for n in os.listdir(sched):
+                with open(os.path.join(sched, n)) as f:
+                    found[n] = f.read()
+            return found
+        before = files()
+        args = argparse.Namespace(project=self.project, org_profile=None)
+        with mock.patch.dict(os.environ, self.env):
+            self.assertEqual(mod.commands()["schedule"].admissible(args, "builder"), {"#9"})
+            self.assertEqual(mod.commands()["schedule"].admissible(args, "builder"), {"#9"})
+        self.assertEqual(files(), before)
+        self.assertEqual([(a["ref"], a["reasons"]) for a in self.call("decide", "--pool", "builder")["deferred"]],
+                         [("#601", ["target"])])  # the same walk decide takes
 
     def test_decide_and_release_require_a_pool(self):
         r = self.crew("schedule", "decide", "--project", self.project)
