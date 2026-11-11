@@ -469,6 +469,35 @@ class Poll(Base):
         self.assertIn(["pr", "view", "171", "-R", "acme/widgets", "--json",
                        "number,state,headRefOid,labels,statusCheckRollup,reviews,mergeable"], calls)
 
+    def test_once_conflict_wakes_builder_once_per_head_and_conflict(self):  # #1398: through the shipped CLI
+        self.transcript = []
+        shutil.copy(os.path.join(POLL, "issues-none.json"), os.path.join(self.gh_dir, "issues.json"))
+
+        def poll(mergeable, head=HEAD):
+            prs = fixture("prs-pending.json")
+            prs[0].update(mergeable=mergeable, headRefOid=head)
+            with open(os.path.join(self.gh_dir, "prs.json"), "w") as f:
+                json.dump(prs, f)
+            r = self.crew("poll", "--once", "--project", self.project)
+            self.transcript.append(("mergeable=%s head=%s" % (mergeable, head[:7]), r))
+            self.assertEqual((r.returncode, r.stderr), (0, "mdstack: config %s\n" % self.project), r.stdout)
+            with open(os.path.join(self.state, "poll-state.json")) as f:
+                stored = json.load(f)["prs"]["171"].get("mergeable")
+            return [line for line in r.stdout.splitlines() if "pr-conflicting" in line], stored
+        self.assertEqual(poll("MERGEABLE"), ([], "MERGEABLE"))
+        hit = ["crew: poll: pr-conflicting -> builder #171 " + HEAD]
+        self.assertEqual(poll("CONFLICTING"), (hit, "CONFLICTING"))  # a land made the unchanged head conflict
+        for mergeable in ("CONFLICTING", "UNKNOWN"):  # repeats and UNKNOWN never multiply
+            self.assertEqual(poll(mergeable), ([], "CONFLICTING"), mergeable)
+        self.assertEqual(poll("MERGEABLE"), ([], "MERGEABLE"))
+        self.assertEqual(poll("CONFLICTING"), (hit, "CONFLICTING"))  # resolved, then conflicting again
+        new = "b" * 40
+        self.assertEqual(poll("CONFLICTING", new), (["crew: poll: pr-conflicting -> builder #171 " + new],
+                                                    "CONFLICTING"))
+        self.assertEqual([(w["event"], w["consumer"], w["refs"]) for w in self.queue()
+                          if w["event"] == "pr-conflicting"],
+                         [("pr-conflicting", "builder", ["#171", h]) for h in (HEAD, HEAD, new)])
+
     def test_ready_samples_written_on_change_with_the_polling_bound(self):  # #1524
         def poll(labels, mergeable, state="OPEN"):
             pr = dict(fixture("pr-171-merged.json"), state=state, mergeable=mergeable,
@@ -915,4 +944,16 @@ class NativeTriage(Base):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    if "--conflict-transcript" in sys.argv:  # #1398: each `mdstack poll --once` of the CLI conflict test, verbatim
+        test = Poll("test_once_conflict_wakes_builder_once_per_head_and_conflict")
+        test.setUp()
+        try:
+            test.test_once_conflict_wakes_builder_once_per_head_and_conflict()
+            for label, r in test.transcript:
+                print("$ mdstack poll --once --project <fixture>/project/crew.toml  # %s\nexit: %d\n--- stdout\n%s"
+                      "--- stderr\n%s" % (label, r.returncode, r.stdout, r.stderr.replace(test.tmp, "<fixture>")),
+                      end="")
+        finally:
+            test.doCleanups()
+    else:
+        unittest.main()
