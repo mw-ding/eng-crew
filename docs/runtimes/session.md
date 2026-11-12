@@ -68,6 +68,11 @@ backend's combined-stack test on the current tip meets tested with the
 default branch, but only when the readback names the check, which each
 member's record then cites. Without `land.stack` the brief renders no stack
 recipe and lands stay one per run; tmux renders and trains are unchanged.
+A backend whose request names one representative change and every
+member's revision id binds `<stack-top>` and `<stack-revisions>`, with
+`change.read-revision-id`; with `land.stack_status = "per-change"` the
+readback is each member's mapped `change.land-status` (#1722,
+[interfaces](../interfaces.md#stack-land)).
 
 The stack land lab (#1614) runs that recipe end to end with a real
 synthesizer session. Run
