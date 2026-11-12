@@ -689,8 +689,8 @@ Opened by the spec slice #1691, part of
 seven builds, one PR per issue. No item below dispatches before this slice
 merges. B3 waits for B1 and B2, and B6 waits for B5; every other row
 depends only on this slice. Statuses were set by the status-sync
-slice #1721 for the five landed builds. B5 and B6 are still open, and
-M47 stays open until they land; its own closing status sync follows them.
+slice #1721 for the first five landed builds and by the closing
+status-sync slice #1735 for B5 and B6: every row has landed.
 
 | ID | Issue | Scope | Depends on | Status |
 |---|---|---|---|---|
@@ -698,8 +698,8 @@ M47 stays open until they land; its own closing status sync follows them.
 | B2 | #1537 | Revision-bound memory: render reads core memory at one fresh remote-default SHA (PR #1703) | #1691 | done |
 | B3 | #1090 | A true bootstrap no-op: an unchanged install writes nothing (PR #1716) | #1691, B1, B2 | done |
 | B4 | #1595 | `mdstack connect` dials the inventory host's address (PR #1695) | #1691 | done |
-| B5 | #1252 | A builder run cannot remove another run's working copy (PR #1707, open, waiting on an owner-shell proof) | #1691 | open |
-| B6 | #316 | Worktree root parity and conservative GC | #1691, B5 | open |
+| B5 | #1252 | A builder run cannot remove another run's working copy (PR #1707): run-owned Git metadata, `runtime.options.confinement` and a host guard that refuses `enforce` where the Codex sandbox cannot apply; items 2 and 5 (the live production-launch confinement proof) moved to #1739 by the [owner's choice](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6816385952) | #1691 | done |
+| B6 | #316 | Worktree root parity and conservative GC: `mdstack gc`, merged-only and dry-run first (PR #1740) | #1691, B5 | done |
 | B7 | #281 | Ship the shared secret and glob primitives; keep `check-repo.py` internal (PR #1700) | #1691 | done |
 
 Decisions M47 settles (the
@@ -765,13 +765,37 @@ Owner steps: none for B1–B4 and B7, whose tests use fakes. B5 lists any
 launcher or sandbox step its supported configurations need. Legacy #1166
 trees stay an owner keep-list decision, not a B6 removal.
 
-Merge permission for M47 spec, protocol, template and gate-contract text is
+Decisions M47 settled:
+
+- **The owner-shell confinement proof (#1465).** A crew worker already
+  runs inside the host sandbox, so it cannot apply the nested Codex
+  sandbox that B5's live proof needs (exit 71). The proof cannot run from
+  a crew session; by the
+  [owner's choice](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6816385952)
+  #1707 landed the host guard instead, and the live proof moved to #1739,
+  which needs owner-shell preconditions.
+
+Lessons (learning cards from the milestone close):
+
+- **Keep a configured root's path semantics (#1732).** A
+  repository-relative listing passed to a directory-relative
+  `git ls-tree` silently rendered no memory below the Git root; #1703
+  added `--full-tree` and a below-root regression.
+- **Test both install orders (#1733).** A fresh team bootstrapped
+  sibling-first failed doctor on a link its first repo had not yet
+  installed; #1706 warns until the owning repo has an install record.
+- **Mock a module's reference, not the shared module (#1734).** Patching
+  `time.sleep` through the upgrade module also counted
+  `subprocess.run` polling; #1703 replaced only the module-local
+  reference.
+
+Merge permission for M47 spec, protocol, template and gate-contract text was
 the owner's
 [M45–M48 grant](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6789266394),
-recorded at each head. A status-sync slice closes the milestone.
+recorded at each head. M47 closes after this slice merges.
 
-Release: M47's landed work ships in 7.10.0 (#1720), not 7.9.0, which is
-skipped because M48 finished first. B5 and B6 ship in the next release.
+Release: all of M47 ships in 7.10.0 (#1720); 7.9.0 is skipped by the
+owner's choice.
 
 ### M48: release integrity and reports
 
