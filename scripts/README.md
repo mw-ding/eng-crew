@@ -663,6 +663,7 @@ replaced from resolved profile keys (the "Replaces" columns of
 | `<mdstack>`, `<merge-grant>`, `<hold-label-blocks>` | `paths.mdstack`, `runtime.options.merge_grant`, `runtime.options.hold_label_blocks` (a boolean renders as `true` / `false`) |
 | `<release-delegation>` | `runtime.options.release_delegation` (`none` when absent) |
 | `<merge-grant-scope>`, `<spec-paths>` | `runtime.options.merge_grant_scope`, `spec.paths`, rendered as JSON arrays; absent keys render the defaults `["approved"]` and `["docs/specs/**"]` |
+| `<spec-home>` | the coordinator spec bookend's specs home: ``the external spec home `<url>` `` for `docs.specs_external`, else `docs.homes.specs` with a trailing `/`, else `` `docs/specs/` ``; the Grok Bot `<include:docs/roles.md>` names the same home in its bookend rule |
 | `<fallback-engine>` | `engines.fallback_engine` |
 | `<tested-update>` | `strategy.update_from_base` from the change backend's pack manifest (`merge` when undeclared), as the synthesizer's update wording |
 | `<CoordinatorBot>`, `<BuilderBot>`, `<ReviewerBot>`, `<SynthesizerBot>` | `identities.<role>.name` |
