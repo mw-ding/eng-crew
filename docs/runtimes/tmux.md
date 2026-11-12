@@ -20,6 +20,7 @@ and GitHub stays the tool of record (invariant I5).
 | Q5 identities | Per-role identity from the profile, token derived inside the window at launch; single-identity rule from #111 | [Q5](#q5-identities) |
 | Q6 concurrency | Per-band caps, default 5 busy builders and 2 reviewer passes; serial land under `flock` | [Q6](#q6-concurrency) |
 | Q7 failure | Liveness probe from tmux that matches the run identity recorded at spawn (pane id, pane pid and that process's start time), plus watcher stale timers; restart only on `dead` / `missing` / `quota` (on the next eligible engine), plus one synthesizer respawn after a failed nudge | [Q7](#q7-failure) |
+| Worktree root, cleanup and provider (#316) | One root, `paths.worktree_root`, for every local run (`<n>-<sha7>-<role>-<pass>/`) in both runtimes; lifecycle reaping stays, plus the merged-only, dry-run-first [mdstack gc](#mdstack-gc) backstop; Git stays the only provider (treehouse considered, deferred) | [mdstack gc](#mdstack-gc) |
 
 ## Layout and naming
 
@@ -1199,6 +1200,49 @@ narrative post on its PR (`gh pr review <n> --comment`), else a comment on
 its issue (`gh issue comment <n>`). If the post fails, nothing is removed.
 `--discard` without `--reason` is refused before anything is stopped.
 
+### mdstack gc
+
+```sh
+cli/mdstack gc [--apply] [--max <n>] [--project <config.toml>]
+```
+
+Lifecycle reaping removes a run's worktree at kill, close-out and idle
+reclaim. `mdstack gc` is the backstop for what it missed: a run record whose
+window is gone (a refused kill, a lost `pr-merged` event) and a directory
+directly under `<worktree-root>` that no run record names. It never scans
+outside that root, so legacy trees elsewhere and #1166's keep list stay
+untouched, and runs on a role host are left to their host.
+
+The default is a dry run: one line per candidate, `path`, run, `keep` or
+`remove`, and the reason. A candidate is `remove` only when its PR is merged
+(the run's PR, else a merged PR whose head is the copy's `HEAD`, so a
+squash-merged copy with its branch deleted still proves) and the C6 check
+in [mdstack kill](#mdstack-kill) finds nothing unlanded. It is kept, with
+the reason, when its window is live, another run or a
+[working-copy claim](#mdstack-copy-claim) references it, it is an orphan
+younger than an hour (a spawn in progress), it holds nested worktrees, its
+PR is open or closed without merging, no merged PR matches, it has unlanded
+work or it cannot be read. Closed-unmerged work is never removed here; it
+needs `mdstack kill --discard --reason` on the owner's decision.
+
+`--apply` re-checks each candidate just before removing it and removes at
+most `--max` (default 10): a linked worktree with `git worktree remove`
+(never `--force`), a builder's own copy (#1252) by deleting its directory,
+then the run's records through the kill path. A failed removal prints
+`failed` with the error, keeps the run's records and makes the command exit
+1; nothing falls back to a forced removal. A rerun with nothing left removes
+nothing. [mdstack route](#mdstack-route) runs `mdstack gc --apply --max 5`
+on each watcher backstop wake.
+
+**Provider decision (#316, M47).** Git stays the only worktree provider and
+there is no provider profile key. The alternative considered was
+[treehouse](https://github.com/kunchenguid/treehouse), which pools
+worktrees and leases one per task with an owner claim. It is deferred: it
+would add lease identity, return, reset and recovery, and role-host
+contracts that #316 did not settle. Builder copies now own their Git
+metadata (#1252), which a pooled linked worktree would undo. A later
+provider needs its own spec slice.
+
 ### mdstack guard
 
 ```sh
@@ -1985,6 +2029,8 @@ cli/mdstack route [--project <config.toml>] [--timeout <seconds>]
 The watcher calls this step before waking window 0 (#434). It consumes
 `new-head` by spawning review, passed-review `done:` by spawning validation,
 and terminal reviewer or synthesizer `done:` by killing and dequeuing.
+A backstop wake also runs [mdstack gc](#mdstack-gc) `--apply --max 5`
+(#316).
 A synthesizer's `done: #<n> <sha> stale` (`done: #<n> stale` for a message
 with no SHA) completes the acknowledged `land` message with those refs, so a
 closed, merged or superseded land is never restored on the next spawn (#1187).
