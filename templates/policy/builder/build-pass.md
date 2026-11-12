@@ -41,7 +41,9 @@
    per protocol `Sensitive class`; with `[[sensitive.content]]` rules, pipe
    `git diff --no-color --no-renames origin/<default-branch>...HEAD` to
    `sensitive --diff` instead. Apply `crew:sensitive` and record matches
-   (carry, re-check and override: PR conventions). Open a non-draft PR: `<op:change.open>`, body per §3, written once, never
+   (carry, re-check and override: PR conventions). Cite the newest signed
+   allocation and pass `<mdstack>/scripts/check-pr-linkage.py` before opening
+   (`<mdstack>/docs/backends/github.md` Builder linkage check). Open a non-draft PR: `<op:change.open>`, body per §3, written once, never
    edited; label it `crew:in-review`.<land-publish>
    After each push, read the head back (`<op:change.read-head>`); use that
    full SHA, never a local hash, in markers, evidence and `done:`.
