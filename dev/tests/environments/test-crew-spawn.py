@@ -985,6 +985,25 @@ class RemoteRun(KillLandedBase):  # #345: spawn, kill, restart, down and status 
         self.pane()
         self.wt = os.path.join(self.root, "wt", "7-%s-builder-build" % self.git("rev-parse", "HEAD")[:7])
 
+    def runner_beat(self, age=0):
+        """Set the fake host's runner heartbeat to `age` seconds old; the beat as written (#1659)."""
+        path = os.path.join(self.root, "runner.json")
+        with open(path) as f:
+            beat = json.load(f)
+        beat["beat"] = time.time() - age
+        with open(path, "w") as f:
+            json.dump(beat, f)
+        return beat
+
+    def spawn(self, *args):  # #1659: a healthy host is fresh at the spawn boundary; a slow setUp can outlast 3 x interval
+        self.runner_beat()
+        return super().spawn(*args)
+
+    def spawned(self):
+        r = self.spawn("builder", "--issue", "7")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        return r
+
     def pane(self, dead=0):
         out = subprocess.run(["sh", "-c", "sleep 60 >/dev/null 2>&1 & echo $!"], capture_output=True, text=True,
                              start_new_session=True).stdout.strip()
@@ -1016,6 +1035,15 @@ class RemoteRun(KillLandedBase):  # #345: spawn, kill, restart, down and status 
             self.assertIn("- Worktree: %s" % self.wt, f.read())
         self.assertIn("alive", self.crew("status", "--project", self.project).stdout.splitlines()[-1].split())
 
+    def test_spawn_boundary_refreshes_a_heartbeat_aged_by_a_slow_setup(self):  # #1659
+        stale = 3 * self.runner_beat()["interval"] + 1
+        self.runner_beat(age=stale)
+        r = super().spawn("builder", "--issue", "7")  # no refresh: production freshness refuses the host
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("runner down", r.stdout + r.stderr)
+        self.runner_beat(age=stale)
+        self.assertIn("started ben-7 (on host-b", self.spawned().stdout)
+
     def test_validate_spawn_carries_the_review_file(self):
         sha = self.pr(9, "codex")
         self.put("verdicts/pr9-%s-r1-review.md" % sha[:7], "## Review\n")
@@ -1026,7 +1054,7 @@ class RemoteRun(KillLandedBase):  # #345: spawn, kill, restart, down and status 
         self.assertEqual(self.record("vera-9-r1-validate")["head"], sha)
 
     def test_kill_keeps_unlanded_work_on_the_host_until_discarded(self):
-        self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
+        self.spawned()
         with open(os.path.join(self.wt, "wip.txt"), "w") as f:
             f.write("x\n")
         r = self.kill()
@@ -1043,7 +1071,7 @@ class RemoteRun(KillLandedBase):  # #345: spawn, kill, restart, down and status 
         self.assertFalse(os.path.exists(os.path.join(self.state, "claims", "builder-issue7")))
 
     def test_kill_removes_a_clean_run_and_an_unreachable_host_keeps_it(self):
-        self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
+        self.spawned()
         open(self.down_flag, "w").close()
         r = self.kill()
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
@@ -1059,7 +1087,7 @@ class RemoteRun(KillLandedBase):  # #345: spawn, kill, restart, down and status 
         self.assertFalse(os.path.exists(os.path.join(self.state, "runs", "ben-7.json")))
 
     def test_down_stops_remote_runs_without_the_primary_session(self):  # review r1 P2: runs outlive that session
-        self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
+        self.spawned()
         with open(self.state_file) as f:
             tmux = json.load(f)
         del tmux["crew-acme-widgets"]
@@ -1076,7 +1104,7 @@ class RemoteRun(KillLandedBase):  # #345: spawn, kill, restart, down and status 
         self.assertFalse(os.path.exists(os.path.join(self.state, "runs", "ben-7.json")))
 
     def test_restart_in_place_with_unlanded_work_else_fresh(self):
-        self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
+        self.spawned()
         r = self.crew("restart", "ben-7", "--project", self.project)
         self.assertIn("refusing restart: ben-7 is alive", r.stdout)
         with open(os.path.join(self.wt, "wip.txt"), "w") as f:
@@ -1120,7 +1148,7 @@ class RemoteRun(KillLandedBase):  # #345: spawn, kill, restart, down and status 
             return [w["line"] for w in map(json.loads, f) if w["reason"] == "status"]
 
     def test_watch_pulls_remote_status_lines_once_across_a_drop_and_a_restart(self):  # #346 C1, C4
-        self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
+        self.spawned()
         self.host_status("step: 1\nblocked: #7 hold\n")
         self.assertEqual(self.watch(), ["step: 1", "blocked: #7 hold"])
         open(self.down_flag, "w").close()  # the host drops off while its run keeps writing
@@ -1142,7 +1170,7 @@ class RemoteRun(KillLandedBase):  # #345: spawn, kill, restart, down and status 
         self.assertEqual(self.mirror(), host)  # what was mirrored stays
 
     def test_send_delivers_through_the_host_and_its_ack_returns_through_the_mirror(self):  # #346 C3
-        self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
+        self.spawned()
         r = self.crew("send", "ben-7", "review", "#9", "--project", self.project)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         msg_id = r.stdout.split()[2]
@@ -1180,7 +1208,7 @@ class RemoteRun(KillLandedBase):  # #345: spawn, kill, restart, down and status 
     def test_partition_keeps_the_claim_escalates_once_and_reconciles_on_return(self):  # #347
         with open(self.project, "a") as f:
             f.write("[runtime.options]\nhost_scan_interval = 1\n")
-        self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
+        self.spawned()
         pane = self.record("ben-7")["pane_pid"]
         open(self.down_flag, "w").close()  # the link drops; the run keeps going on the host
         (wake,) = self.wakes("--stale", "0")
@@ -1207,7 +1235,7 @@ class RemoteRun(KillLandedBase):  # #345: spawn, kill, restart, down and status 
         self.assertNotIn("since", self.crew("status", "--project", self.project).stdout)
 
     def test_reconcile_wakes_a_restart_for_a_run_dead_on_return(self):  # #347: tmux's restart rules on that host
-        self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
+        self.spawned()
         self.set_host_pane(self.env["FAKE_TMUX_PANE"].replace(" 0 0 ", " 1 0 "))  # the harness exited while away
         self.outage()
         got = self.wakes()
@@ -1217,7 +1245,7 @@ class RemoteRun(KillLandedBase):  # #345: spawn, kill, restart, down and status 
                          dict(window="ben-7", liveness="dead", action="restart"))
 
     def test_reconcile_waits_through_refused_and_failed_replies_for_an_ok_pull(self):  # #347 review r1
-        self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
+        self.spawned()
         self.set_host_pane(self.env["FAKE_TMUX_PANE"].replace(" 0 0 ", " 1 0 "))
         self.outage()
         for answer in (json.dumps(dict(result="refused", reason="version skew")), "not a structured reply"):
@@ -1237,7 +1265,7 @@ class RemoteRun(KillLandedBase):  # #345: spawn, kill, restart, down and status 
             self.assertNotIn("reconcile", json.load(f)["pulls"]["host-b"])
 
     def test_owner_abandon_writes_a_tombstone_that_reconcile_stops_keeping_unlanded_work(self):  # #347
-        self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
+        self.spawned()
         with open(os.path.join(self.wt, "wip.txt"), "w") as f:
             f.write("x\n")
         open(self.down_flag, "w").close()
