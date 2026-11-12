@@ -1,7 +1,7 @@
 ---
 type: added
 issue: 316
-pr: TBD
+pr: 1740
 date: 2026-11-11
 box-skill: pending the coordinator's mirror of templates/runtimes/session/coordinator.md
 ---
