@@ -108,13 +108,26 @@ and run `mdstack up` so it loads the new briefs.
 A session crew set up by `mdstack install` and a manual render has no
 `install.json`, and upgrade refuses it with `adoption covers a tmux install
 only`: adoption of a running install without a record (#1616) verifies tmux
-installs only. Bootstrap once instead (#1727). With dispatch finished or
-paused, run `mdstack bootstrap --project <absolute config.toml> --dry-run`
-from the install source and version you chose (`--version` to fetch one),
-review it, then repeat with `--yes`
-([bootstrap Q8](../bootstrap.md#q8-idempotency-upgrade-and-uninstall)).
-That writes the record; later upgrades and coordinator restarts follow the
-steps above.
+installs only. Bootstrap once instead (#1727). Bootstrap overwrites only
+the files it owns, and with no record it owns none, so it refuses the
+existing render and state files as `target edited or unowned`. To fix that:
+
+1. Finish or pause dispatch and exit the coordinator.
+2. Move these into a backup directory, keeping them: the
+   `paths.live_dir` render, and any `mdstack` link, `VERSION` and
+   `config.toml` in the state directory (`<paths.state_dir>/<owner>__<repo>`).
+3. From the release bundle you chose, run its own `cli/mdstack`, not the
+   moved link: `bootstrap --project <absolute config.toml> --dry-run`
+   (`--version` fetches a release). Review the output, then repeat with
+   `--yes`
+   ([bootstrap Q8](../bootstrap.md#q8-idempotency-upgrade-and-uninstall)).
+   That re-renders `paths.live_dir`, re-creates the link and writes
+   `install.json`.
+4. Diff the new render against the backup. Move any hand edit you want
+   to keep into the profile, since upgrade never overwrites a hand-edited
+   render file, then delete the backup and run `mdstack up`.
+
+Later upgrades and coordinator restarts follow the steps above.
 
 With `repo.control_item` set, a GitHub issue or a tracker-native item, the
 coordinator brief carries the ownership guard and the handoff steps. Without
