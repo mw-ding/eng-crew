@@ -179,6 +179,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `scripts/changelog-cut.py` | Deliverable | all | Release helper: cut the CHANGELOG and fragments into a version section; the `release.cut` binding runs it from the installed bundle ([#1033](https://github.com/mw-ding/mdstack/issues/1033)) |
 | `scripts/check-changelog-pr.py` | Internal | n/a | Guards and tests: PR fragment requirement, run by CI, not installed |
 | `scripts/check-markdown.py` | Deliverable | all | Install CLI: local markdownlint parity; `check-repo.py` loads it for its `markdown` check ([#644](https://github.com/mw-ding/eng-crew/issues/644)) |
+| `scripts/check-pr-linkage.py` | Deliverable | all | Role helper: builder's PR body linkage check, allocation and closing keywords ([#1418](https://github.com/mw-ding/mdstack/issues/1418)) |
 | `scripts/check-repo.py` | Internal | n/a | Guards and tests: the repo guard, run by CI and builders, not installed; shared primitives ship in `core/` ([#281](https://github.com/mw-ding/eng-crew/issues/281)) |
 | `scripts/check-skill-drift.py` | Deliverable | all | Drift check: render-vs-live check ([#128](https://github.com/mw-ding/eng-crew/issues/128)) |
 | `scripts/crew-install.py` | Deliverable | all | Install CLI: shared release verifier and `transport` record for bootstrap, upgrade and host prepare ([#882](https://github.com/mw-ding/eng-crew/issues/882)) |
