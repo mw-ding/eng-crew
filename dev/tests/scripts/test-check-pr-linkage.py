@@ -39,13 +39,13 @@ class CheckPrLinkageTest(unittest.TestCase):
         # #950: the body kept the old link after the allocation moved the issue.
         code, out, _ = self.run_check(body("Closes #900"), "--closes", "879", "--allocation", ALLOC)
         self.assertEqual(code, 1)
-        self.assertIn("line 5: closing keyword `Closes #900` outside the intended closing line", out)
-        self.assertIn("no `Closes #879` line: the allocation gives this PR #879", out)
+        self.assertIn("line 5: closing keyword `Closes` before `#900` outside the intended closing line", out)
+        self.assertIn("no whole `Closes` line for #879, the issue the allocation gives this PR", out)
 
     def test_part_of_instead_of_closes_fails(self):
         code, out, _ = self.run_check(body("Part of #879"), "--closes", "879", "--allocation", ALLOC)
         self.assertEqual(code, 1)
-        self.assertIn("no `Closes #879` line", out)
+        self.assertIn("no whole `Closes` line for #879", out)
 
     def test_uncited_allocation_fails(self):
         code, out, _ = self.run_check("Closes #879\n", "--closes", "879", "--allocation", ALLOC)
@@ -58,11 +58,14 @@ class CheckPrLinkageTest(unittest.TestCase):
                     "Fixes: https://github.com/o/r/issues/7 and resolves o/other#3.", "Closes #879")
         code, out, _ = self.run_check(text, "--closes", "879", "--allocation", ALLOC)
         self.assertEqual(code, 1)
-        self.assertIn("line 6: closing keyword `closed #20`", out)
-        self.assertIn("line 7: closing keyword `Fixes: https://github.com/o/r/issues/7`", out)
-        self.assertIn("line 7: closing keyword `resolves o/other#3`", out)
-        self.assertIn("line 8: closing keyword `Closes #879`", out)
+        self.assertIn("line 6: closing keyword `closed` before `#20`", out)
+        self.assertIn("line 7: closing keyword `Fixes` before `https://github.com/o/r/issues/7`", out)
+        self.assertIn("line 7: closing keyword `resolves` before `o/other#3`", out)
+        self.assertIn("line 8: closing keyword `Closes` before `#879`", out)
         self.assertEqual(out.count("check-pr-linkage: "), 4)
+        # Pasting the findings into a PR body adds no closing reference of its own.
+        _, again, _ = self.run_check(body("Closes #879", out), "--closes", "879", "--allocation", ALLOC)
+        self.assertEqual(again, "check-pr-linkage: OK (closes #879; allocation cited)\n")
 
     def test_plain_mentions_pass(self):
         text = body("Closes #879", "Follows #20, now closed; see the fix in #21 and close-out #22.")
@@ -81,7 +84,7 @@ class CheckPrLinkageTest(unittest.TestCase):
                          (0, "check-pr-linkage: OK (release issue #1700)\n"))
         code, out, _ = self.run_check("Closes #1700\nRelease issue: #1700\n", "--release", "1700")
         self.assertEqual(code, 1)
-        self.assertIn("line 1: closing keyword `Closes #1700`", out)
+        self.assertIn("line 1: closing keyword `Closes` before `#1700`", out)
         self.assertIn("no `Refs #1700`", out)
 
     def test_usage_errors(self):

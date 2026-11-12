@@ -12,16 +12,18 @@ whole line `Release issue: #N` and `Refs #N`, and no closing keyword at all.
 Every other closing keyword (close, closes, closed, fix, fixes, fixed,
 resolve, resolves, resolved, before `#N`, `owner/repo#N` or an issue URL) is
 flagged with its line, including descriptive mentions of closed issues.
+Findings print the keyword and reference apart, so pasting them into a PR
+body or comment adds no closing reference.
 Exit 0 when clean, 1 with one finding per line, 2 on a usage error.
-Python 3 standard library only. See docs/roles.md#pr-conventions.
+Python 3 standard library only. See docs/backends/github.md#linkage.
 """
 import argparse
 import re
 import sys
 
 KEYWORD = re.compile(
-    r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?):?[ \t]+"
-    r"(?:[\w.-]+/[\w.-]+#\d+|#\d+|https?://github\.com/[\w.-]+/[\w.-]+/(?:issues|pull)/\d+)", re.I)
+    r"\b(close[sd]?|fix(?:e[sd])?|resolve[sd]?):?[ \t]+"
+    r"([\w.-]+/[\w.-]+#\d+|#\d+|https?://github\.com/[\w.-]+/[\w.-]+/(?:issues|pull)/\d+)", re.I)
 
 
 def findings(body, closes=(), release=None, allocation=None):
@@ -35,11 +37,11 @@ def findings(body, closes=(), release=None, allocation=None):
             if seen[intended[line.strip()]] == 1:
                 continue
         for m in KEYWORD.finditer(line):
-            out.append("line %d: closing keyword `%s` outside the intended closing line; reword it "
-                       "(for example `#N, now closed`)" % (i, m.group(0)))
+            out.append("line %d: closing keyword `%s` before `%s` outside the intended closing line; "
+                       "reword it (for example `#N, now closed`)" % (i, m.group(1), m.group(2)))
     for n, count in seen.items():
         if count == 0:
-            out.append("no `Closes #%d` line: the allocation gives this PR #%d" % (n, n))
+            out.append("no whole `Closes` line for #%d, the issue the allocation gives this PR" % n)
     if release is not None:
         lines = [l.strip() for l in body.splitlines() if l.strip().lower().startswith("release issue:")]
         if lines != ["Release issue: #%d" % release]:
