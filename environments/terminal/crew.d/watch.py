@@ -1,7 +1,9 @@
 """`mdstack watch` is the zero-token watcher that queues wakes in `wake/queue.jsonl` (one-shot `--source` commands cut off
 at `--source-timeout`, default 60 s, queue growth from another poller, and an `ask:`
 wake at each open owner ask's deadline in `asks/<n>.json`; a signal during a scan is held until its children exit)
-and retries pending lead admission every 60 s, then exits with one reason line; runs without `start` skip liveness
+and retries pending lead demand after 60, 120, 240, 480, then every 900 s while it is unchanged (a changed pending set
+restarts at 60 s; a lead's acknowledged `waiting:` owner, hold or CI id is never retried until its PR's poll-state,
+hold or ask changes, which wakes it on that scan, #1715), then exits with one reason line; runs without `start` skip liveness
 wakes while their record mtime is less than 60 s
 old. Verified panes with a live tool session or recent output get a supervisor heartbeat instead of a stale wake; a
 working run whose tmux pane printed nothing for `--idle-stall` (default 1800 s) is idle at its prompt and wakes stale with
@@ -69,6 +71,7 @@ from crew_shared import BUSY, checkout, commands, CREW_BIN, dialog, ownership_mo
 # Fields route adds to a record it leaves queued; a kept record still matches its candidate and wakes window 0 (#814).
 ROUTE_NOTES = ("at", "route_error", "consumer", "dependents")
 RATE_LIMITED = re.compile(r"rate-limited until (\S+Z)")  # mdstack poll's exit-75 line for a GitHub quota refusal
+LEAD_RETRY = (60, 120, 240, 480, 900)  # seconds between lead-backstop retries of unchanged pending demand (#1715)
 HELD_BACKSTOP = 4 * 3600  # seconds; the shortest backstop while every run is held or owner-blocked (#394)
 LOCK_ENV = "MDSTACK_WATCH_LOCK"  # "<pid>:<fd>" of the held wake/watcher.lock, kept across a re-exec (#399)
 RATE_HOLD_MAX = 3600  # seconds; GitHub's primary quota window, so a bad reset time never parks the sources for longer
@@ -357,12 +360,20 @@ def scan(state, session, now, stale, seen, idle_ttl=1800, stuck_after=1800, idle
                           "event": "%s %s %s class %s deferred since %s: %s" % (
                               d["pool"], d["ref"], d["kind"], d["class"], d["since"], ", ".join(d["reasons"]))})
     for name, _ in commands()["lead"].records(state):
-        retries = seen.setdefault("lead_retries", {})
-        if not commands()["lead"].pending(state, name):
+        retries, lead = seen.setdefault("lead_retries", {}), commands()["lead"]
+        demand = sorted(m["id"] for m in lead.actionable(state, name))  # unchanged acknowledged waits never retry
+        if not demand:
             retries.pop(name, None)
-        elif now >= retries.setdefault(name, now + 60):
+            continue
+        woke = {i for i, w in lead.waits(state, name).items() if w["woke"]}
+        prior = retries.get(name)
+        if not isinstance(prior, dict) or prior["demand"] != demand:  # changed demand restarts at the first step
+            fresh = set(demand) - set(prior["demand"] if isinstance(prior, dict) else [])
+            prior = retries[name] = {"demand": demand, "step": 0, "due": now if fresh & woke else now + LEAD_RETRY[0]}
+        if now >= prior["due"]:
             wakes.append({"reason": "lead-backstop", "window": name, "event": "admission retry"})
-            retries[name] = now + 60
+            prior["step"] += 1
+            prior["due"] = now + LEAD_RETRY[min(prior["step"], len(LEAD_RETRY) - 1)]
     return wakes
 
 

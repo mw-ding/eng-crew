@@ -74,6 +74,8 @@ Never delete a referenced event or finding while work remains pending.
   in the role's order. A refusal (no engine left, or already restarted) is a
   `spawn-failure` block.
 
+<include:policy/shared/lead-waits.md>
+
 Prove worker delivery through `ack:`; re-nudge once on a miss, then probe
 and escalate. Round, CI-fix and nudge caps stay unchanged. Defer admission
 without model polling: the token-free watcher backstop or a slot-release

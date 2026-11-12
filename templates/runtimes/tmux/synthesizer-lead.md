@@ -46,6 +46,8 @@ act on: owner merge-ok, `crew:sensitive`, holds, `main red` and lead faults.
 Route does merged-PR close-out (labels, issue close, branch delete, builder
 reclaim through its lead); never kill other windows.
 
+<include:policy/shared/lead-waits.md>
+
 Restart: a token-free supervisor restarts a dead or missing lead once with
 its inbox intact. Replay every queued id. An unsettled land restarts at
 step 1 of the merge gate with live state: never merge a merged PR twice.

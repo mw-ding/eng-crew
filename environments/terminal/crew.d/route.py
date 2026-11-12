@@ -12,6 +12,7 @@ and a merge that an open issue's `Depends on` names stays queued so the coordina
 one that closes an active milestone's last open item or is a release cut, noted `milestone-complete` (#1559). Progress lines are ignored. Judgement records remain in the queue,
 including red CI, changes, stale heads, holds, failed commands, dialogs, blocked runs and owner asks. Red CI for a
 superseded head and synthesizer gate-status blocks that only wait (`wait=ci,review,validation,selfgate,train`) are consumed.
+A lead's `waiting: #<n> owner|hold|ci id=<id>` line is consumed; the watcher keeps that id off its retries (#1715).
 A lead's or gone run's `blocked:` line whose typed items are all closed or merged, or whose pinned head or round is
 superseded, is consumed (#1476); an open issue, a current head or an unreadable item keeps it. A dead or missing stale
 wake whose run identity an idle reclaim recorded is consumed; a replacement under the same name still wakes (#1552).
@@ -481,7 +482,7 @@ def route_record(args, values, state, w):
     rec = dict(runs(state)).get(w.get("window"))
     lead = commands()["lead"]
     leader = dict(lead.records(state)).get(w.get("window"))
-    if leader and w.get("reason") == "status" and line.startswith(("done:", "deferred:")):
+    if leader and w.get("reason") == "status" and line.startswith(("done:", "deferred:", "waiting:")):
         return True
     if w.get("reason") == "status" and rec is None and obsolete_block(values, line):
         print("crew: route: %s: terminal or superseded item; consumed" % line[:60])
