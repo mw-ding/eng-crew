@@ -160,6 +160,20 @@ Setup commands are in
   job reads that line, posts the release link and then closes the issue
   ([release steps](../release.md#steps), #1416). Any other `Refs` satisfies
   nothing beyond the forbidden-keyword case above.
+- **Builder linkage check (#1418).** Before opening, the builder reads the
+  item's newest signed allocation: the newest coordinator-signed record on
+  the item that says which issue the PR closes (its `pass=flavor` record, or
+  a later `pass=steer` that reallocates it). It cites that record's URL in
+  `## Context` and runs `scripts/check-pr-linkage.py --body-file <file>
+  --closes <n> --allocation <url>` (a release cut: `--release <n>`), fixing
+  every finding before opening. Each allocated issue needs exactly one whole
+  `Closes #<n>` line; every other closing keyword is flagged, descriptive
+  mentions of closed issues included: write `#20, now closed`, not
+  `closed #20`. If a newer allocation names another issue after the PR
+  opens, the builder reports the mismatch to the coordinator in a signed
+  note and never edits the body. This is a builder duty, not a merge gate,
+  and runs whether or not the
+  [pre-review check](../protocol.md#builder-pre-review-check) is enabled.
 - **Umbrella and TRD issues are never auto-closed.** A child issue says
   `Part of #<n>` for its umbrella, never a closing keyword.
 - **Dependencies.** An issue body lists `Depends on #<n>`; dependent PRs merge

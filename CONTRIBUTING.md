@@ -25,6 +25,22 @@ Changes to `docs/specs/framework.md` are spec changes. They take the spec
 path in [protocol Stages](docs/protocol.md#2-stages) and merge only with the
 permission in [stage 7](docs/protocol.md#7-merge-gate-synthesizer).
 
+## Doc moves
+
+A PR that moves, extracts, splits or quotes prose into another file (a doc
+move under [documentation principle 4](docs/README.md#documentation-principles),
+an onboarding or quickstart extract, a module split) compares the moved text
+with its source before review, sentence by sentence. Check every qualifier:
+the role or trigger it applies to, its runtime or backend scope, conditions
+(`when`, `only`, `unless`, `before`), exceptions and the scope of each
+`never` or `every`. The builder records the comparison in the PR body under
+`## Doc move comparison`: one row per moved rule with the source
+`path:line`, the destination `path:line` and `kept` or what changed. A
+qualifier the destination drops or widens is a defect to fix in the same PR;
+a contradiction found in the source is filed as its own correction issue
+(#1125). Green checks do not
+prove this: `check-repo.py` checks links and anchors, not meaning.
+
 ## Two copies, one change
 
 The box skills are the **live** copies the bots load; this repo is the
