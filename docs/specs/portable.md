@@ -689,8 +689,8 @@ Opened by the spec slice #1691, part of
 seven builds, one PR per issue. No item below dispatches before this slice
 merges. B3 waits for B1 and B2, and B6 waits for B5; every other row
 depends only on this slice. Statuses were set by the status-sync
-slice #1721: five builds landed; B5 and B6 were deferred to the backlog
-when the owner closed M47, so their rows stay `open` with no milestone.
+slice #1721 for the five landed builds. B5 and B6 are still open, and
+M47 stays open until they land; its own closing status sync follows them.
 
 | ID | Issue | Scope | Depends on | Status |
 |---|---|---|---|---|
@@ -698,8 +698,8 @@ when the owner closed M47, so their rows stay `open` with no milestone.
 | B2 | #1537 | Revision-bound memory: render reads core memory at one fresh remote-default SHA (PR #1703) | #1691 | done |
 | B3 | #1090 | A true bootstrap no-op: an unchanged install writes nothing (PR #1716) | #1691, B1, B2 | done |
 | B4 | #1595 | `mdstack connect` dials the inventory host's address (PR #1695) | #1691 | done |
-| B5 | #1252 | A builder run cannot remove another run's working copy (PR #1707, open and escalated on an owner-shell proof); deferred to the backlog | #1691 | open |
-| B6 | #316 | Worktree root parity and conservative GC; waits on B5, deferred to the backlog | #1691, B5 | open |
+| B5 | #1252 | A builder run cannot remove another run's working copy (PR #1707, open, waiting on an owner-shell proof) | #1691 | open |
+| B6 | #316 | Worktree root parity and conservative GC | #1691, B5 | open |
 | B7 | #281 | Ship the shared secret and glob primitives; keep `check-repo.py` internal (PR #1700) | #1691 | done |
 
 Decisions M47 settles (the
@@ -770,18 +770,8 @@ the owner's
 [M45–M48 grant](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6789266394),
 recorded at each head. A status-sync slice closes the milestone.
 
-Questions M47 settled at close:
-
-- **B5 and B6 deferred, not landed.** B5's live confinement proof needs
-  an owner-shell run, so PR #1707 stayed escalated; B6 waits on B5. The
-  owner closed M47 without them
-  ([decision](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6814282786)):
-  #1252 and #316 stay open with no milestone and ship in a later release
-  once planned. The B5 boundary and #316 decisions above stand for that
-  plan.
-- **Release.** M47 closed without B5 and B6, and its landed work ships in
-  7.10.0 (#1720), not 7.9.0: M48 finished first, and 7.9.0 is skipped.
-  M47 and M48 ran together and share the lessons recorded under M48.
+Release: M47's landed work ships in 7.10.0 (#1720), not 7.9.0, which is
+skipped because M48 finished first. B5 and B6 ship in the next release.
 
 ### M48: release integrity and reports
 
@@ -929,7 +919,7 @@ Questions M48 settled at close:
 - **D1 baseline.** 7.9.0 never published, so v7.8.0 stayed the pinned
   predecessor for the 7.10.0 cut.
 
-Lessons (from M47 and M48 together):
+Lessons:
 
 - **A sensitive merge-ok is head-pinned (#1717).** A clean merge-up with an
   identical patch dropped #1711's owner merge-ok, though a verdict ports
