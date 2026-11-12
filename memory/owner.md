@@ -38,6 +38,9 @@ through a reviewed memory PR (`docs/memory.md`).
   records, never in external documents.
 - Ship an approved release; a newly found non-test fix goes into the next
   one. Re-run a flaky CI job; never waive CI.
+- "Close M<n>" means finish every issue in the milestone, then close it;
+  never close one with unfinished items deferred to the backlog (#985
+  c6814376023).
 - "Light mode" means caps 3 builders / 3 reviewers with `max_suites = 2`.
   "Full speed" means the profile's FULL SPEED SETUP block: caps 10/10,
   `max_suites = 99`, `max_load` 288, `load_high`/`load_low` 18/12 per CPU,
