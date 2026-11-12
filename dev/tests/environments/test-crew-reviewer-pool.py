@@ -334,16 +334,16 @@ class ReviewerPool(route_tests.Route):
     def test_published_merge_up_note_without_delta_keeps_current_handling(self):  # #1682
         route = self.mod.commands()["route"]
         previous = self.approved_push()
-        note = self.published_note(previous)
-        self.live["reviews"] = [dict(body=note)]
+        note, verdicts = self.published_note(previous), self.live["reviews"][:-1]
+        self.live["reviews"] = verdicts + [dict(body=note)]
         self.assertTrue(route.merge_up_delta(self.live, self.sha, "Ben"))
         clean = note.replace("The merge hit two text conflicts and one semantic conflict, and all three are resolved.",
                              "The merge was clean; no conflicts.")
         for body in (clean, note.replace(self.sha, "f" * 40), note.replace("Ben (Builder)", "Bo (Builder)"),
                      note.split("\n— ")[0], note.replace("[Ben/merge-up]", "[Ben/status]")):
-            self.live["reviews"] = [dict(body=body)]
+            self.live["reviews"] = verdicts + [dict(body=body)]
             self.assertFalse(route.merge_up_delta(self.live, self.sha, "Ben"))
-        self.live["reviews"] = [dict(body=clean)]
+        self.live["reviews"] = verdicts + [dict(body=clean)]
         self.live["labels"] = [{"name": "crew:approved"}]
         self.save()
         self.queue(dict(reason="status", window="ben-7", line="done: #7 #12 " + self.sha),
