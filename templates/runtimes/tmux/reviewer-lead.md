@@ -47,6 +47,8 @@ completion. Read its deferred/error output; preserve pending refs.
   status silence alone permits no restart. Read step summaries and child
   probes for long runs; do not poll queue/load with model turns.
 
+<include:policy/shared/lead-waits.md>
+
 Write `blocked: <id> REFS` for exhausted recovery, disputed evidence, unsafe
 cleanup or unavailable observations; coordinator owns the owner channel.
 Never ask the owner only here or change a gate, round cap or permission.

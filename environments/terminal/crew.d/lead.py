@@ -19,6 +19,7 @@ from crew_shared import (
 POOLS = {"builder": 2, "reviewer": 3, "synthesizer": 1}
 DEFERRALS = {"capacity", "load", "suites", "probe-unavailable"}
 BLOCKS = {"spawn-failure", "missing-dependency", "owner-decision", "lead-fault"}
+WAITS = {"owner", "hold", "ci"}  # typed waits a lead reports as `waiting: #<n> KIND id=<id>` (#1715)
 
 
 def solo(values, issue=None, pr=None):
@@ -172,19 +173,79 @@ def deferred_ids(state, name):
     return found
 
 
-def retry_pending(args, name=None, recheck=False):
-    """Nudge each lead with its first pending message. On the 60-second backstop (`recheck`), acknowledged deferred
+def fingerprint(state, ref):
+    """Token-free fresh state for a waited ref: mdstack poll's observed PR, its hold, its owner-answer count and an
+    open owner ask."""
+    n = ref.lstrip("#")
+    try:
+        with open(os.path.join(state, "poll-state.json")) as f:
+            poll = json.load(f)
+    except (OSError, ValueError):
+        poll = {}
+    return [poll.get("observed", {}).get(n), "#" + n in poll.get("held", []), poll.get("answers", {}).get("#" + n),
+            os.path.exists(os.path.join(state, "asks", n + ".json"))]
+
+
+def waits(state, name=None):
+    """leads/waits.json: per lead, {id: {"line", "seen", "woke"}} for its acknowledged waits; one lead's with `name`."""
+    try:
+        with open(os.path.join(state, "leads", "waits.json")) as f:
+            book = json.load(f)
+    except (OSError, ValueError):
+        book = {}
+    return book if name is None else book.get(name, {})
+
+
+def actionable(state, name):
+    """Pending messages less acknowledged owner, hold or CI waits whose ref's fresh state is unchanged since their
+    `waiting:` line. A changed state wakes the id until a later `waiting:` line; leads/waits.json keeps the record."""
+    messages = pending(state, name)
+    status = os.path.join(state, "status", name + ".status")
+    acked, latest = set(), {}
+    if os.path.exists(status):
+        with open(status) as f:
+            for i, line in enumerate(f):
+                words = line.split()
+                if line.startswith("ack: ") and len(words) > 1:
+                    acked.add(words[1])
+                elif len(words) == 4 and words[0] == "waiting:" and words[1].startswith("#") and \
+                        words[2] in WAITS and words[3].startswith("id=") and words[3][3:] in acked:
+                    latest[words[3][3:]] = [i, words[1]]
+    book = waits(state)
+    old, mine, waiting = book.get(name, {}), {}, set()
+    for m in messages:
+        if m["id"] not in latest:
+            continue
+        line, ref = latest[m["id"]]
+        now = fingerprint(state, ref)
+        rec = old.get(m["id"])
+        rec = rec if rec and rec["line"] == line else {"line": line, "seen": now, "woke": False}
+        rec = dict(rec, woke=rec["woke"] or rec["seen"] != now)  # a copy, so a change is saved
+        mine[m["id"]] = rec
+        if not rec["woke"]:
+            waiting.add(m["id"])
+    if mine != old:
+        book[name] = mine
+        os.makedirs(os.path.join(state, "leads"), exist_ok=True)
+        save_record(os.path.join(state, "leads", "waits.json"), book)
+    return [m for m in messages if m["id"] not in waiting]
+
+
+def retry_pending(args, name=None, recheck=False, admission=False):
+    """Nudge each lead with its first actionable message (unchanged acknowledged waits are skipped on every path,
+    #1715). On the lead backstop (`recheck`), acknowledged deferred
     handoffs are nudged only when a scheduler walk (writing only target progression) would admit their ref now (#1502); slot releases and
-    other callers nudge them as before."""
+    other callers nudge them as before. `admission` (the watcher's 60 s admission recheck) checks only those deferred
+    handoffs, so it never re-types other ids between their backed-off retries (#1715)."""
     _, session, state = profile(args)
     for worker, rec in records(state):
         if name is not None and worker != name:
             continue
-        messages = pending(state, worker)
-        if messages and recheck:
+        messages = actionable(state, worker)
+        if messages and (recheck or admission):
             deferred = deferred_ids(state, worker)
             waiting = [m for m in messages if m["id"] in deferred]
-            messages = [m for m in messages if m["id"] not in deferred]
+            messages = [] if admission else [m for m in messages if m["id"] not in deferred]
             if not messages and waiting:
                 admit = commands()["schedule"].admissible(args, rec["role"].removesuffix("-lead"))
                 messages = [m for m in waiting if "#%s" % m["refs"][0].lstrip("#") in admit]
@@ -271,7 +332,7 @@ def register(sub):
     p.add_argument("--timeout", type=float, default=15)
     p.add_argument("--wait-ack", type=float)
     p.add_argument("--detail", default="", help="report: observed admission inputs or actionable block details")
-    p.add_argument("--id", help="report: the deferred handoff's inbox id; its 60 s backstop nudge then waits for admission")
+    p.add_argument("--id", help="report: the deferred handoff's inbox id; its backstop nudge then waits for admission")
     p.add_argument("--project")
     p.add_argument("--org-profile")
 

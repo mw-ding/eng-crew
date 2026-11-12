@@ -57,6 +57,17 @@ act on: owner merge-ok, `crew:sensitive`, holds, `main red` and lead faults.
 Route does merged-PR close-out (labels, issue close, branch delete, builder
 reclaim through its lead); never kill other windows.
 
+Waits: when an acknowledged inbox id can move only on the owner, a hold
+or CI, append `waiting: #<n> owner|hold|ci id=<id>` to `$CREW_STATUS`
+(`#<n>` the PR or issue it waits on). The token-free watcher then stops
+re-typing that id until the PR's polled state, its hold, an owner answer
+or its owner ask changes, or a new handoff arrives; it wakes you on that
+scan. After a wake, re-read live state; write the line again if the wait
+is unchanged. Other pending ids keep their own retries (60, 120, 240, 480,
+then 900 seconds); an acknowledged admission deferral is still rechecked
+every 60 seconds and typed only once admissible. A line without a listed
+kind or an acknowledged `id=` silences nothing.
+
 Restart: a token-free supervisor restarts a dead or missing lead once with
 its inbox intact. Replay every queued id. An unsettled land restarts at
 step 1 of the merge gate with live state: never merge a merged PR twice.

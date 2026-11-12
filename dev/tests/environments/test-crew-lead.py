@@ -338,12 +338,132 @@ class BuilderLead(LivenessBase):
         self.put("wake/queue.jsonl", json.dumps(wakes[0]) + "\n")
         self.assertEqual(self.crew("route", "--project", self.project, "--timeout", "1").returncode, 0)
         self.assertTrue(any(c[0] == "send-keys" and "inbox: deferred" in c for c in self.calls()[before:]))
-        self.assertEqual([w["reason"] for w in self.scan(now + 120, self.seen) if w["reason"] == "lead-backstop"],
+        self.assertFalse(any(w["reason"] == "lead-backstop" for w in self.scan(now + 179, self.seen)))
+        self.assertEqual([w["reason"] for w in self.scan(now + 180, self.seen) if w["reason"] == "lead-backstop"],
                          ["lead-backstop"])
         self.put("status/ben-lead.status", "ack: deferred\ndone: deferred\n")
-        self.assertFalse(any(w["reason"] == "lead-backstop" for w in self.scan(now + 180, self.seen)))
+        self.assertFalse(any(w["reason"] == "lead-backstop" for w in self.scan(now + 2000, self.seen)))
         if TRANSCRIPT:
-            print("deferral backstop: retry at 60 s, again at 120 s; completed request stops retries")
+            print("deferral backstop: retry at 60 s, again 120 s later; completed request stops retries")
+
+    def retries(self, start, probes, seen=None):
+        """Offsets in `probes` (seconds after `start`, scanned in order, state carried) whose scan woke the lead."""
+        self.seen, times = seen or {"offsets": {}, "keys": {}}, []
+        for t in sorted(set(probes) | {0}):  # the scan that first sees the demand arms its timer
+            if any(w["reason"] == "lead-backstop" for w in self.scan(start + t, self.seen)):
+                times.append(t)
+        return times
+
+    @staticmethod
+    def edges(*due):
+        """Each due offset and the second before it: a wake must land on the first and never the second."""
+        return {t for d in due for t in (d - 1, d)}
+
+    def poll(self, ci, held=()):
+        self.put("poll-state.json", json.dumps({"observed": {"19": {"head": "a" * 40, "ci": ci}}, "held": list(held)}))
+
+    def test_unchanged_demand_backs_off_to_the_cap_and_changed_demand_restarts(self):  # #1715
+        self.assertEqual(self.ensure(), 0)
+        self.put("inbox/ben-lead.jsonl", json.dumps(dict(id="a", kind="build", refs=["#8"])) + "\n")
+        self.put("status/ben-lead.status", "ack: a\n")
+        now = 2_000_000_000
+        schedule = [60, 180, 420, 900, 1800, 2700]
+        self.assertEqual(self.retries(now, self.edges(*schedule)), schedule)
+        self.put("inbox/ben-lead.jsonl", "".join(json.dumps(dict(id=i, kind="build", refs=["#8"])) + "\n"
+                                                 for i in ("a", "b")))
+        self.assertEqual(self.retries(now + 2701, self.edges(60, 180), self.seen), [60, 180])  # new set: 60 s again
+        restarted = json.loads(json.dumps(self.seen))  # watch-state.json across a watcher restart
+        self.assertEqual(self.retries(now + 2902, self.edges(219), restarted), [219])  # 240 s after +2881: kept
+        if TRANSCRIPT:
+            print("unchanged demand: 60/120/240/480/900/900; new id restarts at 60; restart keeps the timer")
+
+    def test_acknowledged_waits_never_renudge_until_their_state_changes(self):  # #1715
+        self.assertEqual(self.ensure(), 0)
+        self.put("inbox/ben-lead.jsonl", "".join(json.dumps(dict(id=i, kind="land", refs=["#19", "a" * 40])) + "\n"
+                                                 for i in ("owner", "ci")))
+        self.poll("pending")
+        waits = "ack: owner\nack: ci\nwaiting: #19 owner id=owner\nwaiting: #19 ci id=ci\n"
+        self.put("status/ben-lead.status", waits)
+        now = 2_000_000_000
+        self.assertEqual(self.retries(now, range(0, 3601, 120)), [])  # an hour of unchanged waits: no wake
+        self.assertEqual(self.backstop(waits), ([], []))
+        self.assertEqual(self.backstop(waits, recheck=False), ([], []))  # slot release or coordinator backstop
+        restarted = json.loads(json.dumps(self.seen))
+        self.poll("success")  # terminal CI state, seen token-free in mdstack poll's snapshot
+        wakes = [w for w in self.scan(now + 3601, restarted) if w["reason"] == "lead-backstop"]
+        self.assertEqual([w["window"] for w in wakes], ["ben-lead"])  # on that scan, not after a deadline
+        self.assertEqual(self.backstop(waits), (["owner"], []))
+        self.put("status/ben-lead.status", waits + "waiting: #19 owner id=owner\nwaiting: #19 ci id=ci\n")
+        self.assertEqual(self.retries(now + 3602, range(0, 3601, 120), self.seen), [])  # re-reported: quiet again
+        if TRANSCRIPT:
+            print("owner and CI waits: 0 wakes in 1 h; CI success wakes at once; re-reported waits are quiet")
+
+    def drive(self, now, admit=()):
+        """One watcher scan at `now`, each lead-backstop wake routed in-process with `admit` as the scheduler walk;
+        the inbox ids typed into the lead."""
+        route, before = self.mod.commands()["route"], len(self.calls())
+        with mock.patch.dict(os.environ, self.env), mock.patch.object(
+                self.mod.commands()["schedule"], "admissible", return_value=set(admit)):
+            for w in self.mod.scan(self.state, "crew-acme-widgets", now, 900, self.seen):
+                if w["reason"] == "lead-backstop":
+                    self.assertTrue(route.route_record(self.args, route.profile(self.args)[0], self.state, w))
+        return [a[len("inbox: "):] for c in self.calls()[before:] if c[0] == "send-keys"
+                for a in c if a.startswith("inbox: ")]
+
+    def test_admission_becoming_available_wakes_between_backed_off_retries(self):  # #1715 r1, #1502
+        self.assertEqual(self.ensure(), 0)
+        self.put("inbox/ben-lead.jsonl", json.dumps(dict(id="d", kind="build", refs=["#8"])) + "\n")
+        self.put("status/ben-lead.status", "ack: d\ndeferred: #8 load /p id=d\n")
+        self.seen, now = {"offsets": {}, "keys": {}}, 2_000_000_000
+        for t in (0, 60, 180, 420, 900):  # backed off to the 900 s cap; load stays high: nothing typed
+            self.assertEqual(self.drive(now + t), [])
+        self.assertEqual(self.seen["lead_retries"]["ben-lead"]["due"], now + 1800)
+        self.assertEqual(self.drive(now + 959, admit={"#8"}), [])  # load freed at +901
+        self.assertEqual(self.drive(now + 960, admit={"#8"}), ["d"])  # the 60 s recheck, not the +1800 retry
+        self.put("inbox/ben-lead.jsonl", "".join(json.dumps(dict(id=i, kind="build", refs=["#8"])) + "\n"
+                                                 for i in ("d", "e")))
+        self.put("status/ben-lead.status", "ack: d\ndeferred: #8 load /p id=d\nack: e\n")
+        self.seen = {"offsets": {}, "keys": {}}
+        self.assertEqual(self.drive(now + 2000), [])
+        self.assertEqual(self.drive(now + 2060), ["e"])  # e's first retry
+        self.assertEqual(self.drive(now + 2120), [])  # an admission recheck never re-types e
+        self.assertEqual(self.drive(now + 2180), ["e"])  # e's 120 s step
+        if TRANSCRIPT:
+            print("load deferral freed at +901: typed at +960 (retry cap +1800); rechecks never re-type other ids")
+
+    def test_owner_answer_recovers_a_missed_event_without_a_new_id(self):  # #1715 r1
+        self.assertEqual(self.ensure(), 0)
+        self.put("inbox/ben-lead.jsonl", json.dumps(dict(id="o", kind="land", refs=["#19", "a" * 40])) + "\n")
+        self.put("asks/19.json", json.dumps({"deadline": "2099-01-01T00:00:00+00:00"}))
+        poll = {"observed": {"19": {"head": "a" * 40, "ci": "success"}}, "held": [], "answers": {"#19": 1}}
+        self.put("poll-state.json", json.dumps(poll))
+        status = "ack: o\nwaiting: #19 owner id=o\n"
+        self.assertEqual(self.backstop(status), ([], []))
+        poll["answers"]["#19"] = 2  # the owner answered; head, CI, hold and the ask are unchanged
+        self.put("poll-state.json", json.dumps(poll))
+        self.assertEqual(self.backstop(status), (["o"], []))
+        self.assertTrue(self.lead.waits(self.state, "ben-lead")["o"]["woke"])
+        if TRANSCRIPT:
+            print("owner wait: answers 1 -> 2 with nothing else changed wakes o with no new handoff")
+
+    def test_mixed_waits_and_untyped_status_keep_other_ids_retrying(self):  # #1715
+        self.assertEqual(self.ensure(), 0)
+        self.put("inbox/ben-lead.jsonl", "".join(json.dumps(dict(id=i, kind="build", refs=["#19"])) + "\n"
+                                                 for i in ("w", "x")))
+        self.poll("pending", held=["#19"])
+        status = "ack: w\nwaiting: #19 hold id=w\nack: x\n"
+        self.assertEqual(self.backstop(status), (["x"], []))
+        self.put("status/ben-lead.status", status)
+        self.assertEqual(self.retries(2_000_000_000, self.edges(60, 180)), [60, 180])
+        for untyped in ("waiting: #19 hold\n", "waiting: #19 lunch id=x\n", "waiting: #19 hold id=y\n",
+                        "blocked: #19 owner id=x\n"):
+            with self.subTest(untyped=untyped):
+                self.assertEqual(self.backstop(status + untyped), (["x"], []))
+        self.poll("pending")  # hold released
+        self.assertEqual(self.backstop(status + "done: x\n"), (["w"], []))
+        self.assertEqual(self.backstop("waiting: #19 hold id=w\nack: w\n"), (["w"], []))  # never acked when written
+        if TRANSCRIPT:
+            print("hold wait w + actionable x: x retries on schedule; untyped lines silence nothing; release wakes w")
 
     def backstop(self, status, admit=(), recheck=True):
         """One lead retry with `status` as the lead status and `admit` as the scheduler walk; (nudged ids, walks)."""

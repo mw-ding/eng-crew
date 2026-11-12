@@ -492,13 +492,34 @@ capacity` is retired: no brief calls it since both leads use the scheduler.
 consumes those status wakes without involving the coordinator; keep the
 handoff pending for a backstop or slot release. With `--id ID`, the lead's
 inbox id for the deferred handoff, the status line ends `id=ID`; once that id
-is acknowledged, the 60-second backstop stops re-typing it and instead re-runs
+is acknowledged, the watcher's 60-second admission recheck stops re-typing it and instead re-runs
 the scheduler walk, persisting only the target's progression (no
 reservation, decision log or deferral), and nudges only when the ref is now
 admissible, so a target throttled under high load recovers on that cadence.
 A worker's `done:` (slot release) and the coordinator backstop still nudge it,
 an unacknowledged or unreported id keeps the normal retry, and a re-sent
-handoff gets a new id. Only `spawn-failure`,
+handoff gets a new id.
+
+The watcher's lead backstop (#1715) retries a lead's actionable pending ids
+after 60, 120, 240, 480, then every 900 seconds while that set is unchanged;
+a changed set restarts at 60 seconds, and the timer survives a watcher restart
+in `wake/watch-state.json`. An id that can move only on the owner, a hold or
+CI is a wait: the lead acknowledges it and appends
+`waiting: #<n> owner|hold|ci id=<id>` (the lead templates' Waits paragraph).
+While the ref's fresh state is unchanged, no path re-types that id (lead
+backstop, slot release or coordinator backstop) and route consumes the line.
+Fresh state is token-free: `mdstack poll`'s `observed` entry, `held` list and
+owner-answer count (`answers`) in `poll-state.json` and an open `asks/<n>.json`, recorded per wait in
+`leads/waits.json`, which survives restarts. A change wakes the id on that
+scan, without waiting for a deadline; it stays actionable until a later
+`waiting:` line. New handoffs, such as the coordinator's land re-send on an
+owner answer or route's `ci-passed` event, are new ids and wake at once.
+An acknowledged admission deferral keeps its 60-second token-free
+`admission recheck`, which types only that id and only once its ref is
+admissible, so admission becoming available wakes the lead within a minute
+whatever the backed-off retry. Other ids keep their own retries; a line without a listed kind or an
+acknowledged `id=` silences nothing. Events wake leads and supply no
+permission. Only `spawn-failure`,
 `missing-dependency`, `owner-decision` and `lead-fault` reasons send a
 `blocked` coordinator inbox message with a durable block note. Identical
 reason, refs and detail reuse that message across lead restarts; changed
