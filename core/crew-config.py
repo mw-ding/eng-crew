@@ -107,14 +107,16 @@ KNOWLEDGE_OPERATIONS = {"knowledge": ["read", "propose-edit"]}
 # them (docs/handoff.md). read-diff: needed only by a profile with [[sensitive.content]] rules
 # (docs/interfaces.md#change, #879).
 # read-landed: only an async land whose status mapping names `landed` without a revision group (#1042).
-# land-stack and stack-status: only a backend declaring land.stack, the session stack land (#1605).
+# land-stack and stack-status: only a backend declaring land.stack, the session stack land (#1605); read-revision-id
+# only a change.land-stack using <stack-revisions> (#1722).
 # land-delete-arg: the land argument that also deletes an eligible head branch (#395); without it, close-out deletes.
 CONDITIONAL_OPERATIONS = {"change": ["publish", "land-status", "read-branch-head", "read-diff", "read-landed",
-                                     "land-stack", "stack-status", "land-delete-arg"],
+                                     "land-stack", "stack-status", "read-revision-id", "land-delete-arg"],
                           "tracker": ["unlabel"]}
 LAND_FIELDS = {"mode": (str, "sync"), "opens_draft": (bool, False), "serializes": (bool, False),
                "tests_against_tip": (bool, False), "change_placeholder": (str, "n"), "head_guard": (bool, True),
-               "status": (dict, None), "stack": (bool, False), "stack_tests_against_tip": (bool, False)}
+               "status": (dict, None), "stack": (bool, False), "stack_tests_against_tip": (bool, False),
+               "stack_status": (str, "stack")}
 LAND_STATES = ["none", "queued", "landing", "landed", "failed"]
 STRATEGY_FIELDS = {"update_from_base": (str, "merge"), "retains_prior_heads": (bool, False)}
 ASYNC_RUNTIMES = ["tmux", "session"]  # runtimes with an async land binding; others refuse land.mode = "async"
@@ -441,8 +443,11 @@ def check_land(err, land, change_caps, runtime=None):
         err("land.mode", "runtime %s has no async land binding; expected sync" % runtime)
     if land.get("opens_draft") and unsupported("publish"):
         err("land.opens_draft", "needs change.publish supported or emulated")
+    per_change = land.get("stack") and land.get("stack_status") == "per-change"
+    # a sync stack binding fills its own change placeholder; its per-change readback maps native status (#1722)
+    allowed = {"change_placeholder": land.get("stack"), "status": per_change}
     for key in ("opens_draft", "serializes", "tests_against_tip", "change_placeholder", "status"):
-        if mode == "sync" and land.get(key):
+        if mode == "sync" and land.get(key) and not allowed.get(key):
             err("land." + key, "only valid with mode = \"async\"")
     if mode == "sync" and land.get("head_guard") is False:
         err("land.head_guard", "only valid with mode = \"async\"")
@@ -459,11 +464,17 @@ def check_land(err, land, change_caps, runtime=None):
     if landed_needs_read(status) and unsupported("read-landed"):
         err("land.status", "a landed pattern without a (?P<revision>...) group needs change.read-landed supported "
             "or emulated")
-    for op in ("land-stack", "stack-status"):  # session stack land (docs/interfaces.md#stack-land, #1605)
+    check_choice(err, "land.stack_status", land.get("stack_status", "stack"), ["stack", "per-change"])
+    readback = "land-status" if per_change else "stack-status"
+    for op in ("land-stack", readback):  # session stack land (docs/interfaces.md#stack-land, #1605, #1722)
         if land.get("stack") and unsupported(op):
             err("land.stack", "needs change.%s supported or emulated" % op)
     if land.get("stack_tests_against_tip") and not land.get("stack"):
         err("land.stack_tests_against_tip", "only valid with stack = true")
+    if "stack_status" in land and not land.get("stack"):
+        err("land.stack_status", "only valid with stack = true")
+    if per_change and land.get("stack_tests_against_tip"):
+        err("land.stack_tests_against_tip", "per-change readback names no combined-stack check; expected false")
 
 
 def landed_needs_read(status):
