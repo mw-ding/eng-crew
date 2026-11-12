@@ -1067,7 +1067,8 @@ class ResolveTest(unittest.TestCase):
             code, lines = resolve(session % options + triage, default=VALID)
             self.assertEqual(code, 1, lines)
             self.assertTrue(any(ln.endswith("runtime.options.researchers: 0 runs no researcher, but triage.enabled = true "
-                                            "needs one for its sweep") and ln.startswith(layer) for ln in lines), lines)
+                                            "needs one for its sweep; set researchers >= 1 (the session default is 0, "
+                                            "#1724)") and ln.startswith(layer) for ln in lines), lines)
         code, lines = resolve(session % "researchers = 1" + triage, default=VALID)
         self.assertEqual(code, 0, lines)
         self.assertIn("runtime.options.researchers = 1  # project", lines)

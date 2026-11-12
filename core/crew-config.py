@@ -1121,7 +1121,8 @@ def cross_check(profile, err):
         if type(value) is int and value < (0 if key in ZERO_CAPS else 1):  # researchers = 0: no researcher (#926)
             err("runtime.options." + key, "must be >= 1, got %d" % value)
     if profile["runtime"].get("options", {}).get("researchers") == 0 and profile.get("triage", {}).get("enabled"):
-        err("runtime.options.researchers", "0 runs no researcher, but triage.enabled = true needs one for its sweep")
+        err("runtime.options.researchers", "0 runs no researcher, but triage.enabled = true needs one for its sweep; "
+            "set researchers >= 1 (the session default is 0, #1724)")
 
 
 # --- pack manifests (13.15, #127): each backend's capability declaration, under every layer. ---
