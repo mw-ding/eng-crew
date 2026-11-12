@@ -701,6 +701,8 @@ class SessionRevisionStackLand(LandFixture):
         self.assertEqual(self.stack_intent()["revisions"], ["D107", "D108", "D109"])
         self.assertEqual(self.stack_intent()["landed"], [LANDED, STACK_LANDED, TOP_LANDED])
         self.assertEqual(self.calls("land"), [])
+        if "--owner-transcript" in sys.argv:
+            print("backend calls, in order:\n" + "".join("  exland %s\n" % " ".join(c) for c in self.calls()), end="")
         self.assertEqual(self.stack("stack-done").returncode, 0)
         self.assertIsNone(self.stack_intent())
 
