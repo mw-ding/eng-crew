@@ -85,7 +85,7 @@ MAPPED = {
     "hold-label-blocks": ["runtime.options.hold_label_blocks"], "timezone": ["runtime.timezone"], "fallback-engine": ["engines.fallback_engine"],
     "tested-update": ["strategy.update_from_base"],
     "land-step": ["land.mode"], "land-publish": ["land.opens_draft"], "land-rule": ["land.tests_against_tip"],
-    "land-stack": ["land.stack"],
+    "land-stack": ["land.stack"], "spec-home": ["docs.homes.specs", "docs.specs_external"],
 }
 for role, metadata in ROLES.items():
     MAPPED[role.title() + "Bot"] = [metadata["identity_key"] + ".name"]
@@ -418,6 +418,8 @@ class Renderer:
             try:
                 with open(source, encoding="utf-8") as f:
                     text = f.read()
+                if name == "include:docs/roles.md":  # the bookend rule names the configured specs home (#1725)
+                    text = text.replace("milestone in `docs/specs/`", "milestone in " + self.spec_home())
                 if name.endswith("#pr-conventions"):
                     text = text.split("## PR conventions\n", 1)[1].split("## Parallelism\n", 1)[0]
                     text = ("## PR conventions\n" + text).rstrip()
@@ -457,6 +459,8 @@ class Renderer:
             raise ValueError("unknown placeholder <%s>" % name)
         if name == "control-item":
             return str(self.values.get("repo.control_item", "none"))
+        if name == "spec-home":
+            return self.spec_home()
         if name == "tested-update":  # undeclared: merge (docs/interfaces.md#rebase-update-from-base)
             return ("rebase onto the default branch and upload (no trains)"
                     if self.values.get("strategy.update_from_base") == "rebase" else "update-branch or green train")
@@ -521,6 +525,12 @@ class Renderer:
 
     def line(self, text):
         return TOKEN.sub(self.fill, text)
+
+    def spec_home(self):
+        """The specs home the bookend rule names: [docs] specs_external, else homes.specs, else docs/specs/ (#1725)."""
+        if self.values.get("docs.specs_external"):
+            return "the external spec home `%s`" % self.values["docs.specs_external"]
+        return "`%s/`" % self.values.get("docs.homes.specs", "docs/specs/").rstrip("/")
 
     def emoji(self, key, fallback):
         """The profile emoji at key (else fallback) plus a space; nothing with report.emoji = false (#431)."""

@@ -153,6 +153,7 @@ TRIAGE_MODES = ["shadow", "apply"]  # [triage] mode (docs/triage.md Shadow mode 
 # [report] status set and its neutral fallbacks (docs/roles.md Report skeleton, #431); emoji = false drops every emoji.
 REPORT_STATUS = {"pass": "✅", "changes": "🔁", "landed": "🚢", "escalated": "⛔", "blocked": "🚧"}
 DOCS_DEFAULTS = {"enabled": False, "interval_days": 7, "stale_days": 90, "size_budget": 500}  # [docs] (#1024)
+SPEC_EXTERNAL = re.compile(r"[a-zA-Z][a-zA-Z0-9+.-]*://[^\s`<>]+")  # [docs] specs_external: a URL (#1725)
 DOCS_ESSENTIALS = ["overview", "agent_guide", "architecture", "runbook", "decisions", "specs"]  # docs/project-doc-set.md
 INSTALL_SOURCES = ["github", "url", "mirror", "git"]  # [install] source (docs/bootstrap.md Release sources, #882)
 TRACKER_REPO = re.compile(r"[A-Za-z0-9_.<>-]+/[A-Za-z0-9_.<>-]+")  # <owner>/<repo> before install
@@ -820,7 +821,8 @@ def validate(profile, err, backends=BACKENDS, pack_dir=None, item=None):
         check_table(err, "reflection", top["reflection"], {"enabled": (bool, False)})
     if "docs" in top:  # project docs pass opt-in (docs/project-docs.md Profile opt-in, #1024)
         fields = {k: (type(v), v) for k, v in DOCS_DEFAULTS.items()}
-        doc = check_table(err, "docs", top["docs"], dict(fields, repos=("list[str]", None), homes=(dict, None)))
+        doc = check_table(err, "docs", top["docs"], dict(fields, repos=("list[str]", None), homes=(dict, None),
+                                                        specs_external=(str, None)))
         for key in ("interval_days", "stale_days", "size_budget"):
             if doc.get(key, 1) < 1:
                 err("docs." + key, "must be >= 1, got %d" % doc[key])
@@ -835,6 +837,11 @@ def validate(profile, err, backends=BACKENDS, pack_dir=None, item=None):
                 err("docs.homes." + key, "expected a repo-relative path or path#anchor, got %r" % home)
             elif key == "specs" and "#" in home:
                 err("docs.homes.specs", "expected a repo-relative directory, got %r" % home)
+        if "specs_external" in doc:  # a reference to a tracker item or document, never a path or command (#1725)
+            if not SPEC_EXTERNAL.fullmatch(doc["specs_external"]):
+                err("docs.specs_external", "expected an absolute URL, got %r" % doc["specs_external"])
+            elif "specs" in homes:
+                err("docs.specs_external", "conflicts with docs.homes.specs; name one specs home")
     if "install" in top:
         validate_install(top["install"], err)
     if "sensitive" in top:

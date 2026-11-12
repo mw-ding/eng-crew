@@ -85,7 +85,10 @@ def check_target(path, old, doctor, project, base=None):
 
 def spec_scaffold(values, repo):
     """{path: text} seeding the specs home from templates/spec.md when it holds no Markdown spec, else {}
-    (docs/project-doc-set.md Specs, #1225). The seed is the owner's to commit: never owned, excluded or overwritten."""
+    (docs/project-doc-set.md Specs, #1225). The seed is the owner's to commit: never owned, excluded or overwritten.
+    An external specs home ([docs] specs_external, #1725) seeds nothing locally."""
+    if values.get("docs.specs_external"):
+        return {}
     home = repo / values.get("docs.homes.specs", "docs/specs/")
     if home.is_dir() and any(home.rglob("*.md")):
         return {}

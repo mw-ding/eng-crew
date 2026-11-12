@@ -965,6 +965,23 @@ class ResearcherProfile(unittest.TestCase):
             self.assertEqual(code, 1, bad)
             self.assertTrue(any(ln.startswith("crew.toml:%s: " % key) for ln in lines), (bad, lines))
 
+    def test_docs_specs_external_reference(self):  # #1725
+        url = "https://tracker.example/acme/items/12"
+        code, lines = resolve(VALID + '\n[docs]\nspecs_external = "%s"\n' % url, default=VALID)
+        self.assertEqual(code, 0, lines)
+        self.assertIn('docs.specs_external = "%s"  # project' % url, lines)
+        for bad, reason in [('specs_external = "design/specs"', "expected an absolute URL"),
+                            ('specs_external = "gh issue view 12"', "expected an absolute URL"),
+                            ('specs_external = "https://x.example/a b"', "expected an absolute URL"),
+                            ('specs_external = ""', "expected an absolute URL"),
+                            ('specs_external = "%s"\nhomes = { specs = "design/specs" }' % url,
+                             "conflicts with docs.homes.specs")]:
+            code, lines = validate(VALID + "\n[docs]\n" + bad + "\n")
+            self.assertEqual(code, 1, bad)
+            self.assertTrue(any(ln.startswith("crew.toml:docs.specs_external: " + reason) for ln in lines), (bad, lines))
+        code, lines = validate(VALID + '\n[docs]\nspecs_external = "%s"\nhomes = { runbook = "ops.md" }\n' % url)
+        self.assertEqual(code, 0, lines)
+
     def test_install_table_sources_and_refusals(self):  # #943
         code, lines = resolve(VALID, default=VALID)
         self.assertEqual(code, 0, lines)

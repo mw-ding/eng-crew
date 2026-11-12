@@ -222,6 +222,21 @@ class DocsScanTest(unittest.TestCase):
         code, _, err = self.run_scan('\n[docs]\n[docs.homes]\nspecs = "design/specs"\n', {"acme/widgets": path})
         self.assertEqual(code, 0, err)
         self.assertEqual(self.result()["missing"], [])
+        self.assertNotIn("unchecked", self.result())
+
+    def test_external_specs_home_is_recorded_unchecked(self):  # #1725
+        url = "https://tracker.example/acme/items/12"
+        files = {k: v for k, v in CLEAN.items() if not k.startswith("docs/specs/")}
+        code, out, err = self.run_scan('\n[docs]\nspecs_external = "%s"\n' % url,
+                                       {"acme/widgets": make_repo(self.root, "widgets", files)})
+        self.assertEqual(code, 0, err)
+        scan = self.result()
+        self.assertEqual(scan["missing"], [])
+        self.assertEqual(scan["unchecked"], [{"essential": "specs", "home": url,
+                                              "reason": "external spec home: content not checked"}])
+        self.assertNotIn("specs", scan["settings"]["homes"])
+        self.assertEqual(scan["settings"]["specs_external"], url)
+        self.assertIn("0 missing, 0 unbannered, 0 stale, 0 broken_links, 0 oversize, 1 unchecked", out)
 
     def test_reads_the_ref_and_writes_only_scan_json(self):  # AC4
         path = make_repo(self.root, "widgets", CLEAN)

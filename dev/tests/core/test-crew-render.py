@@ -755,6 +755,35 @@ class PackOverlay(unittest.TestCase):
             code = cr.main(["--project", project, "--out", out_dir, *extra])
         return code, buf.getvalue(), out_dir
 
+    def test_spec_bookends_name_the_configured_specs_home(self):  # #1725
+        url = "https://tracker.example/acme/items/12"
+        default = "a milestone opens with its spec slice in\n`docs/specs/`;"
+        homes = {'[docs]\n[docs.homes]\nspecs = "design/specs"\n': "`design/specs/`",
+                 '[docs]\nspecs_external = "%s"\n' % url: "the external spec home `%s`" % url}
+        briefs = {"tmux": "runtime/coordinator.md", "session": "runtime/coordinator.md",
+                  "grok-bot": "runtime/wiring.md"}
+        for runtime, brief in briefs.items():
+            path = os.path.join(self.tmp, runtime + ".toml")
+            with open(path, "w") as f:
+                f.write('[runtime]\nname = "%s"\n' % runtime)
+            code, out, base = self.render(path)
+            self.assertEqual(code, 0, out)
+            before = tree(base)
+            self.assertIn(default, before[brief])
+            for table, home in homes.items():
+                with self.subTest(runtime=runtime, home=home), open(path, "w") as f:
+                    f.write('[runtime]\nname = "%s"\n' % runtime + table)
+                code, out, got = self.render(path)
+                self.assertEqual(code, 0, out)
+                after = tree(got)
+                changed = {rel for rel in after if after[rel] != before[rel]}
+                roles = "runtime/skills/eng-crew-roles/SKILL.md"
+                self.assertEqual(changed, {brief, roles} if runtime == "grok-bot" else {brief})
+                self.assertEqual(after[brief], before[brief].replace(default, default.replace("`docs/specs/`", home)))
+                if runtime == "grok-bot":
+                    self.assertIn("the milestone in %s (scope" % home, after[roles])
+                    self.assertNotIn("the milestone in `docs/specs/`", after[roles])
+
     def test_overlay_policy_fragment_replaces_upstream_fragment(self):  # #1184
         code, out, upstream = self.render(self.project(), "--org-profile", self.org)
         self.assertEqual(code, 0, out)
