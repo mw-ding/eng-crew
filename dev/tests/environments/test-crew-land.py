@@ -13,7 +13,10 @@ before terminal success polls without requesting, after terminal success prints 
 never-requested intent. #1042: a backend with its own change placeholder, native status words (read-landed for
 the revision) and no head-match flag runs request, resume and done; a word no declared pattern matches stays
 unknown and never requests; change.land without <head-sha> is refused unless head_guard = false. #1605: the
-session stack land (land stack, stack-done, resume) with per-member gates, readback and refusals. Run in CI.
+session stack land (land stack, stack-done, resume) with per-member gates, readback and refusals. #1722: a sync
+backend with no shell in its map lands a three-member stack by its top change and recorded revision ids, read back
+per change through land.status; mixed or unknown member states record nothing; resume reuses the recorded ids.
+Run in CI.
 """
 import json
 import os
@@ -55,6 +58,23 @@ FAKE = textwrap.dedent("""\
         sys.exit(int(open(path).read()) if os.path.exists(path) else 0)
     elif args[0] == "landed":
         print(open(os.path.join(d, "landed.txt")).read())
+    elif args[0] == "rev":  # refuses a head other than the member's live one, as the contract requires
+        live, revs = json.load(open(os.path.join(d, "heads.json"))), json.load(open(os.path.join(d, "revs.json")))
+        if live[args[1]] != args[2]:
+            sys.exit(3)
+        print(revs[args[1]])
+    elif args[0] == "member-status":  # rounds of {change: status}; a round advances once every member read it
+        path = os.path.join(d, "members.json")
+        rounds = json.load(open(path))
+        status = rounds["seq"][0][args[1]]
+        rounds["seen"].append(args[1])
+        if set(rounds["seen"]) >= set(rounds["seq"][0]):
+            rounds = {"seq": rounds["seq"][1:] or rounds["seq"], "seen": []}
+        json.dump(rounds, open(path, "w"))
+        print(status)
+    elif args[0] == "submit-stack":  # refuses a member revision id that is not the current one
+        revs = json.load(open(os.path.join(d, "revs.json")))
+        sys.exit(0 if args[2:] == [revs[c] for c in sorted(revs, key=int)] else 4)
     elif args[0] == "land":
         path = os.path.join(d, "land-exit.txt")
         sys.exit(int(open(path).read()) if os.path.exists(path) else 0)
@@ -583,6 +603,196 @@ class SessionStackLand(LandFixture):
         r = self.stack()
         self.assertEqual(r.returncode, 1)
         self.assertIn("runtime.name is tmux, not session", r.stdout)
+        self.assertEqual(self.calls(), [])
+
+
+
+TOP_HEAD, TOP_LANDED = "f" * 40, "9" * 40
+PER_CHANGE_STATUS = textwrap.dedent("""\
+    [land.status]
+    NEW = "none"
+    QUEUED = "queued"
+    MERGING = "landing"
+    "MERGED (?P<revision>[0-9a-f]{40})" = "landed"
+    "ABANDONED: (?P<reason>.+)" = "failed"
+    """)
+
+
+class SessionRevisionStackLand(LandFixture):
+    """#1722: a sync backend whose stack request names the top change plus every member's revision id, and whose
+    status is per change, lands #7, #8 and #9 through `mdstack land stack` with no shell in its map."""
+    STACK = "7:%s,8:%s,9:%s" % (HEAD, STACK_HEAD, TOP_HEAD)
+    REVS = {"7": "D107", "8": "D108", "9": "D109"}
+
+    def setUp(self):
+        super().setUp()
+        mapping_path = os.path.join(self.tmp, "pack", "render", "backends", "example.toml")
+        with open(mapping_path) as f:
+            mapping = f.read()
+        mapping = re.sub(r'(?m)^land = .*$', 'land = "exland land <rev>"\n'
+                         'land-stack = "exland submit-stack <stack-top> <stack-revisions>"\n'
+                         'read-revision-id = "exland rev <rev> <head-sha>"', mapping)
+        mapping = re.sub(r'(?m)^land-status = .*$', 'land-status = "exland member-status <rev>"', mapping)
+        mapping = re.sub(r'(?m)^read-head = .*$', 'read-head = "exland head <rev>"', mapping)
+        with open(mapping_path, "w") as f:
+            f.write(mapping + '\n[placeholders]\nkept = ["rev"]\n')
+        with open(self.manifest) as f:
+            text = f.read().split("\n[land]")[0]
+        with open(self.manifest, "w") as f:
+            f.write(text.replace('land-status = "supported"', 'land-status = "supported"\nland-stack = "supported"\n'
+                                 'read-revision-id = "supported"')
+                    + '\n[land]\nstack = true\nstack_status = "per-change"\nchange_placeholder = "rev"\n'
+                    + PER_CHANGE_STATUS)
+        self.write_profile(runtime="session")
+        with open(self.project, "a") as f:
+            f.write('[runtime.options]\nsession_backend = "native"\nland_poll_interval = 1\nland_timeout = 3\n')
+        self.heads(HEAD, STACK_HEAD, TOP_HEAD)
+        self.revs(self.REVS)
+
+    def heads(self, *shas):
+        with open(os.path.join(self.fake, "heads.json"), "w") as f:
+            json.dump(dict(zip(("7", "8", "9"), shas)), f)
+
+    def revs(self, revs):
+        with open(os.path.join(self.fake, "revs.json"), "w") as f:
+            json.dump(revs, f)
+
+    def rounds(self, *seq):
+        """Each round: one status for every member, or a dict per member."""
+        with open(os.path.join(self.fake, "members.json"), "w") as f:
+            json.dump({"seq": [r if isinstance(r, dict) else {"7": r, "8": r, "9": r} for r in seq], "seen": []}, f)
+
+    LANDED_ALL = {"7": "MERGED " + LANDED, "8": "MERGED " + STACK_LANDED, "9": "MERGED " + TOP_LANDED}
+
+    def stack(self, action="stack", members=STACK):
+        target = [] if action == "resume" else ["--stack", members]
+        r = self.crew("land", action, "--project", self.project, "--org-profile", self.org, *target)
+        if "--owner-transcript" in sys.argv:
+            print("$ mdstack land %s --project <fixture>/crew.toml --org-profile <fixture>/pack/profile.toml%s"
+                  % (action, "".join(" " + t for t in target)))
+            print("exit: %d\n--- stdout\n%s--- stderr\n%s" % (r.returncode, r.stdout.replace(self.tmp, "<fixture>"),
+                                                             r.stderr), end="")
+        return r
+
+    def stack_intent(self):
+        path = os.path.join(self.state, "land", "stack", "7-%s.json" % HEAD)
+        if not os.path.exists(path):
+            return None
+        with open(path) as f:
+            return json.load(f)
+
+    def test_three_member_stack_lands_by_top_change_and_revision_ids(self):
+        with open(os.path.join(self.tmp, "pack", "render", "backends", "example.toml")) as f:
+            bound = re.findall(r'(?m)^(?:land|land-stack|read-revision-id|land-status|read-head) = "(.*)"$', f.read())
+        self.assertEqual(len(bound), 5)
+        for cmd in bound:  # no shell in the stack binding: one exland call each
+            self.assertRegex(cmd, r"^exland [\w<> -]+$")
+        self.rounds("NEW", "QUEUED", "MERGING", self.LANDED_ALL)
+        r = self.stack()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.calls("submit-stack"), [["submit-stack", "9", "D107", "D108", "D109"]])
+        self.assertEqual([c[1:] for c in self.calls("rev")], [["7", HEAD], ["8", STACK_HEAD], ["9", TOP_HEAD]])
+        self.assertEqual([c[1] for c in self.calls("head")], ["7", "8", "9"])  # every head re-read before it
+        for change, head, landed in ((7, HEAD, LANDED), (8, STACK_HEAD, STACK_LANDED), (9, TOP_HEAD, TOP_LANDED)):
+            self.assertIn("record: #%d: Landed revision: `%s` (checked head `%s`); stack land of 3 (#7, #8, #9)."
+                          % (change, landed, head), r.stdout)
+            self.assertIn("marker: #%d: <!-- crew:v1 role=synthesizer pass=merge pr=%d sha=%s round=n/a verdict=n/a "
+                          "landed=%s -->" % (change, change, head, landed), r.stdout)
+        self.assertEqual(self.stack_intent()["revisions"], ["D107", "D108", "D109"])
+        self.assertEqual(self.stack_intent()["landed"], [LANDED, STACK_LANDED, TOP_LANDED])
+        self.assertEqual(self.calls("land"), [])
+        self.assertEqual(self.stack("stack-done").returncode, 0)
+        self.assertIsNone(self.stack_intent())
+
+    def test_mixed_or_unknown_member_states_record_nothing(self):
+        for bad in ({"7": "QUEUED", "8": "MERGING", "9": "QUEUED"},  # queued against landing is unknown here
+                    {"7": "MERGED " + LANDED, "8": "MERGED " + STACK_LANDED, "9": "MERGING"},
+                    {"7": "NEW", "8": "NEW", "9": "WHATEVER"},
+                    {"7": "MERGED abc", "8": "MERGED " + STACK_LANDED, "9": "MERGED " + TOP_LANDED}):
+            self.rounds(bad)
+            r = self.stack()
+            self.assertEqual(r.returncode, 1, bad)
+            self.assertIn("blocked: land stack #7 @ aaaaaaa, #8 @ ddddddd, #9 @ fffffff: unknown", r.stdout)
+            self.assertIn("intent kept", r.stdout)
+            self.assertNotIn("record:", r.stdout)
+            self.assertNotIn("landed", self.stack_intent())
+        self.assertEqual(self.calls("submit-stack"), [])  # an unknown state never requests
+        self.assertEqual(len(self.calls("rev")), 3)  # ids resolved once; every rerun used the recorded set
+        self.assertEqual(self.stack("stack-done").returncode, 1)
+
+    def test_resume_uses_recorded_ids_and_never_requests(self):
+        self.rounds("NEW", "QUEUED")
+        r = self.stack()
+        self.assertIn("timeout after 3s, still landing; intent kept", r.stdout)
+        self.revs({"7": "D107", "8": "D208", "9": "D109"})  # a later upload: resume never re-resolves
+        self.rounds(self.LANDED_ALL)
+        r = self.stack("resume")
+        self.assertEqual(r.returncode, 0, r.stdout)
+        self.assertIn("record: #9: Landed revision: `%s`" % TOP_LANDED, r.stdout)
+        self.assertEqual(len(self.calls("submit-stack")), 1)
+        self.assertEqual(len(self.calls("rev")), 3)
+        self.assertEqual(self.stack_intent()["revisions"], ["D107", "D108", "D109"])
+
+    def record(self, revisions):
+        os.makedirs(os.path.join(self.state, "land", "stack"), exist_ok=True)
+        with open(os.path.join(self.state, "land", "stack", "7-%s.json" % HEAD), "w") as f:
+            json.dump({"members": [[7, HEAD], [8, STACK_HEAD], [9, TOP_HEAD]], "revisions": revisions}, f)
+
+    def test_changed_revision_id_refused_and_read_back_never_resent(self):
+        self.record(["D107", "D1", "D109"])  # recorded before #8's id changed; a rerun never re-resolves
+        self.rounds("NEW")
+        r = self.stack()  # the backend refuses the changed id (a lost acknowledgement) and reads none
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("request failed and every member's land-status is none", r.stdout)
+        self.assertEqual(self.calls("submit-stack"), [["submit-stack", "9", "D107", "D1", "D109"]])
+        self.assertEqual(self.calls("rev"), [])
+        self.assertIsNone(self.stack_intent())
+        self.record(["D107", "D108", "D109"])
+        self.rounds("NEW", "QUEUED", self.LANDED_ALL)
+        with open(os.path.join(self.fake, "land-exit.txt"), "w") as f:
+            f.write("1")
+        self.assertEqual(self.stack().returncode, 0)
+        self.assertEqual(len(self.calls("submit-stack")), 2)  # one request per run
+
+    def test_moved_head_or_bad_id_sends_no_request(self):
+        self.rounds("NEW")
+        self.heads(HEAD, OTHER, TOP_HEAD)
+        r = self.stack()
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("#8 revision id read exit 3", r.stdout)  # read-revision-id refuses the moved head
+        self.assertIn("no request sent for any member", r.stdout)
+        self.assertIsNone(self.stack_intent())
+        self.record(["D107", "D108", "D109"])  # ids already recorded, then #9's head moves
+        self.heads(HEAD, STACK_HEAD, OTHER)
+        r = self.stack()
+        self.assertIn("stale head, #9 head is '%s'; no request sent for any member" % OTHER, r.stdout)
+        self.assertIsNone(self.stack_intent())
+        self.heads(HEAD, STACK_HEAD, TOP_HEAD)
+        for bad in ("D1;touch x", "", "two words"):
+            self.revs(dict(self.REVS, **{"8": bad}))
+            r = self.stack()
+            self.assertEqual(r.returncode, 1, bad)
+            self.assertIn("is not one safe token; no request sent for any member", r.stdout)
+            self.assertIsNone(self.stack_intent())
+        self.record(["D107", "D1;touch x", "D109"])  # a tampered intent is never substituted
+        r = self.stack()
+        self.assertIn("are not one safe token per member; nothing requested", r.stdout)
+        self.assertEqual(self.calls("submit-stack"), [])
+
+    def test_config_refusals(self):
+        mapping_path = os.path.join(self.tmp, "pack", "render", "backends", "example.toml")
+        with open(mapping_path) as f:
+            mapping = f.read()
+        with open(mapping_path, "w") as f:
+            f.write(mapping.replace('read-revision-id = "exland rev <rev> <head-sha>"',
+                                    'read-revision-id = "exland rev <rev>"'))
+        r = self.stack()
+        self.assertEqual(r.returncode, 1)
+        self.assertIn("change.read-revision-id carries no <head-sha>", r.stdout)
+        with open(mapping_path, "w") as f:
+            f.write(mapping.replace("<stack-revisions>", "<stack-changes>"))
+        r = self.stack()
+        self.assertIn("change.land-stack carries no <stack> or <stack-revisions> placeholder", r.stdout)
         self.assertEqual(self.calls(), [])
 
 

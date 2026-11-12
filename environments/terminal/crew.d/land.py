@@ -25,6 +25,8 @@ as above, `landed` prints the pending record, `none` (never requested at that he
 done: after the merge post, clears an intent marked landed; any other intent is refused.
 stack, stack-done: a session profile whose change backend declares land.stack = true lands a linear stack in one
 atomic request (`--stack N:SHA,N:SHA,...`, base first; _land_stack.py, #1605); resume reads stack intents back too.
+#1722: land.change_placeholder fills every per-member stack command in either mode; change.read-revision-id must carry
+<head-sha>; land.stack_status = "per-change" reads each member through land-status as `status` does.
 """
 import datetime
 import glob
@@ -58,6 +60,8 @@ def command(renderer, op, pr, head, land):
     if op == "land" and land["head_guard"] and "<head-sha>" not in cmd:
         raise ValueError("change.land carries no <head-sha> guard; declare land.head_guard = false if the backend "
                          "has none")
+    if op == "read-revision-id" and "<head-sha>" not in cmd:
+        raise ValueError("change.read-revision-id carries no <head-sha>; a revision id binds a checked head")
     cmd = cmd.replace("<%s>" % land["change_placeholder"], str(pr)).replace("<head-sha>", head)
     left = crew_render.TOKEN.search(cmd)
     if left:
@@ -156,8 +160,8 @@ def finish(path, intent, meta, values, tag, state, detail):
     return 1
 
 
-def commands_for(renderer, pr, head, land):
-    ops = ["land-status", "read-head", "land"]
+def commands_for(renderer, pr, head, land, ops=("land-status", "read-head", "land")):
+    ops = list(ops)
     if crew_render.crew_config.landed_needs_read(land["status"]):
         ops.append("read-landed")
     return {op: command(renderer, op, pr, head, land) for op in ops}
@@ -270,13 +274,28 @@ def stack_declared(meta, values):
     return values["runtime.name"] == "session" and meta.get("land.stack", (False,))[0]
 
 
-def stack_commands(renderer, members, land):
-    return land_stack.commands(renderer, members, lambda op, pr, head: command(renderer, op, pr, head, land))
+def stack_land(meta):
+    return {"change_placeholder": meta.get("land.change_placeholder", ("n",))[0],
+            "head_guard": meta.get("land.head_guard", (True,))[0], "status": meta.get("land.status", ({},))[0],
+            "per_change": meta.get("land.stack_status", ("stack",))[0] == "per-change"}
+
+
+def stack_commands(renderer, members, land, revisions=None):
+    def single(op, pr, head):
+        return command(renderer, op, pr, head, land)
+    member = (lambda pr, head: commands_for(renderer, pr, head, land, ("land-status",))) if land["per_change"] else None
+    return land_stack.commands(renderer, members, single, revisions, member)
+
+
+def stack_reader(land):
+    return (lambda cmds: read_status(cmds, land["status"])) if land["per_change"] else None
 
 
 def resume_stacks(renderer, values, meta, land, state_dir):
     need = meta.get("land.stack_tests_against_tip", (False,))[0]
-    return land_stack.resume(call, lambda members: stack_commands(renderer, members, land), values, need, state_dir)
+    land = stack_land(meta)
+    return land_stack.resume(call, lambda members, revisions: stack_commands(renderer, members, land, revisions),
+                             values, need, state_dir, stack_reader(land))
 
 
 def run_stack(args):
@@ -300,8 +319,7 @@ def run_stack(args):
         return 1
     if not require_ownership(values, "land"):
         return 1
-    land = {"change_placeholder": meta.get("land.change_placeholder", ("n",))[0],
-            "head_guard": meta.get("land.head_guard", (True,))[0], "status": meta.get("land.status", ({},))[0]}
+    land = stack_land(meta)
     renderer = crew_render.Renderer(values, os.path.join(os.path.dirname(crew_render.HERE), "templates"),
                                     overlay=crew_render.pack_overlay(args.project, args.org_profile, values))
     try:
@@ -310,4 +328,5 @@ def run_stack(args):
         print("crew: refusing land %s: %s" % (land_stack.tag(members), e))
         return 1
     need = meta.get("land.stack_tests_against_tip", (False,))[0]
-    return land_stack.request(call, cmds, members, values, need, state_dir)
+    return land_stack.request(call, cmds, members, values, need, state_dir,
+                              lambda revisions: stack_commands(renderer, members, land, revisions), stack_reader(land))
