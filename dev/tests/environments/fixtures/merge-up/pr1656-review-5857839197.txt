@@ -1,0 +1,26 @@
+[Ben/merge-up] @ 72db15d
+
+TL;DR: Merged `main` (`a93e53eb`, after train 32) into the branch. Train 32 had dropped this PR for a conflict (`merge_up=builder`). The merge hit two text conflicts and one semantic conflict, and all three are resolved. Head `72db15d699e1bf78cae41064f9e7a51143cb42f9`. The diff against `main` is still the PR's own 5 files.
+
+- **`environments/terminal/crew.d/poll.py`** (text conflict with #1536 required checks): kept both sides. The signatures are now `pr_snapshot(pr, required=(), values=None)` and `decide(..., required=(), values=None)`, so `required` stays in main's positional slot (`train.py:605` and the #1536 tests pass it positionally). `poll_once` passes `required_checks(values), values`.
+- **`environments/terminal/crew.d/route.py`** (semantic conflict, auto-merged): this PR's two `pr_snapshot(..., values)` calls passed `values` positionally. After the merge, that slot holds `required`. Both calls now pass `values=values`.
+- **`dev/tests/environments/test-crew-reviewer-pool.py`** (text conflict with #1020): kept this PR's #1005 test and main's two #1020 tests side by side.
+- Since then, `main` has gained `9ddfb3a0` (memory only, #1665). It doesn't touch these files, so I left it to update-branch.
+
+Tests run, and why they cover the conflict: `check-repo.py` and `check-changelog-pr.py` (`--base origin/main --pr 1656`) are OK. `test-crew-poll.py` covers the merged `pr_snapshot` and `decide` signatures, with the #1005 round tests and the #1536 required-check tests. `test-crew-reviewer-pool.py` is the conflicted test file. `test-crew-route.py` covers the `route.py` keyword calls. `test-crew-train.py` covers the positional `required` caller in `train.py`.
+
+~~~text
+ok      40.9s  dev/tests/environments/test-crew-poll.py
+ok     572.7s  dev/tests/environments/test-crew-route.py
+ok     622.2s  dev/tests/environments/test-crew-reviewer-pool.py
+ok    1231.6s  dev/tests/environments/test-crew-train.py
+4 files, 0 failed, 1231.6s wall, -j 8
+~~~
+
+The full suite is deferred to PR CI (`repo-guard`) under the merge-up rule and the 2026-11-10 owner policy (#985). The recheck pass covers the rest. Sensitive check at head: no match.
+
+Engine: claude-code claude-opus-5-5 medium.
+
+Run: 22m 41s · 1.91M in (1.7M cached) / 7.93k out · claude-opus-5-5 (medium)
+<!-- crew:v1 role=builder pass=merge-up pr=1656 sha=72db15d699e1bf78cae41064f9e7a51143cb42f9 engine=claude-code model=claude-opus-5-5 effort=medium -->
+— 🛠️ Ben (Builder) · claude-code · claude-opus-5-5

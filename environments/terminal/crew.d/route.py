@@ -128,18 +128,22 @@ def own_view(values, pr):
 
 
 def merge_up_delta(pr, head, builder):
-    """A signed, head-pinned builder fix recording a resolved conflict or differing patch needs delta review.
+    """A signed, head-pinned builder fix or merge-up note recording a resolved conflict or differing patch needs
+    delta review.
 
-    builder: the builder's display name; the signature may carry any emoji, none, or a team (#431, #1291)."""
+    builder: the builder's display name; the signature may carry any emoji, none, or a team (#431, #1291).
+    The published merge-up form (`[Ben/merge-up]`, `pass=merge-up`, "conflicts ... are resolved") counts (#1682)."""
     sign = re.compile(r"^— (?:.* )?%s \(" % re.escape(builder), re.M)
     for review in pr["reviews"]:
         body = review["body"]
-        if not re.search(r"^\[[^]\n]+/(?:fix|ci-fix)\]", body) or not sign.search(body):
+        if not re.search(r"^\[[^]\n]+/(?:fix|ci-fix|merge-up)\]", body) or not sign.search(body):
             continue
-        if not any(m.get("role") == "builder" and m.get("pass") in ("fix", "ci-fix") and
+        if not any(m.get("role") == "builder" and m.get("pass") in ("fix", "ci-fix", "merge-up") and
                    m.get("pr") == str(pr["number"]) and m.get("sha") == head for m in markers(body)):
             continue
-        if re.search(r"(?<!no )\b(?:resolved|fixed|resolving)\b[^\n]*\bconflicts?\b|(?<!no )(?<!without a )\bdiffering patch\b", body, re.I):
+        if re.search(r"(?<!no )\b(?:resolved|fixed|resolving)\b[^\n]*\bconflicts?\b|"
+                     r"(?<!no )\bconflicts?\b[^\n.]*\b(?:resolved|fixed)\b|"
+                     r"(?<!no )(?<!without a )\bdiffering patch\b", body, re.I):
             return True
     return False
 
