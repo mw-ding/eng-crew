@@ -1,7 +1,7 @@
 ---
 type: added
 issue: 1722
-pr: TBD
+pr: 1766
 date: 2026-11-12
 box-skill: deferred to the coordinator mirror (protocol §7 stack text)
 ---
