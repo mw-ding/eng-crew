@@ -237,6 +237,16 @@ class Bootstrap(doctor_tests.DoctorBase):
         self.project_path.write_text(self.project_path.read_text() + '\n[docs]\n[docs.homes]\nspecs = "design/specs"\n')
         r = self.bootstrap("--dry-run")
         self.assertIn("scaffold %s" % (Path(self.project_dir) / "design/specs/project.md"), r.stdout)
+        # An external specs home creates no local spec directory or file (#1725).
+        (seed.parent / "core/api.md").unlink()
+        text = self.project_path.read_text().replace('[docs.homes]\nspecs = "design/specs"\n',
+                                                     'specs_external = "https://tracker.example/acme/items/12"\n')
+        self.project_path.write_text(text)
+        r = self.bootstrap("--yes")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertNotIn("scaffold", r.stdout)
+        self.assertFalse(seed.exists())
+        self.assertFalse((Path(self.project_dir) / "design").exists())
 
     def missing_project(self, remote="git@github.com:acme/widgets.git"):
         self.real_git()
