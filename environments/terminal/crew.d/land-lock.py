@@ -2,6 +2,7 @@
 
 Usage: mdstack land-lock acquire|release --project FILE [--org-profile FILE]
 """
+import contextlib
 import fcntl
 import json
 import os
@@ -134,7 +135,8 @@ def run(args):
                         print("crew: refusing release: land lock %s is held, but not by the holder recorded in "
                               "merge.pid (stale or reused PID); nothing signalled" % lock)
                         return 1
-                    os.kill(int(rec["pid"]), signal.SIGTERM)
+                    with contextlib.suppress(ProcessLookupError):  # it exited after the check (#1757)
+                        os.kill(int(rec["pid"]), signal.SIGTERM)
                 time.sleep(0.1)
         else:
             print("crew: land lock %s still held after release" % lock)
