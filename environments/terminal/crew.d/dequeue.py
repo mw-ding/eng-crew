@@ -81,14 +81,23 @@ def run(args, role=None):
     if getattr(args, "idle_only", False):
         return 0
     ref = getattr(args, "ref", None)
-    pick = next((e for e in entries if (role is None or e["role"] == role) and
-                 (ref is None or ref == ("train-%d" % e["train"] if e.get("train") else "#%s" % (e["issue"] if e["pass"] == "build" else e["pr"]))) and
-                 (not commands()["lead"].enabled(state, e["role"]) or os.environ.get("CREW_POOL") == e["role"]) and
-                 not over_cap(values, e["role"], windows, state)), None)
+    matching = [e for e in entries if (role is None or e["role"] == role) and
+                (ref is None or ref == ("train-%d" % e["train"] if e.get("train") else "#%s" % (e["issue"] if e["pass"] == "build" else e["pr"])))]
+    owned = [e for e in matching if commands()["lead"].enabled(state, e["role"]) and os.environ.get("CREW_POOL") != e["role"]]
+    pick = next((e for e in matching if e not in owned and not over_cap(values, e["role"], windows, state)), None)
 
     if pick is None:
-        print("crew: nothing to dequeue (%d queued, no free slot)" % len(entries) if entries else
-              "crew: spawn queue empty")
+        if not entries:
+            print("crew: spawn queue empty")
+            return 0
+        # Name why nothing started: a lead-owned pool is not a capacity problem (#1100).
+        why = ["%s pool is lead-managed (use the %s lead or CREW_POOL=%s)" % (r, r, r)
+               for r in sorted(set(e["role"] for e in owned))]
+        if len(owned) < len(matching):
+            why.append("no free slot")
+        if not matching:
+            why.append("none match --ref %s" % ref if ref else "none for %s" % role)
+        print("crew: nothing to dequeue (%d queued, %s)" % (len(entries), "; ".join(why)))
         return 0
     entries.remove(pick)
     with open(path, "w") as f:

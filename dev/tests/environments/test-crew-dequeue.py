@@ -260,6 +260,33 @@ class CapQueue(SpawnBase):
         result = self.crew("dequeue", "--ref", "#9", "--project", self.project, "--timeout", "1", CREW_POOL="builder")
         self.assertEqual(result.stdout, "crew: nothing to dequeue (1 queued, no free slot)\n")
 
+    def test_lead_owned_pool_is_named_not_reported_as_no_free_slot(self):
+        """#1100: a free builder slot held back by the builder lead names the pool; a full band still says no free
+        slot, mixed pools say both, an unmatched --ref says so and the empty queue stays empty."""
+        empty = self.crew("dequeue", "--project", self.project, "--timeout", "1")
+        self.assertEqual(empty.stdout, "crew: spawn queue empty\n")
+        for issue in ("7", "8", "9"):
+            self.assertEqual(self.spawn("builder", "--issue", issue).returncode, 0)
+        self.put("render/runtime/builder-lead.md", "Manage the builder pool.\n")
+        self.put("status/ben-7.status", "done: #7 #12 " + "a" * 40 + "\n")
+        lead = "builder pool is lead-managed (use the builder lead or CREW_POOL=builder)"
+        result = self.crew("dequeue", "--project", self.project, "--timeout", "1")
+        self.assertEqual(result.stdout, "crew: nothing to dequeue (1 queued, %s)\n" % lead)
+        for pr in (5, 6, 4):
+            self.pr(pr, "claude-code opus-5.5 default")
+            self.assertEqual(self.spawn("reviewer", "--pr", str(pr)).returncode, 0)
+        mixed = self.crew("dequeue", "--project", self.project, "--timeout", "1")
+        self.assertEqual(mixed.stdout, "crew: nothing to dequeue (2 queued, %s; no free slot)\n" % lead)
+        reviewer = self.crew("dequeue", "--ref", "#4", "--project", self.project, "--timeout", "1")
+        self.assertEqual(reviewer.stdout, "crew: nothing to dequeue (2 queued, no free slot)\n")
+        missing = self.crew("dequeue", "--ref", "#99", "--project", self.project, "--timeout", "1")
+        self.assertEqual(missing.stdout, "crew: nothing to dequeue (2 queued, none match --ref #99)\n")
+        self.assertEqual([(e["role"], e["issue"] or e["pr"]) for e in self.queue()], [("builder", 9), ("reviewer", 4)])
+        started = self.crew("dequeue", "--ref", "#9", "--project", self.project, "--timeout", "1", CREW_POOL="builder")
+        self.assertEqual(started.returncode, 0, started.stdout + started.stderr)
+        self.assertIn("ben-9", started.stdout)
+        self.assertEqual([e["pr"] for e in self.queue()], [4])
+
 
 
 if __name__ == "__main__":
