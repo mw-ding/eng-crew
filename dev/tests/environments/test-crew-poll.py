@@ -1035,7 +1035,8 @@ class NativeTriage(Base):
         mapping = re.sub(r"(?m)^list-items = .*$", 'list-items = "ex items <tracker> --json --root <state-dir>"', github)
         write_pack(os.path.join(self.project_dir, "pack"), mapping=mapping)
         with open(self.project, "a") as f:
-            f.write('pack = "pack"\n[triage]\nenabled = true\ntrackers = ["OPS", "DOWN"]\n')
+            f.write('pack = "pack"\n[runtime.options]\nresearchers = 1\n'  # #1724: the session sweep is opt-in
+                    '[triage]\nenabled = true\ntrackers = ["OPS", "DOWN"]\n')
         for name, text in (("ex", self.EX), ("gh", '#!/bin/sh\necho "$*" >> "%s"\nexit 1\n'
                                                  % os.path.join(self.tmp, "gh.log"))):
             path = os.path.join(self.tmp, "bin", name)

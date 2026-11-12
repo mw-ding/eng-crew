@@ -304,7 +304,8 @@ class Parity(unittest.TestCase):
             for runtime in ("tmux", "session", "grok-bot"):
                 project = os.path.join(tmp, runtime + ".toml")
                 with open(project, "w") as f:
-                    f.write('[runtime]\nname = "%s"\n' % runtime)
+                    f.write('[runtime]\nname = "%s"\n' % runtime
+                            + ("options = { researchers = 1 }\n" if runtime == "session" else ""))  # #1724: opt-in sweep
                 code, output = render(project, inputs, os.path.join(tmp, "out", runtime))
                 self.assertEqual(code, 0, output)
                 for name in os.listdir(os.path.join(inputs, "runtimes", runtime)):
