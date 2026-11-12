@@ -478,6 +478,14 @@ class Host(Base):
         self.assertEqual(host("check")[0], 0)
         with open(ran) as f:
             self.assertEqual(f.read(), "ran\n")  # check never ran the command
+        declare(["false"])  # success, then a failed prepare at the same path: the old receipt no longer counts
+        self.assertEqual(host("prepare"), (1, "fail prepare checkout: exit 1\nhost-a: not ready\n"))
+        code, out = host("check")
+        self.assertEqual(code, 1, out)
+        self.assertIn("fail project checkout: acme__widgets checkout command has not run", out)
+        declare(["true"])
+        self.assertEqual(host("prepare")[0], 0)  # repaired
+        self.assertEqual(host("check")[0], 0)
         other = os.path.join(self.tmp, "elsewhere")
         declare(["mkdir", "-p", other], other)
         code, out = host("prepare")

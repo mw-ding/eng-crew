@@ -212,7 +212,10 @@ def prepare(args, values, host, state):
         extra["prune"] = True
     extra.update(command_checkout(values, host))
     if primary and "checkout" in extra:  # #1723: the declared command runs here, no git fetch
-        remote = load("crew_remote", REMOTE)
+        remote, receipt = load("crew_remote", REMOTE), os.path.join(primary_root(values, host), "state", project,
+                                                                     "checkout.json")
+        with contextlib.suppress(FileNotFoundError):
+            os.remove(receipt)  # a failed prepare must not leave an earlier success receipt behind
         try:
             return dict(result="ok", **remote.run_checkout(primary_root(values, host), project))
         except remote.Failed as e:
