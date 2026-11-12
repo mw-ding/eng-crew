@@ -66,13 +66,24 @@ A new or changed guard (a test, sweep, pattern or check meant to fail on a
 bad state) gets a fail-then-pass pair
 ([protocol §3](../../docs/protocol.md#3-evidence-requirements)):
 
-1. **N1, mutated.** In a throwaway copy of the head, undo or mutate the line
-   the guard protects, or feed it the nearest wrong input, then run the guard.
-   Put the copy and the mutation in a `--setup` file so the `sh` block
-   recreates them, and make the mutation fail loudly if it changes nothing:
+1. **N1, mutated.** In a throwaway snapshot of the guarded paths at the
+   checked head, plus whatever the guard needs to run, undo or mutate the
+   line the guard protects, or feed it the nearest wrong input, then run the
+   guard. Any version control system or plain copy works; the snapshot only
+   has to match the head. Put the snapshot and the mutation in a `--setup`
+   file so the `sh` block recreates them, and make the mutation fail loudly
+   if it changes nothing.
+
+   A partial copy (only some paths, as in a large or monorepo checkout) is
+   fine when the setup names every copied path and dependency, keeps their
+   content at the head except for the mutation, and recreates the copy on
+   verifier replay. A copy that omits a file the guard reads cannot show
+   the negative control.
+
+   One recipe for a Git repository, which copies the whole head:
 
    ```sh
-   # n1-setup.sh
+   # n1-setup.sh (Git example)
    tmp=$(mktemp -d) && git archive HEAD | tar -x -C "$tmp" && cd "$tmp" &&
    python3 -c 'import pathlib; p = pathlib.Path("scripts/x.py"); s = p.read_text(); assert s.count("GOOD") == 1; p.write_text(s.replace("GOOD", "BAD"))'
    ```
