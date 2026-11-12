@@ -957,6 +957,171 @@ Lessons:
   coordinator. Until #1715 is triaged, the lead settles owner-blocked land
   ids and the coordinator re-sends the land on the owner's answer.
 
+### M49: responsive runs and attributable failures
+
+Opened by the spec slice #1748, part of
+[#1744](https://github.com/mw-ding/mdstack/issues/1744). Scope comes from
+[Riley's readiness pass](https://github.com/mw-ding/mdstack/issues/1744#issuecomment-6819217773),
+§4: seven members, one PR per issue; #1701 adds a PR only if its evidence
+reproduces a gap. Every row is planned: its issue is `open`. No row
+dispatches before this slice merges and the owner has upgraded the live
+install to 7.10.0 from an operator terminal with dispatch paused ("upgrade"
+below). B4 (#1714) also lands after B1 (#1715), so it integrates the settled
+wait and wake contract. Sizes are non-test implementation lines, then test
+lines, then the dispatch tier and effort.
+
+| ID | Issue | Scope | Size | Depends on | Status |
+|---|---|---|---|---|---|
+| B1 | #1715 | Lead re-nudge backoff: hybrid retries, no timed re-nudge for acknowledged waits | 100–180; 100–180; default/medium | #1748, upgrade | open |
+| B2 | #1682 | Merge-up delta detection accepts the published merge-up note | 30–80; 60–120; default/medium | #1748, upgrade | open |
+| B3 | #1701 | Finished-builder reclaim: evidence disposition first, code only if a gap reproduces | 0 unless a gap reproduces; 60–120 if needed; default/medium | #1748, upgrade | open |
+| B4 | #1714 | Work pause and resume: the coordinator stays, workers stop with work retained | 300–500 in 4–6 commits; 180–300; deep/high | #1748, upgrade, B1 | open |
+| B5 | #1100 | Dequeue refusal names lead pool ownership, not a missing slot | 10–35; 30–60; default/medium | #1748, upgrade | open |
+| B6 | #1659 | RemoteRun spawn fixture: visible diagnostics, explicit runner freshness | 0; 40–90; default/medium | #1748, upgrade | open |
+| B7 | #1668 | Bootstrap smoke fixtures isolate irrelevant host doctor probes | 0; 40–90; default/medium | #1748, upgrade | open |
+
+ACs and paths per row (the readiness pass has the full text and line
+citations; runtime files are under `environments/terminal/crew.d/`, tests
+under `dev/tests/environments/`):
+
+- **B1 (#1715).** Unchanged acknowledged owner, hold or CI waits produce no
+  repeated model nudge; other demand follows D2's cap; mixed waiting and
+  actionable ids stay independent; a relevant new state wakes the lead at
+  once; a watcher restart keeps timers and waits; ack and done identity and
+  #1502's admission suppression stay correct. Paths: `watch.py`, `lead.py`,
+  `route.py`, `docs/runtimes/tmux.md`, the builder, reviewer and
+  synthesizer lead templates under `templates/runtimes/tmux/` for explicit
+  wait association. Tests: `test-crew-watch.py`, `test-crew-lead.py`,
+  `test-crew-route.py`, `test-crew-reviewer-pool.py`.
+- **B2 (#1682).** Replay the original signed, head-pinned #1656 note and a
+  conflict-resolved or differing merge-up through poll, route, the reviewer
+  lead inbox and admission, keeping round 2 and creating no duplicate pass.
+  Clean eligible merge-ups, moved heads, holds, foreign signatures and
+  express keep their current handling. Accept the published merge-up form;
+  never rewrite history to `fix`. Paths: `route.py`; `poll.py` or
+  `reviewer-pool.py` only if the regression shows another delivery gap;
+  conditional guidance in `templates/runtimes/tmux/builder.md`. Tests:
+  `test-crew-route.py`, `test-crew-reviewer-pool.py`, `test-crew-poll.py`
+  if touched.
+- **B3 (#1701).** Trace merged builder, lifecycle reclaim, lead ack and
+  completion, physical slot release and the next admissible build, with no
+  manual terminal re-send. Keep the four-PR report and tell apart missed
+  delivery, an unsafe-reap refusal, a busy child and a historical unknown.
+  If existing behaviour suffices, record the evidence and learning and
+  close; otherwise fix the reproduced gap in this issue. Add no second
+  reaper and no weaker unlanded-work check; a retry defect belongs to B1.
+  Paths to inspect: `route.py`, `kill.py`, `lead.py`, `dequeue.py`,
+  `_shared.py`, `gc.py`, `templates/runtimes/tmux/builder-lead.md`.
+  Coverage: `test-crew-route.py`, `test-crew-lead.py`, `test-crew-kill.py`,
+  `test-crew-dequeue.py` if changed.
+- **B4 (#1714).** A durable project barrier is written before any work
+  stops. The coordinator survives; after pause success nothing dispatches,
+  reviews, lands, restarts, runs a routine or cleans up, including direct
+  CLI and queued work. Worktrees, records, claims, inboxes and status stay.
+  A busy atomic land, a remote refusal, a surviving process or unreadable
+  pause state never reports success. Repeated pause and resume are safe;
+  restart and `up` cannot bypass a pause; resume rechecks live state,
+  starts work once and clears no other stop or hold. Paths: new `pause.py`
+  and `resume.py`; `_shared.py`, `down.py`, `watch.py`, `lead.py`, `up.py`
+  and the admission and writer boundaries in `spawn.py`, `dequeue.py`,
+  `route.py`, `reviewer-pool.py`, `land.py` and `train.py`, reusing the
+  existing process, lock and preservation helpers; `docs/protocol.md`,
+  `docs/runtimes/tmux.md` and the coordinator and lead templates. Tests:
+  new `test-crew-pause.py` and `test-crew-resume.py`, plus the affected
+  down, watch, lead, route, spawn, land, train and remote lifecycle cases.
+- **B5 (#1100).** An eligible request excluded by lead ownership names the
+  pool and the operator path; exhausted capacity still says capacity; an
+  empty queue stays empty; mixed pools and `--ref` classify correctly.
+  Dispatch and reclaim eligibility are unchanged. Paths: `dequeue.py`,
+  `test-crew-dequeue.py`, `docs/runtimes/tmux.md` if help changes.
+- **B6 (#1659).** RemoteRun spawn failures show stdout and stderr. The
+  expected-healthy runner's freshness is explicit at the spawn boundary:
+  show delayed setup with a controlled heartbeat age, then refresh the
+  fixture heartbeat or use a bounded fixture interval. Production
+  freshness, stale and down refusal coverage and the remote down
+  preservation and removal assertions stay. Paths: `test-crew-spawn.py`,
+  `test-crew-remote.py` if refusal coverage needs it; no product change.
+- **B7 (#1668).** Smoke fixtures isolate only host-dependent doctor
+  prerequisites, including in the copied subprocess bundle, so a failing
+  irrelevant prerequisite cannot preempt the intended smoke assertion. Real
+  CLI bootstrap, render and deploy, opt-in and dry-run safety, the
+  started-session requirement, the creation-failure manifest and
+  queue-once checks stay; real doctor failures keep separate coverage. A
+  parent-only mock that cannot reach the subprocess is not enough. Paths:
+  `test-crew-bootstrap.py`, `test-crew-doctor.py`; no product change.
+  Guidance: `docs/lessons/2026-11-08-real-entrypoint-fixtures.md`.
+
+Decisions M49 settles (the owner's
+[decision](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6831237295)
+applies the coordinator's
+[recommendations](https://github.com/mw-ding/mdstack/issues/1744#issuecomment-6819242524);
+any of them changes on the owner's word):
+
+- **D1, #1714 is a work pause.** Window 0 stays for owner conversation and
+  control, and the watcher stays in observation mode: it keeps events but
+  routes nothing, nudges no model and runs no GC or automatic default.
+  Leads and workers are terminated with all work retained. An atomic land
+  already started finishes first; while its lock is held, pause reports
+  pausing or busy. A surviving process or unreachable host means an
+  incomplete pause. Only an explicit owner resume ends it: resume rechecks
+  ownership, heads, holds, CI and retained demand, starts eligible work
+  once, keeps window 0, and clears only the project pause, never another
+  hold, round count or landing stop.
+- **D2, #1715 is the hybrid backoff.** Ordinary retries wait 60, 120, 240,
+  480, then 900 seconds, capped per lead and keyed to unchanged pending
+  demand and head identity. An acknowledged owner, hold or CI wait gets no
+  timed model re-nudge while unchanged: demand is kept and fresh state is
+  observed without a model. The lead wakes on the next relevant event
+  without waiting for the deadline: a new handoff or head, a hold release
+  or owner answer, a terminal CI state, a prerequisite pass or train
+  completion, or admission becoming available. Only affected demand
+  resets; timers and waits persist across a watcher restart, and a
+  token-free fresh-state comparison recovers missed events. Untyped or
+  unassociated status never silences other ids. Events wake leads and
+  supply no permission. The intervals are defaults, not measured optimums.
+
+Version classification, against the
+[Versioning](../deliverables.md#versioning) table, for the next cut:
+
+- **#1714 is major as specified.** A durable pause barrier that the land
+  and train paths refuse on adds a condition to the
+  [§7](../protocol.md#7-merge-gate-synthesizer) merge gate, and §9 gains
+  project pause and resume control. If B4 instead stops landing only
+  through the existing `stop-landing` and `resume-landing` record,
+  unchanged, and adds commands and duties alone, it is minor and is
+  reclassified in its PR.
+- **#1682 is patch.** It makes dispatch recognize a merge-up note the
+  protocol already allows, beside
+  [verdict portability](../protocol.md#verdict-portability-and-delta-re-review);
+  the portability gate and its marker fields are unchanged. If B2 changes
+  §7 portability text or a marker's meaning, it is major.
+- **The rest add no gate.** #1715 adds runtime behaviour and lead duties
+  (minor); it becomes major if it newly requires a status or marker field.
+  #1100 rewords a refusal (patch) with its exit code and any parsed output
+  unchanged; a changed exit code or parsed output is major. #1701 is
+  evidence or a fix restoring documented behaviour (patch or none); #1659
+  and #1668 are test-only (patch).
+
+So with B4 as specified, the next cut cannot be a minor. Before the cut,
+the coordinator takes it to the owner: a major cut with a `**Breaking:**`
+entry, or the owner's other call. No break goes through as a minor.
+
+Sensitive heads: B3's conditional teardown fix and B4's stopping and
+restarting of work are forecast; every build runs the full-diff sensitive
+check at each head, and a sensitive head still needs the owner's
+per-change reason. Shared plumbing: a change to `_shared.py` (B3 if it
+reaches code, B4) selects dependent-component tests under the
+[affected-tests policy](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6763423100).
+Owner steps: the 7.10.0 upgrade before any build; after B4 lands, one
+supported-host pause and resume acceptance showing the coordinator survives
+with no worker or land activity, batched with any upgraded B3 trace.
+
+Merge permission for M49 spec, protocol, template and gate-contract text is
+the owner's M49–M51 grant
+([decision](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6831237295),
+[text](https://github.com/mw-ding/mdstack/issues/1744#issuecomment-6819303787)),
+recorded at each head. A status-sync slice closes the milestone.
+
 ## 6. Decisions
 
 | Date | Decision | Source |
