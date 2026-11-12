@@ -4,11 +4,11 @@ Candidates: a local run record whose worktree sits directly under the root and w
 directly under the root that no run record names (an orphan). Dry-run by default: one line per candidate,
 `path<TAB>run<TAB>keep|remove<TAB>reason`. A candidate is `remove` only when its PR is merged (the record's PR, else
 a merged PR whose head is the copy's HEAD) and C6 proves the work landed: a clean tree and every commit on the
-default branch, its branch or that PR's head. Everything else is kept with its reason: a live window, a working-copy
-claim or another run's reference, an orphan younger than an hour, nested worktrees, an open or closed-unmerged PR,
-no merged PR, unlanded work or an unreadable copy. Runs on a role host are out of scope (the host reaps them).
+default branch, its branch or that PR's head. Everything else is kept with its reason: a symlink or path outside the
+root (never followed), a live window, a working-copy claim or another run's reference, an orphan younger than an hour,
+nested worktrees, an open or closed-unmerged PR, no merged PR, unlanded work or an unreadable copy. Runs on a role host are out of scope (the host reaps them).
 
-`--apply` re-checks each candidate just before removing it, up to `--max` removals: a linked worktree with
+`--apply` re-checks each candidate (the root boundary again right before deleting) and removes up to `--max`: a linked worktree with
 `git worktree remove` (never `--force`), a run's own copy (#1252) by deleting its directory, then the run's records
 through the kill path. A failed removal is printed as `failed` and the command exits 1; no forced or fallback removal
 follows. A rerun with nothing left removes nothing.
@@ -59,14 +59,26 @@ def candidates(values, state):
         if wt and not remote_run.host_of(rec) and os.path.dirname(os.path.realpath(wt)) == root:
             out.append((os.path.realpath(wt), name, dict(rec)))
     for entry in sorted(os.listdir(root)) if os.path.isdir(root) else []:
-        path = os.path.realpath(os.path.join(root, entry))
-        if os.path.isdir(path) and path not in recorded:
+        path = os.path.join(root, entry)  # unresolved: a symlink here is reported, never followed (#316 r1)
+        if os.path.isdir(path) and os.path.realpath(path) not in recorded:
             out.append((path, None, {}))
     return out, recorded
 
 
+def outside_root(values, path):
+    """Why path is not a real directory directly under the configured root, or None."""
+    if os.path.islink(path):
+        return "symlink to %s, not followed" % os.path.realpath(path)
+    if os.path.dirname(os.path.realpath(path)) != os.path.realpath(values["paths.worktree_root"]):
+        return "outside %s" % os.path.realpath(values["paths.worktree_root"])
+    return None
+
+
 def classify(values, session, state, project, path, name, rec, recorded):
     """("keep" | "remove", reason, pr) for one candidate, read fresh."""
+    escape = outside_root(values, path)
+    if escape:
+        return "keep", escape, None
     if name and name in {n for _, n in tmux.list_windows(session)}:
         return "keep", "window live", None
     protected = [checkout(values, project), state, os.getcwd()]
@@ -113,6 +125,9 @@ def classify(values, session, state, project, path, name, rec, recorded):
 
 def remove(values, session, state, path, name):
     """None on success, else why the removal failed."""
+    escape = outside_root(values, path)  # the boundary again, right before deleting anything
+    if escape:
+        return "refused: " + escape
     if os.path.isdir(path):
         if os.path.isfile(os.path.join(path, ".git")):  # a linked worktree: git removes it and its admin entry
             common = git(path, "rev-parse", "--path-format=absolute", "--git-common-dir")

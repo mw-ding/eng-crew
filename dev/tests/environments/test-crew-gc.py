@@ -3,7 +3,7 @@
 Covers: a merged, landed run is listed in dry run and removed with --apply (records too; a reviewer's linked
 worktree through git), a rerun is a no-op; --max bounds removals; a live window, unlanded work and a closed-unmerged
 PR and a nested evidence worktree are kept with reasons; an orphan copy with no run record is removed on squash-merged head proof and kept without a
-merged PR or while a working-copy claim holds it; a failed removal exits 1 and keeps the records; a backstop wake through mdstack route recovers a
+merged PR or while a working-copy claim holds it; a symlink to a copy outside the root is kept and never followed; a failed removal exits 1 and keeps the records; a backstop wake through mdstack route recovers a
 missed close-out. Fixtures in crew_testlib.py (stdlib only). Run in CI.
 """
 import json
@@ -142,6 +142,19 @@ class Gc(KillLandedBase):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual(self.rows(r), [[wt, "-", "removed", "PR #12 merged, landed"]])
         self.assertFalse(os.path.exists(wt))
+
+    def test_symlink_out_of_root_never_followed(self):  # r1: a legacy copy linked into the root survives
+        wt, head = self.orphan()
+        shutil.rmtree(self.env["MDSTACK_COPY_CLAIMS"])
+        outside = os.path.join(os.path.realpath(self.tmp), "legacy-outside-root")
+        os.rename(wt, outside)
+        os.symlink(outside, wt)
+        for args in ((), ("--apply",)):
+            r = self.gc(*args)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertEqual(self.rows(r), [[wt, "-", "keep", "symlink to %s, not followed" % outside]])
+            self.assertTrue(os.path.isdir(outside))
+            self.assertTrue(os.path.islink(wt))
 
     def test_failed_removal_exits_nonzero_and_keeps_records(self):
         wt, _ = self.merged_builder()

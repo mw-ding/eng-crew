@@ -1211,7 +1211,9 @@ reclaim. `mdstack gc` is the backstop for what it missed: a run record whose
 window is gone (a refused kill, a lost `pr-merged` event) and a directory
 directly under `<worktree-root>` that no run record names. It never scans
 outside that root, so legacy trees elsewhere and #1166's keep list stay
-untouched, and runs on a role host are left to their host.
+untouched, and runs on a role host are left to their host. A symlink under
+the root is listed as kept and never followed, and `--apply` checks the
+boundary again right before it deletes anything.
 
 The default is a dry run: one line per candidate, `path`, run, `keep` or
 `remove`, and the reason. A candidate is `remove` only when its PR is merged
