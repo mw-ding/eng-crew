@@ -21,6 +21,7 @@ Run in CI.
 import json
 import os
 import re
+import subprocess
 import sys
 import textwrap
 import unittest
@@ -72,9 +73,12 @@ FAKE = textwrap.dedent("""\
             rounds = {"seq": rounds["seq"][1:] or rounds["seq"], "seen": []}
         json.dump(rounds, open(path, "w"))
         print(status)
-    elif args[0] == "submit-stack":  # refuses a member revision id that is not the current one
-        revs = json.load(open(os.path.join(d, "revs.json")))
-        sys.exit(0 if args[2:] == [revs[c] for c in sorted(revs, key=int)] else 4)
+    elif args[0] == "submit-stack":  # refuses a member revision id that is not the current one; an accepted
+        revs = json.load(open(os.path.join(d, "revs.json")))  # request exits land-exit.txt (a lost acknowledgement)
+        if args[2:] != [revs[c] for c in sorted(revs, key=int)]:
+            sys.exit(4)
+        path = os.path.join(d, "land-exit.txt")
+        sys.exit(int(open(path).read()) if os.path.exists(path) else 0)
     elif args[0] == "land":
         path = os.path.join(d, "land-exit.txt")
         sys.exit(int(open(path).read()) if os.path.exists(path) else 0)
@@ -749,12 +753,23 @@ class SessionRevisionStackLand(LandFixture):
         self.assertEqual(self.calls("submit-stack"), [["submit-stack", "9", "D107", "D1", "D109"]])
         self.assertEqual(self.calls("rev"), [])
         self.assertIsNone(self.stack_intent())
-        self.record(["D107", "D108", "D109"])
-        self.rounds("NEW", "QUEUED", self.LANDED_ALL)
+
+    def test_lost_acknowledgement_lands_with_exactly_one_request(self):
         with open(os.path.join(self.fake, "land-exit.txt"), "w") as f:
-            f.write("1")
-        self.assertEqual(self.stack().returncode, 0)
-        self.assertEqual(len(self.calls("submit-stack")), 2)  # one request per run
+            f.write("1")  # the backend accepts the request but its acknowledgement is lost
+        self.rounds("NEW", "QUEUED", self.LANDED_ALL)
+        r = self.stack()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.calls("submit-stack"), [["submit-stack", "9", "D107", "D108", "D109"]])
+        self.assertIn("record: #9: Landed revision: `%s`" % TOP_LANDED, r.stdout)
+        if "--owner-transcript" in sys.argv:
+            print("backend calls, in order:\n" + "".join("  exland %s\n" % " ".join(c) for c in self.calls()), end="")
+        probe = subprocess.run([os.path.join(self.tmp, "bin", "exland"), "submit-stack", "9", "D107", "D108", "D109"],
+                               env=self.env)
+        self.assertEqual(probe.returncode, 1)  # the same accepted request acknowledges nonzero
+        if "--owner-transcript" in sys.argv:
+            print("acknowledgement probe (after the run): exland submit-stack 9 D107 D108 D109 -> exit %d"
+                  % probe.returncode)
 
     def test_moved_head_or_bad_id_sends_no_request(self):
         self.rounds("NEW")
