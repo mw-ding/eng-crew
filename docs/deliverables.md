@@ -200,6 +200,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `scripts/reflection-scan.py` | Deliverable | all | Role helper: offline reflection evidence index over forge snapshots, lessons and findings at a SHA ([#1518](https://github.com/mw-ding/mdstack/issues/1518)) |
 | `scripts/release-bundle.py` | Internal | n/a | Guards and tests: release tooling, run by the release workflow, not installed |
 | `scripts/release-check.py` | Internal | n/a | Guards and tests: release tooling, run by the release workflow, not installed |
+| `scripts/release-compat.py` | Internal | n/a | Guards and tests: release tooling, run by the release workflow, not installed |
 | `scripts/release-trigger.py` | Internal | n/a | Guards and tests: release tooling, run by the release workflow, not installed |
 | `scripts/required-docs.txt` | Internal | n/a | Guards and tests: required docs and sections, run by CI |
 | `scripts/run-tests.py` | Internal | n/a | Guards and tests: parallel test runner, run by CI, not installed |
@@ -281,7 +282,10 @@ Rules:
 - A breaking CHANGELOG entry starts with `**Breaking:**` and carries a
   one-line migration step. The entries since the last tag decide the
   smallest allowed bump; the release approver checks the cut PR's version
-  against them ([release.md](release.md#steps)).
+  against them ([release.md](release.md#steps)). Release validation also
+  refuses a minor or patch when a manifest the published predecessor's
+  validator accepted fails the new one
+  ([manifest compatibility](release.md#manifest-compatibility)).
 - Pre-release versions (`vX.Y.Z-rc.N`) are allowed for a smoke run and never
   satisfy a pin, whatever the release id.
 - Only the latest release is supported. Fixes go forward as a new release;
