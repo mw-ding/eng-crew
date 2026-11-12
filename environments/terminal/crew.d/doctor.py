@@ -2,7 +2,7 @@
 warn, fail or human, with its fix hint: Python, git, gh, tmux, each profile login in gh, engines, each harness
 adapter's host, coordinator and role checks (Codex hook trust, Claude Code folder trust for the project directory and
 for the checkout role worktrees come from, #408), placeholder paths, a session sandbox with no writable root over the
-checkout's .git and no sandbox_env (#1544), a shared session server whose runs inherit its sandbox (#1469), a state dir or worktree root inside a git checkout, the state dir layout, live builder runs marked unconfined (#1252), paths.checkout a clone of [repo], bootstrap's install.json
+checkout's .git and no sandbox_env (#1544), a shared session server whose runs inherit its sandbox (#1469), a state dir or worktree root inside a git checkout, the state dir layout, live builder runs marked unconfined and a harness that cannot apply its OS sandbox on the host (#1252), paths.checkout a clone of [repo], bootstrap's install.json
 and paths.mdstack link (#1323), the installed version against the latest release (not queried under a non-github [install] source), the
 launcher in the root's bin/ (missing or stale) and where PATH resolves its name (#1317, #1324), the
 recorded install source and the running/installed/minimum versions for [tools] in the profile, and the runtime
@@ -32,6 +32,7 @@ from crew_shared import (checkout, commands, crew_render, HERE, harnesses, owner
                          proc, runs, sandbox_env, sessions, load as load_module)
 
 repo_fixers = load_module("crew_repo", "connectors/github/crew-repo.py")
+confine = load_module("crew_confine", "environments/terminal/crew.d/_confine.py")
 
 UPSTREAM = "mw-ding/mdstack"
 LOGGED_IN = r"Logged in to \S+ (account|as) %s(\s|$)"  # a `gh auth status` line, old and new wording
@@ -224,9 +225,14 @@ def confinement(values):
     loose = ["%s (%s)" % (n, rec.get("unconfined") or "spawned before #1252") for n, rec in runs(state)
              if rec["role"] == "builder" and not rec.get("confined")]
     mode = "confinement=%s" % values.get("runtime.options.confinement", "off")
+    perm = values.get("runtime.options.permission_mode")  # a harness on PATH that would confine: can it, here?
+    hint = "docs/runtimes/tmux.md#confinement"
+    rows = [("warn", "confinement", refusal, hint) for a in harnesses.ADAPTERS.values()
+            if perm in getattr(a, "CONFINES", ()) and shutil.which(a.EXECUTABLE)
+            for refusal in [confine.sandbox_refusal(a)] if refusal]
     if not loose:
-        return [("ok", "confinement", mode + "; no unconfined builder run", "")]
-    return [("warn", "confinement", "%s; unconfined: %s" % (mode, "; ".join(loose)), "docs/runtimes/tmux.md#confinement")]
+        return rows + [("ok", "confinement", mode + "; no unconfined builder run", "")]
+    return rows + [("warn", "confinement", "%s; unconfined: %s" % (mode, "; ".join(loose)), hint)]
 
 
 def version(values):

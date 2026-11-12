@@ -1120,14 +1120,20 @@ step 1, the band cap queue, is under [mdstack dequeue](#mdstack-dequeue) (#136):
   the run record, and `mdstack doctor` warns with each unconfined live
   builder run. #1252's guarantee is never claimed for an unconfined run.
   Owner step for a confined crew: none beyond a Codex that can apply its
-  sandbox on the host; a launcher that already sandboxes the coordinator
-  session (#1544) still needs its own writable roots to cover the worktree
-  root and state dir. The live check of a host is
+  sandbox on the host. Spawn, restart and `mdstack doctor` check that with
+  `codex sandbox -- true`. A `codex` on `PATH` that is a launcher already
+  running Codex inside its own OS sandbox fails it: macOS refuses the
+  nested sandbox (`sandbox_apply`, exit 71). The launcher's sandbox is not
+  the boundary either, since it leaves sibling copies writable. The run is
+  unconfined there: `enforce` refuses it, `off` records the probe's
+  reason. The probe runs where `mdstack spawn` runs, so a spawn from inside
+  an agent sandbox fails it too. The live check of a host is
   `MDSTACK_LIVE_CONFINEMENT=1 python3 dev/tests/environments/test-crew-spawn.py -v ConfinementLive`
   from a shell outside any agent sandbox: two builders through spawn and a
   real Codex launch, where A's session fails to remove B or write the shared
-  metadata and removes its own nested tree. It spends model tokens and never
-  runs in CI. `mdstack migrate` moves a builder copy as a directory.
+  metadata and removes its own nested tree. On a host that fails the probe
+  its first spawn stops at once with the cause. It spends model tokens and
+  never runs in CI. `mdstack migrate` moves a builder copy as a directory.
 - Sandbox inheritance: `runtime.options.sandbox_env = "<NAME>=<value>"`
   sets the sandbox variable for every window, including window 0. The
   launching environment's `CREW_SANDBOX_ENV=<NAME>=<value>` overrides it.

@@ -720,6 +720,20 @@ class Confinement(unittest.TestCase):
         self.assertEqual(doctor.confinement(values), [(
             "warn", "confinement", "confinement=enforce; unconfined: ben-2 (why); ben-3 (spawned before #1252)",
             "docs/runtimes/tmux.md#confinement")])
+        bindir = os.path.join(tmp, "bin")  # a Codex that cannot apply its sandbox here (a nesting launcher)
+        os.makedirs(bindir)
+        with open(os.path.join(bindir, "codex"), "w") as f:
+            f.write('#!/bin/sh\necho "sandbox-exec: sandbox_apply: Operation not permitted" >&2\nexit 71\n')
+        os.chmod(os.path.join(bindir, "codex"), 0o755)
+        values["runtime.options.permission_mode"] = "safe"
+        with mock.patch.dict(os.environ, PATH=bindir + os.pathsep + os.environ["PATH"]):
+            rows = doctor.confinement(values)
+        self.assertEqual(rows[0], ("warn", "confinement", "Codex cannot apply its OS write sandbox on this host "
+                                   "(`codex sandbox -- true` exited 71: sandbox-exec: sandbox_apply: Operation not "
+                                   "permitted)", "docs/runtimes/tmux.md#confinement"))
+        values["runtime.options.permission_mode"] = "bypass"
+        with mock.patch.dict(os.environ, PATH=bindir + os.pathsep + os.environ["PATH"]):
+            self.assertEqual(len(doctor.confinement(values)), 1)
 
 
 class SessionServer(unittest.TestCase):

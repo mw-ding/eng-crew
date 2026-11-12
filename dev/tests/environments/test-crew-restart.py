@@ -188,6 +188,7 @@ class Restart(LivenessBase):
         return wt, self.crew("restart", "ben-7", "--project", self.project, "--timeout", "1")
 
     def test_restart_in_place_decides_confinement_again(self):  # #1252
+        self.sandboxing_codex()
         wt, r = self.relaunch_with('permission_mode = "safe"\nconfinement = "enforce"\n')
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         call = self.windows()[-1]

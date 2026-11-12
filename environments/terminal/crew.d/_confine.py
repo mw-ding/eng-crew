@@ -48,7 +48,27 @@ def unsupported(values, role, adapter, mode, remote, state, repo, wt=None):
                                 capture_output=True, text=True).stdout.strip()
         if not common or not inside(common, wt):
             return "its worktree %s shares the checkout's git metadata (spawned before #1252)" % wt
-    return None
+    return sandbox_refusal(adapter)
+
+
+def sandbox_refusal(adapter):
+    """Why the harness cannot apply its OS write sandbox on this host, or None: its SANDBOX_PROBE runs a no-op under
+    that sandbox. A launcher that already runs the harness inside an OS sandbox nests it, which macOS refuses
+    (sandbox_apply, exit 71). It runs where mdstack runs, so a spawn from inside an agent sandbox fails it too."""
+    probe = getattr(adapter, "SANDBOX_PROBE", None)
+    if not probe:
+        return None
+    cmd = " ".join([adapter.EXECUTABLE, *probe])
+    try:
+        r = subprocess.run([adapter.EXECUTABLE, *probe], capture_output=True, text=True, timeout=60,
+                           stdin=subprocess.DEVNULL)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return "%s cannot apply its OS write sandbox on this host (`%s`: %s)" % (adapter.TITLE, cmd, e)
+    if r.returncode == 0:
+        return None
+    last = ((r.stderr or "").strip() or (r.stdout or "").strip()).splitlines()[-1:]
+    return "%s cannot apply its OS write sandbox on this host (`%s` exited %d%s)" % (
+        adapter.TITLE, cmd, r.returncode, ": " + last[0] if last else "")
 
 
 def decide(values, role, adapter, mode, remote, state, repo, wt=None):

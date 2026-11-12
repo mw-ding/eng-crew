@@ -756,6 +756,10 @@ class LaunchPolicy(SpawnBase):
              "safe": ("--permission-mode acceptEdits", "-s workspace-write -c sandbox_workspace_write.network_access=true")}
     POINTER = ' "Read your brief at $CREW_BRIEF and follow it."'
 
+    def setUp(self):
+        super().setUp()
+        self.sandboxing_codex()
+
     def assert_launches(self, mode, option=None):
         if option:
             with open(self.project, "a") as f:
@@ -1340,6 +1344,10 @@ class Confinement(SpawnBase):
     """#1252 (spec M47 B5): a builder run owns its Git metadata; a supported launch is confined by the harness's OS
     write sandbox to that copy and the state dir; confinement=enforce refuses an unsupported one before any claim."""
 
+    def setUp(self):
+        super().setUp()
+        self.sandboxing_codex()
+
     def options(self, text, root=None):
         with open(self.project) as f:
             profile = f.read()
@@ -1450,6 +1458,25 @@ class Confinement(SpawnBase):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertNotIn("confined", self.record("vera-9-r1-review"))
 
+    def test_harness_that_cannot_apply_its_sandbox_is_unconfined(self):  # a launcher that nests it (#1252 R1)
+        with open(os.path.join(self.tmp, "bin", "codex"), "w") as f:
+            f.write('#!/bin/sh\n[ "$1 $2 $3" = "sandbox -- true" ] && '
+                    '{ echo "sandbox-exec: sandbox_apply: Operation not permitted" >&2; exit 71; }\nexit 0\n')
+        reason = ("Codex cannot apply its OS write sandbox on this host (`codex sandbox -- true` exited 71: "
+                  "sandbox-exec: sandbox_apply: Operation not permitted)")
+        self.options('permission_mode = "safe"\nconfinement = "enforce"\n')
+        r = self.spawn("builder", "--issue", "7")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("crew: refusing launch: confinement=enforce: " + reason, r.stdout)
+        self.nothing_claimed()
+        self.write_profile()
+        self.options('permission_mode = "safe"\n')
+        r = self.spawn("builder", "--issue", "7")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        rec, call = self.record("ben-7"), self.windows()[-1]
+        self.assertEqual((rec["confined"], rec["unconfined"]), (False, reason))
+        self.assertNotIn("exclude_slash_tmp", call[-1])
+
     def test_off_default_launches_and_marks_unconfined(self):
         r = self.spawn("builder", "--issue", "7")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
@@ -1464,7 +1491,7 @@ class Confinement(SpawnBase):
             os.path.dirname(CREW), "..", "environments", "terminal", "crew.d", "_confine.py"))
         confine = importlib.util.module_from_spec(importlib.util.spec_from_loader("crew_confine", loader))
         loader.exec_module(confine)
-        codex = mock.Mock(CONFINES=("safe",), TITLE="Codex")
+        codex = mock.Mock(CONFINES=("safe",), TITLE="Codex", SANDBOX_PROBE=None)
         values = {"paths.worktree_root": os.path.join(self.tmp, "wt"), "runtime.options.confinement": "enforce"}
         linked = os.path.join(self.tmp, "wt", "legacy")
         self.git("worktree", "add", "-q", "--detach", linked, "HEAD")
@@ -1520,7 +1547,8 @@ class ConfinementLive(SpawnBase):
     """#1252 B5 items 2 and 5, live: two builders through the production spawn and launch path (real tmux on a private
     socket, real Codex in permission_mode=safe under confinement=enforce). B's launched session adds its own nested
     evidence tree; A's launched session then fails to remove B, B's nested tree or B's metadata and to write the shared
-    checkout's metadata, while it adds and removes its own nested tree. Spends model tokens; never in CI."""
+    checkout's metadata, while it adds and removes its own nested tree. Spends model tokens; never in CI. On a host
+    where Codex cannot apply its sandbox (a launcher that nests it), the first spawn fails fast with the probe's cause."""
 
     def setUp(self):
         super().setUp()
