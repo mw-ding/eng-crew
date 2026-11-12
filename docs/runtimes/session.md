@@ -105,6 +105,17 @@ With no role windows, it skips the in-flight wait and window reload and
 restarts nothing. Finish or pause dispatch first, then exit the coordinator
 and run `mdstack up` so it loads the new briefs.
 
+A session crew set up by `mdstack install` and a manual render has no
+`install.json`, and upgrade refuses it with `adoption covers a tmux install
+only`: adoption of a running install without a record (#1616) verifies tmux
+installs only. Bootstrap once instead (#1727). With dispatch finished or
+paused, run `mdstack bootstrap --project <absolute config.toml> --dry-run`
+from the install source and version you chose (`--version` to fetch one),
+review it, then repeat with `--yes`
+([bootstrap Q8](../bootstrap.md#q8-idempotency-upgrade-and-uninstall)).
+That writes the record; later upgrades and coordinator restarts follow the
+steps above.
+
 With `repo.control_item` set, a GitHub issue or a tracker-native item, the
 coordinator brief carries the ownership guard and the handoff steps. Without
 one, `mdstack ownership` always permits, so the render drops that inert text:
