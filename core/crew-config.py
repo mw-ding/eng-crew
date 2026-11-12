@@ -359,8 +359,6 @@ def validate_hosts(profile, top, err):
             validate_connect(err, path + ".connect", h["connect"])
         forge = h.get("forge", True)
         check_choice(err, path + ".checkout", h.get("checkout"), ["mirror", "command"])
-        if h.get("checkout") == "command" and h.get("primary"):
-            err(path + ".checkout", "the primary uses its own git checkout; expected no checkout command")
         caps = check_platform(err, path + ".capabilities", h["capabilities"], {"os": (str, REQUIRED), "arch": (str, REQUIRED),
                               "engines": ("list[str]", REQUIRED if forge else None)}) if "capabilities" in h else {}
         check_choices(err, path + ".capabilities.engines", caps.get("engines", []), ENGINES)

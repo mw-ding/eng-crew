@@ -4,6 +4,8 @@ Usage: python3 dev/tests/environments/test-crew-host.py [--evidence]
 
 --evidence prints reproducible CLI success, failure, repair and inventory transcripts from fake hosts.
 """
+import contextlib
+import io
 import json
 import os
 import platform
@@ -421,6 +423,77 @@ class Host(Base):
             with mock.patch.object(doctor, "run", return_value=0), mock.patch.object(doctor, "sh",
                                    side_effect=lambda *cmd: (0 if cmd[0] == "git" else 1, "")):
                 self.assertEqual(mod.commands()["host"].run(args), 1)
+        self.assertFalse(os.path.exists(self.ssh_log))
+
+    def test_primary_command_checkout(self):
+        """#1723: a primary with checkout = "command" prepares by running its own declaration (no git fetch) and
+        checks the receipt (never the command, never git) against the project checkout; missing, failed or
+        mismatched stays not ready."""
+        root = os.path.join(self.tmp, "primary-root")
+        with open(self.project) as f:
+            text = f.read()
+        with open(self.project, "w") as f:
+            f.write(text.replace("[hosts.host-a]\nprimary = true\n",
+                                 '[hosts.host-a]\nprimary = true\ncheckout = "command"\nroot = "%s"\n' % root))
+        with open(os.path.join(self.tmp, "bin", "git"), "w") as f:
+            f.write("#!/bin/sh\necho 'git must not run' >&2\nexit 1\n")
+        loader = importlib.machinery.SourceFileLoader("crew_cli", CREW)
+        mod = importlib.util.module_from_spec(importlib.util.spec_from_loader("crew_cli", loader))
+        loader.exec_module(mod)
+        doctor, decl = mod.commands()["doctor"], os.path.join(root, "checkout", "acme__widgets.json")
+        ran = os.path.join(self.tmp, "ran.log")
+
+        def declare(argv, path=self.project_dir):
+            os.makedirs(os.path.dirname(decl), exist_ok=True)
+            with open(decl, "w") as f:
+                json.dump(dict(argv=argv, path=path), f)
+
+        def host(action):
+            args = Namespace(project=self.project, org_profile=None, fix=False, prune=False, host="host-a",
+                             action=action)
+            out = io.StringIO()
+            with mock.patch.dict(os.environ, self.env), contextlib.redirect_stdout(out), \
+                    mock.patch.object(doctor, "run", return_value=0), \
+                    mock.patch.object(doctor, "sh", side_effect=lambda *cmd: (1 if cmd[0] == "git" else 0, "")):
+                return mod.commands()["host"].run(args), out.getvalue()
+
+        code, out = host("check")
+        self.assertEqual(code, 1, out)
+        self.assertIn("fail project checkout: acme__widgets checkout command has not run; run mdstack host prepare\n"
+                      "host-a: not ready", out)
+        self.assertNotIn("project mirror", out)
+        code, out = host("prepare")
+        self.assertEqual(code, 1, out)
+        self.assertIn("fail prepare checkout: no valid checkout/acme__widgets.json under root", out)
+        declare(["false"])
+        self.assertEqual(host("prepare"), (1, "fail prepare checkout: exit 1\nhost-a: not ready\n"))
+        declare(["sh", "-c", "echo ran >> " + ran])
+        code, out = host("prepare")
+        self.assertEqual(code, 0, out)
+        for line in ("ok prepare checkout: project checkout\n", "ok engine login codex: logged in\n",
+                     "ok project checkout: acme__widgets at %s\n" % self.project_dir, "host-a: ready\n"):
+            self.assertIn(line, out)
+        with open(os.path.join(root, "state", "acme__widgets", "checkout.json")) as f:
+            self.assertEqual(json.load(f)["path"], self.project_dir)
+        self.assertEqual(host("check")[0], 0)
+        with open(ran) as f:
+            self.assertEqual(f.read(), "ran\n")  # check never ran the command
+        declare(["false"])  # success, then a failed prepare at the same path: the old receipt no longer counts
+        self.assertEqual(host("prepare"), (1, "fail prepare checkout: exit 1\nhost-a: not ready\n"))
+        code, out = host("check")
+        self.assertEqual(code, 1, out)
+        self.assertIn("fail project checkout: acme__widgets checkout command has not run", out)
+        declare(["true"])
+        self.assertEqual(host("prepare")[0], 0)  # repaired
+        self.assertEqual(host("check")[0], 0)
+        other = os.path.join(self.tmp, "elsewhere")
+        declare(["mkdir", "-p", other], other)
+        code, out = host("prepare")
+        self.assertEqual(code, 1, out)
+        self.assertIn("fail project checkout: declared path %s is not the project checkout %s; fix "
+                      "checkout/acme__widgets.json or paths.checkout\nhost-a: not ready" % (other, self.project_dir), out)
+        declare(["true"])
+        self.assertEqual(host("check")[0], 1)  # the receipt names another path: the declared one has not run
         self.assertFalse(os.path.exists(self.ssh_log))
 
     def test_session_runtime_gets_a_host_report(self):

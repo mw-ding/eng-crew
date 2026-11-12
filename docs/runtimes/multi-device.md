@@ -245,6 +245,16 @@ then requires a `project checkout` row in place of `project mirror`: `ok`
 once the command has run and its declared path exists. Run worktrees and
 runner jobs on such a host still need a mirror (follow-up).
 
+The primary may set it too, for a primary on a non-git checkout (#1723).
+Its declaration lives under its own `root` (default `~/.mdstack`), and
+`mdstack host prepare <primary>` runs it locally with the same checks and
+receipt, in place of the git fetch. `mdstack host check <primary>` reads the
+receipt and never runs the command: `ok project checkout` replaces the
+`project mirror` row only when the command has run, its path exists and is
+the profile's project checkout (`paths.checkout`, else the profile's
+directory). Doctor and engine-login rows still gate ready as for a git
+primary.
+
 ### Working-copy claims
 
 Project ownership keeps two crews off each other's projects, not off each

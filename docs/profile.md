@@ -661,7 +661,7 @@ needs = { devices = ["ios-simulator"] }
 | `hosts.<name>.roles` | list from `builder`, `reviewer` | both | Roles placed there |
 | `hosts.<name>.root` | string: path on that host | `~/.mdstack` | Mirrors, worktrees and host state |
 | `hosts.<name>.toolchain_bin` | string: path on that host | none | `<toolchain-bin>` for builders there |
-| `hosts.<name>.checkout` | string: `mirror` or `command` | `mirror` | `command`: `mdstack host prepare` runs the checkout command that host declares in `<root>/checkout/<owner>__<repo>.json` in place of the git mirror or seed steps, for a checkout made by its own VCS ([command checkout](runtimes/multi-device.md#command-checkout), #1035); `validate` refuses it on the primary |
+| `hosts.<name>.checkout` | string: `mirror` or `command` | `mirror` | `command`: `mdstack host prepare` runs the checkout command that host declares in `<root>/checkout/<owner>__<repo>.json` in place of the git mirror or seed steps, for a checkout made by its own VCS ([command checkout](runtimes/multi-device.md#command-checkout), #1035); on the primary it runs locally and its declared `path` must be the project checkout (#1723) |
 | `hosts.<name>.connect.alias` | string: a DNS label, unique across host names and aliases | none | A short name for [`mdstack connect`](runtimes/multi-device.md#connect-to-a-host); the host name always works too |
 | `hosts.<name>.connect.transport` | string: `ssh`, `mosh` or `et` | `ssh` | The owner's login transport for `mdstack connect` |
 | `hosts.<name>.connect.proxy` | string: an SSH `ProxyCommand` | none | Passed to `ssh -o ProxyCommand=` (directly, or through mosh's `--ssh` with `--experimental-remote-ip=remote`); `validate` refuses it with `et`, which reads it from the owner's SSH config |
