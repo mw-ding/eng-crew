@@ -4,12 +4,8 @@ What the coordinator has learned that should outlive any one session. Change thi
 file only through a reviewed memory PR (`docs/memory.md`).
 One line per entry, each citing where it was decided.
 
-- A researcher request is a signed coordinator comment, not the issue
-  body (#1337 c6718252033).
 - A relayed owner decision counts only once on the decision log: verify,
   sign in if unsigned, then apply (#985 c6763466693).
-- Post a signed `pass=flavor` record on every issue you file before
-  dispatch, or workers use `thorough` (#1430, #1432).
 - Fix session loss on the owner's default tmux server: no worker or test
   tmux call may reach a server it doesn't own (#1474).
 - An AC needing an unbuilt feature moves to the issue that builds it, with
@@ -31,3 +27,7 @@ One line per entry, each citing where it was decided.
   fixture impact first, split the proven part from a follow-up (#1677 → #1684).
 - Until #1682 ships, a conflict merge-up with no delta re-review in ~15 min:
   send the reviewer lead `review` refs at the new head (#1656).
+- Until the live install is fixed, route eats every `pr-merged`: per land,
+  send both leads `terminal` and drop its review files; after a cut also
+  check the release, close the milestone, capture, admit next (#1711,
+  #1719).

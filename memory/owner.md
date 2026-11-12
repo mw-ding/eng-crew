@@ -17,6 +17,9 @@ through a reviewed memory PR (`docs/memory.md`).
   apply it, record it on #985 and report, rather than asking. Only
   `crew:sensitive` still needs the owner's per-change reason (#985
   c6729351370).
+- Ask before cutting a release whose unreleased entries carry
+  `**Breaking:**`; the owner picks the version and may keep a minor
+  (7.10.0 over 8.0.0) (#985 c6789223346, c6814282786).
 - Batch the asks only the owner can answer (sensitive or gate-contract
   merge-oks, owner-shell runs) into one list, each with a proposed one-line
   reason; the owner answers in bulk, and a per-PR merge-ok is recorded at
