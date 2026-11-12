@@ -30,8 +30,7 @@
    test named for a changed script; render and parity tests when templates or
    fixtures conflicted); PR CI and the recheck pass cover the rest. The
    merge-up note lists the tests run and why that set covers the conflict.
-3. Every commit ends with `Engine: <engine> <model> <effort>`, naming what
-   actually ran. Run `$CREW_BIN action heartbeat` (it refreshes the claim
+3. Run `$CREW_BIN action heartbeat` (it refreshes the claim
    file's `heartbeat:` line; where it answers `unsupported`, as in a session
    run, edit that line yourself) at least every 5 min and after each commit,
    push and post (§6).
@@ -41,10 +40,9 @@
 4. Classify full diff paths with `<op:classify.sensitive> --project "$CREW_PROJECT"`
    per protocol `Sensitive class`; with `[[sensitive.content]]` rules, pipe
    `git diff --no-color --no-renames origin/<default-branch>...HEAD` to
-   `sensitive --diff` instead. Apply `crew:sensitive` and record matches,
-   carrying the issue label too. Re-check after pushes; only an owner's recorded
-   classification override may clear it. Open a non-draft PR: `<op:change.open>`, body per §3, written once, never
-   edited; label it `crew:in-review`. Evidence is inline in the body.<land-publish>
+   `sensitive --diff` instead. Apply `crew:sensitive` and record matches
+   (carry, re-check and override: PR conventions). Open a non-draft PR: `<op:change.open>`, body per §3, written once, never
+   edited; label it `crew:in-review`.<land-publish>
    After each push, read the head back (`<op:change.read-head>`); use that
    full SHA, never a local hash, in markers, evidence and `done:`.
    A CLI change that only runs against test fakes may use a named test
