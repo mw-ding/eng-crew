@@ -677,8 +677,9 @@ Lessons:
 Merge permission for M46 spec, protocol, template and gate-contract text was
 the owner's
 [M45–M48 grant](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6789266394),
-recorded at each head. M46 has no release cut of its own; v7.9.0 follows
-M47. M46 closes after this slice merges.
+recorded at each head. M46 has no release cut of its own; it ships in
+7.10.0 (#1720) with M47's landed work and M48, and 7.9.0 is skipped. M46
+closes after this slice merges.
 
 ### M47: installs and working copies
 
@@ -686,18 +687,20 @@ Opened by the spec slice #1691, part of
 [#1646](https://github.com/mw-ding/mdstack/issues/1646). Scope comes from
 [Riley's readiness pass](https://github.com/mw-ding/mdstack/issues/1646#issuecomment-6797511860):
 seven builds, one PR per issue. No item below dispatches before this slice
-merges. Every row is planned: its issue is `open`. B3 waits for B1 and B2,
-and B6 waits for B5; every other row depends only on this slice.
+merges. B3 waits for B1 and B2, and B6 waits for B5; every other row
+depends only on this slice. Statuses were set by the status-sync
+slice #1721 for the five landed builds. B5 and B6 are still open, and
+M47 stays open until they land; its own closing status sync follows them.
 
 | ID | Issue | Scope | Depends on | Status |
 |---|---|---|---|---|
-| B1 | #1344 | Project references (`FILE#repo`) kept through bootstrap, fetch and install | #1691 | open |
-| B2 | #1537 | Revision-bound memory: render reads core memory at one fresh remote-default SHA | #1691 | open |
-| B3 | #1090 | A true bootstrap no-op: an unchanged install writes nothing | #1691, B1, B2 | open |
-| B4 | #1595 | `mdstack connect` dials the inventory host's address | #1691 | open |
-| B5 | #1252 | A builder run cannot remove another run's working copy | #1691 | open |
+| B1 | #1344 | Project references (`FILE#repo`) kept through bootstrap, fetch and install (PR #1706) | #1691 | done |
+| B2 | #1537 | Revision-bound memory: render reads core memory at one fresh remote-default SHA (PR #1703) | #1691 | done |
+| B3 | #1090 | A true bootstrap no-op: an unchanged install writes nothing (PR #1716) | #1691, B1, B2 | done |
+| B4 | #1595 | `mdstack connect` dials the inventory host's address (PR #1695) | #1691 | done |
+| B5 | #1252 | A builder run cannot remove another run's working copy (PR #1707, open, waiting on an owner-shell proof) | #1691 | open |
 | B6 | #316 | Worktree root parity and conservative GC | #1691, B5 | open |
-| B7 | #281 | Ship the shared secret and glob primitives; keep `check-repo.py` internal | #1691 | open |
+| B7 | #281 | Ship the shared secret and glob primitives; keep `check-repo.py` internal (PR #1700) | #1691 | done |
 
 Decisions M47 settles (the
 [coordinator's record](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6797570240)
@@ -765,8 +768,10 @@ trees stay an owner keep-list decision, not a B6 removal.
 Merge permission for M47 spec, protocol, template and gate-contract text is
 the owner's
 [M45–M48 grant](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6789266394),
-recorded at each head. The release cadence stays v7.9.0 after M47 closes. A
-status-sync slice closes the milestone.
+recorded at each head. A status-sync slice closes the milestone.
+
+Release: M47's landed work ships in 7.10.0 (#1720), not 7.9.0, which is
+skipped because M48 finished first. B5 and B6 ship in the next release.
 
 ### M48: release integrity and reports
 
@@ -774,20 +779,21 @@ Opened by the spec slice #1697, part of
 [#1647](https://github.com/mw-ding/mdstack/issues/1647). Scope comes from
 [Riley's readiness pass](https://github.com/mw-ding/mdstack/issues/1647#issuecomment-6798439318):
 nine builds, one PR per issue. No item below dispatches before this slice
-merges. Every row is planned: its issue is `open`. B4 (#1418) also waits
-for B5 (#978) and B2 (#1416); every other row depends only on this slice.
+merges. B4 (#1418) also waits for B5 (#978) and B2 (#1416); every other
+row depends only on this slice. Statuses were set by the status-sync
+slice #1721: every row has landed.
 
 | ID | Issue | Scope | Depends on | Status |
 |---|---|---|---|---|
-| B1 | #1415 | Release cut checks the bump class against the published predecessor's pack manifests | #1697 | open |
-| B2 | #1416 | Release cut PRs use a non-closing release-issue reference; the issue closes after publication | #1697 | open |
-| B3 | #1417 | Released CHANGELOG sections are immutable outside a cut | #1697 | open |
-| B4 | #1418 | Moved or quoted prose keeps its meaning: qualifiers, slice linkage and closing keywords | #1697, B5, B2 | open |
-| B5 | #978 | Work-unit rule: an issue is a unit of work; one PR per issue, split into commits | #1697 | open |
-| B6 | #258 | C8 and §6: a deadline applies only a permitted default and supplies no merge-ok | #1697 | open |
-| B7 | #372 | The coordinator edits owner config only under a recorded authorization | #1697 | open |
-| B8 | #431, #1291 | One report skeleton for every role, with the team in signatures | #1697 | open |
-| B9 | #1314 | Remove `examples/agentconnect/` and every reference to it | #1697 | open |
+| B1 | #1415 | Release cut checks the bump class against the published predecessor's pack manifests (PR #1705) | #1697 | done |
+| B2 | #1416 | Release cut PRs use a non-closing release-issue reference; the issue closes after publication (PR #1711) | #1697 | done |
+| B3 | #1417 | Released CHANGELOG sections are immutable outside a cut (PR #1704) | #1697 | done |
+| B4 | #1418 | Moved or quoted prose keeps its meaning: qualifiers, slice linkage and closing keywords (PR #1719) | #1697, B5, B2 | done |
+| B5 | #978 | Work-unit rule: an issue is a unit of work; one PR per issue, split into commits (PR #1710) | #1697 | done |
+| B6 | #258 | C8 and §6: a deadline applies only a permitted default and supplies no merge-ok (PR #1699) | #1697 | done |
+| B7 | #372 | The coordinator edits owner config only under a recorded authorization (PR #1708) | #1697 | done |
+| B8 | #431, #1291 | One report skeleton for every role, with the team in signatures (PR #1709) | #1697 | done |
+| B9 | #1314 | Remove `examples/agentconnect/` and every reference to it (PR #1702) | #1697 | done |
 
 ACs and paths per row (the readiness pass has the full text and line
 citations):
@@ -898,8 +904,34 @@ for the nine builds; publication keeps the owner-actor approval flow.
 Merge permission for M48 spec, protocol, template and gate-contract text is
 the owner's
 [M45–M48 grant](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6789266394),
-recorded at each head. A status-sync slice closes the milestone, then the
-v7.10.0 cut follows.
+recorded at each head. A status-sync slice closes the milestone.
+
+Questions M48 settled at close:
+
+- **Release class.** The owner chose 7.10.0 (#1720) as a minor despite
+  #1416's `**Breaking:**` entry; the entry and its migration step stay in
+  the notes, and 7.9.0 is skipped
+  ([decision](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6814282786)).
+  This was the owner's other call the classification above allows.
+- **Order.** The cut ran before this status-sync slice, and the cut freeze
+  held the slice until it landed, so the slice ships in the release after
+  7.10.0.
+- **D1 baseline.** 7.9.0 never published, so v7.8.0 stayed the pinned
+  predecessor for the 7.10.0 cut.
+
+Lessons:
+
+- **A sensitive merge-ok is head-pinned (#1717).** A clean merge-up with an
+  identical patch dropped #1711's owner merge-ok, though a verdict ports
+  across it, so the owner had to answer the same ask again and the PR sat
+  owner-blocked about 1.5 hours. Whether an owner merge-ok ports across
+  an identical-patch merge-up is for triage under #1717; until then it
+  does not.
+- **Backstop re-nudge loop (#1715).** The lead backstop re-woke a lead
+  every 60 seconds for land ids blocked on an owner `crew:sensitive`
+  reason, with no state change, and each `blocked:` line re-woke the
+  coordinator. Until #1715 is triaged, the lead settles owner-blocked land
+  ids and the coordinator re-sends the land on the owner's answer.
 
 ## 6. Decisions
 
