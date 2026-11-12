@@ -529,6 +529,16 @@ class Bootstrap(doctor_tests.DoctorBase):
             (self.issue_log, 'echo https://github.com/acme/widgets/issues/123'))
         gh.write_text(text)
         Path(self.state_file).write_text(json.dumps({"crew-acme-widgets": {"0": "ash"}}))
+        # Doctor's sandbox row probes the checkout's .git unless CREW_SANDBOX_ENV, inherited from the host, is set: host
+        # state smoke does not test. Pin it in the env the bundle's subprocess sees (#1668); test-crew-doctor's Sandbox
+        # tests keep the real probe.
+        self.env["CREW_SANDBOX_ENV"] = "CREW_TEST_SANDBOX=" + str(Path(self.project_dir, ".git").resolve())
+
+    def deny_git_probe(self):
+        """The host failure #1668 saw before smoke: this process may not create files in the checkout's .git."""
+        git = Path(self.project_dir, ".git")
+        git.chmod(0o500)
+        self.addCleanup(git.chmod, 0o755)
 
     def test_smoke_is_opt_in_dry_run_safe_and_queued_once(self):
         self.smoke_host()
@@ -564,6 +574,27 @@ class Bootstrap(doctor_tests.DoctorBase):
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         self.assertIn("smoke issue creation failed", r.stderr)
         self.assertNotIn("smoke", json.loads(self.manifest.read_text()))
+
+    def test_a_denied_git_probe_does_not_preempt_smoke(self):  # #1668
+        self.smoke_host()
+        self.deny_git_probe()
+        pin = self.env.pop("CREW_SANDBOX_ENV")
+        r = self.bootstrap("--yes", "--smoke")  # unpinned, this host stops at doctor before smoke
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertRegex(r.stdout, r"\nfail +sandbox +this session sandboxed")
+        self.assertFalse(self.issue_log.exists())
+        self.env["CREW_SANDBOX_ENV"] = pin
+        gh = Path(self.bindir) / "gh"
+        queued = gh.read_text()
+        gh.write_text(queued.replace('echo https://github.com/acme/widgets/issues/123', 'exit 1'))
+        r = self.bootstrap("--yes", "--smoke")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertNotIn("self-test failed", r.stderr)
+        self.assertIn("smoke issue creation failed", r.stderr)
+        gh.write_text(queued)
+        r = self.bootstrap("--yes", "--smoke")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(json.loads(self.manifest.read_text())["smoke"]["status"], "queued")
 
     def test_grok_deploys_and_refuses_edited_targets(self):
         self.project_path.write_text(self.project_path.read_text().replace('name = "tmux"', 'name = "grok-bot"'))
