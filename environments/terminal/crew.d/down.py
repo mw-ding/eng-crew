@@ -9,6 +9,7 @@ when the primary's session is gone.
 Both modes first stop the armed watcher (SIGTERM; refuses if it outlives the grace), also with no session left (#1346).
 --preserve is the maintenance stop before a migration (#1178): it stops the watcher and every pane's processes, but keeps each run's worktree, record, claim, inbox and status file.
 """
+import contextlib
 import fcntl
 import os
 import signal
@@ -34,10 +35,12 @@ def watcher(state):
 
 def stop_watcher(state):
     """SIGTERM the armed watcher and wait for it to exit and release its lock; what watcher() still finds after the
-    grace (-1 when the lock holder cannot be identified, which is never signalled)."""
+    grace (-1 when the lock holder cannot be identified, which is never signalled). A watcher that exits between
+    the PID read and the signal counts as stopped (#1757); any other signal error still raises."""
     pid = watcher(state)
     if pid and pid > 0:
-        os.kill(pid, signal.SIGTERM)
+        with contextlib.suppress(ProcessLookupError):
+            os.kill(pid, signal.SIGTERM)
         deadline = time.monotonic() + WATCHER_GRACE
         while watcher(state) and time.monotonic() < deadline:
             time.sleep(0.1)

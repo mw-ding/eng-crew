@@ -30,6 +30,7 @@ those steps in this process, for a shell outside the session. `lift` (incoming, 
 removes `crew:hold` from the manifest's `holds_added` only once `stopped` is posted, the owner confirms, or the
 outgoing release reads the record (v3.0.0, #210); `--keep` leaves a diverged set's hold.
 """
+import contextlib
 import datetime
 import glob
 import json
@@ -492,7 +493,8 @@ def stopped(values, state, session, runtime, args):
     pidfile = os.path.join(state, "wake", "watcher.pid")
     for _ in range(DOWN_TRIES):
         if pid := commands()["watch"].armed(pidfile):
-            os.kill(pid, signal.SIGTERM)
+            with contextlib.suppress(ProcessLookupError):  # it exited after the read (#1757)
+                os.kill(pid, signal.SIGTERM)
         down = commands()["down"].run(Namespace(project=args.project, org_profile=args.org_profile, keep_work=True))
         if down == 0 and not tmux.has_session(session) and not commands()["watch"].armed(pidfile):
             break

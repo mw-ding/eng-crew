@@ -2,9 +2,12 @@
 
 Covers: kill order and the land-lock refusal, no-op without a session, names windows holding
 unlanded work, ends a real pane process that ignores SIGHUP and SIGTERM (SIGKILL) for every
-window; the watcher stopped first by plain down too, even with no session left (#1346). Run in CI.
+window; the watcher stopped first by plain down too, even with no session left (#1346); a watcher that
+exits between the PID read and the signal counts as stopped (#1757). Run in CI.
 """
 import fcntl
+import importlib.util
+from importlib.machinery import SourceFileLoader
 import json
 import os
 import signal
@@ -12,8 +15,14 @@ import subprocess
 import sys
 import time
 import unittest
+from unittest import mock
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # dev/tests/: crew_testlib
-from crew_testlib import Base, KillLandedBase, LivenessBase
+from crew_testlib import CREW, Base, KillLandedBase, LivenessBase
+
+spec = importlib.util.spec_from_loader("crew_cli", SourceFileLoader("crew_cli", CREW))
+cli = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(cli)
+down = cli.commands()["down"]
 
 
 def fake_watcher(tmp):
@@ -122,6 +131,24 @@ class DownLiveness(LivenessBase):
         self.assertEqual((self.alive(ben), self.alive(ash)), (False, False))
         with open(ben_log) as f:
             self.assertEqual(f.read().split(), [str(int(signal.SIGTERM))])  # TERM first, then KILL
+
+
+class StopWatcherRace(unittest.TestCase):  # #1757: the watcher exits between the PID read and the signal
+    def exited_pid(self):
+        p = subprocess.Popen([sys.executable, "-c", "pass"])
+        p.wait(timeout=10)
+        return p.pid  # reaped: signalling it raises ProcessLookupError
+
+    def test_a_watcher_gone_before_the_signal_counts_as_stopped(self):
+        pid = self.exited_pid()
+        with mock.patch.object(down, "watcher", side_effect=[pid, None, None]):
+            self.assertIsNone(down.stop_watcher("/unused"))
+
+    def test_other_signal_errors_still_raise(self):
+        with mock.patch.object(down, "watcher", return_value=4242), \
+                mock.patch.object(down.os, "kill", side_effect=PermissionError(1, "Operation not permitted")):
+            with self.assertRaises(PermissionError):
+                down.stop_watcher("/unused")
 
 
 if __name__ == "__main__":
