@@ -1054,11 +1054,26 @@ class ResolveTest(unittest.TestCase):
                                      'runtime.options.builders = 5  # core',
                                      'runtime.options.reviewers = 2  # core',
                                      'runtime.options.max_active_milestones = 1  # core',
-                                     'runtime.options.merge_grant = "none"  # core'],
+                                     'runtime.options.merge_grant = "none"  # core',
+                                     'runtime.options.researchers = 0  # core'],  # #1724: the sweep is opt-in
                                     VALID.replace('name = "tmux"\noptions = { builders = 3 }', 'name = "session"'))
-        self.assertFalse([ln for ln in lines if "researchers" in ln], lines)
         for line in ('runtime.options.present_builders = 5  # core', 'runtime.options.present_reviewers = 2  # core'):
             self.assertIn(line, lines)  # #1053: owner-present limits default to the full caps
+
+    def test_session_triage_needs_an_explicit_positive_researcher_cap(self):  # #1724
+        session = VALID.replace('name = "tmux"\noptions = { builders = 3 }', 'name = "session"\noptions = { %s }')
+        triage = "\n[triage]\nenabled = true\n"
+        for options, layer in (("", "core"), ("researchers = 0", "crew.toml")):  # unset resolves to the core 0
+            code, lines = resolve(session % options + triage, default=VALID)
+            self.assertEqual(code, 1, lines)
+            self.assertTrue(any(ln.endswith("runtime.options.researchers: 0 runs no researcher, but triage.enabled = true "
+                                            "needs one for its sweep") and ln.startswith(layer) for ln in lines), lines)
+        code, lines = resolve(session % "researchers = 1" + triage, default=VALID)
+        self.assertEqual(code, 0, lines)
+        self.assertIn("runtime.options.researchers = 1  # project", lines)
+        code, lines = resolve(VALID + triage, default=VALID)  # tmux keeps its default of 2
+        self.assertEqual(code, 0, lines)
+        self.assertIn("runtime.options.researchers = 2  # core", lines)
 
     def test_session_present_cap_bound_spans_layers(self):  # #1053
         project = VALID.replace('name = "tmux"\noptions = { builders = 3 }', 'name = "session"\noptions = { builders = 3 }')

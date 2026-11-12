@@ -26,14 +26,16 @@ A profile selects the binding with `runtime.name = "session"`
 ([options](../configuration/runtime-options.md#session-options)):
 `max_active_milestones`, `session_backend` (`native` subagents, `cli`
 runs or `hosted` control-plane sessions), the `builders` and `reviewers` pool limits, and the synthesizer's
-land-policy options. `crew-render` writes five briefs from
-`templates/runtimes/session/`: the coordinator, and the builder, reviewer,
-synthesizer and researcher sweep worker briefs. Each worker brief carries the tmux role's
+land-policy options. `crew-render` writes four briefs from
+`templates/runtimes/session/`: the coordinator, and the builder, reviewer
+and synthesizer worker briefs, plus the researcher sweep worker brief when
+`researchers` is positive. Each worker brief carries the tmux role's
 contract for one pass per run and ends where the coordinator appends the
 `mdstack brief` run block (below); workers set their own `CREW_*` paths, since
 no runtime sets them. The researcher brief runs only the
 [triage sweep](#triage-sweep-routine), carrying the tmux brief's Triage
-sweep policy; `researchers = 0` writes none (#1404).
+sweep policy. The sweep is opt-in: `researchers` defaults to 0, which writes
+no researcher brief, so a sweep sets a positive cap (#1404, #1724).
 
 Session lands go alone, one per run (#1041), unless the change backend
 declares a [stack land](../interfaces.md#stack-land) (below). A sync backend lands under the
@@ -139,7 +141,8 @@ or Codex coordinator conversation
 
 ## Triage sweep routine
 
-With `[triage] enabled = true`, a session crew runs the
+With `[triage] enabled = true` and a positive `runtime.options.researchers`
+(an unset or zero cap is refused), a session crew runs the
 [triage](../triage.md) scan → queue → sweep → record → daily log loop as
 tmux does, in shadow mode first; the owner loop, noise cap, cooldowns and
 calibration are unchanged (#1404). The scan is

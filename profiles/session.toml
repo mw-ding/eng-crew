@@ -7,6 +7,8 @@
 
 [runtime]
 name = "session"
+# researchers is unset, so 0: no researcher sweep brief; a positive cap opts
+# into the triage sweep (docs/runtimes/session.md, #1724).
 options = { session_backend = "native", builders = 2, reviewers = 1 }
 
 [backends.review]
