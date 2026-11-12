@@ -74,7 +74,7 @@ def main(argv=None):
     if found:
         return 1
     what = "release issue #%d" % args.release if args.release is not None else \
-        "closes " + ", ".join("#%d" % n for n in args.closes) + "; allocation cited"
+        "closing line for " + ", ".join("#%d" % n for n in args.closes) + "; allocation cited"
     print("check-pr-linkage: OK (%s)" % what)
     return 0
 

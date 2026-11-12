@@ -33,7 +33,8 @@ class CheckPrLinkageTest(unittest.TestCase):
     def test_matching_allocation_passes(self):
         code, out, err = self.run_check(body("Closes #879"), "--closes", "879", "--allocation", ALLOC)
         self.assertEqual((code, err), (0, ""))
-        self.assertEqual(out, "check-pr-linkage: OK (closes #879; allocation cited)\n")
+        self.assertEqual(out, "check-pr-linkage: OK (closing line for #879; allocation cited)\n")
+        self.assertEqual(self.run_check(body("Closes #879", out), "--closes", "879", "--allocation", ALLOC)[1], out)
 
     def test_stale_allocation_flags_both_lines(self):
         # #950: the body kept the old link after the allocation moved the issue.
@@ -65,7 +66,7 @@ class CheckPrLinkageTest(unittest.TestCase):
         self.assertEqual(out.count("check-pr-linkage: "), 4)
         # Pasting the findings into a PR body adds no closing reference of its own.
         _, again, _ = self.run_check(body("Closes #879", out), "--closes", "879", "--allocation", ALLOC)
-        self.assertEqual(again, "check-pr-linkage: OK (closes #879; allocation cited)\n")
+        self.assertEqual(again, "check-pr-linkage: OK (closing line for #879; allocation cited)\n")
 
     def test_plain_mentions_pass(self):
         text = body("Closes #879", "Follows #20, now closed; see the fix in #21 and close-out #22.")
@@ -76,7 +77,7 @@ class CheckPrLinkageTest(unittest.TestCase):
         text = body("Closes #431", "Closes #1291")
         code, out, _ = self.run_check(text, "--closes", "431", "--closes", "1291", "--allocation", ALLOC)
         self.assertEqual(code, 0, out)
-        self.assertIn("closes #431, #1291", out)
+        self.assertIn("closing line for #431, #1291", out)
 
     def test_release_form_passes_and_flags_keywords(self):
         ok = "Refs #1700\n\nRelease issue: #1700\n"
