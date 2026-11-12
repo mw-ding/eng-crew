@@ -2022,7 +2022,9 @@ order. When the builder band is physically full but its busy cap permits
 queued work, dequeue reclaims the oldest idle builder with no unpushed or
 uncommitted work, then spawns the queued request. Builder `done:` also runs
 dequeue; capped builder spawns queue a mechanical wake so the watcher runs
-route promptly. With no eligible request, the spawn stays queued.
+route promptly. With no eligible request, the spawn stays queued and
+`nothing to dequeue` names why: a pool whose lead owns it (outside that lead
+or `CREW_POOL=<role>`), no free slot, or no request matching `--ref` (#1100).
 
 ### mdstack route
 
