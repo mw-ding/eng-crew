@@ -537,10 +537,12 @@ def refuse_paused(state, what):
 
 
 def pause_guarded(args):
-    """Typed commands a project pause refuses: they dispatch, message, land or clean up work (#1714)."""
+    """Typed commands a project pause refuses: they dispatch, message, land or clean up work (#1714); `down
+    --preserve` keeps every run's work and stays allowed."""
     cmd, action = args.cmd, getattr(args, "action", None)
     return cmd in ("spawn", "send", "dequeue", "kill", "reviewer-pool") or cmd == "train" and action != "check" or \
-        cmd == "land-lock" and action == "acquire" or cmd == "gc" and getattr(args, "apply", False)
+        cmd == "land-lock" and action == "acquire" or cmd == "gc" and getattr(args, "apply", False) or \
+        cmd == "down" and not getattr(args, "preserve", False)
 
 
 def unacked(state, name, lines):

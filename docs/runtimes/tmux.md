@@ -882,7 +882,8 @@ and the watcher stay, everything else stops with its work kept. Map an owner's
 
 While `pause.json` exists, or cannot be read, these refuse with
 `crew: project paused (...); refusing <what>`: `spawn`, `send`, `dequeue`,
-`kill`, `reviewer-pool`, `restart` of any window but window 0, `train`
+`kill`, plain `down` (`down --preserve` keeps every run's work and is
+allowed), `reviewer-pool`, `restart` of any window but window 0, `train`
 (except `check`), `land-lock acquire` (rechecked under the lock, so a land
 racing the pause stops), `land request`, `gc --apply`, `route`, lead start,
 lifecycle instance start, and `ownership --action start|land`. `mdstack up`
@@ -903,12 +904,14 @@ ownership permits `start`, and while `pause.json` is unreadable (`mdstack
 pause` rewrites it). It removes only `pause.json`: no hold, round count or
 landing stop. Then:
 
-- each run the pause stopped restarts once through `mdstack restart`, with
-  its rechecks (a reviewer whose PR head moved, a finished run and a refused
-  host stay stopped), without spending its one restart, so pause and resume
-  repeat safely;
-- a run whose item is held (an open ask, or `held` in `poll-state.json`) or
-  whose last line is `done:` stays stopped for its lead or the coordinator;
+- before each restart it re-reads the run's issue and PR live: a closed
+  item, a `crew:hold` or `crew:escalated` label, a reviewer whose PR head
+  moved off its recorded head, or a failed read keeps the run stopped (fail
+  closed), as do an open ask, `held` in `poll-state.json` and a last line
+  `done:`; its lead or the coordinator admits it later;
+- each other run the pause stopped restarts once through `mdstack restart`,
+  with its rechecks (a finished run and a refused host stay stopped), without
+  spending its one restart, so pause and resume repeat safely;
 - the enabled leads start on their kept inboxes and the lifecycle floors
   return, as in `mdstack up`;
 - one `resume` wake naming what restarted and what stayed stopped is queued,

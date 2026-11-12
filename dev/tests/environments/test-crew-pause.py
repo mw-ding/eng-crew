@@ -3,7 +3,7 @@
 Covers: the barrier is written before anything stops and refuses while a land holds the lock (exit 75, nothing
 stopped); every window but window 0 stops with each run's worktree, record, claim, inbox and status kept, lead
 records dropped and the session kept; pausing again is safe; a role host that does not answer is an incomplete pause
-with the barrier kept; dispatch, message, land, restart, train, cleanup, route and up's role windows refuse while
+with the barrier kept; plain down refuses while paused and keeps remote work; dispatch, message, land, restart, train, cleanup, route and up's role windows refuse while
 paused, and an unreadable barrier refuses as paused; the watcher queues events without routing or nudging. Run in CI.
 """
 import fcntl
@@ -118,6 +118,18 @@ class PauseRemote(ObserveBase):
         self.assertFalse(os.path.exists(os.path.join(self.state, "leads", "synthesizer.json")))  # stopped: fresh on resume
         self.assertNotIn(["kill-window", "-t", "=crew-acme-widgets:0"], self.calls())
         self.assertTrue(os.path.exists(os.path.join(self.state, "runs", "ben-12.json")))
+
+    def test_plain_down_refuses_while_paused_and_keeps_remote_work(self):
+        self.remote_run("ben-12", kill=dict(result="ok", unlanded=[], removed=False))
+        self.assertEqual(self.crew("pause", "--project", self.project).returncode, 0)
+        r = self.crew("down", "--project", self.project)
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("crew: project paused (since ", r.stdout)
+        self.assertEqual([c["request"]["discard"] for c in self.ssh_calls() if c["request"]["verb"] == "kill"], [False])
+        self.assertTrue(all(c["request"]["keep"] for c in self.ssh_calls() if c["request"]["verb"] == "kill"))
+        for rel in ("runs/ben-12.json", "pause.json"):
+            self.assertTrue(os.path.exists(os.path.join(self.state, rel)), rel)
+        self.assertNotIn("kill-session", [c[0] for c in self.calls()])
 
 
 if __name__ == "__main__":
