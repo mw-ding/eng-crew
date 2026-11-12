@@ -9,7 +9,10 @@ checkout. On a forge-less host it fetches the primary's checkout and seeds the h
 the default branch (the `seed` call); the host never reaches the forge. A failed step prints `fail prepare <step>`
 and the host stays not ready. A host with checkout = "command" sends `prepare` with checkout=command instead,
 forge-less or not: the host runs the checkout command declared in its own root (never sent over SSH) in place of the
-mirror steps, and check then requires a `project checkout` row in place of `project mirror` (#1035). With an
+mirror steps, and check then requires a `project checkout` row in place of `project mirror` (#1035). A primary with
+checkout = "command" runs its own declaration under its root locally with the same functions instead of the fetch;
+check reads the receipt, never runs the command, and also needs the declared path to be the project checkout (#1723).
+With an
 [install] table, prepare on a non-primary host also sends the primary's install.json (tag, bundle digest, transport)
 as the toolkit pin, and the host installs that release from the same source with the shared verifier
 (docs/bootstrap.md Host toolkit); no primary release install fails `toolkit`.
@@ -98,9 +101,15 @@ def inspect_host(args, values, session, state, host):
             login_ok = login_ok and ok
             text += ("ok" if ok else "human") + " engine login " + engine + (": logged in\n" if ok else
                     ": log in on the host\n")
-        mirror = commands()["doctor"].sh("git", "-C", checkout(values, args.project),
-                                         "rev-parse", "--verify", "refs/remotes/origin/" + values["repo.default_branch"])[0] == 0
-        text += ("ok" if mirror else "fail") + " project mirror: default branch " + values["repo.default_branch"] + "\n"
+        if command_checkout(values, host):
+            row = primary_checkout_row(values, args.project, host, project)
+            mirror = row["status"] == "ok"
+            text += "%s %s: %s%s\n" % (row["status"], row["check"], row["detail"],
+                                       "; " + row["hint"] if row.get("hint") else "")
+        else:
+            mirror = commands()["doctor"].sh("git", "-C", checkout(values, args.project), "rev-parse", "--verify",
+                                             "refs/remotes/origin/" + values["repo.default_branch"])[0] == 0
+            text += ("ok" if mirror else "fail") + " project mirror: default branch " + values["repo.default_branch"] + "\n"
         runs = sum(i >= 10 for i, _ in tmux.list_windows(session)) if session and tmux.has_session(session) else 0
         ready = mirror and login_ok and not code and not any(line.startswith("human") for line in text.splitlines())
         return dict(reachable=True, ready=ready, report=text, projects=[project] if ready else [], load=runs)
@@ -169,8 +178,27 @@ def command_checkout(values, host):
     return dict(checkout="command") if setting(values, host, "checkout") == "command" else {}
 
 
+def primary_root(values, host):
+    return os.path.abspath(os.path.expanduser(setting(values, host, "root", "~/.mdstack")))
+
+
+def primary_checkout_row(values, project_file, host, project):
+    """The primary's `project checkout` row from the receipt its last prepare wrote (the command never runs here);
+    the declared path must also be the profile's project checkout (#1723)."""
+    remote = load("crew_remote", REMOTE)
+    root, want = primary_root(values, host), checkout(values, project_file)
+    row = remote.checkout_row(root, project)
+    if row["status"] != "ok":
+        return row
+    path = remote.declared_checkout(root, project)[1]
+    if os.path.realpath(path) != os.path.realpath(want):
+        return remote.row("fail", "project checkout", "declared path %s is not the project checkout %s" % (path, want),
+                          "fix checkout/%s.json or paths.checkout" % project)
+    return row
+
+
 def prepare(args, values, host, state):
-    """Primary: fetch its checkout. Forge-less: fetch, then seed the default branch as a git bundle. Else `prepare`.
+    """Primary: fetch its checkout, or run its declared checkout command (#1723). Forge-less: fetch, then seed the default branch as a git bundle. Else `prepare`.
     A non-primary host also gets the toolkit pin when the profile has [install]."""
     checkout_dir, branch = checkout(values, args.project), values["repo.default_branch"]
     project, root = values["repo.owner"] + "__" + values["repo.name"], setting(values, host, "root", "~/.mdstack")
@@ -183,6 +211,12 @@ def prepare(args, values, host, state):
     if getattr(args, "prune", False):
         extra["prune"] = True
     extra.update(command_checkout(values, host))
+    if primary and "checkout" in extra:  # #1723: the declared command runs here, no git fetch
+        remote = load("crew_remote", REMOTE)
+        try:
+            return dict(result="ok", **remote.run_checkout(primary_root(values, host), project))
+        except remote.Failed as e:
+            return e.reply
     if not primary and (forge or "checkout" in extra):
         return load("crew_remote", REMOTE).call(address(values, host), "prepare", timeout=660, project=project,
                                                 root=root, **extra)
