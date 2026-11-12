@@ -957,6 +957,156 @@ Lessons:
   coordinator. Until #1715 is triaged, the lead settles owner-blocked land
   ids and the coordinator re-sends the land on the owner's answer.
 
+### M50: portable session contracts and stack binding
+
+Opened by the spec slice #1749, part of
+[#1747](https://github.com/mw-ding/mdstack/issues/1747). Scope comes from
+[Riley's readiness pass](https://github.com/mw-ding/mdstack/issues/1747#issuecomment-6819946824):
+six builds, one PR per issue, larger PRs split into reviewable commits. No
+item below dispatches before this slice merges and the live install is
+upgraded to 7.10.0 (U: an owner-terminal step with dispatch paused, after
+the dry run succeeds; the install record still read 7.6.0 at the readiness
+pass). Every row is planned: its issue is `open`. The order below is
+priority, not a dependency; #1722 is last by risk. Sizes are estimated
+changed non-test lines.
+
+| ID | Issue | Scope | Size | Depends on | Status |
+|---|---|---|---|---|---|
+| B1 | #1723 | A primary host accepts a declared command checkout | 120–220 | #1749, U | open |
+| B2 | #1724 | Session researchers are opt-in: an unset cap resolves to 0 (D1) | 50–100 | #1749, U | open |
+| B3 | #1725 | Spec bookends follow the configured spec home or a specs-only external reference (D2) | 180–300 | #1749, U | open |
+| B4 | #1726 | VCS-neutral negative control in the CLI evidence template | 15–35 | #1749, U | open |
+| B5 | #1727 | Session Upgrading documents the one-time bootstrap prerequisite | 10–25 | #1749, U | open |
+| B6 | #1722 | Additive stack binding: revision IDs and per-change readback (D3) | 350–550 | #1749, U | open |
+
+ACs and paths per row (the readiness pass has the full text and line
+citations):
+
+- **B1 (#1723).** Accept an explicit `hosts.<primary>.checkout =
+  "command"`. `host prepare` runs the host-owned `{argv, path}` declaration
+  with checked exit and no shell, then writes the existing checkout
+  receipt; `host check` reads the receipt and path and never runs the
+  command. Only a declared, prepared checkout prints `ok project checkout`;
+  a missing declaration, receipt or path, or a failed prepare, stays not
+  ready. Git primaries and remote command checkout are unchanged. Prove
+  accepted and refused cases with a local stub. Paths:
+  `core/crew-config.py`, `environments/terminal/crew.d/host.py`, reusing
+  `environments/terminal/remote/crew-remote.py`, `docs/profile.md`,
+  `docs/runtimes/multi-device.md`, and their tests.
+- **B2 (#1724).** Per D1, an unset session `researchers` cap resolves to 0
+  and renders the four ordinary session briefs; a positive cap renders the
+  sweep brief. Tmux keeps its default. The refusal for `triage.enabled =
+  true` with zero researchers stays. The options table, session guidance
+  and sample profile agree; the retained four briefs keep their bytes.
+  Paths: `core/crew-config.py`, `docs/configuration/runtime-options.md`,
+  `docs/runtimes/session.md`, `profiles/session.toml`, a new forward
+  fragment, config and render tests.
+- **B3 (#1725).** Bookends render the configured `docs.homes.specs`, with
+  the default keeping today's `docs/specs/` bytes in every runtime. Per D2,
+  an external reference makes the bookends name it, bootstrap create no
+  local spec directory, and `docs-scan.py` record the external content as
+  not checked. Spec-first opening and closing status-sync stay; a spec home
+  supplies no merge permission or evidence waiver, and `[spec] paths`
+  classification still covers repository spec changes. Paths:
+  `core/crew-config.py`, `core/crew-render.py`,
+  `templates/policy/coordinator/spec-bookends.md`,
+  `environments/terminal/crew.d/bootstrap.py`, `scripts/docs-scan.py`,
+  `docs/roles.md`, `docs/profile.md`, `docs/project-doc-set.md`,
+  `docs/bootstrap.md`, `docs/project-docs.md`, their tests and render
+  parity.
+- **B4 (#1726).** State the requirement as a throwaway snapshot of the
+  guarded paths at the checked head, with the guard's dependencies; label
+  `git archive` as one Git recipe. A partial copy names what it copied and
+  recreates setup on replay. The Git recipe, mutation assertion, guard
+  argv, N1 nonzero / N2 zero and replay comparison are unchanged. Paths:
+  `templates/evidence/cli-exit-stdout.md`, render and parity gates.
+- **B5 (#1727).** Session Upgrading names a missing `install.json` as the
+  condition for a one-time `mdstack bootstrap --project <absolute
+  profile>` (pause dispatch, preview, apply), then normal upgrade, and says
+  tmux-only adoption does not cover it. No adoption code. Paths:
+  `docs/runtimes/session.md`, linking `docs/bootstrap.md`.
+- **B6 (#1722).** Per D3, `change.land-stack` binds `<stack-top>`,
+  `<stack-changes>` and `<stack-revisions>`; an optional
+  `change.read-revision-id` binds each ID to that member's checked full
+  head SHA. `land.change_placeholder` is honoured for every per-member
+  operation in sync and async stack modes, and `land.stack_status =
+  "per-change"` uses individual status, `[land.status]` and
+  `change.read-landed` instead of `change.stack-status`. One accepted
+  three-member stack sends exactly one request and records each member only
+  after complete landed readback; a moved head, invalid ID, held member or
+  red CI sends none. Every member still gets its own §7 checks. Paths:
+  `core/crew-config.py`, `core/crew-render.py`,
+  `environments/terminal/crew.d/land.py`,
+  `environments/terminal/crew.d/_land_stack.py`, `docs/interfaces.md`,
+  `docs/profile.md`, `docs/runtimes/session.md`, `docs/protocol.md`, the
+  stack-land fixture pack, land and stack-land lab tests, render parity.
+
+Decisions M50 settles (the
+[owner's choices](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6831237295),
+applying the
+[coordinator's recommendations](https://github.com/mw-ding/mdstack/issues/1747#issuecomment-6819967642);
+any of them changes on the owner's word):
+
+- **D1, #1724 opt-in researchers.** An unset session `researchers` cap
+  resolves to 0. B2 ships a forward `**Breaking:**` fragment with the
+  migration: a session profile that relies on the sweep, including one
+  whose enabled triage relied on an omitted cap, sets a positive cap.
+  Released CHANGELOG sections stay byte-identical.
+- **D2, #1725 external spec home.** A specs-only `[docs] specs_external =
+  "<canonical tracker-item or document URL>"`, mutually exclusive with an
+  explicitly configured `homes.specs`. It is a reference, never a path or a
+  command; other doc homes are unchanged, and no external fetch or write is
+  added.
+- **D3, #1722 additive stack binding.** List order is base-first and the
+  last member is the representative change. Revision IDs are nonempty
+  single safe tokens, checked before substitution, and persisted per member
+  in the intent before the first status read or request; resume uses the
+  recorded set and never re-resolves or resends. A revision ID is request
+  metadata, never the head or landed SHA: `sha=` and `landed=` stay full
+  hashes. In per-change mode, differing member states, queued versus
+  landing included, are unknown for that pass: the intent is kept and no
+  record is printed. Per-change mode refuses `stack_tests_against_tip =
+  true` until a real combined-check receipt can be read. Legacy `<stack>`
+  and `change.stack-status` operation, and every unbound or GitHub render,
+  are unchanged.
+
+Version classification, against the
+[Versioning](../deliverables.md#versioning) table:
+
+- **#1724 is major.** No §7 gate changes, but an installed session profile
+  that omits `researchers` and relies on the sweep stops sweeping without
+  an edit, which is the table's definition of breaking. Hence D1's
+  `**Breaking:**` fragment and migration.
+- **#1722 is minor.** Its stage 7 stack text adds an opt-in binding: new
+  placeholders, an optional `land.stack_status` key with a legacy default,
+  and a conditional operation required only when its placeholder is used.
+  Every §7 gate, the tip gate and the full-SHA merge record are satisfied
+  as before, and legacy mode is unchanged. Its request-identity and
+  unknown-state rules still take the gate-contract path. If B6 lets
+  per-change status satisfy a §7 gate, such as the tip gate, it is major
+  and is reclassified in its PR.
+- **The rest add no gate.** #1723 and #1725 add optional behaviour and an
+  optional key (minor); #1726 and #1727 are wording and docs (patch).
+
+So with B2 as specified, the release carrying M50 cannot be a minor. Before
+that cut, the coordinator takes the class to the owner: a major with B2's
+`**Breaking:**` entry, or the owner's other call. No break goes through as
+a minor.
+
+Sensitive heads: B1 (primary checkout command execution) and B6 (land
+authority and status handling) are forecast; every build runs the
+full-diff sensitive check at each head, and a sensitive head still needs
+the owner's per-change reason. Owner steps: applying the compact
+`merge_grant` profile line, then U (its dry run waited on that
+compaction, #1746). A real non-Git primary checkout is an operator
+deployment step; B1's acceptance uses a stub.
+
+Merge permission for M50 spec, protocol, template and gate-contract text is
+the owner's
+[M49–M51 grant](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6831237295)
+([text](https://github.com/mw-ding/mdstack/issues/1744#issuecomment-6819303787)),
+recorded at each head. A status-sync slice closes the milestone.
+
 ## 6. Decisions
 
 | Date | Decision | Source |
