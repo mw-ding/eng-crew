@@ -1,5 +1,6 @@
 """`mdstack route` consumes mechanical wakes without a coordinator model turn. The watcher calls it before waking
-window 0. Worker completion retries admission in all pending pools. New heads and escalated rechecks start review;
+window 0. Worker completion retries admission in all pending pools. A backstop wake also runs `mdstack gc --apply`,
+at most 5 removals of merged, landed run copies a missed close-out left (#316). New heads and escalated rechecks start review;
 approved merge-ups stay queued for synthesizer dispatch. A change that resolves express never starts a reviewer pass.
 Solo build wakes are consumed; solo builder findings stay queued for coordinator pickup.
 Passed reviews start validation, including after zero-step CI startup failures (ci-infra goes to the coordinator). Terminal
@@ -64,6 +65,7 @@ LAND_EVENTS = ("review-approved", "selfgate-passed", "ci-passed")
 # A release cut's CHANGELOG.md patch adds a version section heading (scripts/changelog-cut.py).
 RELEASE_HEADING = re.compile(r"^\+## \[\d+\.\d+\.\d+\]", re.M)
 REVIEW_DONE = re.compile(r"done: #(\d+) ([0-9a-f]{40}) (review|validate|recheck) (pass|changes|escalate)(?:\s.*)?")
+GC_MAX = 5  # removals per backstop wake: mdstack gc's merged-only sweep stays bounded (#316)
 
 
 def gh(*args):
@@ -479,6 +481,10 @@ def route_record(args, values, state, w):
         return True
     if w.get("reason") == "backstop":
         lead.retry_pending(args)
+        try:  # merged run copies a missed close-out left behind (#316); a failure is printed, never fatal here
+            invoke(args, "gc", apply=True, max=GC_MAX)
+        except RuntimeError as e:
+            print("crew: route: backstop gc: %s" % e)
     if rec and ROLES.get(rec["role"], {}).get("relay") == "coordinator" and line.startswith(("done:", "failed:")):
         run = commands()["watch"].run_identity(rec)
         report, mode = REFLECTION_DONE.fullmatch(line), rec.get("args", {}).get("reflection")
