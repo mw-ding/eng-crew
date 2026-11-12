@@ -38,6 +38,11 @@ a default; a project with an existing home for one maps it in the profile
   `mdstack bootstrap` seeds `project.md` there from the template's skeleton
   when it has none, never overwriting a spec
   ([#1225](https://github.com/mw-ding/eng-crew/issues/1225)).
+  A project whose specs live outside the repository names that tracker item
+  or document with `[docs] specs_external` instead
+  ([profile](profile.md#docs), #1725): the coordinator's spec bookends name
+  it, bootstrap seeds nothing, and the docs pass records it as not checked.
+  The spec-first and status-sync bookends still apply.
 - **Docs index.** A project with more than five docs under `docs/` also keeps
   `docs/README.md`: one row per doc with its purpose and kind, in the shape of
   [mdstack's index](README.md#available-now).

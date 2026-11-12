@@ -483,6 +483,7 @@ moving it.
 | `stale_days` | integer, at least 1 | `90` | Age of a banner's **Last checked** that counts as stale |
 | `size_budget` | integer, at least 1 | `500` | Lines above which a doc is reported as a split candidate |
 | `homes` | table: essential name to repo-relative path or `path#anchor` | the [default homes](project-doc-set.md#essential-doc-set) | Where this project keeps each essential doc; keys `overview`, `agent_guide`, `architecture`, `runbook`, `decisions`, `specs` (a directory, no anchor; #1225), any other fails |
+| `specs_external` | string: an absolute URL | none | A specs home outside the repository: the tracker item or document the spec bookends name in place of a directory (#1725). A reference only, never a path or a command; it fails beside an explicit `homes.specs`. Bootstrap seeds no local spec and the scan records it unchecked. Spec-first, `[spec] paths` and every merge and evidence rule are unchanged |
 
 ### `[report]`
 

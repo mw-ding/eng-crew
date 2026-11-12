@@ -53,6 +53,8 @@ scan finds something or a judgment check is due.
    - inventory: every Markdown file, its size in lines, its index row and
      banner;
    - missing essentials against the set and the profile's `homes`;
+   - with `[docs] specs_external`, that external specs home under
+     `unchecked`: the scan never reads it (#1725);
    - design docs with no banner, and banners whose **Last checked** is older
      than `stale_days`;
    - broken relative links and anchors;

@@ -11,7 +11,9 @@ from a local clone and writes `<state-dir>/<owner>__<repo>/docs/scan.json` with:
 - unbannered: docs the index marks as `design` with no banner under the H1;
 - stale: banners whose **Last checked** date is missing or older than `stale_days`;
 - broken_links: relative links whose file or Markdown heading anchor does not exist at that ref;
-- oversize: docs over `size_budget` lines.
+- oversize: docs over `size_budget` lines;
+- unchecked: only with `[docs] specs_external`, the external specs home, whose content this scan never reads,
+  so it reports neither a missing local specs directory nor a verified spec (#1725).
 
 The head is `--ref OWNER/NAME=REF` when given, else `origin/<repo.default_branch>` for the project's own repo,
 else `origin/HEAD`, else `HEAD`. Read-only: it reads git objects (`ls-tree`, `cat-file`), never fetches or
@@ -218,9 +220,13 @@ def scan(repo, sha, files, docs, settings, today):
             missing.append({"essential": name, "home": home, "reason": "no such anchor"})
     if INDEX not in files and sum(p.startswith("docs/") for p in docs) > 5:
         missing.append({"essential": "docs_index", "home": INDEX, "reason": "more than five docs under docs/"})
-    return {"repo": repo, "head": sha, "scanned": today.isoformat(), "settings": settings,
-            "inventory": inventory, "missing": missing, "unbannered": unbannered, "stale": stale,
-            "broken_links": broken_links(files, docs, anchor_sets), "oversize": oversize}
+    result = {"repo": repo, "head": sha, "scanned": today.isoformat(), "settings": settings,
+              "inventory": inventory, "missing": missing, "unbannered": unbannered, "stale": stale,
+              "broken_links": broken_links(files, docs, anchor_sets), "oversize": oversize}
+    if "specs_external" in settings:
+        result["unchecked"] = [{"essential": "specs", "home": settings["specs_external"],
+                                "reason": "external spec home: content not checked"}]
+    return result
 
 
 def pairs(items, flag):
@@ -261,6 +267,9 @@ def main(argv=None):
         own = "%s/%s" % (merged["repo"]["owner"], merged["repo"]["name"])
         settings = {"stale_days": docs["stale_days"], "size_budget": docs["size_budget"],
                     "homes": dict(DEFAULT_HOMES, **docs.get("homes", {}))}
+        if "specs_external" in docs:  # no local specs directory to check (#1725)
+            del settings["homes"]["specs"]
+            settings["specs_external"] = docs["specs_external"]
         results = []
         for repo in docs["repos"]:
             path = checkouts[repo]
@@ -279,7 +288,8 @@ def main(argv=None):
             json.dump(result, f, indent=2)
             f.write("\n")
         print("%s @ %s: %d docs, %s -> %s" % (result["repo"], result["head"][:7], len(result["inventory"]), ", ".join(
-            "%d %s" % (len(result[k]), k) for k in ("missing", "unbannered", "stale", "broken_links", "oversize")), out))
+            "%d %s" % (len(result[k]), k) for k in ("missing", "unbannered", "stale", "broken_links", "oversize",
+                                                    "unchecked") if k in result), out))
     return 0
 
 
