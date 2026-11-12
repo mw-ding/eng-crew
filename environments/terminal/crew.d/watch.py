@@ -3,7 +3,8 @@ at `--source-timeout`, default 60 s, queue growth from another poller, and an `a
 wake at each open owner ask's deadline in `asks/<n>.json`; a signal during a scan is held until its children exit)
 and retries pending lead demand after 60, 120, 240, 480, then every 900 s while it is unchanged (a changed pending set
 restarts at 60 s; a lead's acknowledged `waiting:` owner, hold or CI id is never retried until its PR's poll-state,
-hold or ask changes, which wakes it on that scan, #1715), then exits with one reason line; runs without `start` skip liveness
+hold, owner answers or ask change, which wakes it on that scan; an acknowledged admission deferral also gets a 60 s
+`admission recheck` that types only once its ref is admissible, #1715), then exits with one reason line; runs without `start` skip liveness
 wakes while their record mtime is less than 60 s
 old. Verified panes with a live tool session or recent output get a supervisor heartbeat instead of a stale wake; a
 working run whose tmux pane printed nothing for `--idle-stall` (default 1800 s) is idle at its prompt and wakes stale with
@@ -362,6 +363,13 @@ def scan(state, session, now, stale, seen, idle_ttl=1800, stuck_after=1800, idle
     for name, _ in commands()["lead"].records(state):
         retries, lead = seen.setdefault("lead_retries", {}), commands()["lead"]
         demand = sorted(m["id"] for m in lead.actionable(state, name))  # unchanged acknowledged waits never retry
+        checks = seen.setdefault("lead_admission", {})
+        if set(demand) & lead.deferred_ids(state, name):  # token-free: route nudges only once the ref is admissible
+            if now >= checks.setdefault(name, now + LEAD_RETRY[0]):
+                wakes.append({"reason": "lead-backstop", "window": name, "event": "admission recheck"})
+                checks[name] = now + LEAD_RETRY[0]
+        else:
+            checks.pop(name, None)
         if not demand:
             retries.pop(name, None)
             continue

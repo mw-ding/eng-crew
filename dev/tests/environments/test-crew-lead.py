@@ -398,6 +398,54 @@ class BuilderLead(LivenessBase):
         if TRANSCRIPT:
             print("owner and CI waits: 0 wakes in 1 h; CI success wakes at once; re-reported waits are quiet")
 
+    def drive(self, now, admit=()):
+        """One watcher scan at `now`, each lead-backstop wake routed in-process with `admit` as the scheduler walk;
+        the inbox ids typed into the lead."""
+        route, before = self.mod.commands()["route"], len(self.calls())
+        with mock.patch.dict(os.environ, self.env), mock.patch.object(
+                self.mod.commands()["schedule"], "admissible", return_value=set(admit)):
+            for w in self.mod.scan(self.state, "crew-acme-widgets", now, 900, self.seen):
+                if w["reason"] == "lead-backstop":
+                    self.assertTrue(route.route_record(self.args, route.profile(self.args)[0], self.state, w))
+        return [a[len("inbox: "):] for c in self.calls()[before:] if c[0] == "send-keys"
+                for a in c if a.startswith("inbox: ")]
+
+    def test_admission_becoming_available_wakes_between_backed_off_retries(self):  # #1715 r1, #1502
+        self.assertEqual(self.ensure(), 0)
+        self.put("inbox/ben-lead.jsonl", json.dumps(dict(id="d", kind="build", refs=["#8"])) + "\n")
+        self.put("status/ben-lead.status", "ack: d\ndeferred: #8 load /p id=d\n")
+        self.seen, now = {"offsets": {}, "keys": {}}, 2_000_000_000
+        for t in (0, 60, 180, 420, 900):  # backed off to the 900 s cap; load stays high: nothing typed
+            self.assertEqual(self.drive(now + t), [])
+        self.assertEqual(self.seen["lead_retries"]["ben-lead"]["due"], now + 1800)
+        self.assertEqual(self.drive(now + 959, admit={"#8"}), [])  # load freed at +901
+        self.assertEqual(self.drive(now + 960, admit={"#8"}), ["d"])  # the 60 s recheck, not the +1800 retry
+        self.put("inbox/ben-lead.jsonl", "".join(json.dumps(dict(id=i, kind="build", refs=["#8"])) + "\n"
+                                                 for i in ("d", "e")))
+        self.put("status/ben-lead.status", "ack: d\ndeferred: #8 load /p id=d\nack: e\n")
+        self.seen = {"offsets": {}, "keys": {}}
+        self.assertEqual(self.drive(now + 2000), [])
+        self.assertEqual(self.drive(now + 2060), ["e"])  # e's first retry
+        self.assertEqual(self.drive(now + 2120), [])  # an admission recheck never re-types e
+        self.assertEqual(self.drive(now + 2180), ["e"])  # e's 120 s step
+        if TRANSCRIPT:
+            print("load deferral freed at +901: typed at +960 (retry cap +1800); rechecks never re-type other ids")
+
+    def test_owner_answer_recovers_a_missed_event_without_a_new_id(self):  # #1715 r1
+        self.assertEqual(self.ensure(), 0)
+        self.put("inbox/ben-lead.jsonl", json.dumps(dict(id="o", kind="land", refs=["#19", "a" * 40])) + "\n")
+        self.put("asks/19.json", json.dumps({"deadline": "2099-01-01T00:00:00+00:00"}))
+        poll = {"observed": {"19": {"head": "a" * 40, "ci": "success"}}, "held": [], "answers": {"#19": 1}}
+        self.put("poll-state.json", json.dumps(poll))
+        status = "ack: o\nwaiting: #19 owner id=o\n"
+        self.assertEqual(self.backstop(status), ([], []))
+        poll["answers"]["#19"] = 2  # the owner answered; head, CI, hold and the ask are unchanged
+        self.put("poll-state.json", json.dumps(poll))
+        self.assertEqual(self.backstop(status), (["o"], []))
+        self.assertTrue(self.lead.waits(self.state, "ben-lead")["o"]["woke"])
+        if TRANSCRIPT:
+            print("owner wait: answers 1 -> 2 with nothing else changed wakes o with no new handoff")
+
     def test_mixed_waits_and_untyped_status_keep_other_ids_retrying(self):  # #1715
         self.assertEqual(self.ensure(), 0)
         self.put("inbox/ben-lead.jsonl", "".join(json.dumps(dict(id=i, kind="build", refs=["#19"])) + "\n"

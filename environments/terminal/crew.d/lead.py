@@ -174,14 +174,15 @@ def deferred_ids(state, name):
 
 
 def fingerprint(state, ref):
-    """Token-free fresh state for a waited ref: mdstack poll's observed PR, its hold and an open owner ask."""
+    """Token-free fresh state for a waited ref: mdstack poll's observed PR, its hold, its owner-answer count and an
+    open owner ask."""
     n = ref.lstrip("#")
     try:
         with open(os.path.join(state, "poll-state.json")) as f:
             poll = json.load(f)
     except (OSError, ValueError):
         poll = {}
-    return [poll.get("observed", {}).get(n), "#" + n in poll.get("held", []),
+    return [poll.get("observed", {}).get(n), "#" + n in poll.get("held", []), poll.get("answers", {}).get("#" + n),
             os.path.exists(os.path.join(state, "asks", n + ".json"))]
 
 
@@ -230,20 +231,21 @@ def actionable(state, name):
     return [m for m in messages if m["id"] not in waiting]
 
 
-def retry_pending(args, name=None, recheck=False):
+def retry_pending(args, name=None, recheck=False, admission=False):
     """Nudge each lead with its first actionable message (unchanged acknowledged waits are skipped on every path,
     #1715). On the lead backstop (`recheck`), acknowledged deferred
     handoffs are nudged only when a scheduler walk (writing only target progression) would admit their ref now (#1502); slot releases and
-    other callers nudge them as before."""
+    other callers nudge them as before. `admission` (the watcher's 60 s admission recheck) checks only those deferred
+    handoffs, so it never re-types other ids between their backed-off retries (#1715)."""
     _, session, state = profile(args)
     for worker, rec in records(state):
         if name is not None and worker != name:
             continue
         messages = actionable(state, worker)
-        if messages and recheck:
+        if messages and (recheck or admission):
             deferred = deferred_ids(state, worker)
             waiting = [m for m in messages if m["id"] in deferred]
-            messages = [m for m in messages if m["id"] not in deferred]
+            messages = [] if admission else [m for m in messages if m["id"] not in deferred]
             if not messages and waiting:
                 admit = commands()["schedule"].admissible(args, rec["role"].removesuffix("-lead"))
                 messages = [m for m in waiting if "#%s" % m["refs"][0].lstrip("#") in admit]
