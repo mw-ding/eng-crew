@@ -54,7 +54,7 @@ def findings(body, closes=(), release=None, allocation=None):
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description="Check a PR body's issue linkage before the PR opens.")
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--body-file", required=True)
     mode = ap.add_mutually_exclusive_group(required=True)
     mode.add_argument("--closes", type=int, action="append", metavar="N")
