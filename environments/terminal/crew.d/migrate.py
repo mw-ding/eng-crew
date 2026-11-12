@@ -7,8 +7,9 @@ OLD is the profile the crew runs from today; NEW is the relocated profile the ow
 FILE#<repo> (#1347): the file is the profile that moves and is rewritten, outside any clone, with the repo's declared
 checkout as its git repository; only that repo's state and [repos.<repo>] section change, never a sibling repo's. The preview writes nothing and
 prints, one per line: each path mapping (`map OLD -> NEW`, most specific first), each operation (`move` of the
-project's state directory and the live dir, `worktree-move` of each registered role worktree under the old worktree
-root, `keep` of each unregistered directory there, `archive` of the old lead and watcher process identities,
+project's state directory and the live dir, `copy-move` of each builder run copy under the old worktree root (its own
+clone borrowing the checkout's objects, #1252), `worktree-move` of each registered role worktree there, `keep` of each
+other directory there, `archive` of the old lead and watcher process identities,
 `rewrite FILE (N refs)` of every operational state file and the new profile that cite an old path, `copy` of the
 home's .claude/settings.local.json with its paths rewritten), then `owner:` steps it never takes (Claude Code
 memory and Codex trust are keyed by absolute path), then `blocked:` lines. Historical evidence (verdicts, trains,
@@ -20,7 +21,8 @@ the mdstack guard cites an old path whose new path would need shell quoting (edi
 
 --apply runs the same plan, refusing while anything is blocked: it moves the state directory, archives the process
 identities and saves each file's original before rewriting it under `<new state>/migration/<stamp>/`, moves each
-registered worktree with `git worktree move`, rewrites the operational files (each status file's watcher offset is
+builder run copy as a directory, then repairs its own linked worktrees (a nested evidence tree) with `git worktree
+repair`, and each registered worktree with `git worktree move`, rewrites the operational files (each status file's watcher offset is
 recomputed from its rewritten prefix, so nothing replays or is skipped; message ids and ack/done lines are kept) and
 copies the settings (the mdstack guard is rewritten per argument and re-quoted; every other hook keeps its shell text
 with only the paths replaced). Each completed step goes to that directory's journal.json; on a failure it prints the
@@ -120,6 +122,30 @@ def worktrees(repo):
     return [line[9:] for line in r.stdout.splitlines() if line.startswith("worktree ")] if r.returncode == 0 else []
 
 
+def run_copy(path, objects):
+    """Whether path is a builder run copy (#1252): its own .git borrowing objects (the checkout's object store)."""
+    try:
+        with open(os.path.join(path, ".git", "objects", "info", "alternates"), encoding="utf-8") as f:
+            return objects is not None and os.path.realpath(f.readline().strip()) == objects
+    except OSError:
+        return False
+
+
+def nested(copy, old, new):
+    """A run copy's existing linked worktrees (a nested evidence tree), each at its path once the copy is at new."""
+    root = os.path.realpath(old)
+    paths = [os.path.realpath(p) for p in worktrees(copy)[1:]]
+    return [new + p[len(root):] if p.startswith(root + os.sep) else p for p in paths if os.path.isdir(p)]
+
+
+def repair(copy, paths):
+    """git worktree repair in copy for paths: both directions of each link, after the copy or its trees moved."""
+    if paths:
+        r = subprocess.run(["git", "-C", copy, "worktree", "repair", *paths], capture_output=True, text=True)
+        if r.returncode:
+            raise RuntimeError("git worktree repair in %s: %s" % (copy, r.stderr.strip()))
+
+
 def common_dir(repo):
     r = subprocess.run(["git", "-C", repo, "rev-parse", "--path-format=absolute", "--git-common-dir"],
                        capture_output=True, text=True)
@@ -165,13 +191,18 @@ def plan(old, new, session, maps):
     for path in files(old["state"], IDENTITIES):
         ops.append(("archive", path))
     registered = {os.path.realpath(p) for p in worktrees(old["checkout"])}
+    objects = common_dir(old["checkout"]) and os.path.join(common_dir(old["checkout"]), "objects")
     if os.path.isdir(old["worktree_root"]) and old["worktree_root"] != new["worktree_root"]:
         for name in sorted(os.listdir(old["worktree_root"])):
-            path = os.path.join(old["worktree_root"], name)
+            path, dest = os.path.join(old["worktree_root"], name), os.path.join(new["worktree_root"], name)
             if not os.path.isdir(path):
                 continue
-            ops.append(("worktree-move", path, os.path.join(new["worktree_root"], name)) if os.path.realpath(path) in registered
-                       else ("keep", path, "not a registered worktree of %s" % old["checkout"]))
+            if os.path.realpath(path) in registered:
+                ops.append(("worktree-move", path, dest))
+            elif run_copy(path, objects):  # #1252
+                ops.append(("copy-move", path, dest))
+            else:
+                ops.append(("keep", path, "not a registered worktree or run copy of %s" % old["checkout"]))
     if old["live_dir"] and new["live_dir"] and old["live_dir"] != new["live_dir"] and os.path.isdir(old["live_dir"]):
         ops.append(("move", old["live_dir"], new["live_dir"]))
     rx = pattern(maps)
@@ -195,7 +226,7 @@ def plan(old, new, session, maps):
                 blocked.append("hook command in %s cites an old path whose new path needs shell quoting; edit it by "
                                "hand first: %s" % (settings, command))
     for op in ops:
-        if op[0] in ("move", "worktree-move", "copy") and os.path.lexists(op[2]):
+        if op[0] in ("move", "copy-move", "worktree-move", "copy") and os.path.lexists(op[2]):
             blocked.append("destination exists: %s" % op[2])
     for key in ("home", "checkout"):
         if old[key] != new[key]:
@@ -362,6 +393,13 @@ def apply(old, new, ops, maps, retext=None):
                 os.makedirs(os.path.dirname(op[2]), exist_ok=True)
                 shutil.move(op[1], op[2])
                 done(op, shlex.join(["mv", op[2], op[1]]))
+            elif op[0] == "copy-move":  # its nested trees hold absolute paths to its .git, and it to them
+                trees, back = nested(op[1], op[1], op[2]), nested(op[1], op[1], op[1])
+                os.makedirs(os.path.dirname(op[2]), exist_ok=True)
+                shutil.move(op[1], op[2])
+                done(op, shlex.join(["mv", op[2], op[1]]) + (" && " + shlex.join(
+                    ["git", "-C", op[1], "worktree", "repair", *back]) if back else ""))
+                repair(op[2], trees)
             elif op[0] == "archive":
                 src, dst = moved(op[1]), os.path.join(work, "identities", os.path.relpath(op[1], old["state"]))
                 os.makedirs(os.path.dirname(dst), exist_ok=True)

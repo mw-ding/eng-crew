@@ -21,8 +21,10 @@ import subprocess
 import time
 from crew_shared import (
     BANDS, brief_src, commands, coordinator_harness, coordinator_window, CREW_BIN, crew_render, ENGINE_CMD, fetch, finished,
-    harness, harnesses, heartbeat, identity, kill_run, LAUNCH, main, POINTER, probe, profile, remote_run, ROLES, runs, sandbox_env,
+    harness, harnesses, heartbeat, identity, kill_run, LAUNCH, load, main, POINTER, probe, profile, remote_run, ROLES, runs, sandbox_env,
     show_icon, stop_pane, tmux, unlanded, wait_harness, window_alias, window_env)
+
+confine = load("crew_confine", "environments/terminal/crew.d/_confine.py")
 
 
 def runs_under(pid):
@@ -136,10 +138,21 @@ def relaunch(values, session, state, name, rec, items, timeout, project):
                                              "no brief %s" % brief))
         return 1
     index = rec["index"] if rec["index"] in free else free[0]
-    wt = rec["worktree"]
-    argv = harness(rec["engine"], rec["model"], rec["effort"], wt, state, values["runtime.options.permission_mode"], values)
-    tmux.new_window(session, index, name, wt, window_env(values, state, rec["role"], name, brief, project),
-                    LAUNCH % (shlex.join(argv), POINTER))
+    wt, mode = rec["worktree"], values["runtime.options.permission_mode"]
+    try:  # the relaunch's engine decides confinement again (#1252)
+        confined, reason = confine.decide(values, rec["role"], harnesses.ADAPTERS[rec["engine"]], mode, False, state,
+                                          rec["repo"], wt)
+    except RuntimeError as e:
+        print("%s; worktree, claim and run record kept" % e)
+        return 1
+    if rec["role"] == "builder":
+        rec.pop("unconfined", None)
+        rec.update({"confined": True} if confined else {"confined": False, "unconfined": reason})
+    argv = harness(rec["engine"], rec["model"], rec["effort"], wt, state, mode, values, confined=confined)
+    env = window_env(values, state, rec["role"], name, brief, project)
+    if confined:
+        env["TMPDIR"] = confine.tmpdir(wt)
+    tmux.new_window(session, index, name, wt, env, LAUNCH % (shlex.join(argv), POINTER))
     try:
         show_icon(values, session, index, rec["role"])
         wait_harness(session, index, name, rec["harness"], timeout)

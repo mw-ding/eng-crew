@@ -173,11 +173,40 @@ class Restart(LivenessBase):
         self.assertTrue(os.path.exists(os.path.join(wt, "notes.txt")))
         self.assertTrue(os.path.exists(before["claim"]))
         self.assertEqual(self.git("log", "-1", "--format=%s", cwd=wt), "local only")
-        self.assertIn(wt, self.git("worktree", "list"))
+        self.assertTrue(os.path.isdir(os.path.join(wt, ".git")))  # the builder's own copy, kept (#1252)
         r = self.crew("restart", "ben-7", "--project", self.project, "--timeout", "1")
         self.assertEqual(r.returncode, 1)
         self.assertIn("already restarted once; escalate", r.stdout)
         self.assertTrue(os.path.exists(os.path.join(wt, "notes.txt")))
+
+    def relaunch_with(self, options):
+        wt = self.record("ben-7")["worktree"]
+        self.git("commit", "-q", "--allow-empty", "-m", "local only", cwd=wt)
+        with open(self.project, "a") as f:
+            f.write("[runtime.options]\n" + options)
+        self.set_pane(10, dead="1")
+        return wt, self.crew("restart", "ben-7", "--project", self.project, "--timeout", "1")
+
+    def test_restart_in_place_decides_confinement_again(self):  # #1252
+        self.sandboxing_codex()
+        wt, r = self.relaunch_with('permission_mode = "safe"\nconfinement = "enforce"\n')
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        call = self.windows()[-1]
+        self.assertIn("-c sandbox_workspace_write.exclude_slash_tmp=true", call[-1])
+        env = dict(call[i + 1].split("=", 1) for i, a in enumerate(call) if a == "-e")
+        self.assertEqual(env["TMPDIR"], os.path.join(wt, ".crew", "tmp"))
+        rec = self.record("ben-7")
+        self.assertIs(rec["confined"], True)
+        self.assertNotIn("unconfined", rec)
+
+    def test_restart_in_place_under_enforce_refuses_unconfined_and_keeps_all(self):  # #1252
+        wt, r = self.relaunch_with('confinement = "enforce"\n')  # bypass
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("crew: refusing launch: confinement=enforce: Codex with permission_mode=bypass", r.stdout)
+        self.assertIn("worktree, claim and run record kept", r.stdout)
+        self.assertEqual(len(self.windows()), 1)
+        self.assertEqual(self.git("log", "-1", "--format=%s", cwd=wt), "local only")
+        self.assertTrue(os.path.exists(self.record("ben-7")["claim"]))
 
     def test_restart_dead_run_with_clean_worktree_respawns_fresh(self):
         wt = self.record("ben-7")["worktree"]

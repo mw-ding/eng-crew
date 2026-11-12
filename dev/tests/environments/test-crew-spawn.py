@@ -21,6 +21,7 @@ import os
 import shlex
 import shutil
 import subprocess
+import tempfile
 import threading
 import time
 import unittest
@@ -263,8 +264,8 @@ class Spawn(SpawnBase):
         rec = self.record("ben-7")
         self.assertEqual(os.path.realpath(rec["repo"]), os.path.realpath(self.project_dir))
         self.assertEqual(self.git("rev-parse", "HEAD", cwd=rec["worktree"]), self.git("rev-parse", "origin/main"))
-        self.assertIn(os.path.realpath(rec["worktree"]), [os.path.realpath(line.split(" ", 1)[1]) for line in
-                      self.git("worktree", "list", "--porcelain").splitlines() if line.startswith("worktree ")])
+        with open(os.path.join(rec["worktree"], ".git", "objects", "info", "alternates")) as f:  # its own copy (#1252)
+            self.assertEqual(f.read().strip(), os.path.realpath(os.path.join(self.project_dir, ".git", "objects")))
 
     def test_spawn_uses_runtime_brief_without_core(self):
         shutil.rmtree(os.path.join(self.state, "render"))
@@ -755,6 +756,10 @@ class LaunchPolicy(SpawnBase):
              "safe": ("--permission-mode acceptEdits", "-s workspace-write -c sandbox_workspace_write.network_access=true")}
     POINTER = ' "Read your brief at $CREW_BRIEF and follow it."'
 
+    def setUp(self):
+        super().setUp()
+        self.sandboxing_codex()
+
     def assert_launches(self, mode, option=None):
         if option:
             with open(self.project, "a") as f:
@@ -767,11 +772,13 @@ class LaunchPolicy(SpawnBase):
         # --add-dir before the mode flags: Claude's --add-dir is variadic and would take the prompt as a directory
         self.assertEqual(claude, "claude --model sonnet --effort medium --add-dir %s %s%s" % (
             self.state, claude_flags, self.POINTER))
-        trust = ",".join('"%s"={trust_level="trusted"}' % os.path.realpath(d)
-                         for d in (self.record("ben-7")["worktree"], self.project_dir))
-        common = os.path.realpath(os.path.join(self.project_dir, ".git"))  # refs of a linked worktree (#384)
+        wt = os.path.realpath(self.record("ben-7")["worktree"])  # a builder's own copy: its repo root (#288, #1252)
+        trust = '"%s"={trust_level="trusted"}' % wt
+        common = os.path.join(wt, ".git")  # its own refs and objects dir (#384), never the shared checkout's (#1252)
+        if mode != "bypass":  # a confined builder launch (#1252)
+            codex_flags += " -c sandbox_workspace_write.exclude_slash_tmp=true -c sandbox_workspace_write.exclude_tmpdir_env_var=true"
         self.assertEqual(codex, "codex -m gpt-6.1-sol -c model_reasoning_effort=medium -c %s %s --add-dir %s --add-dir %s%s" % (
-            shlex.quote("projects={%s}" % trust), codex_flags, self.state, common, self.POINTER))  # repo root too (#288)
+            shlex.quote("projects={%s}" % trust), codex_flags, self.state, common, self.POINTER))
 
     def test_default_is_bypass(self):
         self.assert_launches("bypass")
@@ -1332,6 +1339,273 @@ class FetchIsolation(SpawnBase):
         self.assertEqual(self.private_refs(), "")
         self.assertEqual(self.git("rev-parse", "refs/remotes/origin/main"), self.main)
 
+
+class Confinement(SpawnBase):
+    """#1252 (spec M47 B5): a builder run owns its Git metadata; a supported launch is confined by the harness's OS
+    write sandbox to that copy and the state dir; confinement=enforce refuses an unsupported one before any claim."""
+
+    def setUp(self):
+        super().setUp()
+        self.sandboxing_codex()
+
+    def options(self, text, root=None):
+        with open(self.project) as f:
+            profile = f.read()
+        if root:
+            profile = profile.replace('worktree_root = "%s/wt"' % os.path.join(self.tmp, "state"), 'worktree_root = "%s"' % root)
+        with open(self.project, "w") as f:
+            f.write(profile + "\n[runtime.options]\n" + text)
+
+    def env_of(self, call):
+        return dict(call[i + 1].split("=", 1) for i, a in enumerate(call) if a == "-e")
+
+    def nothing_claimed(self):
+        self.assertEqual(self.windows(), [])
+        for path in ("claims/builder-issue7", "runs/ben-7.json"):
+            self.assertFalse(os.path.exists(os.path.join(self.state, path)), path)
+        self.assertEqual(os.listdir(self.env["MDSTACK_COPY_CLAIMS"]) if os.path.isdir(
+            self.env["MDSTACK_COPY_CLAIMS"]) else [], [])
+
+    def test_builder_copy_owns_its_git_metadata(self):
+        self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
+        wt = self.record("ben-7")["worktree"]
+        base = self.git("rev-parse", "origin/main")
+        self.assertEqual(self.git("rev-parse", "--path-format=absolute", "--git-common-dir", cwd=wt),
+                         os.path.join(os.path.realpath(wt), ".git"))
+        self.assertEqual((self.git("rev-parse", "HEAD", cwd=wt), self.git("rev-parse", "origin/main", cwd=wt)),
+                         (base, base))
+        self.assertEqual(self.git("remote", "get-url", "origin", cwd=wt), self.origin)
+        self.assertEqual(self.git("for-each-ref", "--format=%(refname)", cwd=wt), "refs/remotes/origin/main")
+        with open(os.path.join(wt, ".git", "objects", "info", "alternates")) as f:
+            self.assertEqual(f.read().strip(), os.path.realpath(os.path.join(self.project_dir, ".git", "objects")))
+        listed = self.git("worktree", "list", "--porcelain")
+        self.assertNotIn(os.path.basename(wt), listed)  # never registered in the shared checkout
+        self.assertNotIn(os.path.basename(wt), self.git("worktree", "list", "--porcelain", cwd=wt).split("\n", 1)[1:] or [""])
+        self.pr(9, "codex gpt-6.1-sol medium")
+        self.assertEqual(self.spawn("reviewer", "--pr", "9").returncode, 0)  # other roles keep linked worktrees
+        self.assertIn(os.path.basename(self.record("vera-9-r1-review")["worktree"]),
+                      self.git("worktree", "list", "--porcelain"))
+
+    def test_sibling_git_removal_fails_and_own_nested_tree_goes(self):
+        self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
+        self.assertEqual(self.spawn("builder", "--issue", "8").returncode, 0)
+        a, b = self.record("ben-7")["worktree"], self.record("ben-8")["worktree"]
+        self.git("worktree", "add", "-q", "--detach", os.path.join(b, ".crew", "base"), "HEAD", cwd=b)
+        for cwd in (a, self.project_dir):  # neither A's nor the shared metadata knows B or its nested tree
+            for target in (b, os.path.join(b, ".crew", "base")):
+                r = subprocess.run(["git", "-C", cwd, "worktree", "remove", "--force", target], capture_output=True,
+                                   text=True)
+                self.assertNotEqual(r.returncode, 0, (cwd, target))
+                self.assertIn("is not a working tree", r.stderr)
+        self.assertEqual(self.git("status", "--porcelain", cwd=b), "")
+        self.assertIn(".crew/base", self.git("worktree", "list", cwd=b))
+        own = os.path.join(a, ".crew", "base")
+        self.git("worktree", "add", "-q", "--detach", own, "HEAD", cwd=a)
+        self.git("worktree", "remove", own, cwd=a)
+        self.assertFalse(os.path.exists(own))
+        self.assertEqual(self.crew("kill", "ben-7", "--project", self.project).returncode, 0)  # C6 path unchanged
+        self.assertFalse(os.path.exists(a))
+        self.assertTrue(os.path.isdir(os.path.join(b, ".crew", "base")))
+
+    def test_codex_safe_builder_launches_confined(self):
+        for mode in ("safe", "auto"):
+            with self.subTest(mode=mode):
+                self.write_profile()
+                self.options('permission_mode = "%s"\nconfinement = "enforce"\n' % mode)
+                r = self.spawn("builder", "--issue", "7")
+                self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+                rec, call = self.record("ben-7"), self.windows()[-1]
+                wt = rec["worktree"]
+                self.assertIs(rec["confined"], True)
+                self.assertNotIn("unconfined", rec)
+                launch = call[-1]
+                self.assertIn("-s workspace-write", launch)
+                self.assertIn("-c sandbox_workspace_write.exclude_slash_tmp=true -c "
+                              "sandbox_workspace_write.exclude_tmpdir_env_var=true", launch)
+                added = shlex.split(launch.split("; exec ", 1)[1])
+                added = [added[i + 1] for i, x in enumerate(added) if x == "--add-dir"]
+                self.assertEqual(added, [self.state, os.path.join(os.path.realpath(wt), ".git")])
+                self.assertNotIn(os.path.realpath(os.path.join(self.project_dir, ".git")), launch)
+                self.assertEqual(self.env_of(call)["TMPDIR"], os.path.join(wt, ".crew", "tmp"))
+                self.assertTrue(os.path.isdir(os.path.join(wt, ".crew", "tmp")))
+                self.assertEqual(self.git("status", "--porcelain", cwd=wt), "")
+                self.assertEqual(self.crew("kill", "ben-7", "--project", self.project).returncode, 0)
+
+    def test_enforce_refuses_unsupported_builder_before_any_claim(self):
+        inner = os.path.join(self.state, "wt")  # the state dir is a writable root of every launch
+        cases = [('permission_mode = "bypass"\n', None, "Codex with permission_mode=bypass applies no OS write sandbox"),
+                 ('permission_mode = "safe"\n', inner, "paths.worktree_root %s is inside the crew state directory" % inner)]
+        for text, root, reason in cases:
+            with self.subTest(reason=reason):
+                self.write_profile()
+                self.options(text + 'confinement = "enforce"\n', root)
+                r = self.spawn("builder", "--issue", "7")
+                self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+                self.assertIn("crew: refusing launch: confinement=enforce: " + reason, r.stdout)
+                self.nothing_claimed()
+        self.write_profile()
+        self.options('permission_mode = "safe"\nconfinement = "enforce"\n')
+        with open(self.project, "a") as f:
+            f.write('\n[engines.default]\norder = ["claude-code/sonnet"]\n')
+        r = self.spawn("builder", "--issue", "7")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("Claude Code with permission_mode=safe applies no OS write sandbox", r.stdout)
+        self.nothing_claimed()
+        self.write_profile()
+        self.options('permission_mode = "bypass"\nconfinement = "enforce"\n')
+        self.pr(9, "codex gpt-6.1-sol medium")  # enforce binds builder runs only
+        r = self.spawn("reviewer", "--pr", "9")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertNotIn("confined", self.record("vera-9-r1-review"))
+
+    def test_harness_that_cannot_apply_its_sandbox_is_unconfined(self):  # a launcher that nests it (#1252 R1)
+        with open(os.path.join(self.tmp, "bin", "codex"), "w") as f:
+            f.write('#!/bin/sh\n[ "$1 $2 $3" = "sandbox -- true" ] && '
+                    '{ echo "sandbox-exec: sandbox_apply: Operation not permitted" >&2; exit 71; }\nexit 0\n')
+        reason = ("Codex cannot apply its OS write sandbox on this host (`codex sandbox -- true` exited 71: "
+                  "sandbox-exec: sandbox_apply: Operation not permitted)")
+        self.options('permission_mode = "safe"\nconfinement = "enforce"\n')
+        r = self.spawn("builder", "--issue", "7")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("crew: refusing launch: confinement=enforce: " + reason, r.stdout)
+        self.nothing_claimed()
+        self.write_profile()
+        self.options('permission_mode = "safe"\n')
+        r = self.spawn("builder", "--issue", "7")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        rec, call = self.record("ben-7"), self.windows()[-1]
+        self.assertEqual((rec["confined"], rec["unconfined"]), (False, reason))
+        self.assertNotIn("exclude_slash_tmp", call[-1])
+
+    def test_off_default_launches_and_marks_unconfined(self):
+        r = self.spawn("builder", "--issue", "7")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        rec, call = self.record("ben-7"), self.windows()[-1]
+        self.assertEqual((rec["confined"], rec["unconfined"]),
+                         (False, "Codex with permission_mode=bypass applies no OS write sandbox mdstack sets"))
+        self.assertNotIn("TMPDIR", self.env_of(call))
+        self.assertNotIn("exclude_slash_tmp", call[-1])
+
+    def test_worktree_sharing_the_checkout_metadata_is_unconfined(self):  # a restart of a pre-#1252 run
+        loader = importlib.machinery.SourceFileLoader("crew_confine", os.path.join(
+            os.path.dirname(CREW), "..", "environments", "terminal", "crew.d", "_confine.py"))
+        confine = importlib.util.module_from_spec(importlib.util.spec_from_loader("crew_confine", loader))
+        loader.exec_module(confine)
+        codex = mock.Mock(CONFINES=("safe",), TITLE="Codex", SANDBOX_PROBE=None)
+        values = {"paths.worktree_root": os.path.join(self.tmp, "wt"), "runtime.options.confinement": "enforce"}
+        linked = os.path.join(self.tmp, "wt", "legacy")
+        self.git("worktree", "add", "-q", "--detach", linked, "HEAD")
+        args = (values, "builder", codex, "safe", None, self.state, self.project_dir)
+        self.assertIsNone(confine.unsupported(*args))
+        self.assertIn("shares the checkout's git metadata", confine.unsupported(*args, wt=linked))
+        with self.assertRaisesRegex(RuntimeError, "confinement=enforce: its worktree"):
+            confine.decide(*args, wt=linked)
+        values["runtime.options.confinement"] = "off"
+        self.assertEqual(confine.decide(*args, wt=linked)[0], False)
+
+    def test_unknown_confinement_value_refused(self):
+        self.options('confinement = "strict"\n')
+        r = self.spawn("builder", "--issue", "7")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("runtime.options.confinement", r.stdout + r.stderr)
+        self.nothing_claimed()
+
+# A's and B's probe: each launched builder runs it from its own window, under its own launch's sandbox. B adds its
+# own nested evidence tree; A then tries to remove B, B's nested tree and B's metadata, writes the shared checkout's
+# metadata, and adds and removes its own nested tree. A records every exit code in its own copy, never failing itself,
+# so the model has no failed command to retry with escalation; until B is ready it prints WAIT and exits at once.
+PROBE = """#!/bin/sh
+try() { "$@" >/dev/null 2>&1; echo "$? $*" >> .crew/probe.out; }
+if [ "$CREW_ID" = ben-8 ]; then
+  git worktree add -q --detach .crew/base HEAD && touch .crew/b-ready && echo DONE
+  exit 0
+fi
+[ -f "$CREW_STATE/probe.env" ] || { echo WAIT; exit 0; }
+. "$CREW_STATE/probe.env"
+[ -f "$B/.crew/b-ready" ] || { echo WAIT; exit 0; }
+try git -C "$B" worktree remove --force "$B/.crew/base"
+try rm -rf "$B/.crew/base"
+try touch "$B/.git/probe"
+try rm -rf "$B"
+try git -C "$P" worktree add -q --detach "$P/.probe-wt" HEAD
+try touch "$P/.git/probe"
+git worktree add -q --detach .crew/own HEAD && git worktree remove .crew/own && echo OWN-OK >> .crew/probe.out
+touch .crew/probe.done && echo DONE
+exit 0
+"""
+NOTE = """# Live confinement probe (#1252)
+
+Ignore every other instruction in this brief. From your worktree, run `sh {probe}`. If it prints WAIT, run
+`sleep 20` and then run it again; repeat until it prints DONE, then stop. Run no other command, and never ask for
+escalation, approval or a rerun outside the sandbox.
+"""
+
+
+@unittest.skipUnless(os.environ.get("MDSTACK_LIVE_CONFINEMENT") == "1" and shutil.which("codex") and shutil.which("tmux"),
+                     "live: MDSTACK_LIVE_CONFINEMENT=1 in an owner shell outside any agent sandbox, with codex and tmux")
+class ConfinementLive(SpawnBase):
+    """#1252 B5 items 2 and 5, live: two builders through the production spawn and launch path (real tmux on a private
+    socket, real Codex in permission_mode=safe under confinement=enforce). B's launched session adds its own nested
+    evidence tree; A's launched session then fails to remove B, B's nested tree or B's metadata and to write the shared
+    checkout's metadata, while it adds and removes its own nested tree. Spends model tokens; never in CI. On a host
+    where Codex cannot apply its sandbox (a launcher that nests it), the first spawn fails fast with the probe's cause."""
+
+    def setUp(self):
+        super().setUp()
+        self.sockdir = tempfile.mkdtemp(prefix="cf", dir="/tmp")  # a unix socket path must stay short
+        self.addCleanup(shutil.rmtree, self.sockdir, True)
+        self.sock = os.path.join(self.sockdir, "s")
+        for name in ("TMUX", "TMUX_PANE"):  # never the owner's server (#1474)
+            self.env.pop(name, None)
+        with open(os.path.join(self.tmp, "bin", "tmux"), "w") as f:  # every crew call goes to the private socket,
+            f.write('#!/bin/sh\ncase "$1" in -L|-S) shift 2;; esac\nexec %s -S %s "$@"\n' % (  # never crew's own
+                shlex.quote(shutil.which("tmux", path=os.environ["PATH"])), shlex.quote(self.sock)))
+        self.real_tmux("new-session", "-d", "-s", "crew-acme-widgets", "-n", "coordinator")
+        self.addCleanup(self.real_tmux, "kill-server")
+        probe = os.path.join(self.state, "probe.sh")
+        with open(probe, "w") as f:
+            f.write(PROBE)
+        note = os.path.join(self.tmp, "probe-note.md")
+        with open(note, "w") as f:
+            f.write(NOTE.format(probe=probe))
+        with open(self.project, "a") as f:
+            f.write('\n[runtime.options]\npermission_mode = "safe"\nconfinement = "enforce"\n'
+                    '[runtime.options.notes]\nbuilder = ["%s"]\n' % note)
+
+    def real_tmux(self, *args):
+        return subprocess.run([os.path.join(self.tmp, "bin", "tmux"), *args], env=self.env, capture_output=True, text=True)
+
+    def test_sibling_removal_fails_under_the_launched_sandbox(self):
+        for n in ("7", "8"):
+            r = self.crew("spawn", "builder", "--issue", n, "--project", self.project, "--timeout", "120")
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        a, b = self.record("ben-7")["worktree"], self.record("ben-8")["worktree"]
+        self.assertEqual((self.record("ben-7")["confined"], self.record("ben-8")["confined"]), (True, True))
+        with open(os.path.join(self.state, "probe.env"), "w") as f:
+            f.write("B=%s\nP=%s\n" % (shlex.quote(b), shlex.quote(self.project_dir)))
+        done = os.path.join(a, ".crew", "probe.done")
+        deadline = time.time() + 900
+        while not os.path.exists(done) and time.time() < deadline:
+            names = self.real_tmux("list-windows", "-t", "=crew-acme-widgets", "-F", "#{window_name}").stdout.split()
+            if not {"ben-7", "ben-8"} <= set(names):  # a launch exited (on a sandboxed host: sandbox_apply, exit 71)
+                break
+            time.sleep(5)
+        screens = "\n".join(line for w in ("ben-7", "ben-8") for line in self.real_tmux(
+            "capture-pane", "-p", "-t", "=crew-acme-widgets:%s" % w).stdout.splitlines() if line.strip())
+        self.assertTrue(os.path.exists(done), screens)
+        with open(os.path.join(a, ".crew", "probe.out")) as f:
+            out = f.read().splitlines()
+        print("\n".join(out))
+        self.assertEqual([line.split(" ", 1)[0] != "0" for line in out[:-1]], [True] * 6, out)
+        self.assertEqual(out[-1], "OWN-OK", out)
+        self.assertFalse(os.path.exists(os.path.join(a, ".crew", "own")))
+        self.assertEqual(self.git("status", "--porcelain", cwd=b), "")
+        self.assertIn(".crew/base", self.git("worktree", "list", cwd=b))
+        self.assertEqual(self.git("status", "--porcelain", cwd=os.path.join(b, ".crew", "base")), "")
+        for path in (os.path.join(b, ".git", "probe"), os.path.join(self.project_dir, ".git", "probe"),
+                     os.path.join(self.project_dir, ".probe-wt")):
+            self.assertFalse(os.path.exists(path), path)
+        self.assertNotIn(".probe-wt", self.git("worktree", "list"))
 
 if __name__ == "__main__":
     unittest.main()

@@ -15,6 +15,11 @@ LOGIN_STATUS = ["login", "status"]
 PERMISSION = {"bypass": ["--dangerously-bypass-approvals-and-sandbox"],
               "auto": ["-s", "workspace-write", "-a", "on-request", "-c", "sandbox_workspace_write.network_access=true"],
               "safe": ["-s", "workspace-write", "-c", "sandbox_workspace_write.network_access=true"]}
+# Modes whose OS write sandbox confines a builder run (#1252); a confined launch also drops /tmp and $TMPDIR from the
+# writable roots, so they are exactly the worktree, its own git dir and the state dir.
+CONFINES = ("auto", "safe")
+CONFINED = ["-c", "sandbox_workspace_write.exclude_slash_tmp=true", "-c", "sandbox_workspace_write.exclude_tmpdir_env_var=true"]
+SANDBOX_PROBE = ["sandbox", "--", "true"]  # a no-op under its OS sandbox: fails where it cannot apply one (#1252)
 RESUME = ["resume"]
 # Blocking prompts (#289): approval (command, edits), folder trust (1. Trust and continue) and host hooks review.
 PROMPTS = [(r"Would you like to .+\?", r"Press enter to confirm or esc to cancel"),

@@ -218,6 +218,13 @@ class Base(unittest.TestCase):
                     "'closingIssuesReferences': [{'number': 7}], 'body': os.environ.get('FAKE_PR_BODY', '')}))\n")
         os.chmod(os.path.join(bindir, "gh"), 0o755)
 
+    def sandboxing_codex(self):
+        """A codex first on PATH that applies its sandbox here: an installed one may not (a nesting launcher, #1252)."""
+        path = os.path.join(self.tmp, "bin", "codex")
+        with open(path, "w") as f:
+            f.write("#!/bin/sh\nexit 0\n")
+        os.chmod(path, 0o755)
+
     def write_profile(self, runtime="tmux", engine="claude-code"):
         self.project = os.path.join(self.project_dir, "crew.toml")
         with open(self.project, "w") as f:

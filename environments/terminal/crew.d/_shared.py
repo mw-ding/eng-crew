@@ -180,14 +180,15 @@ def launch_policy(engine, mode, values):
     return adapter, adapter.PERMISSION[mode]
 
 
-def harness(engine, model, effort, wt, state, mode, values, local=True):
+def harness(engine, model, effort, wt, state, mode, values, local=True, confined=False):
     """Role window argv from the engine's adapter, after the core's launch policy. A local launch also asks the
-    adapter's launch_refusal for this host's effective uid; a remote one leaves that to the execution host (#738)."""
+    adapter's launch_refusal for this host's effective uid; a remote one leaves that to the execution host (#738).
+    A confined builder run adds the adapter's CONFINED flags (#1252)."""
     adapter, flags = launch_policy(engine, mode, values)
     refusal = local and getattr(adapter, "launch_refusal", lambda *_: None)(mode, os.geteuid())
     if refusal:
         raise RuntimeError(refusal)
-    return adapter.role_argv(model, effort, wt, state, flags)
+    return adapter.role_argv(model, effort, wt, state, flags + (adapter.CONFINED if confined else []))
 
 
 def coordinator_harness(engine, project_dir, state, mode, values, resume="fresh"):

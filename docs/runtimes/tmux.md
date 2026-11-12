@@ -915,9 +915,11 @@ prints:
   reference to an old directory resolves as the checkout before the home (a
   run record's `repo`); a path under it as the state, worktree root, live dir
   or bundle before the home.
-- `move` of the project's state directory and the live dir;
-  `worktree-move` of each registered worktree under the old worktree root;
-  `keep` of each unregistered directory there; `archive` of the old lead and
+- `move` of the project's state directory and the live dir; `copy-move`
+  of each builder run copy under the old worktree root (its own clone
+  borrowing the checkout's objects, [confinement](#confinement));
+  `worktree-move` of each registered worktree there;
+  `keep` of each other directory there; `archive` of the old lead and
   watcher process identities.
 - `rewrite FILE (N refs)` for each operational state file (run records and
   briefs, lead briefs and events, inboxes, status files, the spawn and wake
@@ -936,7 +938,9 @@ prints:
 `--apply` runs the same plan and refuses while anything is blocked. It moves
 the state directory, archives the process identities and saves each file's
 original before rewriting it, all under `<new state>/migration/<stamp>/`,
-moves each registered worktree with `git worktree move`, rewrites the
+moves each builder run copy as a directory and repairs its own linked
+worktrees (a nested evidence tree) with `git worktree repair`, moves each
+registered worktree with `git worktree move`, rewrites the
 operational files and copies the settings (the mdstack guard is re-quoted
 argument by argument; any other hook keeps its shell text with only the paths
 replaced). Message ids and `ack:`/`done:` lines are kept, and each status
@@ -1091,6 +1095,45 @@ step 1, the band cap queue, is under [mdstack dequeue](#mdstack-dequeue) (#136):
   worktrees; a trusted parent directory did not (Claude Code 2.1.310). An
   untrusted window waits at the dialog with `claude` in the foreground,
   which liveness probes `ambiguous`.
+- <a id="confinement"></a>Confinement (#1252, the
+  [M47 B5 boundary](../specs/portable.md#m47-installs-and-working-copies)):
+  a builder's worktree is its own copy, not a linked worktree. Spawn runs
+  `git init`, points `objects/info/alternates` at the shared checkout's
+  object store (read-only borrowing), adds `origin` with the checkout's
+  fetch and push URLs, sets `origin/<default>` to the fetched default head
+  and detaches at the run's head. Its refs, index and worktree list belong
+  to the run; a nested evidence worktree registers in the copy. Other roles
+  keep linked worktrees. A builder launch is **confined** when its harness
+  applies an OS write sandbox whose writable roots mdstack sets: today Codex
+  with `permission_mode` `safe` or `auto`. Its roots are then the worktree,
+  its own `.git` and the state dir: the launch adds
+  `-c sandbox_workspace_write.exclude_slash_tmp=true -c sandbox_workspace_write.exclude_tmpdir_env_var=true`
+  and sets `TMPDIR=<worktree>/.crew/tmp`, so sibling copies and the shared
+  checkout, its `.git` included, are read-only and a raw
+  `git -C <shared> worktree remove`, `rm -rf` of a sibling or a write into
+  its metadata fails. Unconfined: `bypass` on any harness, Claude Code, Pi,
+  Cursor, Muse, a role-host builder, a `paths.worktree_root` or checkout
+  inside the state dir, and a restart in a worktree spawned before #1252.
+  `runtime.options.confinement = "enforce"` refuses an unconfined builder
+  spawn or restart before any claim or window, naming the reason; `off`
+  (default) launches it and records `"confined": false` with the reason in
+  the run record, and `mdstack doctor` warns with each unconfined live
+  builder run. #1252's guarantee is never claimed for an unconfined run.
+  Owner step for a confined crew: none beyond a Codex that can apply its
+  sandbox on the host. Spawn, restart and `mdstack doctor` check that with
+  `codex sandbox -- true`. A `codex` on `PATH` that is a launcher already
+  running Codex inside its own OS sandbox fails it: macOS refuses the
+  nested sandbox (`sandbox_apply`, exit 71). The launcher's sandbox is not
+  the boundary either, since it leaves sibling copies writable. The run is
+  unconfined there: `enforce` refuses it, `off` records the probe's
+  reason. The probe runs where `mdstack spawn` runs, so a spawn from inside
+  an agent sandbox fails it too. The live check of a host is
+  `MDSTACK_LIVE_CONFINEMENT=1 python3 dev/tests/environments/test-crew-spawn.py -v ConfinementLive`
+  from a shell outside any agent sandbox: two builders through spawn and a
+  real Codex launch, where A's session fails to remove B or write the shared
+  metadata and removes its own nested tree. On a host that fails the probe
+  its first spawn stops at once with the cause. It spends model tokens and
+  never runs in CI. `mdstack migrate` moves a builder copy as a directory.
 - Sandbox inheritance: `runtime.options.sandbox_env = "<NAME>=<value>"`
   sets the sandbox variable for every window, including window 0. The
   launching environment's `CREW_SANDBOX_ENV=<NAME>=<value>` overrides it.

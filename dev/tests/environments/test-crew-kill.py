@@ -86,7 +86,8 @@ class KillLanded(KillLandedBase):
         self.git("checkout", "-q", "-b", "builder/7-x", cwd=wt)
         head = self.commit(wt)
         self.git("push", "-q", "origin", "HEAD:refs/pull/12/head", cwd=wt)
-        self.git("merge", "--squash", "builder/7-x")
+        self.git("fetch", "-q", "origin", "refs/pull/12/head")  # the builder's own copy: its branch is not here (#1252)
+        self.git("merge", "--squash", "FETCH_HEAD")
         self.git("commit", "-q", "-m", "squash PR 12")
         self.git("push", "-q", "origin", "main")
         self.assertNotEqual(self.git("rev-parse", "HEAD"), head)
@@ -157,7 +158,14 @@ class KillLanded(KillLandedBase):
         r = self.kill()
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertFalse(os.path.exists(wt))
-        self.builder()  # a second spawn adds no second line
+        wt = self.builder()  # the builder's own copy holds the line, once (#1252)
+        with open(os.path.join(wt, ".git", "info", "exclude")) as f:
+            self.assertEqual(f.read().split().count(".crew/"), 1)
+        self.assertEqual(self.crew("kill", "ben-7", "--project", self.project).returncode, 0)
+        self.pr(9, "codex gpt-6.1-sol medium")  # a linked worktree still writes the shared exclude, once
+        for _ in range(2):
+            self.assertEqual(self.spawn("reviewer", "--pr", "9").returncode, 0)
+            self.assertEqual(self.crew("kill", "vera-9-r1-review", "--project", self.project).returncode, 0)
         with open(os.path.join(self.project_dir, ".git", "info", "exclude")) as f:
             self.assertEqual(f.read().split().count(".crew/"), 1)
 

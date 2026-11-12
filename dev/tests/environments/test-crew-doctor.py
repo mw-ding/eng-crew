@@ -23,6 +23,7 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
 import unittest
 from unittest import mock
 import sys
@@ -707,6 +708,46 @@ def label_evidence():
     finally:
         fixture.doCleanups()
     print("delete: fake host and label store removed: %s" % (not os.path.exists(fixture.tmp)))
+
+
+class Confinement(unittest.TestCase):
+    """Live builder runs whose record marks them unconfined (#1252)."""
+
+    def test_unconfined_builder_runs_warn(self):
+        loader = importlib.machinery.SourceFileLoader("crew_cli", CREW)
+        mod = importlib.util.module_from_spec(importlib.util.spec_from_loader("crew_cli", loader))
+        loader.exec_module(mod)
+        doctor = mod.commands()["doctor"]
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        values = {"paths.state_dir": tmp, "repo.owner": "acme", "repo.name": "widgets"}
+        self.assertEqual(doctor.confinement(values), [("ok", "confinement", "confinement=off; no unconfined builder run", "")])
+        runs = os.path.join(tmp, "acme__widgets", "runs")
+        os.makedirs(runs)
+        base = dict(index=10, item="i", repo="r", worktree="w", claim="c", engine="codex", model="m", effort="e",
+                    harness="codex", role="builder")
+        for name, extra in (("ben-1", dict(confined=True)), ("ben-2", dict(confined=False, unconfined="why")),
+                            ("ben-3", {}), ("vera-9", dict(role="reviewer"))):
+            with open(os.path.join(runs, name + ".json"), "w") as f:
+                json.dump(dict(base, **{"pass": "build"}, **extra), f)
+        values["runtime.options.confinement"] = "enforce"
+        self.assertEqual(doctor.confinement(values), [(
+            "warn", "confinement", "confinement=enforce; unconfined: ben-2 (why); ben-3 (spawned before #1252)",
+            "docs/runtimes/tmux.md#confinement")])
+        bindir = os.path.join(tmp, "bin")  # a Codex that cannot apply its sandbox here (a nesting launcher)
+        os.makedirs(bindir)
+        with open(os.path.join(bindir, "codex"), "w") as f:
+            f.write('#!/bin/sh\necho "sandbox-exec: sandbox_apply: Operation not permitted" >&2\nexit 71\n')
+        os.chmod(os.path.join(bindir, "codex"), 0o755)
+        values["runtime.options.permission_mode"] = "safe"
+        with mock.patch.dict(os.environ, PATH=bindir + os.pathsep + os.environ["PATH"]):
+            rows = doctor.confinement(values)
+        self.assertEqual(rows[0], ("warn", "confinement", "Codex cannot apply its OS write sandbox on this host "
+                                   "(`codex sandbox -- true` exited 71: sandbox-exec: sandbox_apply: Operation not "
+                                   "permitted)", "docs/runtimes/tmux.md#confinement"))
+        values["runtime.options.permission_mode"] = "bypass"
+        with mock.patch.dict(os.environ, PATH=bindir + os.pathsep + os.environ["PATH"]):
+            self.assertEqual(len(doctor.confinement(values)), 1)
 
 
 class SessionServer(unittest.TestCase):
