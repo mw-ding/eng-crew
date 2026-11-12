@@ -1401,6 +1401,7 @@ class SessionRuntime(unittest.TestCase):
         return tree(out_dir)
 
     def test_full_brief_set_within_budget(self):
+        self.base = self.base.replace("reviewers = 1 }", "reviewers = 1, researchers = 1 }")  # #1724: opt-in sweep
         got = self.render(normalize=True)
         self.assertEqual(sorted(got), ["runtime/%s.md" % r for r in ("builder", "coordinator", "researcher", "reviewer",
                                                                      "synthesizer")])
@@ -1432,15 +1433,22 @@ class SessionRuntime(unittest.TestCase):
         self.assertIn("admit at most `1` builder runs and `3` reviewer passes; an active recorded non-quiet away "
                       "entry uses the full caps.", coordinator)
 
-    def test_researchers_zero_drops_only_the_sweep_brief(self):  # #1057; #1404: the session triage sweep brief
-        upstream = self.render()
-        sweep = " ".join(upstream.pop("runtime/researcher.md").split())
-        for rule in ("This binding runs only the triage sweep", "## Triage sweep", "pass=triage-log",
-                     "$CREW_BIN poll --triage-only"):
-            self.assertIn(rule, sweep)
-        self.base = self.base.replace("reviewers = 1 }", "reviewers = 1, researchers = 0 }")
+    def test_researchers_positive_cap_adds_only_the_sweep_brief(self):  # #1057; #1404; #1724: opt-in sweep
+        unset = self.render()
+        self.assertEqual(sorted(unset), ["runtime/builder.md", "runtime/coordinator.md", "runtime/reviewer.md",
+                                         "runtime/synthesizer.md"])
+        base = self.base
+        for cap in ("1", "2"):
+            self.base = base.replace("reviewers = 1 }", "reviewers = 1, researchers = %s }" % cap)
+            swept = self.render()
+            sweep = " ".join(swept.pop("runtime/researcher.md").split())
+            for rule in ("This binding runs only the triage sweep", "## Triage sweep", "pass=triage-log",
+                         "$CREW_BIN poll --triage-only"):
+                self.assertIn(rule, sweep)
+            self.assertEqual(swept, unset, cap)
+        self.base = base.replace("reviewers = 1 }", "reviewers = 1, researchers = 0 }")
         self.assertIn("researchers = 0", self.base)
-        self.assertEqual(self.render(), upstream)
+        self.assertEqual(self.render(), unset)
 
     def test_render_note_for_unrendered_role_fails(self):  # #1054
         for name in ("note.md", "lead.md"):
@@ -1450,7 +1458,8 @@ class SessionRuntime(unittest.TestCase):
         def render(notes):
             project = os.path.join(self.tmp, "crew-%d.toml" % len(os.listdir(self.tmp)))
             with open(project, "w") as f:
-                f.write(self.base.replace("reviewers = 1 }", "reviewers = 1, notes = { render = { %s } } }" % notes))
+                f.write(self.base.replace("reviewers = 1 }", "reviewers = 1, researchers = 1, notes = { render = { %s } } }"
+                                          % notes))
             buf = io.StringIO()
             with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(io.StringIO()):
                 code = cr.main(["--project", project, "--out", os.path.join(self.tmp, "out-%d" % len(os.listdir(self.tmp)))])

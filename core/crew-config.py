@@ -137,7 +137,7 @@ RUNTIME_OPTIONS = {"grok-bot": {"max_active_milestones": (int, 1)},
                                         "slack_webhook_env": (str, None), "slack_digest_interval": (int, 3600)},
                    # Hosted or hand-started coordinator with native-subagent or CLI workers (docs/runtimes/session.md, #914).
                    "session": {"max_active_milestones": (int, 1), "session_backend": (str, "native"), "builders": (int, 5),
-                               "reviewers": (int, 2), "researchers": (int, None), "present_builders": (int, None),
+                               "reviewers": (int, 2), "researchers": (int, 0), "present_builders": (int, None),  # opt-in sweep (#1724)
                                "present_reviewers": (int, None), "merge_grant": (str, "none"),
                                "merge_grant_scope": ("list[str]", None), "release_delegation": (str, "none"),
                                "lone_pr_land": (str, "train"), "train_min": (int, 2), "train_window": (int, 600),
@@ -1126,7 +1126,8 @@ def cross_check(profile, err):
         if type(value) is int and value < (0 if key in ZERO_CAPS else 1):  # researchers = 0: no researcher (#926)
             err("runtime.options." + key, "must be >= 1, got %d" % value)
     if profile["runtime"].get("options", {}).get("researchers") == 0 and profile.get("triage", {}).get("enabled"):
-        err("runtime.options.researchers", "0 runs no researcher, but triage.enabled = true needs one for its sweep")
+        err("runtime.options.researchers", "0 runs no researcher, but triage.enabled = true needs one for its sweep; "
+            "set researchers >= 1 (the session default is 0, #1724)")
 
 
 # --- pack manifests (13.15, #127): each backend's capability declaration, under every layer. ---
