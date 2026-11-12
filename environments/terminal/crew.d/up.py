@@ -28,8 +28,8 @@ import subprocess
 import sys
 from crew_shared import (
     brief_src, commands, coordinator_harness, coordinator_window, CREW_BIN, crew_render, HERE, harnesses, kill_run,
-    LAUNCH, load, NAMES, POINTER, profile, ownership_module, proc, require_ownership, role_notes, ROLES, ROOT, runs,
-    sandbox_env, show_icon, stop_pid, tmux)
+    LAUNCH, load, NAMES, paused, POINTER, profile, ownership_module, proc, refuse_paused, require_ownership, role_notes,
+    ROLES, ROOT, runs, sandbox_env, show_icon, stop_pid, tmux)
 
 
 TEMPLATES = os.path.join(os.path.dirname(HERE), "templates")
@@ -101,6 +101,8 @@ def start_instance(args, values, state, role):
     """Spawn one instance of a lifecycle role: its first pass, named by window_name, then with 2, 3 up to max appended
     (no separator: mdstack kill's scratch glob takes <name>-* as the run's own files)."""
     if not require_ownership(values):  # the spawn ownership gate, which the CLI applies only to a typed mdstack spawn
+        return 1
+    if refuse_paused(state, "up " + role):
         return 1
     data, taken = ROLES[role], set(instances(state, role))
     base = data["window_name"].format(name=values.get(data["identity_key"] + ".name", NAMES[role]).lower(),
@@ -367,6 +369,9 @@ def start_roles(args, values, state):
     incoming tmux runtime runs after its handoff ack starts the leads that ownership refused before it (#1082).
     lead.ensure keeps its ownership gate and is a no-op for a live lead; the floors count running instances."""
     roles = "none" if args.coordinator_only else launch(values, "roles")
+    if roles == "tmux" and paused(state) is not None:  # window 0 only: a pause is ended by mdstack resume (#1714)
+        print("crew: project paused; started no role windows (mdstack resume)")
+        return 0
     if roles != "tmux":
         print("crew: launch.roles = %s; started no role windows" % roles)
         return 0

@@ -50,7 +50,8 @@ import os
 import re
 import subprocess
 from urllib.parse import quote
-from crew_shared import commands, heartbeat, profile, queue_lock, require_ownership, ROLES, runs, synthesizer_work, open_trains
+from crew_shared import (commands, heartbeat, profile, queue_lock, refuse_paused, require_ownership, ROLES, runs,
+                         synthesizer_work, open_trains)
 
 
 # A gate-status block whose only unmet items are pending CI, an in-flight review, validation or express self-gate, or a
@@ -706,7 +707,7 @@ def route_queue(args):
     os.makedirs(wake, exist_ok=True)
     with open(os.path.join(wake, "route.lock"), "a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        if not require_ownership(values):
+        if not require_ownership(values) or refuse_paused(state, "route"):  # a paused project keeps its queue (#1714)
             return 1
         queue = os.path.join(wake, "queue.jsonl")
         with queue_lock(state):

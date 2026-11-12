@@ -33,7 +33,7 @@ import os
 import re
 import subprocess
 import time
-from crew_shared import crew_render, load, profile, require_ownership
+from crew_shared import crew_render, load, profile, refuse_paused, require_ownership
 
 land_stack = load("crew_land_stack", "environments/terminal/crew.d/_land_stack.py")
 
@@ -204,7 +204,7 @@ def run(args):
         return 1
     land = {"change_placeholder": meta.get("land.change_placeholder", ("n",))[0],
             "head_guard": meta.get("land.head_guard", (True,))[0], "status": meta.get("land.status", ({},))[0]}
-    if args.action == "request" and not require_ownership(values, "land"):
+    if args.action == "request" and (not require_ownership(values, "land") or refuse_paused(state_dir, "land request")):
         return 1
     renderer = crew_render.Renderer(values, os.path.join(os.path.dirname(crew_render.HERE), "templates"),
                                     overlay=crew_render.pack_overlay(args.project, args.org_profile, values))
