@@ -9,7 +9,7 @@ import os
 import signal
 import subprocess
 import time
-from crew_shared import commands, profile, runs, tmux
+from crew_shared import commands, profile, refuse_paused, runs, tmux
 
 
 def proc_identity(pid):
@@ -104,6 +104,9 @@ def run(args):
             fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             print("crew: land lock %s is held; another land is in progress" % lock)
+            return 1
+        if refuse_paused(state, "land-lock acquire"):  # rechecked under the lock: mdstack pause waits on it (#1714)
+            os.close(fd)
             return 1
         pid = os.fork()
         if pid == 0:  # holder: keeps the lock's open file until release signals it

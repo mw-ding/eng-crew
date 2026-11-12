@@ -59,6 +59,7 @@ Runtime state lives under `<state-dir>/<owner>__<repo>/`, never only in a pane:
 | `leads/builder-events/` | Durable event files referenced by the lead's inbox; retained while work is pending |
 | `status/<window>.status` | Append-only status lines from a window (`$CREW_STATUS`) |
 | `wake/queue.jsonl` | Durable wake queue the coordinator drains each turn (`mdstack drain`) |
+| `pause.json` | The project pause barrier ([mdstack pause](#mdstack-pause)): `at`, `reason`, `state` (`pausing` or `paused`) and the `stopped` runs; dispatch, land and cleanup refuse while it exists or is unreadable, and [mdstack resume](#mdstack-resume) removes it |
 | `wake/queue.lock` | Lock held around each queue append and `mdstack drain`'s rename |
 | `wake/watcher.pid` | PID of the armed watcher; the turn-end guard reads it |
 | `wake/watcher.lock` | Held (flock) by the one live watcher for its whole life, re-execs included (#399) |
@@ -854,6 +855,69 @@ After the watcher it stops every
 pane's processes and the session, but keeps each run's worktree, record,
 claim, inbox and status file. Lead identity records are removed as usual;
 `mdstack up` writes fresh ones.
+
+### mdstack pause
+
+```sh
+cli/mdstack pause [--project <config.toml>] [--org-profile <path>] [--reason <text>]
+```
+
+`mdstack pause` is the owner's work pause (#1714): the coordinator in window 0
+and the watcher stay, everything else stops with its work kept. Map an owner's
+"pause" to it, never to `mdstack down`, which ends window 0.
+
+1. It writes the durable project barrier `pause.json` in the state dir
+   (fsynced, renamed into place, read back) before anything stops.
+2. While another process holds `locks/merge.lock`, an atomic land already
+   started, it prints `crew: pausing: ...`, stops nothing and exits 75; run
+   it again once the land ends. The barrier stays, so no new land starts.
+3. It stops every window but window 0 (SIGTERM, then SIGKILL, as
+   `mdstack down`) and each run on a role host with its work kept. Every
+   worktree, run record, claim, inbox and status file stays; lead identity
+   records are dropped, so resume starts fresh leads on their kept inboxes.
+   `pause.json` lists the stopped runs.
+4. A surviving process or a host that does not answer is an incomplete pause:
+   it names them and exits 1 with the barrier kept; pause again. Success
+   prints `crew: paused`. Pausing a paused project is safe.
+
+While `pause.json` exists, or cannot be read, these refuse with
+`crew: project paused (...); refusing <what>`: `spawn`, `send`, `dequeue`,
+`kill`, plain `down` (`down --preserve` keeps every run's work and is
+allowed), `reviewer-pool`, `restart` of any window but window 0, `train`
+(except `check`), `land-lock acquire` (rechecked under the lock, so a land
+racing the pause stops), `land request`, `gc --apply`, `route`, lead start,
+lifecycle instance start, and `ownership --action start|land`. `mdstack up`
+starts window 0 and the watcher, but no role window. The watcher only
+observes: each scan runs its sources and queues their events in
+`wake/queue.jsonl`, but runs no status or liveness scan, role-host pull,
+timer, routine, scale-down, route, backstop or nudge, and a one-shot watcher
+does not exit. Owner asks, holds, rounds and landing stops are untouched.
+
+### mdstack resume
+
+```sh
+cli/mdstack resume [--project <config.toml>] [--org-profile <path>] [--timeout <secs>]
+```
+
+`mdstack resume` ends a pause, and only on the owner's word. It refuses unless
+ownership permits `start`, and while `pause.json` is unreadable (`mdstack
+pause` rewrites it). It removes only `pause.json`: no hold, round count or
+landing stop. Then:
+
+- before each restart it re-reads the run's issue and PR live: a closed
+  item, a `crew:hold` or `crew:escalated` label, a reviewer whose PR head
+  moved off its recorded head, or a failed read keeps the run stopped (fail
+  closed), as do an open ask, `held` in `poll-state.json` and a last line
+  `done:`; its lead or the coordinator admits it later;
+- each other run the pause stopped restarts once through `mdstack restart`,
+  with its rechecks (a finished run and a refused host stay stopped), without
+  spending its one restart, so pause and resume repeat safely;
+- the enabled leads start on their kept inboxes and the lifecycle floors
+  return, as in `mdstack up`;
+- one `resume` wake naming what restarted and what stayed stopped is queued,
+  so the coordinator rechecks CI and the remaining demand.
+
+Window 0 is untouched. With no pause it prints `crew: not paused`.
 
 ### mdstack layout
 

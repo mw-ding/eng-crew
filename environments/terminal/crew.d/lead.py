@@ -13,7 +13,7 @@ import shlex
 import time
 from crew_shared import (
     commands, coordinator_window, ENGINE_CMD, harness, identity, LAUNCH, probe, proc, profile, queue_lock, remember_pr,
-    require_ownership, runs, show_icon, stop_pane, tmux, wait_harness, window_env)
+    refuse_paused, require_ownership, runs, show_icon, stop_pane, tmux, wait_harness, window_env)
 
 
 POOLS = {"builder": 2, "reviewer": 3, "synthesizer": 1}
@@ -69,7 +69,7 @@ def recovery(liveness, restarts):
 
 def ensure(args, role):
     values, session, state = profile(args)
-    if not require_ownership(values) or not enabled(state, role):
+    if not require_ownership(values) or not enabled(state, role) or refuse_paused(state, "lead " + role):
         return 1
     path = record_path(state, role)
     with queue_lock(state):

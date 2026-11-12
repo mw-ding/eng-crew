@@ -18,6 +18,9 @@ Each live run's screen is matched against its harness adapter's transient-error 
 escalate after its one restart). Finishing work deferred by the scheduler past `stuck_after` is one
 `schedule-stuck` wake per (pool, ref, first deferral), and the exit line is followed by `mdstack schedule summary`'s line
 (docs/scheduling.md#observability).
+While the project is paused (`pause.json`, mdstack pause, #1714) the watcher only observes: each scan runs the sources
+and queues their events, but runs no status or liveness scan, role-host pull, timer, routine, scale-down, route,
+backstop or nudge, and a one-shot watcher does not exit; status lines wait at their offsets until mdstack resume.
 Its `wake: watcher` line is never typed into a window 0 showing a dialog, which gets
 a `dialog` wake instead (#315). Before a coordinator wake, `mdstack route` consumes mechanical records;
 the watcher continues scanning when none of the new records need judgement (#434); a record route keeps with
@@ -67,7 +70,7 @@ import signal
 import subprocess
 import sys
 import time
-from crew_shared import BUSY, checkout, commands, CREW_BIN, dialog, ownership_module, ENGINE_CMD, foreground_matches, finished, GLYPHS, PROMPTS, gateway_error, HERE, heartbeat, idle_builder, probe, proc, profile, queue_lock, remember_pr, remote_run, ROOT, runs, TRANSIENT, tmux, transient_lines
+from crew_shared import BUSY, checkout, commands, CREW_BIN, dialog, ownership_module, ENGINE_CMD, foreground_matches, finished, GLYPHS, PROMPTS, gateway_error, HERE, heartbeat, idle_builder, paused, probe, proc, profile, queue_lock, remember_pr, remote_run, ROOT, runs, TRANSIENT, tmux, transient_lines
 
 # Fields route adds to a record it leaves queued; a kept record still matches its candidate and wakes window 0 (#814).
 ROUTE_NOTES = ("at", "route_error", "consumer", "dependents")
@@ -786,9 +789,11 @@ def run(args):
     source_interval = values["runtime.options.poll_interval"] if args.source_interval is None else args.source_interval
     try:
         while True:
-            docs_tick(values, state, time.time(), args.project, args.org_profile)
-            commands()["up"].scale_down(values, session, state, time.time())  # idle lifecycle instances (#1231)
-            missed = commands()["up"].routine_tick(args, values, state, time.time())  # due routines wake roles (#1247)
+            hold = paused(state) is not None  # observation mode: no timer, scan, route or nudge (#1714)
+            if not hold:
+                docs_tick(values, state, time.time(), args.project, args.org_profile)
+                commands()["up"].scale_down(values, session, state, time.time())  # idle lifecycle instances (#1231)
+            missed = [] if hold else commands()["up"].routine_tick(args, values, state, time.time())  # (#1247)
             found = commands()["notify"].tick(values, state, time.time())
             found = [w for w in found if seen["keys"].get("notify-digest") != [w["entry"], w["slot"]]]
             for w in found:
@@ -817,6 +822,19 @@ def run(args):
                 seen.get("source_failures", {}).pop(cmd, None)
                 if queue_sig(wake) == before:  # a source that queues its own records (mdstack poll) is not re-queued
                     found += [{"reason": "poll", "event": line} for line in out.splitlines() if line.strip()]
+            if hold:  # the events stay queued for after mdstack resume; status lines and host pulls wait
+                if found:
+                    with queue_lock(state), open(os.path.join(wake, "queue.jsonl"), "a") as f:
+                        for w in found:
+                            f.write(json.dumps(dict(w, at=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))) + "\n")
+                    seen["queue"] = queue_sig(wake)
+                save(seen)
+                sleeping = True
+                if held:
+                    raise SystemExit(128 + held[0])
+                time.sleep(pause(state, time.time(), args.interval))
+                sleeping = False
+                continue
             # after the sources: the timer reads the queue this scan's mdstack poll wrote, not a pre-pause one (#1098)
             triage_tick(values, state, time.time(), args.project, args.org_profile)
             commands()["reflection"].tick(values, state, time.time(), args.project, args.org_profile)  # #1521

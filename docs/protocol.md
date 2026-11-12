@@ -1386,6 +1386,7 @@ gate applies whatever its binding.
 | No later changes request or hold/escalation | No later reviewer-identity changes request (any `REQUEST_CHANGES`: a changes verdict or a steering signal such as `steer cmd=rework`); no `crew:hold` / `crew:escalated`, unless user's per-change merge-ok | Reviewer resolves findings; coordinator dispatches user steering under §6 SLA | User's per-change `/crew merge-ok`; `/crew resume` clears hold/escalated and re-kicks the stage, but supplies no approval | core |
 | Engine disagreement resolved | Note/trailer wins; fresh review + validation verdict at head on an engine different from the actual builder, after `steer cmd=rereview`. An open rereview at the current head blocks squash until that verdict lands; `merge-ok` and a prior `APPROVE` do not satisfy it | Coordinator steers; reviewer-validator on `review-requested` | Owner-decision path; no `merge-ok` or standing-grant waiver of the re-check | core |
 | No open project landing stop | No unmatched coordinator `pass=steer cmd=stop-landing` in the recorded landing control or candidate change reviews; re-read before every direct land or train member | Coordinator records incident/owner stop and explicit release; synthesizer checks live records | Recorded `cmd=resume-landing stop-id=<stop cmd-id>` for each stop; no urgent, merge-ok or standing-grant waiver | core |
+| No project pause | No project pause barrier in the runtime's state; an unreadable one counts as a pause. The land and train paths refuse before taking the land lock and again under it | Owner asks the coordinator to pause or resume; synthesizer and train re-read the barrier before each land | Only the owner's explicit resume; no merge-ok or standing-grant waiver | runtime ([tmux](runtimes/tmux.md#mdstack-pause)) |
 | No open coordinator hold | No explicit hold-until-X or crew hold command on the change or in the synthesizer inbox; it overrides standing doc-only merge-ok until the hold clears or dependency X lands | Coordinator posts and clears the hold; synthesizer re-reads the change and inbox right before merging | Coordinator releases the hold or the dependency lands; owner-decision path if neither; no standing-grant waiver | core |
 | Required evidence | For a behaviour-changing change, proof required by effective `evidence` (§3) is inline in `## Acceptance Evidence` or `## Test Output` of the body, or a builder-signed fix / ci-fix review whose marker `sha=` is the head or an earlier commit of the change, and validation at head (or verified H under verdict portability) says `agrees`, or review checks presence/claims with a justified §3 validation skip; or a reasoned N/A. Text is a repro pair or fenced block; media is a GitHub user-attachments URL, or the capture recipe plus validator reproduction fallback ([verification Q1](verification.md#q1-how-bots-attach-images-and-video)). Paths, repo-file links and other media hosts do not count. Docs-only and no-behaviour changes are N/A; lighter-lane changes are N/A unless they change behaviour | Builder at creation or in a fix-round review; reviewer-validator on `new-head` / rereview; synthesizer re-reads body and reviews just before merging (seconds) | User’s per-change `/crew merge-ok` for `unverified`, including impossible embedding; standing doc-only grant never covers behaviour changes; owner-decision path for disputes; no waiver of CI | core |
 | Builder pre-review check | When enabled, latest builder `pass=precheck` at full head SHA with all seven steps `pass` or reasoned `n/a`; disabled/omitted exempt | Builder before handoff and after every fix/merge-up; reviewer before any pass, synthesizer immediately before each land | Owner’s recorded per-change `/crew merge-ok` at head only; no standing-grant or CI waiver | core |
@@ -1990,6 +1991,19 @@ Rules:
 - **Issues can't be steered by comment** (no issue-comment event): use
   assignment, labels (`crew:ready`, `crew:hold`), or chat with the coordinator
   ([steering limits on GitHub](backends/github.md#steering-limits)).
+
+### Project pause
+
+The owner pauses the whole project in conversation with the coordinator, not
+with a `/crew` comment. A pause keeps the coordinator for owner conversation
+and control and stops every other role with its work kept; nothing
+dispatches, reviews, validates, lands, restarts, runs a routine or cleans up
+until the owner's explicit resume. A land already started finishes first.
+Resume rechecks ownership, heads, holds, CI and retained demand, starts
+eligible work once and clears only the pause: never a hold, round count or
+landing stop. A runtime binds the commands, such as the tmux runtime's
+[mdstack pause and mdstack resume](runtimes/tmux.md#mdstack-pause); a full
+shutdown is not a pause.
 
 ### Owner handoff commands
 

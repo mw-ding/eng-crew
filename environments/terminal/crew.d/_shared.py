@@ -511,6 +511,40 @@ def queue_lock(state):
         yield
 
 
+def paused(state):
+    """The project pause barrier `pause.json` (#1714): None when absent, else its record; an unreadable one is
+    {"unreadable": why}, which counts as paused, so a damaged barrier never lets work start."""
+    try:
+        with open(os.path.join(state, "pause.json")) as f:
+            rec = json.load(f)
+        if not isinstance(rec, dict):
+            raise ValueError("not a JSON object")
+        return rec
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError) as e:
+        return {"unreadable": str(e)}
+
+
+def refuse_paused(state, what):
+    """True, after one refusal line, while the project is paused or its pause state is unreadable."""
+    rec = paused(state)
+    if rec is None:
+        return False
+    since = "pause state unreadable: %s" % rec["unreadable"] if "unreadable" in rec else "since %s" % rec.get("at")
+    print("crew: project paused (%s); refusing %s; mdstack resume ends it" % (since, what))
+    return True
+
+
+def pause_guarded(args):
+    """Typed commands a project pause refuses: they dispatch, message, land or clean up work (#1714); `down
+    --preserve` keeps every run's work and stays allowed."""
+    cmd, action = args.cmd, getattr(args, "action", None)
+    return cmd in ("spawn", "send", "dequeue", "kill", "reviewer-pool") or cmd == "train" and action != "check" or \
+        cmd == "land-lock" and action == "acquire" or cmd == "gc" and getattr(args, "apply", False) or \
+        cmd == "down" and not getattr(args, "preserve", False)
+
+
 def unacked(state, name, lines):
     """Whether the window's inbox holds a message its status lines (heartbeats dropped) never acked."""
     inbox = os.path.join(state, "inbox", name + ".jsonl")
@@ -787,4 +821,6 @@ def main(argv=None):
         action = "land" if args.cmd in ("train", "land-lock") else "start"
         if not require_ownership(values, action):
             return 1
+    if pause_guarded(args) and getattr(args, "project", None) and refuse_paused(profile(args)[2], args.cmd):
+        return 1
     return commands()[args.cmd].run(args)

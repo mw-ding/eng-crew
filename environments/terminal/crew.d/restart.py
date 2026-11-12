@@ -22,7 +22,7 @@ import time
 from crew_shared import (
     BANDS, brief_src, commands, coordinator_harness, coordinator_window, CREW_BIN, crew_render, ENGINE_CMD, fetch, finished,
     harness, harnesses, heartbeat, identity, kill_run, LAUNCH, load, main, POINTER, probe, profile, remote_run, ROLES, runs, sandbox_env,
-    show_icon, stop_pane, tmux, unlanded, wait_harness, window_alias, window_env)
+    refuse_paused, show_icon, stop_pane, tmux, unlanded, wait_harness, window_alias, window_env)
 
 confine = load("crew_confine", "environments/terminal/crew.d/_confine.py")
 
@@ -125,7 +125,7 @@ def quota_relaunch(values, session, state, args, rec, exhausted):
                     args.project)
 
 
-def relaunch(values, session, state, name, rec, items, timeout, project):
+def relaunch(values, session, state, name, rec, items, timeout, project, restarts=1):
     """Restart a run whose worktree holds unlanded work: new window, same worktree, brief and claim."""
     brief = os.path.join(state, "runs", name + ".brief.md")
     for index, n in tmux.list_windows(session):
@@ -160,7 +160,7 @@ def relaunch(values, session, state, name, rec, items, timeout, project):
         tmux.kill_window(session, index)
         print("%s; worktree, claim and run record kept" % str(e).replace("; cleaned up", ""))
         return 1
-    rec.update(identity(session, index), index=index, restarts=1,
+    rec.update(identity(session, index), index=index, restarts=restarts,
                start=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
     with open(os.path.join(state, "runs", name + ".json"), "w") as f:
         json.dump(rec, f, indent=2)
@@ -169,14 +169,14 @@ def relaunch(values, session, state, name, rec, items, timeout, project):
     return 0
 
 
-def relaunch_remote(values, state, name, rec, items):
+def relaunch_remote(values, state, name, rec, items, restarts=1):
     """Restart a run on its role host in its own worktree, which holds unlanded work; the brief travels again."""
     reply = remote_run.spawn(values, state, name, rec, os.path.join(state, "runs", name + ".brief.md"))
     if reply["result"] != "ok":
         print("crew: refusing restart on %s: %s: %s; worktree, claim and run record kept" % (
             rec["host"], reply["result"], reply.get("reason") or reply.get("error")))
         return 1
-    rec.update({k: reply[k] for k in ("pane_id", "pane_pid", "pane_start")}, restarts=1,
+    rec.update({k: reply[k] for k in ("pane_id", "pane_pid", "pane_start")}, restarts=restarts,
                start=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
     with open(os.path.join(state, "runs", name + ".json"), "w") as f:
         json.dump(rec, f, indent=2)
@@ -214,6 +214,8 @@ def run(args):
     values, session, state = profile(args, "worktree_root")
     if window_alias(values, args.window) == coordinator_window(values):
         return relaunch_coordinator(values, session, state, args)
+    if refuse_paused(state, "restart " + args.window):  # window 0 above still restarts while paused (#1714)
+        return 1
     rec = dict(runs(state)).get(args.window)
     if rec is None:
         print("crew: no run %s" % args.window)
@@ -225,12 +227,13 @@ def run(args):
     problem = ("%s is %s; only dead, missing or quota runs restart" % (args.window, cls) if cls not in ("dead", "missing", "quota")
                else "%s finished (%s); use mdstack kill" % (args.window, last) if finished(rec, last)
                else "%s already restarted once; escalate (crew:escalated, owner channel)" % args.window
-               if rec.get("restarts") else "a quota run on a role host is not relaunched here; escalate"
+               if rec.get("restarts") and not getattr(args, "unpause", False) else "a quota run on a role host is not relaunched here; escalate"
                if cls == "quota" and host else None)
     if problem or "args" not in rec:
         print("crew: refusing restart: " + (problem or "%s has no spawn arguments" % args.window))
         return 1
     wt, a = rec.get("worktree"), rec["args"]
+    budget = rec.get("restarts", 0) if getattr(args, "unpause", False) else 1  # mdstack resume spends no restart
     exhausted = rec.get("exhausted", []) + [rec["engine"]] if cls == "quota" else []
     if exhausted:
         return quota_relaunch(values, session, state, args, rec, exhausted)
@@ -264,8 +267,8 @@ def run(args):
             with open(os.path.join(state, "runs", args.window + ".brief.md"), "a", encoding="utf-8") as f:
                 f.write("- Restarted after done: as Pass fix, Item %s\n" % rec["item"])
         if host:
-            return relaunch_remote(values, state, args.window, rec, items)
-        return relaunch(values, session, state, args.window, rec, items, args.timeout, args.project)
+            return relaunch_remote(values, state, args.window, rec, items, budget)
+        return relaunch(values, session, state, args.window, rec, items, args.timeout, args.project, budget)
     if kill_run(values, session, state, args.window):
         return 1
     mode = ["--train", str(a["train"])] if a.get("train") else ["--pass", a["pass"]]  # a train worker has no pass flag (#1391)
@@ -280,7 +283,7 @@ def run(args):
     code = main(argv + ["--timeout", str(args.timeout)])
     for name, new in runs(state):
         if new.get("args") == a:
-            new["restarts"] = 1
+            new["restarts"] = budget
             with open(os.path.join(state, "runs", name + ".json"), "w") as f:
                 json.dump(new, f, indent=2)
     return code
