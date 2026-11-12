@@ -87,7 +87,10 @@ head, markers, labels and CI, and it logs every call. The lab then counts
 the stub's `land-stack` requests, per-PR merges and merge posts. Scenarios:
 `held`, `red-ci` and `unapproved` (one member fails, so zero requests),
 `pass` (exactly one request), `malformed` (an incomplete readback, so no
-merge post) and `lost-ack` (one request, read back, never resent). Exit 0
+merge post) and `lost-ack` (one request, read back, never resent). The
+`rev-pass`, `rev-held`, `rev-red-ci` and `rev-lost-ack` scenarios (#1722)
+bind a three-member stack by `<stack-top>` and `<stack-revisions>` with
+per-change readback and expect the same request counts. Exit 0
 means every scenario met its expectation and 1 means one did not. Exit 2
 means unverified: the session never acknowledged the run.
 `dev/tests/scripts/test-stack-land-lab.py` checks the lab's plumbing in CI
