@@ -722,7 +722,9 @@ Give each worker the complete brief. Copy, then fill every placeholder.
   A command step without a configured command is `n/a`, never `pass`.
   Publish step results and test output, never self-review reasoning.
 - Open a non-draft PR with `gh pr create`, never `--fill`, using the PR
-  conventions below.
+  conventions below. A release cut PR links its release issue with
+  `Refs #<n>` plus one whole line `Release issue: #<n>`, never `Closes`; the
+  publish job closes it after publication ([release steps](release.md#steps)).
 - Never merge, never approve your own work, never force-push a shared branch.
 - Do not scope-creep. Note deeper problems in the report and stop. If the task is
   ambiguous, flag it instead of guessing.

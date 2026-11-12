@@ -48,7 +48,17 @@ manual fallback.
    ([versioning](deliverables.md#versioning)).
 2. **Cut PR.** A builder runs `changelog-cut.py X.Y.Z` on a branch; the diff
    cuts `CHANGELOG.md` and consumes the fragments under `changes/unreleased/`.
-   Its body says `Closes #<release issue>`. It goes through review and the
+   Its body names the release issue in the release-only non-closing form
+   ([#1416](https://github.com/mw-ding/mdstack/issues/1416)): `Refs #<release
+   issue>` in `## Context` and one whole line `Release issue: #<release
+   issue>`, the same repository, with no closing keyword for it, so landing
+   never closes the issue before publication. Other issues the cut PR
+   closes keep `Closes #n`. On the cut PR, `release.yml` runs
+   `release-trigger.py linkage` and fails on a missing, ambiguous or foreign
+   target, or a closing keyword for it, naming the correction. The body is
+   written once: the builder reports a refusal as `blocked:`, and the
+   coordinator settles the correction through the owner-decision path.
+   It goes through review and the
    [§7 merge gate](protocol.md#7-merge-gate-synthesizer); the owner gives
    per-PR merge-ok at the cut PR's head (`pass=steer cmd=merge-ok sha=<head>`),
    or a recorded [release delegation](#release-delegation) stands in for it.
@@ -102,14 +112,18 @@ manual fallback.
    PR number and full head SHA; a marker on the merge commit or an earlier
    PR head does not authorize publishing. Reruns also require the triggering
    actor to match `RELEASE_OWNER`.
+   It reads the release issue from the cut PR body with the same linkage
+   check; a refusal stops publishing.
 8. **Publish job** (`contents: write`). In the same workflow run, after
    validation, the CI gate and the approval check, create the annotated tag
    `vX.Y.Z` on the validated merge commit; create the GitHub Release with the
    notes and attach the bundle and `SHA256SUMS`. A tag created with the workflow token
    starts no other workflow, so validation, tagging and publishing stay in
    one run.
-9. **Notice.** The publish job posts the release link on the release issue
-   linked by the cut PR and closes it. No coordinator run watch is required.
+9. **Notice.** Only after the Release exists, the publish job posts its link
+   on the release issue the cut PR names, then closes the issue. A failed
+   validation, CI gate, approval check, publish or notice leaves the issue
+   open. No coordinator run watch is required.
 
 ### Manifest compatibility
 

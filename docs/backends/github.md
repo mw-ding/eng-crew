@@ -153,6 +153,13 @@ Setup commands are in
   ([protocol §7](../protocol.md#7-merge-gate-synthesizer),
   [runbook Step 5](../runbook-new-repo.md#step-5-product-safety-checks)).
   Spec, external and cutover PRs are exempt.
+- **Release cut to release issue.** A release cut PR (its diff adds a new
+  version heading to `CHANGELOG.md`) names the release issue with `Refs #<n>`
+  plus one whole line `Release issue: #<n>`, same repository, and never a
+  closing keyword for it; that satisfies the linked-issue gate. The publish
+  job reads that line, posts the release link and then closes the issue
+  ([release steps](../release.md#steps), #1416). Any other `Refs` satisfies
+  nothing beyond the forbidden-keyword case above.
 - **Umbrella and TRD issues are never auto-closed.** A child issue says
   `Part of #<n>` for its umbrella, never a closing keyword.
 - **Dependencies.** An issue body lists `Depends on #<n>`; dependent PRs merge
@@ -198,7 +205,7 @@ signals, the author identity for everything else.
 | review | Request re-review | `gh pr edit <n> --add-reviewer <reviewer-login>` |
 | tracker | Create item | `gh issue create --title <t> --body-file <f> --milestone <M>` |
 | tracker | Assign | `gh issue edit <n> --add-assignee <login>` |
-| tracker | Link change ↔ item | `Closes #<n>` in the PR body; read with `gh pr view <n> --json closingIssuesReferences` |
+| tracker | Link change ↔ item | `Closes #<n>` in the PR body; read with `gh pr view <n> --json closingIssuesReferences`; a release cut's `Release issue: #<n>` line is read from `body` |
 | tracker | Milestone | `gh issue edit <n> --milestone <M>`; read with `gh issue view <n> --json milestone` |
 | tracker | Board status | `gh project item-add <project> --owner <owner> --url <url>`, then `gh project item-edit --project-id <id> --id <item> --field-id <status-field> --single-select-option-id <option>` |
 | tracker | List items | `gh issue list -R <o>/<r> --state all --limit 500 --json number,title,body,labels,milestone,state,stateReason,createdAt,url,comments` |

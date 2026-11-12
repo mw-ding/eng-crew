@@ -2,14 +2,17 @@
 """Detect a landed release cut, wait for green CI and verify owner approval.
 
 Usage: release-trigger.py detect [--skip-invalid] | actor | ci-gate [--wait S]
-       [--interval S] | authorize
+       [--interval S] | authorize | linkage
 
 Used by release.yml. Detect reads CHANGELOG.md and local tags, writing the
 version and readiness to GITHUB_OUTPUT. --skip-invalid makes a non-cut push
 a green no-op with one line in GITHUB_STEP_SUMMARY. Authorize reads the PR
 merged at GITHUB_SHA through gh (including paginated reviews and comments),
 checks RELEASE_OWNER against both actors and the merge-ok author, then
-writes linked issue numbers to GITHUB_OUTPUT. Actor fails early when the run
+writes the release issue number to GITHUB_OUTPUT. Linkage checks a cut PR
+body (PR_BODY) for the release-only non-closing form (#1416): one `Refs #N`
+and one whole line `Release issue: #N`, same repository, never closed by a
+keyword. Actor fails early when the run
 was not started by RELEASE_OWNER. Ci-gate waits up to --wait seconds for the
 latest ci.yml push run on main at GITHUB_SHA and refuses unless it succeeded.
 No tag or release is written.
@@ -61,6 +64,31 @@ def merged_pr(prs, sha, repo):
     if len(matches) != 1:
         raise rc.Failed("expected one merged cut PR at the validated commit")
     return matches[0]
+
+
+LINKAGE_FIX = ("correct the cut PR body: one `Refs #N` and one whole line `Release issue: #N` naming the "
+               "same-repository release issue, with no closing keyword for it")
+
+
+def release_issue(body, repo, closing=()):
+    """The release issue number a cut PR body names in the release-only non-closing form, or refuse."""
+    lines = [line.strip() for line in (body or "").splitlines() if line.strip().lower().startswith("release issue:")]
+    if not lines:
+        raise rc.Failed("no `Release issue: #N` line; " + LINKAGE_FIX)
+    if len(lines) > 1:
+        raise rc.Failed("%d `Release issue:` lines; %s" % (len(lines), LINKAGE_FIX))
+    m = re.fullmatch(r"Release issue: (?:#|https://github\.com/%s/issues/)(\d+)" % re.escape(repo), lines[0])
+    if not m:
+        raise rc.Failed("`%s` is not a same-repository `Release issue: #N`; %s" % (lines[0], LINKAGE_FIX))
+    n = m.group(1)
+    if not re.search(r"(?<![\w/])Refs #%s\b" % n, body):
+        raise rc.Failed("no `Refs #%s`; %s" % (n, LINKAGE_FIX))
+    keyword = (r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?):? +(?:(?:%s)?#|https://github\.com/%s/issues/)%s\b"
+               % (re.escape(repo), re.escape(repo), n))
+    if n in [str(c) for c in closing] or re.search(keyword, body, re.I):
+        raise rc.Failed("a closing keyword names release issue #%s, so merge would close it before publish; %s"
+                        % (n, LINKAGE_FIX))
+    return n
 
 
 def ci_state(runs, sha):
@@ -119,9 +147,8 @@ def authorize():
         posts.extend(post for page in pages for post in page)
     if not approved(pr, posts, owner):
         raise rc.Failed("missing owner merge-ok at cut PR head")
-    view = gh("pr", "view", str(pr["number"]), "--repo", repo, "--json", "closingIssuesReferences")
-    return [str(issue["number"]) for issue in view["closingIssuesReferences"]
-            if issue["url"].startswith("https://github.com/%s/issues/" % repo)]
+    view = gh("pr", "view", str(pr["number"]), "--repo", repo, "--json", "body,closingIssuesReferences")
+    return release_issue(view["body"], repo, [issue["number"] for issue in view["closingIssuesReferences"]])
 
 
 def output(key, value):
@@ -131,14 +158,17 @@ def output(key, value):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("mode", choices=("detect", "actor", "ci-gate", "authorize"))
+    ap.add_argument("mode", choices=("detect", "actor", "ci-gate", "authorize", "linkage"))
     ap.add_argument("--skip-invalid", action="store_true")
     ap.add_argument("--wait", type=int, default=2400)
     ap.add_argument("--interval", type=int, default=30)
     args = ap.parse_args(argv)
     try:
         if args.mode == "authorize":
-            output("issues", " ".join(authorize()))
+            output("issues", authorize())
+        elif args.mode == "linkage":
+            print("release-trigger: release issue #%s" % release_issue(os.environ.get("PR_BODY", ""),
+                                                                      os.environ["GITHUB_REPOSITORY"]))
         elif args.mode == "actor":
             check_actor()
         elif args.mode == "ci-gate":

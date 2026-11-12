@@ -6,7 +6,8 @@ name: release
 # RELEASE_OWNER. `validate` is read-only and runs release-specific checks
 # only; ci.yml owns the suite. `ci-gate` waits for the green ci.yml push run
 # at the same SHA and fails closed. `publish` needs both, then verifies owner
-# approval before writing the annotated tag, Release and issue notice.
+# approval before writing the annotated tag, Release and issue notice, then
+# closes the release issue the cut PR names (Refs plus `Release issue: #N`).
 # `validate` also refuses a minor or patch that breaks a manifest the
 # published predecessor accepted (scripts/release-compat.py, #1415).
 # CHANGELOG PRs validate the real cut; other release-file PRs validate a
@@ -65,6 +66,7 @@ jobs:
           EVENT: ${{ github.event_name }}
           INPUT_VERSION: ${{ inputs.version }}
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_BODY: ${{ github.event.pull_request.body }}
         run: |
           if [ "$EVENT" = workflow_dispatch ]; then
             echo "version=$INPUT_VERSION" >> "$GITHUB_OUTPUT"
@@ -73,6 +75,7 @@ jobs:
             python3 scripts/release-trigger.py detect --skip-invalid
           elif git diff --name-only "$BASE_SHA" HEAD -- CHANGELOG.md | grep -q '^CHANGELOG.md$'; then
             python3 scripts/release-trigger.py detect
+            python3 scripts/release-trigger.py linkage
           else
             echo 'version=999.0.0-dryrun' >> "$GITHUB_OUTPUT"
             echo 'ready=true' >> "$GITHUB_OUTPUT"
@@ -188,10 +191,9 @@ jobs:
       - name: Notify and close the release issue
         env:
           GH_TOKEN: ${{ github.token }}
-          ISSUES: ${{ steps.approval.outputs.issues }}
+          ISSUE: ${{ steps.approval.outputs.issues }}
         run: |
           url=$(gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" --json url --jq .url)
-          for issue in $ISSUES; do
-            gh issue comment "$issue" --repo "$GITHUB_REPOSITORY" --body "Released v$VERSION: $url"
-            gh issue close "$issue" --repo "$GITHUB_REPOSITORY"
-          done
+          test -n "$url"
+          gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body "Released v$VERSION: $url"
+          gh issue close "$ISSUE" --repo "$GITHUB_REPOSITORY"
