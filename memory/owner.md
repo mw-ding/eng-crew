@@ -17,6 +17,9 @@ through a reviewed memory PR (`docs/memory.md`).
   apply it, record it on #985 and report, rather than asking. Only
   `crew:sensitive` still needs the owner's per-change reason (#985
   c6729351370).
+- Ask before cutting a release whose unreleased entries carry
+  `**Breaking:**`; the owner picks the version and may keep a minor
+  (7.10.0 over 8.0.0) (#985 c6789223346, c6814282786).
 - Batch the asks only the owner can answer (sensitive or gate-contract
   merge-oks, owner-shell runs) into one list, each with a proposed one-line
   reason; the owner answers in bulk, and a per-PR merge-ok is recorded at
@@ -35,6 +38,9 @@ through a reviewed memory PR (`docs/memory.md`).
   records, never in external documents.
 - Ship an approved release; a newly found non-test fix goes into the next
   one. Re-run a flaky CI job; never waive CI.
+- "Close M<n>" means finish every issue in the milestone, then close it;
+  never close one with unfinished items deferred to the backlog (#985
+  c6814376023).
 - "Light mode" means caps 3 builders / 3 reviewers with `max_suites = 2`.
   "Full speed" means the profile's FULL SPEED SETUP block: caps 10/10,
   `max_suites = 99`, `max_load` 288, `load_high`/`load_low` 18/12 per CPU,
