@@ -155,7 +155,7 @@ The index's missing inputs and unresolved refs, sources not read, unknowns.
 
 <usage line: <mdstack>/scripts/run-usage.py --run $CREW_STATE/runs/$CREW_ID.json>
 <!-- crew:v1 role=researcher pass=reflection window=<id> sha=<head-sha> proposals=<n> new=<n> incidents=<n> -->
-— <ResearcherEmoji> <ResearcherBot> (<ResearcherTitle>) · <harness> · <model>
+<ResearcherSignature> · <harness> · <model>
 ```
 
 Sample: [report fixture](../../../../../dev/tests/scripts/fixtures/reflection/report-close-fixture.md),

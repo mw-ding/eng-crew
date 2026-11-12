@@ -10,9 +10,12 @@ Pack overlay: a render/ directory in the org profile's directory (else paths.pac
 before the inputs. runtime.options.notes.render files are appended verbatim to that role's rendered brief.
 Core memory (docs/memory.md): each role's rendered brief (a lead's carries its pool role's; on a runtime whose
 briefs are per-routine files, the role's discovery file) gets the owner profile and the role's memory file from
-memory/ in the checkout (paths.checkout, else the profile's directory), before any render note; inside the
-closing fence when the brief ends in one (a fenced routine prompt). A memory lint problem fails closed. The
-size-budget render (normalize_paths) leaves memory out: its files have their own limits.
+memory/ in the checkout (paths.checkout, else the profile's directory), read at the tip of its remote default
+branch (repo.default_branch on origin), resolved once per render and never from the local tree (#1537); stderr
+names the revision. Before any render note; inside the closing fence when the brief ends in one (a fenced routine
+prompt). A memory lint problem or a failed resolve, fetch or read fails closed; a root with no origin remote (or no
+git) and no memory/ adds none. The size-budget render (normalize_paths) leaves memory out: its files have their
+own limits.
 Budget headroom (#1056): after a successful render, stderr gets one line per role brief with its path-normalized
 bytes against [size_budget] (the bootstrap measure) and its delivered bytes (core memory and render notes
 included), and a WARNING inside BUDGET_BAND of the budget or over it. Output paths and exit codes are unchanged.
@@ -93,6 +96,12 @@ for knob in ("name", "review", "validation", "evidence", "caps", "merge", "build
 MAPPED["flavor-validation-scope"] = ["flavor.validation_scope"]
 MAPPED["flavor-selfgate-engine"] = ["flavor.selfgate_engine"]
 MAPPED["TeamName"] = ["identities.team"]  # optional; empty when unset (#1329)
+# <RoleSignature>: `— <emoji> <name> (<title>) · <team>`, harness and model follow it in the template (#431, #1291);
+# <report-status>: the profile's fixed status set (docs/roles.md Report skeleton); <report-merge-status>: its landed and
+# blocked statuses, for synthesizer merge posts. All read [report]; no marker changes.
+for role, metadata in ROLES.items():
+    MAPPED[role.title() + "Signature"] = [metadata["identity_key"] + ".name"]
+MAPPED["report-status"] = MAPPED["report-merge-status"] = ["report.emoji"]
 # <mirror-gate>: the tmux synthesizer's mirror-gate paragraph by runtime.options.mirror (#877, docs/runtimes/tmux.md).
 MIRROR_GATE = {
     "live-copy": "Mirror deferral: read the recorded owner decision named by `mirror_deferral`\n"
@@ -325,6 +334,8 @@ def resolve(project, org, paths=None):
     values.update({"flavor." + k: v for k, v in knobs.items()})
     values["flavor.name"] = name
     values["flavor.selfgate_engine"] = flavor.get("selfgate_engine", "different")  # read only for express changes
+    if "team.name" in meta:  # a team file's resolved name, for signatures (#1291)
+        values["team.name"] = meta["team.name"][0]
     if "strategy.update_from_base" in meta:  # undeclared: merge (docs/interfaces.md#rebase-update-from-base)
         values["strategy.update_from_base"] = meta["strategy.update_from_base"][0]
     values.setdefault("runtime.options.merge_grant_scope", ["approved"])  # absent keys keep today's scope (§7 spec change)
@@ -478,6 +489,19 @@ class Renderer:
             return self.line(LAND_PUBLISH) if self.values.get("land.opens_draft") else ""
         if name == "TeamName":
             return str(self.values.get("identities.team", ""))
+        if name == "report-status":
+            return ", ".join(self.emoji("report.status." + k, mark) + k
+                             for k, mark in crew_config.REPORT_STATUS.items())
+        if name == "report-merge-status":
+            return " or ".join(self.emoji("report.status." + k, crew_config.REPORT_STATUS[k]) + k
+                               for k in ("landed", "blocked"))
+        if name.endswith("Signature") and name[:-len("Signature")].lower() in ROLES:
+            key = ROLES[name[:-len("Signature")].lower()]["identity_key"]
+            team = self.values.get("team.name") or self.values.get("identities.team")
+            return "— %s%s (%s)%s" % (self.emoji(key + ".emoji", ""), self.values[key + ".name"],
+                                      self.values[key + ".title"], " · " + team if team else "")
+        if name.endswith("Emoji") and self.values.get("report.emoji") is False:
+            return ""
         if name == "runtime-id":
             return self.values["runtime.name"] + "@" + self.values.get("runtime.instance", "unconfigured")
         keys = MAPPED[name]
@@ -497,6 +521,11 @@ class Renderer:
 
     def line(self, text):
         return TOKEN.sub(self.fill, text)
+
+    def emoji(self, key, fallback):
+        """The profile emoji at key (else fallback) plus a space; nothing with report.emoji = false (#431)."""
+        mark = "" if self.values.get("report.emoji") is False else self.values.get(key, fallback)
+        return mark + " " if mark else ""
 
     def session_template(self):
         """True while rendering a session runtime template, whatever the profile's runtime (role_runtime, #1055)."""
@@ -589,7 +618,7 @@ def render(args, paths, normalize_paths):
         jobs += [(os.path.join(rt, rel), os.path.join("runtime", rel), None)
                  for rel in sorted(found, key=lambda rel: [(1, d) for d in rel.split(os.sep)[:-1]] + [(0, rel)])
                  if os.path.join(rt, rel) not in unused] + moved
-    renderer, rendered = Renderer(values, args.inputs, normalize_paths, overlay), {}
+    renderer, rendered, snap = Renderer(values, args.inputs, normalize_paths, overlay), {}, None
     for rel, dst, role in jobs:
         src = renderer.find(rel)
         parts = rel.split(os.sep)
@@ -634,9 +663,13 @@ def render(args, paths, normalize_paths):
             (r for r, d in ROLES.items() if d.get("discovery", {}).get(values["runtime.name"]) == note_role), None)
         if memory_role and not normalize_paths and dst in ("briefs/%s.md" % note_role, "runtime/%s.md" % note_role):
             root = memory_root(args.project, values)
-            memory, issues = crew_memory.section(root, memory_role)
+            if snap is None:  # one remote-default revision per render, shared by every role output (#1537)
+                snap = crew_memory.snapshot(root, values.get("repo.default_branch", "main"))
+                if snap[1]:
+                    print("crew-render: core memory from %s (%s)" % (snap[1], root), file=sys.stderr)
+            memory, issues = crew_memory.section(snap[0], memory_role)
             problems += [m for m in ("%s:%d: [%s] %s" % (os.path.join(root, rel), n, rule, why)
-                                     for rel, n, rule, why in issues) if m not in problems]  # once, not per brief
+                                     for rel, n, rule, why in snap[2] + issues) if m not in problems]  # once each
             body, fence, tail = "".join(out).rpartition("\n```")
             out = [body, memory.replace("```", "~~~"), fence, tail] if fence and not tail.strip() else out + [memory]
         if dst in ("briefs/%s.md" % note_role, "runtime/%s.md" % note_role):

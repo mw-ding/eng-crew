@@ -85,7 +85,9 @@ manual fallback.
    - the top versioned `CHANGELOG.md` section is `[X.Y.Z]` and
      `[Unreleased]` above it is empty, with no unconsumed fragments;
    - `vX.Y.Z` does not exist and is greater than the latest tag;
-   - markdownlint and the offline link check pass.
+   - markdownlint and the offline link check pass;
+   - `scripts/release-compat.py` finds no
+     [manifest break](#manifest-compatibility) below a major.
 
    `check-repo.py` and every `dev/tests/*/test-*.py` run once, in `ci.yml`, not
    here. On the cut PR, `ci.yml` `repo-guard` covers them like any PR.
@@ -122,6 +124,33 @@ manual fallback.
    on the release issue the cut PR names, then closes the issue. A failed
    validation, CI gate, approval check, publish or notice leaves the issue
    open. No coordinator run watch is required.
+
+### Manifest compatibility
+
+The [versioning](deliverables.md#versioning) table makes a newly required
+manifest field or operation a major bump; `validate` enforces it at cut time
+([#1415](https://github.com/mw-ding/mdstack/issues/1415)).
+`scripts/release-compat.py X.Y.Z` pins the baseline: the greatest stable
+`vA.B.C` tag below `X.Y.Z`, the published predecessor, at its commit. Its
+corpus is named in the script: the shipped `connectors/github/manifest.toml`
+and an external pack derived from it, both read from the baseline tree. Each
+must pass the baseline's own `core/crew-config.py validate`, then the
+candidate's.
+
+- **Refusal.** A manifest that newly fails refuses a same-major minor or
+  patch. The message names the baseline, the manifest, the failing
+  requirement and the major to cut. The cut's builder fixes it: re-run
+  `changelog-cut.py` at that major with a `**Breaking:**` entry, or restore
+  compatibility in a normal PR first.
+- **Major.** A major cut allows the break and lists it.
+- **Baseline unreadable.** A missing tag, or a corpus manifest the baseline
+  itself rejects, fails with a repair step: fetch tags or repair the corpus.
+
+It runs in the validate job on a real cut PR, on a simulated cut, on a
+dispatch and before publishing. Release validation green stays the release
+gate's condition; this check only makes that validation refuse a version the
+versioning rules already forbid. Red validation is fixed, never waived: no
+merge-ok covers it.
 
 ### Cut freeze
 

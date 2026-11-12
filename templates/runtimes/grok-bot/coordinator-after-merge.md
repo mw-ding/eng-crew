@@ -34,9 +34,13 @@ read/report only. Draining: in-flight writes only, no new pass or land.
 
 <include:policy/coordinator/signing.md>
 
+<include:policy/shared/report.md>
+
 <include:policy/shared/landing-authority.md>
 
 <include:policy/coordinator/secret-retrieval.md>
+
+<include:policy/coordinator/owner-config.md>
 
 Follow eng-pr-pipeline section 6 (coordinator on pr-merged) and wiring.md.
 

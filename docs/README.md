@@ -88,8 +88,7 @@ target layout and dependency rules D1–D9 are in
 
 Supporting directories: [../templates/](../templates/README.md) (brief and
 evidence templates), [../scripts/](../scripts/README.md) (guard, release and
-role helper scripts), `memory/` ([core memory](memory.md)) and
-[../examples/](../examples/agentconnect/README.md).
+role helper scripts) and `memory/` ([core memory](memory.md)).
 
 ## Available now
 
@@ -107,7 +106,6 @@ kinds mixes them; lifecycle status stays in each doc.
 | [../AGENTS.md](../AGENTS.md) | Agent build and review posture | B, V, R | rule | Thin agent guide: doc map, build posture, review posture (what blocks, what is a yellow follow-up) |
 | [../CHANGELOG.md](../CHANGELOG.md) | Released change history | all | history | Record of every change |
 | [../CONTRIBUTING.md](../CONTRIBUTING.md) | How to change the framework | B, V, C, S | rule | Process for iterating on the framework |
-| [../examples/agentconnect/](../examples/agentconnect/README.md) | Worked pilot example | A, P | reference, history | Sanitized worked example (the agentconnect pilot) |
 | [../scripts/](../scripts/README.md) | Guard and tooling guide | B, V, C | reference | Secret and token scan, required-docs check, relative link check, guard tests; runs in CI as `repo-guard` |
 | [../templates/](../templates/README.md) | Template catalog | A, C, P | reference | Routine and listener templates per role with trigger JSON, `wiring.md` template, reviewer-engine and V2 templates |
 | [architecture.md](architecture.md) | Explanatory overview | all | reference | Roles, identities, stages diagram, label reference, marker reference |

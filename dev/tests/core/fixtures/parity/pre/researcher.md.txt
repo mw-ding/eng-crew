@@ -28,6 +28,7 @@ Cite every claim: path:line at Base, a doc section, an issue or PR, or a
 command with its key output. Mark the uncited as inference. Direction rule
 (<mdstack>/docs/packs.md): name no organization's internal tools.
 
+Report headlines (roles.md skeleton) end ` · ` one of <report-status>.
 Post exactly one finding, as <author-login>, with
 gh issue comment <n> --repo <owner>/<repo> --body-file <file>:
 
@@ -35,7 +36,7 @@ gh issue comment <n> --repo <owner>/<repo> --body-file <file>:
 TL;DR: the answer in two or three sentences.
 ## Findings / ## Options and recommendation / ## Not checked / follow-ups
 <!-- crew:v1 role=researcher pass=research issue=<n> engine=<engine> model=<model> effort=<effort> -->
-— <ResearcherEmoji> <ResearcherBot> (<ResearcherTitle>) · <harness> · <model>
+<ResearcherSignature> · <harness> · <model>
 
 Fill engine, model, effort and the signature from the session that actually
 ran, including any fallback; never copy the planned engine. Then return

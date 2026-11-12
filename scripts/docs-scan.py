@@ -46,7 +46,8 @@ def load(name, file):
 
 
 crew_config = load("crew_config", "../core/crew-config.py")
-repo_check = load("check_repo", "check-repo.py")  # fence, code-span, comment and link parsing shared with `links`
+markdown_scan = load("markdown_scan", "../core/markdown-scan.py")  # fence, code-span, comment and link parsing shared with `links`
+secret_patterns = load("secret_patterns", "../core/secret-patterns.py")  # PLACEHOLDER
 
 DEFAULT_HOMES = {"overview": "README.md", "agent_guide": "AGENTS.md", "architecture": "docs/architecture.md",
                  "runbook": "docs/runbook.md", "decisions": "docs/decisions.md",
@@ -103,7 +104,7 @@ def slug(text):
 
 def anchors(lines):
     seen, out = {}, set()
-    visible = list(repo_check.strip_html_comments(repo_check.unfenced(lines)))
+    visible = list(markdown_scan.strip_html_comments(markdown_scan.unfenced(lines)))
     for k, (n, line) in enumerate(visible):
         out.update(HTML_ID.findall(line))
         m = ATX.match(line)
@@ -120,7 +121,7 @@ def anchors(lines):
 
 def banner(lines):
     """The `> - **Key:** value` list right under the H1 (docs/project-doc-set.md Status banners), or None."""
-    h1 = next((n for n, line in repo_check.unfenced(lines) if re.match(r"^# \S", line)), None)
+    h1 = next((n for n, line in markdown_scan.unfenced(lines) if re.match(r"^# \S", line)), None)
     if h1 is None:
         return None
     items, key, j = {}, None, h1
@@ -148,7 +149,7 @@ def index_rows(lines):
         if n < len(lines) and DELIM.match(lines[n]):  # header row: find the Kind column
             kind_col = next((i for i, c in enumerate(cells) if c.lower() == "kind"), None)
             continue
-        links = repo_check.link_destinations(line)
+        links = markdown_scan.link_destinations(line)
         if links and not re.match(r"^[a-z][a-z0-9+.-]*:", links[0], re.I):
             path = posixpath.normpath(posixpath.join(posixpath.dirname(INDEX), unquote(links[0].split("#")[0])))
             kind = cells[kind_col] if kind_col is not None and kind_col < len(cells) else None
@@ -164,14 +165,14 @@ def broken_links(files, docs, anchor_sets):
             known.add(f)
     out = []
     for path, lines in sorted(docs.items()):
-        for n, line in repo_check.strip_html_comments(repo_check.unfenced(lines)):
-            text = repo_check.strip_code_spans(line)
-            targets = repo_check.link_destinations(text)
-            ref = repo_check.REFDEF.match(text)
+        for n, line in markdown_scan.strip_html_comments(markdown_scan.unfenced(lines)):
+            text = markdown_scan.strip_code_spans(line)
+            targets = markdown_scan.link_destinations(text)
+            ref = markdown_scan.REFDEF.match(text)
             if ref:
                 targets.append(ref.group(1) if ref.group(1) is not None else ref.group(2))
             for t in targets:
-                if re.match(r"^([a-z][a-z0-9+.-]*:|//)", t, re.I) or repo_check.PLACEHOLDER.search(t):
+                if re.match(r"^([a-z][a-z0-9+.-]*:|//)", t, re.I) or secret_patterns.PLACEHOLDER.search(t):
                     continue
                 dest, _, anchor = t.partition("#")
                 dest = unquote(dest.split("?")[0])

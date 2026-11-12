@@ -849,6 +849,16 @@ class ResearcherProfile(unittest.TestCase):
             self.assertEqual(code, 1, value)
             self.assertTrue(any("identities.team" in ln for ln in lines), lines)
 
+    def test_report_table_is_optional_and_checked(self):  # #431: emoji off switch and the fixed status set
+        for table in ("", "[report]\nemoji = false\n", '[report]\nstatus = { pass = "OK", blocked = "" }\n'):
+            self.assertEqual(validate(VALID + "\n" + table)[0], 0, table)
+        for table, key in (('[report]\nemoji = "no"\n', "report.emoji"), ("[report]\ncolour = 1\n", "report.colour"),
+                           ('[report]\nstatus = { done = "x" }\n', "report.status.done"),
+                           ("[report]\nstatus = { pass = 1 }\n", "report.status.pass")):
+            code, lines = validate(VALID + "\n" + table)
+            self.assertEqual(code, 1, table)
+            self.assertTrue(any(key in ln for ln in lines), lines)
+
     def test_researchers_cap_defaults_to_two_and_must_be_nonnegative(self):  # 2 since #748; 0 runs none (#926)
         for value in ("-1", "true", '"2"', "1.5"):
             text = VALID.replace("builders = 3", "builders = 3, researchers = " + value)
@@ -1383,6 +1393,25 @@ class TeamFileTest(unittest.TestCase):
         for bad in ('"MD"', '""', "7", '"%s"' % ("a" * 64)):
             self.assertEqual(self.resolve(TEAM.replace("[team]\n", "[team]\nname = %s\n" % bad), "#gadgets")[2],
                              ["ext.toml:team.name: expected [a-z0-9-] (1-63 characters)"], bad)
+
+    def test_team_name_reaches_meta_for_signatures(self):  # #1291: team.name, else the file name; legacy has none
+        for text, want in ((TEAM, "ext"), (TEAM.replace("[team]\n", '[team]\nname = "md"\n'), "md")):
+            with tempfile.TemporaryDirectory() as d:
+                path = os.path.join(d, "ext.toml")
+                with open(path, "w", encoding="utf-8") as f:
+                    f.write(text)
+                saved, cc.DEFAULT_PROFILE = cc.DEFAULT_PROFILE, os.path.join(d, "absent.toml")
+                try:
+                    meta = {}
+                    self.assertEqual(cc.resolve_profile(path + "#gadgets", meta=meta)[2], [])
+                    self.assertEqual(meta["team.name"], (want, "team"))
+                    with open(path, "w", encoding="utf-8") as f:
+                        f.write(VALID)
+                    meta = {}
+                    self.assertEqual(cc.resolve_profile(path, meta=meta)[2], [])
+                    self.assertNotIn("team.name", meta)
+                finally:
+                    cc.DEFAULT_PROFILE = saved
 
     def test_explicit_team_name_lifts_the_file_name_rule(self):  # #1348: My Team.toml with team.name resolves
         with tempfile.TemporaryDirectory() as d:

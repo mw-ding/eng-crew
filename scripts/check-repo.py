@@ -30,37 +30,29 @@ import tokenize
 from urllib.parse import unquote
 
 SKIP_DIRS = {".git"}  # only used by the fallback walk; see walk()
-PLACEHOLDER = re.compile(r"<[A-Za-z][A-Za-z0-9_-]*>")  # documented allowlist form
+CORE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "core")
 
-# (rule id, regex, reason). A match is a failure unless the rule has a
-# placeholder check below. Placeholders such as `ghp_<token>` never match the
-# token regexes because `<` is outside their character classes.
-# Boundaries are alnum-only lookarounds, not `\b`: `\b` treats `_` as a word
-# character, so Markdown emphasis like `_ghp_<token>_` would slip through.
-PATTERNS = [
-    ("github-token", re.compile(r"(?<![A-Za-z0-9])gh[pousr]_[A-Za-z0-9]{20,}"),
-     "GitHub token (ghp_/gho_/ghu_/ghs_/ghr_)"),
-    ("github-pat", re.compile(r"(?<![A-Za-z0-9])github_pat_[A-Za-z0-9_]{22,}"),
-     "GitHub fine-grained token (github_pat_)"),
-    ("sk-key", re.compile(r"(?<![A-Za-z0-9])sk-[A-Za-z0-9_-]{20,}"),
-     "sk- style API key"),
-    ("aws-access-key", re.compile(r"(?<![A-Za-z0-9])(?:AKIA|ASIA|AGPA|AIDA|AROA|AIPA|ANPA|ANVA)[A-Z0-9]{16}(?![A-Za-z0-9])"),
-     "AWS access key id"),
-    ("private-key", re.compile(r"-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY(?: BLOCK)?-----"),
-     "private key block"),
-]
-BEARER = re.compile(r"""authorization["']?\s*[:=]\s*["']?bearer\s+([^\s"']+)""", re.I)
-URL_CRED = re.compile(r"""(?<![A-Za-z0-9])[a-z][a-z0-9+.-]*://([^/\s:@"'<>]+|<[^>\s]+>):([^/\s@"']+)@""", re.I)
-LINK_OPEN = re.compile(r"!?\[[^\]]*\]\(\s*")
-REFDEF = re.compile(r"^ {0,3}\[[^\]]+\]:\s*(?:<([^>]*)>|(\S+))")
-# Fence opener: optional container prefixes (block-quote `>`, list markers
-# `-`/`*`/`+`/`1.`/`1)`, nested to any depth), then up to 3 spaces, then the fence.
-FENCE_OPEN = re.compile(
-    r"^(?P<pre>(?:[ \t]*(?:>|[-*+]|\d{1,9}[.)])(?=[ \t]|$)[ \t]*)*)"
-    r" {0,3}(?P<fence>`{3,}|~{3,})(?P<info>.*)$")
-# Fence closer: optional block-quote markers/indent, then the fence and nothing else.
-FENCE_CLOSE = re.compile(r"^(?P<pre>[ \t>]*)(?P<fence>`{3,}|~{3,})[ \t]*$")
-HTML_COMMENT_OPEN, HTML_COMMENT_CLOSE = "<!--", "-->"
+
+def _load_core(name, file):
+    spec = importlib.util.spec_from_file_location(name, os.path.join(CORE, file))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+# Shared with the shipped core/crew-config.py and scripts/docs-scan.py (#281).
+secret_patterns = _load_core("secret_patterns", "secret-patterns.py")
+markdown_scan = _load_core("markdown_scan", "markdown-scan.py")
+path_glob = _load_core("path_glob", "path-glob.py")
+PLACEHOLDER, PATTERNS, BEARER, URL_CRED = (secret_patterns.PLACEHOLDER, secret_patterns.PATTERNS,
+                                           secret_patterns.BEARER, secret_patterns.URL_CRED)
+is_placeholder = secret_patterns.is_placeholder
+LINK_OPEN, REFDEF, FENCE_OPEN, FENCE_CLOSE = (markdown_scan.LINK_OPEN, markdown_scan.REFDEF,
+                                              markdown_scan.FENCE_OPEN, markdown_scan.FENCE_CLOSE)
+scan_fences, unfenced = markdown_scan.scan_fences, markdown_scan.unfenced
+strip_code_spans, strip_html_comments = markdown_scan.strip_code_spans, markdown_scan.strip_html_comments
+link_destinations = markdown_scan.link_destinations
+glob_regex = path_glob.glob_regex
 # A `crew:v1` marker, possibly wrapped over several lines; group `body` excludes
 # the `<!--` / `-->` delimiters. Its `key=value` fields are whitespace-separated;
 # a value is a run of non-space characters and `<...>` placeholders (which may
@@ -73,125 +65,6 @@ MARKER_FIELD = re.compile(r"(?<!\S)(?P<key>[^\s=<]+)=(?P<value>(?:<[^<>=]*>|<(?!
 PLACEHOLDER_VALUE = re.compile(r"<[^<>=]*>")
 FULL_SHA = re.compile(r"[0-9a-f]{40}")
 SHORT_SHA_NAME = re.compile(r"sha7|short", re.I)
-
-
-def is_placeholder(value):
-    return PLACEHOLDER.match(value) is not None and PLACEHOLDER.sub("", value, 1).strip(".,;:)`\"'") == ""
-
-
-def _closer_index(lines, start, opener, max_indent):
-    char, length = opener
-    for j in range(start, len(lines)):
-        m = FENCE_CLOSE.match(lines[j])
-        if (m and m.group("fence")[0] == char and len(m.group("fence")) >= length
-                and len(m.group("pre").expandtabs(4)) <= max_indent):
-            return j
-    return None
-
-
-def scan_fences(lines, unclosed_as_text):
-    """Return ([(line number, line)] outside fenced code blocks, line number of
-    the first unclosed fence or None). Fence lines themselves are not returned.
-
-    CommonMark rules: a fence opens with 3+ backticks or tildes (a backtick
-    opener's info string has no backtick), also after list markers and
-    block-quote `>` prefixes, and closes only on a fence of the same character,
-    at least as long, followed by nothing but whitespace, indented at most 3
-    columns past the opener's own column (more lenient inside containers, so a
-    closer is never missed). CommonMark runs an unclosed fence to the end of
-    the file. With unclosed_as_text, such an opener is instead treated as plain
-    text (and still reported), so a stray fence line, e.g. the closer of a fence
-    this scanner failed to recognise, cannot hide the rest of the file."""
-    out, unclosed = [], None
-    i = 0
-    while i < len(lines):
-        line = lines[i]
-        m = FENCE_OPEN.match(line)
-        if m and not (m.group("fence")[0] == "`" and "`" in m.group("info")):
-            col = len(line[:m.start("fence")].expandtabs(4))
-            max_indent = col + 3 if m.group("pre") else 3
-            j = _closer_index(lines, i + 1, (m.group("fence")[0], len(m.group("fence"))), max_indent)
-            if j is not None:
-                i = j + 1
-                continue
-            if unclosed is None:
-                unclosed = i + 1
-            if not unclosed_as_text:
-                break  # the fence runs to the end of the file
-        else:
-            out.append((i + 1, line))
-        i += 1
-    return out, unclosed
-
-
-def unfenced(lines, unclosed_as_text=True):
-    return scan_fences(lines, unclosed_as_text)[0]
-
-
-def strip_code_spans(line):
-    """Remove inline code spans: a backtick run closes at the next run of the
-    same length; a backslash-escaped backtick is literal; an unmatched run is
-    literal (so the text after it is still checked)."""
-    tokens = list(re.finditer(r"\\.|`+", line))
-    out, pos, i = [], 0, 0
-    while i < len(tokens):
-        run = tokens[i].group()
-        close = None if run.startswith("\\") else next(
-            (j for j in range(i + 1, len(tokens)) if tokens[j].group() == run), None)
-        if close is None:
-            i += 1
-            continue
-        out.append(line[pos:tokens[i].start()])
-        pos, i = tokens[close].end(), close + 1
-    out.append(line[pos:])
-    return "".join(out)
-
-
-def strip_html_comments(lines):
-    """Yield (line number, line) for lines with no HTML comment text on them;
-    `<!-- ... -->` may span lines, and an unclosed one runs to the end."""
-    in_comment = False
-    for n, line in lines:
-        touched, pos = in_comment, 0
-        while True:
-            if in_comment:
-                k = line.find(HTML_COMMENT_CLOSE, pos)
-                if k < 0:
-                    break
-                in_comment, pos = False, k + len(HTML_COMMENT_CLOSE)
-            else:
-                k = line.find(HTML_COMMENT_OPEN, pos)
-                if k < 0:
-                    break
-                touched = in_comment = True
-                pos = k + len(HTML_COMMENT_OPEN)
-        if not touched:
-            yield n, line
-
-
-def link_destinations(text):
-    """Destinations of inline links/images in one line. Handles `<dest>` and
-    balanced parentheses in bare destinations (`other(v1).md`)."""
-    out = []
-    for m in LINK_OPEN.finditer(text):
-        i, depth = m.end(), 0
-        if text.startswith("<", i):
-            j = text.find(">", i)
-            if j > 0:
-                out.append(text[i + 1:j])
-            continue
-        j = i
-        while j < len(text) and not text[j].isspace():
-            if text[j] == "(":
-                depth += 1
-            elif text[j] == ")":
-                if depth == 0:
-                    break
-                depth -= 1
-            j += 1
-        if j > i:
-            out.append(text[i:j])
-    return out
 
 
 def read_lines(path):
@@ -515,13 +388,6 @@ def check_denylist(root, fail):
 MANIFEST = "scripts/deliverables.txt"
 MANIFEST_CLASSES = {"deliverable", "internal"}
 MANIFEST_RUNTIMES = {"all", "grok-bot", "tmux", "session", "n/a"}
-
-
-def glob_regex(glob):
-    """`**` matches across `/`; `*` and `?` stay inside one path segment."""
-    parts = re.split(r"(\*\*|\*|\?)", glob)
-    tr = {"**": ".*", "*": "[^/]*", "?": "[^/]"}
-    return re.compile("".join(tr.get(p, re.escape(p)) for p in parts) + r"\Z")
 
 
 def manifest_rows(lines):

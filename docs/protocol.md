@@ -84,13 +84,15 @@ the account (see [Marker conventions](#4-marker-conventions)).
 
 1. **Spec (coordinator + user, researcher on demand).** The coordinator writes
    `docs/specs/<topic>.md` plus incremental sub-specs (one per buildable
-   slice), lands them through a `crew:spec` change (review pass only, merges
+   slice, a slice being one unit of work, not a line budget), lands them through a `crew:spec` change (review pass only, merges
    on `/crew merge-ok`), then opens one
    [tracker item](concepts.md#tracker-item--milestone--board) per slice. Each
    item body: goal, numbered testable acceptance criteria, out-of-scope, spec
    link, role + tier hint, dependencies (`Depends on #n`;
    [linkage on GitHub](backends/github.md#linkage)). Add each item to the
-   board. Heavy research goes to the researcher in the background so the
+   board. Items follow the work-unit rule ([roles](roles.md)):
+   one issue per feature, fix or design, one PR per issue, split into
+   logical commits. Heavy research goes to the researcher in the background so the
    coordinator keeps talking with the user.
 2. **Handoff.** The coordinator adds the `crew:ready`
    [state tag](concepts.md#state-tag) and assigns the tracker item to the
@@ -639,7 +641,9 @@ docs one-shot says `N/A: no multi-step run`.
 🟡 should-fix / 🟢 nit, each with `file:line` and the spec clause or
 change-body claim it contradicts. Check: does it do what the tracker item
 asks, does the design fit the spec, correctness, do the tests actually cover
-the criteria, security, scope creep.
+the criteria, security, scope creep. On a multi-commit change, read the
+round's commits in order and judge the combined diff at head; a commit that
+breaks its own tests is a 🟡 unless it also breaks the head.
 
 **Validation section.** Per acceptance criterion: builder's claim → validator's
 own evidence (command, output excerpt, artifact) → `agrees` / `disagrees` /
@@ -1084,13 +1088,17 @@ hold gets `crew:needs-md` immediately; the coordinator routes that ask through
 the same channel and SLA.
 
 At the auto-apply time, if the user has not answered, the coordinator applies
-the posted default and records it on the change/tracker item. Allowed defaults
-are:
+the posted default and records it on the change/tracker item. The deadline
+only wakes the coordinator to apply a permitted default: elapsed time never
+supplies a merge-ok. Allowed defaults are:
 
-- **Merge:** only 🟢/🟡 doc-only changes with green CI that qualify for the
-  standing grant below; the coordinator hands the merge to the synthesizer,
-  which re-checks every §7 gate. Never auto-apply a merge to code, workflow,
-  or `docs/protocol.md` changes.
+- **Merge:** only 🟢/🟡 doc-only changes with green CI that this
+  repository's own recorded standing grant covers (§7 Merge permission), or
+  that already carry the owner's per-change merge-ok at head; the coordinator
+  hands the merge to the synthesizer, which re-checks every §7 gate. Without
+  such a grant or merge-ok (for example under `merge_grant = "none"`), hold or
+  escalate instead. Never auto-apply a merge to code, workflow, or
+  `docs/protocol.md` changes.
 - **Defer:** close as not planned, with a note explaining when to reopen.
 - **Keep hold:** leave the item on hold and record that decision.
 

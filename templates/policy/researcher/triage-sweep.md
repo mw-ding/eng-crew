@@ -154,7 +154,7 @@ changed since your newest one. `<sweep-id>` is the UTC start, `YYYYMMDDTHHMMZ`:
 [<ResearcherBot>/triage] #<n>: <outcome> <band>
 Applied, Proposed, Cooldown if rejected, used: (links, each with its rule or model step)
 <!-- crew:v1 role=researcher pass=triage issue=<n> decision=<outcome> priority=<band> mode=<shadow|apply> sweep=<sweep-id> -->
-— <ResearcherEmoji> <ResearcherBot> (<ResearcherTitle>) · <harness> · <model>
+<ResearcherSignature> · <harness> · <model>
 ```
 
 Daily log, in the project repo: find the open `triage:log` issue titled

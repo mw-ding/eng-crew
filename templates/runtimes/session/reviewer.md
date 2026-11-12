@@ -15,10 +15,12 @@ In a session the dispatched validate run records the skip without running
 <include:policy/reviewer/flavor-validation-end.md>
 
 Sign every authored post and owner-facing reply with
-`— <ReviewerEmoji> <ReviewerBot> (<ReviewerTitle>) · <harness> · <model>`.
+`<ReviewerSignature> · <harness> · <model>`.
 Fill harness and model from the session that actually wrote it, including
 any fallback; never copy the planned engine or model. Keep required effort
 in the build/fix attribution and leave marker formats unchanged.
+
+<include:policy/shared/report.md>
 
 <include:policy/shared/usage-line.md>
 

@@ -110,6 +110,18 @@ a single-repo `config.toml`, which is a team file with one repo. Bootstrap still
 proposes and records a per-repo `config.toml` only. Moving two of them into one
 team file follows the [migration note](profile.md#migration-two-configtoml-files-to-one-team-file).
 
+A `<team file>#<repo>` reference stays whole through resolve, doctor, render,
+`--version`'s release source and `install.json`'s `project`; bootstrap reads
+and copies the team file itself as `config.toml`. It never proposes a profile
+for a reference, so a missing file or repo fails in the resolver. Repo-local
+targets (harness pointers, `.git/info/exclude` lines, the spec scaffold) go
+in that repo's clone, its `paths.checkout`, not the team file's directory;
+`root = "home"` pointers still go under `$HOME`. The team's one
+`paths.mdstack` may name any of its repos' install links under the team state
+root, and every repo still gets its own link. Either repo may install first:
+doctor only warns about the named link until the repo that owns it has an
+install, then fails while it is missing (#1344).
+
 After resolve, a `paths.*` key that a step uses must not be a placeholder
 (the [crew rule](runtimes/tmux.md#usage), #265), and the project file is
 copied to the state dir (runbook Step 6). Whether the product repo tracks
@@ -328,7 +340,7 @@ its coordinator restarts by hand
 
 | Case | Behaviour |
 |---|---|
-| Re-run, nothing changed | Each step compares desired with live state; prints `no changes`, writes nothing, exit 0 |
+| Re-run, nothing changed | Each step compares desired with live state; prints `no changes`, writes nothing, exit 0. Bootstrap needs a healthy record (`installed`, no failed self-test) equal to the one it would write: tag, source, project, pack, transport, harnesses, launches, human steps and owned targets. Every recorded target, a deselected harness's included, must match its bytes on disk, the `mdstack` link and planned exclude lines must be in place, and nothing may be pending removal or scaffolding. A deployed render must equal the new one; the record's `render_sha256` covers a render not yet deployed (a tmux install before `mdstack up`), and an `upgrade` with no deployed render deploys it. Anything else, a failed install included, re-applies (#1090) |
 | Re-run, profile changed | Re-render, show the diff, deploy on confirmation |
 | Upgrade ([#192](https://github.com/mw-ding/eng-crew/issues/192)) | `--version vX.Y.Z`: fetch and verify next to the current bundle; resolve and render with it; show the diff (render, harness targets, repo operations); a major needs the owner's OK after the `**Breaking:**` entries; deploy; move the `mdstack` link; record; then reload running roles, coordinator last, each once its in-flight pass ends (terminal worker status and idle pane) |
 | Rollback | Upgrade to the previous tag ([rollback](release.md#rollback)); its bundle is still on disk |

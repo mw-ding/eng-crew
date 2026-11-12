@@ -73,6 +73,17 @@ Refreshing open items' criteria after an owner decision follows the
 [plan gate](protocol.md#6-duties-on-wake-all-roles). This adds no merge
 permission: spec changes keep the merge gate's existing rules.
 
+**Work-unit issues (#978).** An issue is a unit of work: one feature, fix or
+design, never a slice cut to fit a line budget. Milestone planning and triage
+file issues by work, with their dependencies and gate or sensitivity marks.
+Each issue gets one PR; a large PR is split into reviewable commits (see
+[PR conventions](#pr-conventions)), not into more issues or PRs. Keep
+separate issues only for separate work: different features, an owner-decision
+or design-first item, a gate-contract change the owner wants to approve on its
+own, or cross-area work split by role ([Roles](#roles)). Doc moves keep M26
+principle 9. Review, validation, evidence and the
+[merge gate](protocol.md#7-merge-gate-synthesizer) still apply per PR.
+
 **Dispatch independence.** Never send a builder or reviewer a change back
 solely because it is behind the default branch: synchronize at land under
 protocol §7's verdict portability rule. File or subsystem overlap is a risk
@@ -164,6 +175,39 @@ Prior art: the owner-communication etiquette of
 persona and forms of address removed; no text is copied. Decision:
 [#160, row 14](https://github.com/mw-ding/eng-crew/issues/160#issuecomment-6532191486).
 
+## Report skeleton (every role)
+
+Every role's human-facing output has the same outcome-first shape: build,
+fix and ci-fix notes, review and validation verdicts, merge records, research
+reports, `done:` reports and coordinator updates (#431). The
+[owner-communication](#owner-communication-coordinator) wording rules apply to
+every role's prose: outcomes first, plain words, exact terms only in markers.
+
+1. **Headline.** The post's existing first line (`[<name>/<pass>]`, its item,
+   round and head, as each form already gives them), then ` · ` and one
+   status from the fixed set.
+2. **TL;DR.** One or two plain sentences.
+3. **Changes or findings.** Numbered; each names its location and the exact
+   fix or what changed.
+4. **Evidence.** Short, copyable commands, counts and exit codes.
+5. **Next.** Who acts next, or `nothing`.
+
+The fixed status set is `pass`, `changes`, `landed`, `escalated` and
+`blocked`, each with a profile emoji (`[report.status]`, defaults ✅ 🔁 🚢 ⛔
+🚧; [profile](profile.md#report)). Every role brief carries the resolved set
+in one short line; synthesizer briefs name the merge statuses (landed or
+blocked) from it. With `report.emoji = false` the status words and signatures
+render without emoji. Apart from the protocol's 🔴 / 🟡 / 🟢 finding ranks,
+emoji appear only in the headline status and the signature, never in
+findings, evidence or markers.
+
+The skeleton changes no marker, gate, label or parsed field. Sections a form
+requires (protocol §3 review, validation and evidence sections, `## Risks /
+Not Done`, the PR body template) keep their names and slot in as items 3 and
+4. The [usage line](#usage-line), the `crew:v1` marker and the signature
+still close the post, in that order. Readers match the headline by its
+`[<name>/<pass>]` prefix only, so the appended status breaks none.
+
 ## Grant references in posts
 
 A coordinator or synthesizer post that relies on a standing grant (the
@@ -173,6 +217,26 @@ comment `merge_grant` names. It never restates the permission in its own
 words, such as "the owner granted merge on these PRs": the grant stays in one
 place and posts point to it. With no recorded grant (`merge_grant = "none"`),
 the post cites the per-PR owner merge-ok at head instead (#314).
+
+## Owner config edits (coordinator)
+
+Owner preferences belong to the owner. Before the coordinator edits the
+owner's profile, team file or config (`crew.toml`, a profile key, a
+`paths.*` value), it reads the recorded owner authorization (the decision
+log or a standing grant) and that record's scope:
+
+- **Covered.** Apply the edit, then report the changed key and link the
+  authorizing record ([grant references](#grant-references-in-posts)). An
+  edit an existing record already covers needs no new ask.
+- **Documented repair.** A normative doc that names the fix (an `mdstack doctor`
+  hint, a runbook step) applies only within the authority it states.
+- **Uncovered or unusable.** Keep the owner's config as is, report the
+  unusable path and the reason, and route the choice to the
+  [§6 owner-decision path](protocol.md#6-duties-on-wake-all-roles).
+
+Owner-only settings, such as `release_delegation`
+([release](release.md#release-delegation)), keep their own restrictions:
+no role sets or edits them (#372).
 
 ## Roles
 
@@ -684,11 +748,10 @@ only, never chat. See [observe.md](observe.md).
 ## PR conventions
 
 - **Branch:** `<role>/<issue#>-<short-slug>`, for example
-  `infra/187-align-rust-base-images`. Lead and synthesizer tooling route
-  follow-ups by this prefix.
-- **Commits:** follow the repo's existing commit-message convention. End every
-  commit with the trailer `Engine: <engine> <model> <effort>` naming the engine
-  that actually wrote it (see [Actual builder engine](#actual-builder-engine)).
+  `infra/187-align-rust-base-images`; tooling routes follow-ups by it.
+- **Commits:** one PR per issue, in logical commits that pass their tests.
+  Follow repo convention; end each with `Engine: <engine> <model> <effort>`,
+  the engine that actually wrote it ([Actual builder engine](#actual-builder-engine)).
 - **Evidence:** for behaviour changes, embed runtime proof inline in the body
   or signed fix / ci-fix reviews ([verification](verification.md)); never
   commit evidence. Docs-only PRs state N/A and why.
@@ -701,8 +764,8 @@ only, never chat. See [observe.md](observe.md).
 
 ### PR body template
 
-The signature must be the last thing in the body, with nothing after it. Use the
-real values actually used, including any fallback, never placeholders.
+The signature must be the last thing in the body. Use the real values
+actually used, including any fallback, never placeholders.
 
 ````markdown
 ## Context
@@ -732,12 +795,12 @@ $ <command>
 ````
 
 Crew PRs must carry the hidden `crew:v1` builder marker line right before the
-signature, as described in the [architecture overview](architecture.md). See the
+signature ([architecture overview](architecture.md)). See the
 [stage protocol](protocol.md) for the other crew additions: `## Acceptance Evidence`
 (with the shape and inline proof label per the [verification protocol](verification.md))
 and `## Risks / Not Done`. Test Output and Acceptance Evidence must paste key
-output and/or screenshots inline; paths and repo-file links do not count (see
-[protocol §3](protocol.md#3-evidence-requirements)). A behaviour-changing PR that adds or
+output and/or screenshots inline; paths and repo-file links do not count. A
+behaviour-changing PR that adds or
 changes a user-visible create, update or complete (or equivalent) mutation
 pastes a create→complete→delete happy-path snippet (for list delete with
 cascade, also show the child items are gone); see
@@ -753,7 +816,7 @@ actual engine/model/effort. Keep the body of the original PR unchanged.
 
 ```text
 <!-- crew:v1 role=builder pass=fix pr=<n> sha=<head-sha> round=<k> verdict=n/a engine=<engine> model=<model> effort=<effort> -->
-— <BuilderEmoji> <BuilderBot> (<BuilderTitle>) · <harness> · <model>
+<BuilderSignature> · <harness> · <model>
 ```
 
 Include a dated CHANGELOG fragment with the PR number and box-skill mirror

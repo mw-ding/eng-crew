@@ -208,8 +208,9 @@ lands, the paths below are current.
 
 ## 5. Milestones and slices
 
-Each slice is one issue → one PR of about 100 changed lines (tests excluded;
-pure text moves may be larger). Child issues say "Part of #110" and never
+Each slice is one issue → one PR, sized by its unit of work (#978): a large
+PR splits into logical commits, not more issues. The line counts in the
+tables below are historical estimates, not a budget. Child issues say "Part of #110" and never
 close the umbrella. Project board:
 <https://github.com/users/md-mt/projects/10>. **Status** is the issue's
 state: `open`, `done` or `dropped` (closed without landing); CI checks every

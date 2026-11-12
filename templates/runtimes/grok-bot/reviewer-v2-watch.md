@@ -37,10 +37,12 @@ On tmux the dispatched validate session records the skip without running
 <include:policy/reviewer/flavor-validation-end.md>
 
 Sign every authored post and owner-facing reply with
-`— <ReviewerEmoji> <ReviewerBot> (<ReviewerTitle>) · <harness> · <model>`.
+`<ReviewerSignature> · <harness> · <model>`.
 Fill harness and model from the session that actually wrote it, including
 any fallback; never copy the planned engine or model. Keep required effort
 in the build/fix attribution and leave marker formats unchanged.
+
+<include:policy/shared/report.md>
 
 Reviewer watch for <owner>/<repo> PR #<n>. Follow the eng-pr-pipeline skill and
 <state-dir>/<owner>__<repo>/wiring.md.

@@ -17,9 +17,7 @@ and 7), and a first test issue (Step 8).
 For a local tmux crew instead of Grok Bot, see [tmux runtime](#tmux-runtime).
 
 Read first: the [architecture overview](architecture.md), the
-[stage protocol](protocol.md), and [roles, tiers and engines](roles.md). A
-finished onboarding, with real values, is the
-[agentconnect worked example](../examples/agentconnect/README.md).
+[stage protocol](protocol.md), and [roles, tiers and engines](roles.md).
 This runbook onboards one repo. It does not change the protocol or the
 templates; gaps found along the way go into [Known gaps](#known-gaps).
 

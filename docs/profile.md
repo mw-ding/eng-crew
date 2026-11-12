@@ -484,6 +484,16 @@ moving it.
 | `size_budget` | integer, at least 1 | `500` | Lines above which a doc is reported as a split candidate |
 | `homes` | table: essential name to repo-relative path or `path#anchor` | the [default homes](project-doc-set.md#essential-doc-set) | Where this project keeps each essential doc; keys `overview`, `agent_guide`, `architecture`, `runbook`, `decisions`, `specs` (a directory, no anchor; #1225), any other fails |
 
+### `[report]`
+
+Optional. The [report skeleton](roles.md#report-skeleton-every-role)'s status
+set and the install-wide emoji switch (#431). Changes no marker or gate.
+
+| Key | Type | Default | Replaces |
+|---|---|---|---|
+| `emoji` | boolean | `true` | `false` renders `<report-status>`, `<RoleSignature>` and every `<RoleEmoji>` without emoji |
+| `status.<status>` | string: emoji for `pass`, `changes`, `landed`, `escalated` or `blocked`; any other key fails | `✅` / `🔁` / `🚢` / `⛔` / `🚧`; `""` shows the word alone | `<report-status>` |
+
 ### `[identities]`
 
 | Key | Type | Default | Replaces |
@@ -500,10 +510,15 @@ moving it.
 | `<role>.emoji` | string: signature emoji | `🔥` / `🛠️` / `🔎` / `🔀` | `<CoordinatorEmoji>`, `<BuilderEmoji>`, `<ReviewerEmoji>`, `<SynthesizerEmoji>` |
 
 Every role signs authored posts and owner-facing replies as
-`— <emoji> <name> (<title>) · <harness> · <model actually used>`.
-Name, title and emoji resolve from the profile; harness and model are filled
-at run time by the authoring session, including fallback. Engine attribution
-still records effort; signatures change no marker or gate.
+`— <emoji> <name> (<title>) · <team> · <harness> · <model actually used>`,
+rendered as `<RoleSignature> · <harness> · <model>` (`<BuilderSignature>` and
+so on). Name, title and emoji resolve from the profile; `report.emoji = false`
+drops the emoji ([`[report]`](#report)). The team is a
+[team file](configuration/team-files.md)'s resolved `team.name`, else its file
+name, else `identities.team`; a legacy single-repo install without
+`identities.team` omits the `· <team>` part (#1291). Harness and model are
+filled at run time by the authoring session, including fallback. Engine
+attribution still records effort; signatures change no marker or gate.
 
 `gh_user` is the only mechanism today: a GitHub login whose token is derived
 at use, `GH_TOKEN=$(gh auth token --user <login>)` (on tmux via

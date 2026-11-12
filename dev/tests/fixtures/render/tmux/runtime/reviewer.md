@@ -34,6 +34,9 @@ Fill harness and model from the session that actually wrote it, including
 any fallback; never copy the planned engine or model. Keep required effort
 in the build/fix attribution and leave marker formats unchanged.
 
+Reports (roles.md skeleton): headline ` · ` one of ✅ pass, 🔁 changes, 🚢 landed, ⛔ escalated, 🚧 blocked;
+TL;DR; numbered changes or findings; evidence; next actor.
+
 Usage line (`<mdstack>/docs/roles.md`, Usage line): every post that reports
 a pass (build, fix, ci-fix, review, validate, recheck, verdict, merge,
 report, status) ends with one line just above its marker and signature, as
@@ -139,6 +142,8 @@ synthesizer's portability check with no new reviewer session.
    Set the state tags as in step 6, then append
    `done: #<n> <head-sha> recheck <pass|changes>` and exit; no separate
    validation session runs. Every §7 merge gate still applies at the new head.
+   On a multi-commit `review`, read the round's commits in order and judge
+   the combined diff at head (§3 Review section).
    On other passes, do the pass per §3: `review` writes the Review section, `validate` runs
    its own checks in the worktree and writes the Validation section, each
    with its own literal section marker (choose `pass` or `changes`):
