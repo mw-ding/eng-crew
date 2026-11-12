@@ -1,10 +1,11 @@
 """`mdstack ownership` re-reads the repo control item before dispatch, push, post or land.
 
 Usage: mdstack ownership --project FILE [--org-profile FILE] [--action start|write|land] [--runtime session]
-Exit 0 when permitted, 1 otherwise; works with either runtime binding. `--runtime session`
+Exit 0 when permitted, 1 otherwise; works with either runtime binding. A project pause (#1714) refuses start and land. `--runtime session`
 checks as `session@<runtime.instance>`, for a coordinator session with no binding yet.
 """
-from crew_shared import crew_render, require_ownership
+import os
+from crew_shared import crew_render, refuse_paused, require_ownership
 
 
 def register(sub):
@@ -22,4 +23,7 @@ def run(args):
         return 1
     if args.runtime:
         values = dict(values, **{"runtime.name": args.runtime})
-    return 0 if require_ownership(values, args.action) else 1
+    if not require_ownership(values, args.action):
+        return 1
+    state = os.path.join(os.path.abspath(values["paths.state_dir"]), "%s__%s" % (values["repo.owner"], values["repo.name"]))
+    return 1 if args.action != "write" and refuse_paused(state, args.action) else 0
