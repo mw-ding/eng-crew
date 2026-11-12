@@ -300,6 +300,59 @@ class ReviewerPool(route_tests.Route):
     def test_differing_patch_merge_up_starts_delta_review(self):
         self.delta_merge_up("Differing patch after merge-up.")
 
+    def published_note(self, previous):
+        """The verbatim #1656 merge-up note (review 5857839197), re-pinned to this fixture's PR and head (#1682)."""
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixtures", "merge-up",
+                               "pr1656-review-5857839197.txt")) as f:
+            body = f.read()
+        old = "72db15d699e1bf78cae41064f9e7a51143cb42f9"
+        return body.replace(old, self.sha).replace(old[:7], self.sha[:7]).replace("pr=1656", "pr=12")
+
+    def test_published_merge_up_note_replays_to_one_delta_review(self):  # #1682
+        previous = self.approved_push()
+        self.live["reviews"][-1] = dict(body=self.published_note(previous))
+        self.live["labels"] = [{"name": "crew:approved"}]
+        self.save()
+        poll, values = self.mod.commands()["poll"], self.mod.profile(self.args)[0]
+        with mock.patch.dict(os.environ, self.env):
+            approved = poll.merge_up(self.live, {"head": previous}, "acme/widgets", "main")
+        events, _ = poll.decide({"prs": {"12": {"head": previous}}}, [self.live], [], {"12": approved}, values=values)
+        event = next(e for e in events if e["event"] == "merge-up")
+        self.assertEqual((event["refs"], event["previous_head"], event["round"]), (["#12", self.sha], previous, 2))
+        built = dict(reason="status", window="ben-7", line="done: #7 #12 " + self.sha)
+        for replay in (False, True):
+            self.queue(built, dict(event, reason="poll", id="poll-%d" % replay))
+            self.route()
+            self.pool()
+            self.assertEqual([n for n in self.names() if n.endswith(("review", "validate"))], ["vera-12-r2-review"])
+            self.assertEqual(self.record("vera-12-r2-review")["head"], self.sha)
+            self.assertEqual(self.messages(), [])
+            self.assertEqual(self.pending(), [])
+        if "--merge-up-transcript" in sys.argv:
+            print("published #1656 merge-up note -> one review at updated head, round 2; replay starts none")
+
+    def test_published_merge_up_note_without_delta_keeps_current_handling(self):  # #1682
+        route = self.mod.commands()["route"]
+        previous = self.approved_push()
+        note, verdicts = self.published_note(previous), self.live["reviews"][:-1]
+        self.live["reviews"] = verdicts + [dict(body=note)]
+        self.assertTrue(route.merge_up_delta(self.live, self.sha, "Ben"))
+        clean = note.replace("The merge hit two text conflicts and one semantic conflict, and all three are resolved.",
+                             "The merge was clean; no conflicts.")
+        for body in (clean, note.replace(self.sha, "f" * 40), note.replace("Ben (Builder)", "Bo (Builder)"),
+                     note.split("\n— ")[0], note.replace("[Ben/merge-up]", "[Ben/status]")):
+            self.live["reviews"] = verdicts + [dict(body=body)]
+            self.assertFalse(route.merge_up_delta(self.live, self.sha, "Ben"))
+        self.live["reviews"] = verdicts + [dict(body=clean)]
+        self.live["labels"] = [{"name": "crew:approved"}]
+        self.save()
+        self.queue(dict(reason="status", window="ben-7", line="done: #7 #12 " + self.sha),
+                   dict(self.event("merge-up"), previous_head=previous, round=2, consumer="synthesizer"))
+        self.route()
+        self.pool()
+        self.assertEqual(self.names(), ["ash", "vera-lead"])
+        self.assertEqual([w["event"] for w in self.pending()], ["merge-up"])
+
     def test_identical_merge_up_keeps_synthesizer_portability(self):
         previous = self.approved_push()
         self.queue(dict(reason="status", window="ben-7", line="done: #7 #12 " + self.sha),
