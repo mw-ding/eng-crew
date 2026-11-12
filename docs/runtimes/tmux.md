@@ -1234,7 +1234,9 @@ then the run's records through the kill path. A failed removal prints
 `failed` with the error, keeps the run's records and makes the command exit
 1; nothing falls back to a forced removal. A rerun with nothing left removes
 nothing. [mdstack route](#mdstack-route) runs `mdstack gc --apply --max 5`
-on each watcher backstop wake.
+on each watcher backstop wake and writes its report to
+`<state-dir>/<owner>__<repo>/gc/backstop.txt`, not the watcher's output;
+only a failure prints one line naming that file.
 
 **Provider decision (#316, M47).** Git stays the only worktree provider and
 there is no provider profile key. The alternative considered was

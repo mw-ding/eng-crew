@@ -1,6 +1,7 @@
 """`mdstack route` consumes mechanical wakes without a coordinator model turn. The watcher calls it before waking
 window 0. Worker completion retries admission in all pending pools. A backstop wake also runs `mdstack gc --apply`,
-at most 5 removals of merged, landed run copies a missed close-out left (#316). New heads and escalated rechecks start review;
+at most 5 removals of merged, landed run copies a missed close-out left (#316); its report goes to gc/backstop.txt.
+New heads and escalated rechecks start review;
 approved merge-ups stay queued for synthesizer dispatch. A change that resolves express never starts a reviewer pass.
 Solo build wakes are consumed; solo builder findings stay queued for coordinator pickup.
 Passed reviews start validation, including after zero-step CI startup failures (ci-infra goes to the coordinator). Terminal
@@ -39,8 +40,10 @@ head or resolved conflict is consumed, and held, escalated, solo or lead-less co
 Usage: mdstack route --project FILE [--org-profile FILE] [--timeout SECS]
 """
 import argparse
+import contextlib
 import fcntl
 import glob
+import io
 import json
 import os
 import re
@@ -443,6 +446,23 @@ def obsolete_block(values, line):
     return bool(items)
 
 
+def backstop_gc(args, state):
+    """Merged run copies a missed close-out left behind (#316). The sweep's report goes to <state>/gc/backstop.txt,
+    not the watcher's output; only a failure prints one line naming it, and nothing here is fatal to routing."""
+    path = os.path.join(state, "gc", "backstop.txt")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    out, error = io.StringIO(), None
+    try:
+        with contextlib.redirect_stdout(out):
+            invoke(args, "gc", apply=True, max=GC_MAX)
+    except RuntimeError as e:
+        error = str(e)
+    with open(path, "w") as f:
+        f.write(out.getvalue() + ("%s\n" % error if error else ""))
+    if error:
+        print("crew: route: backstop gc: %s; report in %s" % (error, path))
+
+
 def route_record(args, values, state, w):
     line = w.get("line", "")
     if reclaimed(state, w):
@@ -481,10 +501,7 @@ def route_record(args, values, state, w):
         return True
     if w.get("reason") == "backstop":
         lead.retry_pending(args)
-        try:  # merged run copies a missed close-out left behind (#316); a failure is printed, never fatal here
-            invoke(args, "gc", apply=True, max=GC_MAX)
-        except RuntimeError as e:
-            print("crew: route: backstop gc: %s" % e)
+        backstop_gc(args, state)
     if rec and ROLES.get(rec["role"], {}).get("relay") == "coordinator" and line.startswith(("done:", "failed:")):
         run = commands()["watch"].run_identity(rec)
         report, mode = REFLECTION_DONE.fullmatch(line), rec.get("args", {}).get("reflection")

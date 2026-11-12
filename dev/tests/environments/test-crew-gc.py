@@ -2,9 +2,11 @@
 
 Covers: a merged, landed run is listed in dry run and removed with --apply (records too; a reviewer's linked
 worktree through git), a rerun is a no-op; --max bounds removals; a live window, unlanded work and a closed-unmerged
-PR and a nested evidence worktree are kept with reasons; an orphan copy with no run record is removed on squash-merged head proof and kept without a
-merged PR or while a working-copy claim holds it; a symlink to a copy outside the root is kept and never followed; a failed removal exits 1 and keeps the records; a backstop wake through mdstack route recovers a
-missed close-out. Fixtures in crew_testlib.py (stdlib only). Run in CI.
+PR and a nested evidence worktree are kept with reasons; an orphan copy with no run record is removed on squash-
+merged head proof and kept without a merged PR or while a working-copy claim holds it; a symlink to a copy outside
+the root is kept and never followed; a failed removal exits 1 and keeps the records; a backstop wake through mdstack
+route recovers a missed close-out, its report in gc/backstop.txt and only a failure on route's output. Fixtures in
+crew_testlib.py (stdlib only). Run in CI.
 """
 import json
 import os
@@ -176,8 +178,26 @@ class Gc(KillLandedBase):
         self.put("wake/queue.jsonl", json.dumps({"reason": "backstop", "event": "due (idle in flight)"}) + "\n")
         r = self.crew("route", "--project", self.project, "--timeout", "1")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertIn("\tben-7\tremoved\tPR #12 merged, landed", r.stdout)
+        self.assertNotIn("gc:", r.stdout)  # the watcher's output carries no sweep report
         self.assertFalse(os.path.exists(wt))
+        with open(os.path.join(self.state, "gc", "backstop.txt")) as f:
+            report = f.read()
+        self.assertIn("\tben-7\tremoved\tPR #12 merged, landed", report)
+        self.assertIn("gc: removed 1, failed 0, kept 0", report)
+
+    def test_backstop_gc_failure_prints_one_line(self):
+        wt, _ = self.merged_builder()
+        self.drop_window("ben-7")
+        os.chmod(os.path.dirname(wt), 0o555)
+        self.addCleanup(os.chmod, os.path.dirname(wt), 0o755)
+        self.put("wake/queue.jsonl", json.dumps({"reason": "backstop", "event": "due (idle in flight)"}) + "\n")
+        r = self.crew("route", "--project", self.project, "--timeout", "1")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        report = os.path.join(self.state, "gc", "backstop.txt")
+        self.assertIn("crew: route: backstop gc: crew: gc failed (exit 1); report in %s" % report, r.stdout)
+        self.assertNotIn("\tfailed\t", r.stdout)
+        with open(report) as f:
+            self.assertIn("\tben-7\tfailed\t", f.read())
 
 
 if __name__ == "__main__":
