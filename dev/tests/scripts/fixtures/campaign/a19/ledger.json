@@ -38,6 +38,20 @@
       "environments/test-crew-spawn.py:test_reviewer_engine_differs_from_builder_engine"
      ]
     },
+    "role_cwd": {
+     "oracle": true,
+     "tests": [
+      "environments/test-crew-spawn.py:test_claude_run_copy_uses_stable_trust_root",
+      "environments/test-crew-restart.py:test_quota_run_with_unlanded_work_relaunches_in_its_worktree_on_the_next_engine"
+     ]
+    },
+    "builder_checks": {
+     "oracle": true,
+     "tests": [
+      "environments/test-crew-doctor.py:test_claude_copy_trust_is_separate_and_never_written",
+      "environments/test-crew-up.py:test_missing_copy_trust_warns_before_up_and_never_writes_user_config"
+     ]
+    },
     "launch_refusal": {
      "oracle": true,
      "tests": [
@@ -155,6 +169,18 @@
       "environments/test-crew-spawn.py:test_builder_spawn_unique_worktree_identity_engine"
      ]
     },
+    "role_cwd": {
+     "default": true,
+     "tests": [
+      "harnesses/test-harness-adapters.py:test_declared_rows_per_shipped_adapter"
+     ]
+    },
+    "builder_checks": {
+     "default": true,
+     "tests": [
+      "harnesses/test-harness-adapters.py:test_declared_rows_per_shipped_adapter"
+     ]
+    },
     "launch_refusal": {
      "default": true,
      "tests": [
@@ -270,6 +296,18 @@
       "environments/test-crew-spawn.py:test_pi_launches_each_worker_with_provider_model_and_effort"
      ]
     },
+    "role_cwd": {
+     "default": true,
+     "tests": [
+      "harnesses/test-harness-adapters.py:test_declared_rows_per_shipped_adapter"
+     ]
+    },
+    "builder_checks": {
+     "default": true,
+     "tests": [
+      "harnesses/test-harness-adapters.py:test_declared_rows_per_shipped_adapter"
+     ]
+    },
     "launch_refusal": {
      "default": true,
      "tests": [
@@ -361,6 +399,18 @@
      "oracle": true,
      "tests": [
       "environments/test-crew-spawn.py:test_cursor_launches_each_worker_with_model_and_no_effort_flag"
+     ]
+    },
+    "role_cwd": {
+     "default": true,
+     "tests": [
+      "harnesses/test-harness-adapters.py:test_declared_rows_per_shipped_adapter"
+     ]
+    },
+    "builder_checks": {
+     "default": true,
+     "tests": [
+      "harnesses/test-harness-adapters.py:test_declared_rows_per_shipped_adapter"
      ]
     },
     "launch_refusal": {
@@ -460,6 +510,18 @@
       "harnesses/test-harness-adapters.py:test_contributor_tier_is_core_policy"
      ]
     },
+    "role_cwd": {
+     "default": true,
+     "tests": [
+      "harnesses/test-harness-adapters.py:test_declared_rows_per_shipped_adapter"
+     ]
+    },
+    "builder_checks": {
+     "default": true,
+     "tests": [
+      "harnesses/test-harness-adapters.py:test_declared_rows_per_shipped_adapter"
+     ]
+    },
     "launch_refusal": {
      "default": true,
      "tests": [
@@ -547,6 +609,18 @@
     },
     "role_argv": {
      "unsupported": "with no interactive launch"
+    },
+    "role_cwd": {
+     "default": true,
+     "tests": [
+      "harnesses/test-harness-adapters.py:test_declared_rows_per_shipped_adapter"
+     ]
+    },
+    "builder_checks": {
+     "default": true,
+     "tests": [
+      "harnesses/test-harness-adapters.py:test_declared_rows_per_shipped_adapter"
+     ]
     },
     "launch_refusal": {
      "unsupported": "with no interactive launch"

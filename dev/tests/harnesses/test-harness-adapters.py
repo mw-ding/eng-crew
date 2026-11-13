@@ -110,6 +110,9 @@ class ShippedTables(unittest.TestCase):
             with self.subTest(engine):
                 self.assertEqual((h.ADAPTERS[engine].TITLE, h.CLI[engine]), (title, cli))
                 self.assertEqual(h.login_status(engine), [cli] + (["login"] if engine == "codex" else ["auth"]) + ["status"])
+                if engine != "claude-code":
+                    self.assertFalse(hasattr(h.ADAPTERS[engine], "role_cwd"))
+                    self.assertFalse(hasattr(h.ADAPTERS[engine], "builder_checks"))
         claude, codex = h.ADAPTERS["claude-code"], h.ADAPTERS["codex"]
         idle = "❯ \n  ? for shortcuts"
         self.assertTrue(claude.BUSY.search("✽ recombobulating… (5s · ↓ 159 tokens)"))
