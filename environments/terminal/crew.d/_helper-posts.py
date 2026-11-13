@@ -21,7 +21,7 @@ def view(values, pr):
     if any(values["backends.%s.name" % concern] != "github" for concern in ("change", "review", "markers")):
         raise ValueError("helper live PR read unavailable for this backend")
     return commands()["route"].gh("pr", "view", str(pr), "-R", "%s/%s" % (values["repo.owner"], values["repo.name"]),
-                                  "--json", "number,state,isDraft,headRefOid,baseRefName,body,labels,reviews,commits,closingIssuesReferences,statusCheckRollup")
+                                  "--json", "number,state,isDraft,headRefOid,headRefName,isCrossRepository,baseRefName,body,labels,reviews,commits,closingIssuesReferences,statusCheckRollup")
 
 
 def actor(args, values, state, role):
@@ -39,7 +39,7 @@ def actor(args, values, state, role):
     else:
         with open(path, encoding="utf-8") as f:
             rec = json.load(f)
-    if rec["role"] != role or role != "coordinator" and (rec["args"].get("pr") != args.pr or rec["head"] != args.head):
+    if rec["role"] != role or role == "reviewer" and (rec["args"].get("pr") != args.pr or rec["head"] != args.head):
         raise ValueError("foreign run PR/head/role")
     if role == "coordinator" and rec.get("pass", "coordinate") != "coordinate":
         raise ValueError("coordinator run is not a coordinate pass")

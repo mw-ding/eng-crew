@@ -1455,6 +1455,42 @@ code is preserved. `--item` in issue mode must match the selected issue;
 remain available. This helper reads GitHub issues; unavailable tracker reads
 refuse. `mdstack brief --help` lists all flags.
 
+### mdstack merge-up
+
+```sh
+cli/mdstack merge-up <pr> --head <H> --actor <builder-run> --repo <owned-copy> --check 'python3 scripts/check-repo.py' --check 'python3 scripts/run-tests.py <affected-test-files>' --project <config.toml>
+```
+
+The coordinator dispatches the actual builder/operator who owns the copy.
+The caller's builder run must name this PR or its linked issue; retained
+issue builders use their current copy/head, not the original launch head.
+The copy must belong to the configured checkout, be on the live PR branch
+at full H, and have no dirty tracked/untracked work or Git operation.
+Another writer's run or host-wide copy claim refuses; the associated run
+and its own claim are allowed. Ownership, pause, held/closed/escalated PRs,
+forks, foreign push destinations and a rebase strategy refuse before merge.
+
+Fetch the default branch through a private ref, pin merge base B and updated
+base U, then create a two-parent H/U merge using only declared Git drivers.
+No attributes are added and unresolved feature conflicts restore H without
+push/post. A current copy exits 0 with no note. Each required `--check`
+is parsed as argv and run in the copy without shell evaluation; a failed
+check restores H. Select checks under the existing merge-up testing policy.
+
+After checks and a fresh live H/ownership/pause read, push normally to the
+verified branch and read back the published full head. Post one signed
+actual-builder COMMENT note at that head with B/H/U/new-head, merge and
+configured-union paths, strict patch comparison and check output. The
+`pass=merge-up` marker retains `round=n/a verdict=n/a`; success never
+approves or changes tags. A differing patch explicitly requires delta
+review through the existing router; approval carry stays with the synthesizer.
+
+Exit 2 reports refusal/failure. After a push attempt, retain the local merge
+and report the published head or an unconfirmed push for reconciliation.
+If a note response is lost, read reviews back before retrying; a confirmed
+note succeeds once. A failed note requires readback/reconciliation without
+another push. No rebase, force-push, squash or approval is performed.
+
 ### mdstack ack
 
 ```sh
