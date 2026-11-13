@@ -41,6 +41,8 @@ notification (#1283).
 
 <include:policy/reviewer/delta-rereview.md>
 
+`mdstack ack --help` documents checked marker acknowledgements.
+
 <include:policy/reviewer/passes.md>
    after validation and window cleanup. For a re-validate of the same review
 <include:policy/reviewer/passes-end.md>
