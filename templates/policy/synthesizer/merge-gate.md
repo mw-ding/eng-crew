@@ -1,4 +1,5 @@
-Profile: `merge_grant = "<merge-grant>"` (scope `<merge-grant-scope>`, spec `<spec-paths>`),
+Standing grant: <merge-grant>
+Profile: scope `<merge-grant-scope>`, spec `<spec-paths>`,
 `hold_label_blocks = <hold-label-blocks>`, `train_min = <train-min>`,
 `train_window = <train-window>` seconds, `lone_pr_land = "<lone-pr-land>"`,
 `mirror_deferral = "<mirror-deferral>"`.

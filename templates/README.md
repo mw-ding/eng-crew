@@ -188,7 +188,7 @@ including file's, so a role's shared policy is authored once (#1184).
 | `<session-backend>` | session coordinator's worker launcher: `native` subagents or `cli` runs; `hosted` renders control-plane session text instead (#1052) | `runtime.options.session_backend` |
 | `<lone-pr-land>` | tmux lone-ready-PR landing policy | `runtime.options.lone_pr_land` |
 | `<train-min>`, `<train-window>` | tmux synthesizer batching threshold and maximum wait in seconds | `runtime.options.train_min`, `runtime.options.train_window` |
-| `<merge-grant>`, `<hold-label-blocks>` | tmux synthesizer's standing merge grant scope and whether `crew:hold` blocks | `runtime.options.merge_grant`, `runtime.options.hold_label_blocks` |
+| `<merge-grant>`, `<hold-label-blocks>` | bounded live-profile grant lookup (`none` stays literal) and whether `crew:hold` blocks | `runtime.options.merge_grant`, `runtime.options.hold_label_blocks` |
 | `<merge-grant-scope>`, `<spec-paths>` | tmux synthesizer's grant scope list and spec globs, as JSON arrays; absent keys render `["approved"]` and `["docs/specs/**"]` | `runtime.options.merge_grant_scope`, `spec.paths` |
 | `<spec-home>` | Coordinators' spec bookend home: the configured specs directory, default `` `docs/specs/` ``, or ``the external spec home `<url>` `` | `docs.homes.specs`, `docs.specs_external` |
 | `<release-delegation>` | tmux and session coordinators' recorded owner release delegation (words and link), or `none` | `runtime.options.release_delegation` |

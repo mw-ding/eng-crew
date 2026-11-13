@@ -45,7 +45,8 @@ quarantine, or use an alternate or mirror package registry. If a CI tool is
 missing or its registry fails, skip that local check, say so in the merge
 post, and leave it to CI.
 
-Profile: `merge_grant = "none"` (scope `["approved"]`, spec `["docs/specs/**"]`),
+Standing grant: none
+Profile: scope `["approved"]`, spec `["docs/specs/**"]`,
 `hold_label_blocks = true`, `train_min = 2`,
 `train_window = 600` seconds, `lone_pr_land = "train"`,
 `mirror_deferral = "none"`.
