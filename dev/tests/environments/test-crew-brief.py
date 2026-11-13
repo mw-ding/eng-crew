@@ -118,6 +118,16 @@ print(json.dumps({'number': n, 'url': 'https://github.com/acme/widgets/issues/' 
         self.assertNotIn('Task 7', r.stdout)
         self.assertIn('- Item: issue #8', r.stdout)
 
+    def test_stale_rendered_instructions_refuse_without_dispatch(self):
+        self.instructions.write_text(self.instructions.read_text() +
+                                     '\n## This run\n\n- Item: issue #6\n')
+        before = sorted(str(p) for p in Path(self.state).rglob('*'))
+        r = self.issue()
+        self.assertEqual((r.returncode, r.stderr), (2, ''), r.stdout)
+        self.assertEqual(r.stdout, 'crew: refusing issue brief: missing or stale role instructions\n')
+        self.assertEqual(before, sorted(str(p) for p in Path(self.state).rglob('*')))
+        self.assertEqual(self.calls(), [])
+
     def test_bad_inputs_print_no_partial_brief(self):
         for flags in (('--role', 'unknown'), ('--tier', 'unknown'), ('--tier', ''),
                       ('--engine', 'codex other medium'), ('--engine', 'codex gpt-6.1-sol high'),

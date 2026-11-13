@@ -202,6 +202,19 @@ class Ack(Base):
         self.assertEqual(self.ack('merge-up', *refs).returncode, 0)
         self.assertEqual(len(self.effects()), 1)
 
+    def test_merge_up_wrong_parent_order_refuses_identical_content(self):
+        refs = self.merge()
+        tree = self.git('rev-parse', 'HEAD^{tree}')
+        self.head = self.git('commit-tree', tree, '-p', refs[5], '-p', refs[3], '-m', 'reversed parents')
+        self.git('update-ref', 'HEAD', self.head)
+        self.rec['head'] = self.head
+        self.data['pr']['headRefOid'] = self.head
+        self.save()
+        r = self.ack('merge-up', *refs)
+        self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
+        self.assertIn('unverified merge parents', r.stdout)
+        self.assertEqual(self.effects(), [])
+
     def test_merge_up_missing_pass_verdict_and_changed_content_refuse(self):
         refs = self.merge()
         previous = self.data['pr']['reviews'][0]['body']
