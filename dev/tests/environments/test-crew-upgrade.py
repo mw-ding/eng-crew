@@ -401,11 +401,13 @@ class Upgrade(bootstrap_tests.Bootstrap):
 
     def test_unacked_inbox_after_terminal_status_waits(self):
         self.put("status/ben-7.status", "done: #7 #9 head\n")
-        self.put("inbox/ben-7.jsonl", json.dumps({"id": "m1", "kind": "fix", "refs": []}) + "\n")
         with mock.patch.object(upgrade, "runs", return_value=[("ben-7", {"role": "builder"})]), \
                 mock.patch.object(cli.commands()["lead"], "records", return_value=[]):
-            self.assertEqual(upgrade.busy({}, self.state, "session", [(10, "ben-7")]),
-                             "ben-7: unacknowledged inbox message")
+            for kind in ("fix", "owner-policy"):
+                with self.subTest(kind=kind):
+                    self.put("inbox/ben-7.jsonl", json.dumps({"id": "m1", "kind": kind, "refs": []}) + "\n")
+                    self.assertEqual(upgrade.busy({}, self.state, "session", [(10, "ben-7")]),
+                                     "ben-7: unacknowledged inbox message")
 
     def test_adapter_without_composer_keeps_the_live_child_rule(self):
         self.put("status/ben-7.status", "done: #7 #9 head\n")

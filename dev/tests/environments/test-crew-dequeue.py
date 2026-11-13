@@ -158,7 +158,8 @@ class CapQueue(SpawnBase):
     def test_idle_expiry_retains_output_without_queue_and_can_be_disabled(self):
         self.spawn("builder", "--issue", "7")
         rec = self.record("ben-7")
-        self.put("status/ben-7.status", "done: #7 #12 %s\n" % ("a" * 40))
+        self.put("inbox/ben-7.jsonl", json.dumps(dict(id="policy", kind="owner-policy", refs=[])) + "\n")
+        self.put("status/ben-7.status", "done: #7 #12 %s\nack: policy\n" % ("a" * 40))
         status = os.path.join(self.state, "status", "ben-7.status")
         os.utime(status, (100, 100))
         with open(self.project, "r") as f:
@@ -193,8 +194,42 @@ class CapQueue(SpawnBase):
         self.spawn("builder", "--issue", "7")
         self.spawn("builder", "--issue", "8")
         self.put("status/ben-7.status", "done: #7 #12 " + "a" * 40 + "\n")
-        self.put("inbox/ben-7.jsonl", json.dumps(dict(id="pending", kind="fix", refs=["#12"])) + "\n")
-        self.assertIn("queued:", self.spawn("builder", "--issue", "9").stdout)
+        for kind in ("fix", "ci-red", "merge-up"):
+            with self.subTest(kind=kind):
+                self.put("inbox/ben-7.jsonl", json.dumps(dict(id="pending", kind=kind, refs=["#12"])) + "\n")
+                self.assertIn("queued:", self.spawn("builder", "--issue", "9").stdout)
+                result = self.crew("dequeue", "--idle-only", "--project", self.project)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertTrue(os.path.exists(self.record("ben-7")["worktree"]))
+
+    def test_policy_idle_reclaim_preserves_unlanded_work(self):
+        self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
+        wt = self.record("ben-7")["worktree"]
+        path = os.path.join(wt, "work.txt")
+        self.put("status/ben-7.status", "done: #7 #12 %s\n" % ("a" * 40))
+        self.put("inbox/ben-7.jsonl", json.dumps(dict(id="policy", kind="owner-policy", refs=[])) + "\n")
+        status = os.path.join(self.state, "status", "ben-7.status")
+        os.utime(status, (100, 100))
+        with open(path, "w") as f:
+            f.write("work\n")
+        for kind in ("untracked", "unpublished", "dirty"):
+            with self.subTest(kind=kind):
+                if kind == "unpublished":
+                    self.git("add", "work.txt", cwd=wt)
+                    self.git("commit", "-qm", "unpublished work", cwd=wt)
+                elif kind == "dirty":
+                    self.git("push", "-q", "origin", "HEAD:refs/pull/12/head", cwd=wt)
+                    with open(path, "a") as f:
+                        f.write("dirty\n")
+                result = self.crew("dequeue", "--idle-only", "--project", self.project)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertNotIn("reclaimed idle builder", result.stdout)
+                self.assertTrue(os.path.exists(path))
+        self.git("checkout", "--", "work.txt", cwd=wt)
+        result = self.crew("dequeue", "--idle-only", "--project", self.project)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("reclaimed idle builder ben-7", result.stdout)
+        self.assertFalse(os.path.exists(wt))
 
     def test_bands_capped_separately_and_dequeue_skips_full_band(self):
         self.pr(5, "claude-code opus-5.5 default")
