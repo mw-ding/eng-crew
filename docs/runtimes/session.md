@@ -3,9 +3,9 @@
 > - **Status:** partly built
 > - **Applies to:** hand-dispatched or hosted sessions; profiles with `runtime.name = "session"`
 > - **Current rules:** [protocol](../protocol.md), [runtime contract](README.md#contract)
-> - **Built:** [Run parameters for hosted dispatch](#run-parameters-for-hosted-dispatch) via `mdstack brief` (#647); the [selector, options and briefs](#selector-options-and-briefs) (#914); [starting the coordinator](#starting-the-coordinator) via `mdstack up` (#1548); [upgrading](#upgrading) via `mdstack upgrade` (#1541); the [triage sweep routine](#triage-sweep-routine) (#1404)
+> - **Built:** [Run parameters for hosted dispatch](#run-parameters-for-hosted-dispatch) via `mdstack brief` (#647); the [selector, options and briefs](#selector-options-and-briefs) (#914); [starting the coordinator](#starting-the-coordinator) via `mdstack up` (#1548); [upgrading](#upgrading) via `mdstack upgrade` (#1541); the [triage sweep routine](#triage-sweep-routine) (#1404), opt-in since #1724; stack land by top change with revision ids and per-change readback (#1722); the one-time bootstrap for an install without `install.json` in [upgrading](#upgrading) (#1727)
 > - **Design only:** everything in [Implementation follow-ups](#implementation-follow-ups)
-> - **Last checked:** 2026-11-09 at `1db3f1d`
+> - **Last checked:** 2026-11-12 at `8b6ebe4`
 
 `runtime.name = "session"` runs one interactive coordinator session,
 with short-lived workers as native subagents or external harness CLI runs
