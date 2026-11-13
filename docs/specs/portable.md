@@ -1693,7 +1693,7 @@ Bookends and B1/B2/L1 use default tier/medium effort; B3 uses deep/high.
 | B2 | #1566 | Builder/researcher entry headroom and rendered procedure companions | 50–90 prose/registry excluding moved text; 100–170 tests | #1814 | done | [PR #1825](https://github.com/mw-ding/mdstack/pull/1825), [final review / validation](https://github.com/mw-ding/mdstack/pull/1825#pullrequestreview-5889639261) |
 | B3 | #1774 | Owner-confirmed archive/prune with preservation and refusal proof | 180–280 Python; 35–60 prose; 300–500 tests | #1814, #1746; owner proofs A/B | done | [PR #1833](https://github.com/mw-ding/mdstack/pull/1833), [owner proofs A/B](https://github.com/mw-ding/mdstack/pull/1833#pullrequestreview-5898353333), [review / validation](https://github.com/mw-ding/mdstack/pull/1833#pullrequestreview-5898453431) |
 | L1 | #1793 | One 24-card learning/disposition batch PR in 2–3 commits | 110–170 Markdown; no product/test code | #1814 | done | [PR #1824](https://github.com/mw-ding/mdstack/pull/1824), [review](https://github.com/mw-ding/mdstack/pull/1824#pullrequestreview-5889388989) |
-| S1 | #1815 | Final statuses, decisions, lessons and tracker reconciliation | docs only | #1746, #1566, #1774, #1793 | open | this closing sync; pending land |
+| S1 | #1815 | Final statuses, decisions, lessons and tracker reconciliation | docs only | #1746, #1566, #1774, #1793 | open | [PR #1851](https://github.com/mw-ding/mdstack/pull/1851); pending land |
 
 #### M53 outcome and lessons
 
