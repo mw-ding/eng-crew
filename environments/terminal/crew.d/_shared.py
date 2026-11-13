@@ -545,15 +545,16 @@ def pause_guarded(args):
         cmd == "down" and not getattr(args, "preserve", False)
 
 
-def unacked(state, name, lines):
-    """Whether the window's inbox holds a message its status lines (heartbeats dropped) never acked."""
+def unacked(state, name, lines, ignored_kinds=()):
+    """Whether the inbox holds an unacked message outside the caller's ignored kinds."""
     inbox = os.path.join(state, "inbox", name + ".jsonl")
     acknowledgments = {line[5:] for line in lines if line.startswith("ack: ")}
     # A build nudge typed into a trust dialog is never acked; a done: naming its issue settles it (#1302).
     built = {line.split()[1] for line in lines if line.startswith("done: ") and len(line.split()) > 1}
     if os.path.exists(inbox):
         with open(inbox) as f:
-            return any(m["id"] not in acknowledgments and not (m["kind"] == "build" and m["refs"][:1] and m["refs"][0] in built)
+            return any(m["kind"] not in ignored_kinds and m["id"] not in acknowledgments and
+                       not (m["kind"] == "build" and m["refs"][:1] and m["refs"][0] in built)
                        for m in map(json.loads, filter(str.strip, f)))
     return False
 
@@ -564,7 +565,15 @@ def idle_builder(state, name):
         return None
     with open(status) as f:
         lines = [line for line in f.read().splitlines() if not line.startswith("heartbeat:")]
-    if not lines or not lines[-1].startswith("done:") or unacked(state, name, lines):
+    inbox = os.path.join(state, "inbox", name + ".jsonl")
+    policy_ids = set()
+    if os.path.exists(inbox):
+        with open(inbox) as f:
+            messages = [json.loads(line) for line in f if line.strip()]
+        policy_ids = {m["id"] for m in messages if m["kind"] == "owner-policy"}
+        policy_ids -= {m["id"] for m in messages if m["kind"] != "owner-policy"}
+    work_lines = [line for line in lines if not (line.startswith("ack: ") and line[5:] in policy_ids)]
+    if not work_lines or not work_lines[-1].startswith("done:") or unacked(state, name, lines, ("owner-policy",)):
         return None
     rec = dict(runs(state)).get(name, {})
     if rec.get("pane_pid") and proc.live_child(rec["pane_pid"], rec["harness"]):

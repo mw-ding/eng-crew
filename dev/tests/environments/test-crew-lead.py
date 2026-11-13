@@ -300,6 +300,38 @@ class BuilderLead(LivenessBase):
                 json.dump({"children": [[42, 9000010, "Ss", "python3"]]}, f)
             self.assertFalse(any(w["reason"] == "idle-builder" for w in self.mod.scan(self.state, "crew-acme-widgets", 3000, 900, seen)))
 
+    def test_policy_messages_only_relax_idle_detection(self):
+        done = "done: #7 #12 %s\n" % ("a" * 40)
+        policy = dict(id="policy", kind="owner-policy", refs=[])
+        cases = [(done, [policy], True), (done + "ack: policy\nheartbeat: now\n", [policy], True),
+                 ("ack: policy\n", [policy], False), (done + "ack: missing\nack: policy\n", [policy], False)]
+        for kind in ("fix", "ci-red", "merge-up", "build", "unknown"):
+            work = dict(id="work", kind=kind, refs=["#8"])
+            cases += [(done, [work, policy], False),
+                      (done + "ack: work\nack: policy\n", [work, policy], False),
+                      ("ack: work\n" + done + "ack: policy\n", [work, policy], True)]
+        for line in ("working: #7", "progress: #7", "blocked: #7", "failed: #7"):
+            cases.append((done + line + "\nack: policy\n", [policy], False))
+        status = os.path.join(self.state, "status", "ben-7.status")
+        for text, messages, idle in cases:
+            with self.subTest(status=text, messages=messages):
+                self.put("status/ben-7.status", text)
+                self.put("inbox/ben-7.jsonl", "".join(json.dumps(m) + "\n" for m in messages))
+                os.utime(status, (100, 100))
+                with mock.patch.dict(os.environ, self.env):
+                    self.assertEqual(self.mod.idle_builder(self.state, "ben-7"), 100 if idle else None)
+        self.put("status/ben-7.status", done + "ack: policy\n")
+        self.put("inbox/ben-7.jsonl", json.dumps(policy) + "\n")
+        os.utime(status, (100, 100))
+        with mock.patch.dict(os.environ, self.env):
+            seen = {"offsets": {}, "keys": {}}
+            for now, count in ((1899, 0), (1900, 1), (2000, 0)):
+                wakes = self.mod.scan(self.state, "crew-acme-widgets", now, 900, seen)
+                self.assertEqual(sum(w["reason"] == "idle-builder" for w in wakes), count)
+            with open(self.ps, "w") as f:
+                json.dump({"children": [[42, 9000010, "Ss", "python3"]]}, f)
+            self.assertIsNone(self.mod.idle_builder(self.state, "ben-7"))
+
     def test_last_suite_completion_retries_pending_requests_in_both_pools(self):
         self.assertEqual(self.ensure(), 0)
         self.put("render/runtime/reviewer-lead.md", "Manage the reviewer pool.\n")
