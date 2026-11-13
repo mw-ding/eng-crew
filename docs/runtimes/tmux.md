@@ -1435,6 +1435,66 @@ same wake turn or the next, which the guard then lets end.
 - Lifecycle (interrupt, exit, relaunch) never goes through a message; use
   `mdstack kill` and `mdstack spawn`.
 
+### mdstack brief
+
+```sh
+cli/mdstack brief --issue <n> --role builder --tier default --engine 'codex gpt-6.1-sol medium' --base <full-sha> --project <config.toml>
+```
+
+Issue mode (#237) prints the selected rendered role instructions, the live
+issue URL/title and fenced task body (including acceptance criteria), launch
+notes, then the existing `## This run` block. Task text is data, not operating
+instructions. Render the role first; unavailable role/issue inputs or invalid
+role, tier, engine/model/effort, pass, base or run fields refuse with exit 2
+and no partial brief. It creates no claim, worktree or session. The caller
+still resolves live flavor and dispatches through the lead.
+
+Without `--issue`, every existing flag, byte of run-block output and exit
+code is preserved. `--item` in issue mode must match the selected issue;
+`--pass` defaults to the selected role's first pass. Other run-block flags
+remain available. This helper reads GitHub issues; unavailable tracker reads
+refuse. `mdstack brief --help` lists all flags.
+
+### mdstack ack
+
+```sh
+cli/mdstack ack intake <pr> --head <full-sha> --actor <run> --project <config.toml>
+cli/mdstack ack merge-up <pr> --head <full-sha> --actor <run> --verified-base <B> --verified-head <H> --updated-base <U> --project <config.toml>
+cli/mdstack ack steer <pr> --head <full-sha> --actor <coordinator-window> --source <comment-id> --command hold --engine 'claude-code sonnet medium' --harness claude-code --start <UTC-time> --project <config.toml>
+```
+
+Marker acknowledgement (#237) is separate from inbox delivery (`action ack`
+and `acked`). It posts a native head-bound COMMENT review with the existing
+marker and actual author's signature/usage, never approval or a state-tag
+change. Exit 0 means posted or already acknowledged; exit 2 is refusal.
+
+- `intake`: actual reviewer run, non-draft live review round 1, after the
+  precheck gate and actual builder-engine exclusion. Once per intake/head.
+- `merge-up`: actual reviewer at the current review round, after the latest
+  signed changes verdict at B/H. Verify two parents H/U, U on the default
+  branch, empty remerge hunks and strict B/H versus U/new-head patch identity.
+  Retain unresolved findings; this ack supplies no passing verdict or
+  portable approval. Once per merge-up/head.
+- `steer`: actual coordinator, recognized command and an unedited owner
+  comment on this PR, once per source `cmd-id`. It records receipt only:
+  no command execution, round reset or hold removal. Only `hold` and
+  `escalate` qualify; only `escalate` is permitted on a held PR. Commands
+  whose markers have downstream effects refuse: `merge-ok`, `resume`,
+  `cutover`, `plan-ok`, `rereview`, `away`, `away-return`, `rework`, `urgent`,
+  `stop-landing`, `resume-landing` and `hold-release`. Use the existing
+  owner-decision dispatcher for those commands. This implements the
+  [coordinator's clarification](https://github.com/mw-ding/mdstack/issues/237#issuecomment-6851108497)
+  without changing consumers or marker schemas.
+
+The actor must match the calling role and run record, PR/head and active
+GitHub identity. A coordinator without a run record supplies its actual
+engine/model/effort, harness and pass start as shown above, and uses its
+configured window name. Pause, unavailable ownership, short/stale SHA,
+wrong phase/role/source and unsupported live reads refuse before posting.
+Live state is re-read under a per-PR lock just before posting. Failed post
+responses are reconciled by readback; an uncertain result requires another
+live read before retry. No inbox receipt proves a marker acknowledgement.
+
 ### mdstack acked
 
 ```sh

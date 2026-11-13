@@ -331,11 +331,18 @@ that split and touch no shared lines.
 | Brief generator | Fills the [worker brief template](roles.md#worker-brief-template) from an issue, role, tier and engine | `mdstack brief` |
 | Review runner | Runs the review pass, then the validate pass in a fresh session, on an engine different from the actual builder engine | `crew review` |
 | Verdict poster | Posts the verdict post with review and validate sections and the `pass=verdict` marker on the full head SHA | `crew verdict` |
-| Ack poster | Posts `pass=ack` and steering acks | `crew ack` |
+| Ack poster | Checked intake, clean merge-up and owner steering acknowledgements, with no approval power | [`mdstack ack`](runtimes/tmux.md#mdstack-ack) |
 | Merge-up runner | Merges the default branch into a behind change and posts the merge-up note | `crew merge-up` |
 | Light re-check | The §6 merge-up re-approve: one light pass at the new head after an approval | `crew recheck` |
 
 Proposed as follow-ups (below); the coordinator files them.
+
+The #237 remainder adds [`mdstack brief --issue`](runtimes/tmux.md#mdstack-brief)
+over the rendered role instructions while preserving existing run-block
+output. Marker ack is separate from the shipped inbox `action ack`/`acked`;
+its generic steering mode refuses commands with downstream marker effects,
+including `merge-ok` and round resets. These additive helpers are a
+minor version change; they change no protocol marker or merge gate.
 
 ## Follow-up issues
 
