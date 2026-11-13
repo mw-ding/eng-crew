@@ -66,8 +66,12 @@ class RegistryTests(unittest.TestCase):
         self.assertEqual(roles["reviewer"]["marker_role"], "reviewer-validator")
         for relation in ("engine_independent_of", "identity_independent_of"):
             self.assertEqual(roles["reviewer"][relation], "builder")
+        companions = {"builder": "builder-fix", "researcher": "researcher-triage"}
         for r, v in roles.items():
-            self.assertEqual(v["templates"], {"tmux": [f"templates/runtimes/tmux/{r}.md"]})
+            templates = [f"templates/runtimes/tmux/{r}.md"]
+            if r in companions:
+                templates.append(f"templates/runtimes/tmux/{companions[r]}.md")
+            self.assertEqual(v["templates"], {"tmux": templates})
             self.assertEqual(v["engine_source"], "coordinator" if r == "coordinator" else "tier")
         self.assertEqual(roles["builder"]["change_pass"], "fix")
         self.assertEqual(roles["builder"]["inputs"], {"build": ["issue"], "fix": ["issue", "change"]})
