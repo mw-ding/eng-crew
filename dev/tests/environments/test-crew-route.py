@@ -10,7 +10,7 @@ import subprocess
 import sys
 import unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # dev/tests/: crew_testlib
-from crew_testlib import FAKE_PS, FAKE_TMUX_PANES, SpawnBase
+from crew_testlib import FAKE_PS, FAKE_TMUX_PANES, PROFILE, SpawnBase
 
 
 class Route(SpawnBase):
@@ -22,7 +22,8 @@ class Route(SpawnBase):
         self.live = dict(number=12, state="OPEN", headRefOid=self.sha, isDraft=False, labels=[], reviews=[],
                          statusCheckRollup=[], headRefName="builder/7-feature", baseRefName="main",
                          headRepositoryOwner={"login": "acme"}, headRepository={"name": "widgets"},
-                         isCrossRepository=False, closingIssuesReferences=[{"number": 7}])
+                         isCrossRepository=False, closingIssuesReferences=[{"number": 7}],
+                         url="https://github.com/acme/widgets/pull/12")
         self.save()
         with open(os.path.join(self.tmp, "bin", "gh"), "w") as f:
             f.write("#!/usr/bin/env python3\nimport json, sys\n"
@@ -36,7 +37,8 @@ class Route(SpawnBase):
                     "        if flag == '--remove-label' and name not in pr.get('_sticky', []): names.remove(name)\n"
                     "    pr['labels'] = [{'name': n} for n in names]; json.dump(pr, open(%r, 'w'))\n"
                     "elif args[:2] == ['repo', 'view']: print(json.dumps({'defaultBranchRef': {'name': 'main'}}))\n"
-                    "elif args[:2] == ['issue', 'view']: print(json.dumps(pr.get('_issue', {'labels': [{'name': 'crew:ready'}], 'state': 'CLOSED', 'stateReason': 'COMPLETED'})))\n"
+                    "elif args[:2] == ['issue', 'view']: print(json.dumps(dict({'url': 'https://github.com/acme/widgets/issues/' + args[2]}, "
+                    "**pr.get('_issue', {'labels': [{'name': 'crew:ready'}], 'state': 'CLOSED', 'stateReason': 'COMPLETED'}))))\n"
                     "elif args[:1] == ['api'] and '/files' in args[1]: print(json.dumps(pr.get('_files', [])))\n"
                     "elif args[:1] == ['api'] and '/milestones/' in args[1]: print(json.dumps(pr.get('_milestone', {})))\n"
                     "elif args[:1] == ['api'] and '/actions/jobs/' in args[1]: print(json.dumps(pr.get('_job', {})))\n"
@@ -109,6 +111,105 @@ class Route(SpawnBase):
                 with open(m["refs"][0]) as event_file:
                     events.append(json.load(event_file))
         self.assertEqual([e["event"] for e in events], ["builder-message", "builder-queued"])
+        self.assertEqual(self.pending(), [])
+
+    def other_repo(self):
+        """Repo B, acme/gadgets, beside A (acme/widgets): its own config and state; same issue 7, change 12, head, round."""
+        path = os.path.join(self.project_dir, "gadgets.toml")
+        with open(path, "w") as f:
+            f.write(PROFILE.format(runtime="tmux", engine="claude-code", state=os.path.join(self.tmp, "state")).replace(
+                'name = "widgets"', 'name = "gadgets"'))
+        return path, os.path.join(self.tmp, "state", "acme__gadgets")
+
+    def envelope(self, project, repo, team=None, **ids):
+        env = dict(team=team or "repo:" + repo, project=os.path.realpath(project), repo=repo, item=None, change=12,
+                   head=self.sha, round=1, **{"pass": "review"})
+        return dict(env, **ids)
+
+    def test_foreign_or_malformed_envelopes_refuse_with_no_action(self):  # #1856, team §9.3 and §9.7
+        b, b_state = self.other_repo()
+        a_env, b_env, mine = self.envelope(self.project, "acme/widgets"), self.envelope(b, "acme/gadgets"), \
+            os.path.realpath(self.project)
+        cases = [(a_env, "work envelope names acme/widgets in team repo:acme/widgets, not acme/gadgets in team "
+                         "repo:acme/gadgets"),
+                 (dict(b_env, project=mine), "work envelope project %s is acme/widgets in team repo:acme/widgets, not "
+                                             "acme/gadgets" % mine),
+                 (dict(b_env, change=13), "work envelope names #13, not the record's #12"),
+                 (dict(b_env, head="c" * 40), "work envelope head %s is not the record's %s" % ("c" * 40, self.sha)),
+                 (dict(b_env, extra=1), "work envelope missing or not the closed key set"),
+                 (None, "work envelope missing or not the closed key set")]
+        queue = os.path.join(b_state, "wake", "queue.jsonl")
+        os.makedirs(os.path.dirname(queue))
+        for env, reason in cases:
+            with open(queue, "w") as f:
+                f.write(json.dumps(self.event(context=env)) + "\n")
+            r = self.crew("route", "--project", b, "--timeout", "1")
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            with open(queue) as f:
+                (kept,) = [json.loads(line) for line in f]
+            self.assertIn("crew: route: refusing new-head: " + reason, kept["route_error"])
+            self.assertEqual(kept["context"], env)  # kept for the coordinator, unchanged
+        self.assertFalse(os.path.exists(self.gh_log))  # no backend read or write for any refusal
+        with open(queue, "w") as f:  # B's own envelope qualifies; the change it reads is A's, so B still refuses
+            f.write(json.dumps(self.event(context=b_env)) + "\n")
+        self.crew("route", "--project", b, "--timeout", "1")
+        with open(queue) as f:
+            self.assertIn("refusing: change #12 reads as repo acme/widgets, not acme/gadgets", json.load(f)["route_error"])
+        self.assertEqual([c[:5] for c in self.gh_calls()], [["pr", "view", "12", "-R", "acme/gadgets"]])
+        self.assertEqual(self.names(), ["ash"])
+        self.queue(self.event(context=a_env))  # the control: A's envelope in A starts A's review
+        self.route()
+        self.assertEqual((self.names(), self.pending()), (["ash", "vera-12-r1-review"], []))
+
+    def test_item_or_change_read_from_another_repo_refuses_before_any_action(self):  # #1856
+        self.live.update(url="https://github.com/acme/gadgets/pull/12", _issue={"url": "https://github.com/acme/gadgets/issues/7"})
+        self.save()
+        self.queue(self.event(), dict(event="issue-assigned", refs=["#7"], consumer="builder"))
+        self.route()
+        self.assertEqual([w["route_error"] for w in self.pending()], [
+            "crew: route: refusing: change #12 reads as repo acme/gadgets, not acme/widgets",
+            "crew: route: refusing: issue #7 reads as repo acme/gadgets, not acme/widgets"])
+        self.assertEqual([c[:2] for c in self.gh_calls()], [["pr", "view"], ["issue", "view"]])  # reads, no write
+        self.assertEqual(self.names(), ["ash"])
+        self.live.update(url="https://github.com/acme/widgets/pull/12")  # replay after the read agrees: A acts
+        self.save()
+        self.route()
+        self.assertIn("vera-12-r1-review", self.names())
+
+    def test_team_file_record_needs_an_envelope_or_a_bound_run(self):  # #1856: a bare line has no repo authority
+        team = os.path.join(self.tmp, "teams", "eng.toml")
+        os.makedirs(os.path.dirname(team))
+        with open(team, "w") as f:
+            f.write('[team]\nname = "eng"\nruntime = { name = "tmux" }\nengines = { coordinator = "claude-code" }\n'
+                    'identities = { owners = ["acme-owner"], coordinator = { gh_user = "acme-bot" }, builder = { gh_user = '
+                    '"acme-bot" }, reviewer = { gh_user = "acme-reviewer" }, synthesizer = { gh_user = "acme-bot" } }\n'
+                    'paths = { state_dir = "%s", worktree_root = "%s" }\n[repos.widgets]\nrepo = "acme/widgets"\n'
+                    'checkout = "%s"\n' % (os.path.join(self.tmp, "team"), os.path.join(self.tmp, "team-wt"), self.project_dir))
+        queue = os.path.join(self.tmp, "team", "eng", "acme__widgets", "wake", "queue.jsonl")
+        os.makedirs(os.path.dirname(queue))
+        bare, worker = dict(event="builder-queued", refs=["#7"]), dict(reason="status", window="ben-7", line="done: #7 #12 " + self.sha)
+        enveloped = dict(bare, context=self.envelope(team + "#widgets", "acme/widgets", team="eng", change=None, head=None,
+                                                     round=None, item=7, **{"pass": None}))
+        with open(queue, "w") as f:
+            f.writelines(json.dumps(w) + "\n" for w in (bare, worker, enveloped))
+        r = self.crew("route", "--project", team, "--timeout", "1")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        with open(queue) as f:
+            kept = [json.loads(line) for line in f]
+        reason = "no work envelope, and no run or lead record in this repo's state (team eng)"
+        self.assertEqual([w["route_error"] for w in kept], ["crew: route: refusing builder-queued: " + reason,
+                                                            "crew: route: refusing status: " + reason])
+        self.assertFalse(os.path.exists(self.gh_log))
+
+    def test_replayed_builder_message_delivers_its_original_envelope(self):  # #1856
+        self.spawn("builder", "--issue", "7")
+        env = self.envelope(self.project, "acme/widgets")
+        message = dict(self.event("builder-message"), window="ben-7", id="fix-1", kind="fix", context=env)
+        self.queue(message)
+        self.route()
+        with open(os.path.join(self.state, "inbox", "ben-7.jsonl")) as f:
+            (line,) = [json.loads(x) for x in f]
+        self.assertEqual((line["refs"], line["context"]), (["#12", self.sha], env))
         self.assertEqual(self.pending(), [])
 
     def test_replayed_blocks_for_terminal_or_superseded_items_are_consumed(self):  # #1476

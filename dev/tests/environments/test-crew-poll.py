@@ -715,9 +715,12 @@ class Poll(Base):
         out = self.serve("prs-pending.json")
         self.assertIn("new-head -> reviewer #171 " + HEAD, out)
         (rec,) = self.queue()
-        self.assertEqual(sorted(rec), ["consumer", "event", "id", "reason", "refs", "round", "source", "ts"])
+        self.assertEqual(sorted(rec), ["consumer", "context", "event", "id", "reason", "refs", "round", "source", "ts"])
         self.assertEqual((rec["source"], rec["reason"], rec["event"], rec["consumer"], rec["refs"]),
                          ("poll", "poll", "new-head", "reviewer", ["#171", HEAD]))
+        self.assertEqual(rec["context"], {  # the durable envelope: one-repo singleton team, change and head (#1856)
+            "team": "repo:acme/widgets", "project": os.path.realpath(self.project), "repo": "acme/widgets",
+            "item": None, "change": 171, "head": HEAD, "pass": None, "round": rec["round"]})
         self.serve("prs-pending.json")
         self.assertEqual(len(self.queue()), 1)
         self.serve("prs-none.json", **{"171": "pr-171-merged.json"})
@@ -1017,7 +1020,8 @@ class TriageScan(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.tmp)
-        self.values = {"repo.owner": "acme", "repo.name": "widgets", "identities.owners": ["owner"]}
+        self.values = {"repo.owner": "acme", "repo.name": "widgets", "identities.owners": ["owner"],
+                       "context.team": "repo:acme/widgets", "context.project": "/p/crew.toml", "context.repo": "acme/widgets"}
         self.closed = [{"number": 1, "title": "M1"}]
 
     def scan(self, rules=None):

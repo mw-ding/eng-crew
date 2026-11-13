@@ -122,6 +122,8 @@ def profile(args, *keys, runtimes=("tmux",)):
         print("\n".join(problems))
         sys.exit(1)
     owner, repo = values["repo.owner"], values["repo.name"]
+    values.update({"context." + k: v for k, v in crew_render.crew_config.context(
+        args.project, values.get("team.name"), owner, repo).items()})  # the routing identity (team §9.3)
     state = os.path.join(os.path.abspath(values["paths.state_dir"]), "%s__%s" % (owner, repo))
     if values["runtime.name"] != "tmux":
         return values, None, state
@@ -129,6 +131,27 @@ def profile(args, *keys, runtimes=("tmux",)):
     session = values.get("runtime.options.session") or "crew-%s-%s" % (owner, repo)
     tmux.bind(session, values.get("runtime.options.tmux_server") or "default")
     return values, session, state
+
+
+def work_context(values):
+    """The profile's routing context {team, project, repo} for a work envelope (team §9.3)."""
+    return {k: values["context." + k] for k in ("team", "project", "repo")}
+
+
+def tracker_labels(values):
+    """Canonical state tag -> this project's tracker label (repo.labels), the tag itself when unmapped."""
+    return {tag: values.get("repo.labels." + tag, tag) for tag in crew_render.crew_config.STATE_TAGS}
+
+
+def canonical_labels(values, record):
+    """record's tracker labels renamed back to canonical state tags, in place. A label spelled like a tag this project
+    renames is not that tag and is dropped."""
+    labels = tracker_labels(values)
+    back = dict({tag: None for tag, label in labels.items() if label != tag}, **{v: k for k, v in labels.items()})
+    if isinstance(record, dict) and isinstance(record.get("labels"), list):
+        record["labels"] = [dict(label, name=back.get(label["name"], label["name"])) for label in record["labels"]
+                            if back.get(label["name"], label["name"]) is not None]
+    return record
 
 
 def checkout(values, project):

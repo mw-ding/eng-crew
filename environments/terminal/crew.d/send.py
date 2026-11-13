@@ -6,6 +6,9 @@ Solo findings/CI/merge-up refs are never delivered to builder windows. An `unblo
 earlier `blocked` message's refs is recorded in its inbox without a nudge (#578). A run on a role host gets the message
 through its host's `send` verb, which appends the inbox line and types the nudge there; an unreachable host fails
 after the bounded call (exit 1), never queued, and `--wait-ack` reads the ack from the pulled status mirror (#346).
+Each local inbox line and queued builder message carries this project's closed `context` work envelope (a role host's
+inbox line keeps its refs-only shape); `--context` passes an upstream envelope on and refuses, with nothing written or
+sent, one that is malformed or not this project's (#1856).
 
 Usage: mdstack send WINDOW KIND REF... [--wait-ack SECS] --project FILE
 """
@@ -13,8 +16,8 @@ import json
 import os
 import re
 import time
-from crew_shared import (commands, COMPOSER, coordinator_window, dialog, NAMES, profile, queue_lock, remote_run, tmux,
-                         wait_ack, runs, synthesizer_work, window_alias)
+from crew_shared import (commands, COMPOSER, coordinator_window, crew_render, dialog, NAMES, profile, queue_lock,
+                         remote_run, tmux, wait_ack, runs, synthesizer_work, window_alias, work_context)
 
 
 # mdstack send (tmux.md C3): refs only. A ref is an issue/PR number, a full SHA, an https link or a path; no whitespace,
@@ -88,7 +91,8 @@ def nudge(session, index, text):
 
 def remote_send(values, state, args, rec, msg):
     """mdstack send to a run on a role host: one bounded call (retried with its request id while unreachable)."""
-    reply = remote_run.send(values, args.window, rec, msg)
+    # The envelope was checked here; a role host's send verb keeps its closed {id, kind, refs, from, ts} shape.
+    reply = remote_run.send(values, args.window, rec, {k: v for k, v in msg.items() if k != "context"})
     if reply["result"] != "ok":
         print("crew: send to %s on %s failed: %s; not delivered%s" % (
             args.window, rec["host"], reply["result"] + ": " + (reply.get("reason") or reply.get("error") or ""),
@@ -109,6 +113,7 @@ def register(sub):
     p.add_argument("kind")
     p.add_argument("refs", nargs="+")
     p.add_argument("--wait-ack", type=float, help="seconds to wait for ack: <msg-id> in the status file")
+    p.add_argument("--context", help="the work envelope (JSON) this message carries; refused unless it is this project's")
     p.add_argument("--project")
     p.add_argument("--org-profile")
 
@@ -121,6 +126,19 @@ def run(args):
         print("crew: refusing send: refs only (issue/PR #n, full SHA, https link, path; max %d chars each): %s" %
               (MAX_REF, ", ".join(repr(r[:40]) for r in bad) or "bad kind %r" % args.kind[:40]))
         return 2
+    config, given = crew_render.crew_config, getattr(args, "context", None)
+    if given is None:
+        env = config.envelope(work_context(values))
+    else:
+        try:
+            env = json.loads(given) if isinstance(given, str) else given
+        except ValueError:
+            env = None
+        problem = config.envelope_problem(env, work_context(values),
+                                          lambda ref: config.project_identity(ref, args.org_profile))
+        if problem:
+            print("crew: refusing send: %s; nothing written" % problem)
+            return 2
     builder = values.get("identities.builder.name", NAMES["builder"]).lower()
     if re.fullmatch(re.escape(builder) + r"-\d+", args.window) and args.kind in ("fix", "ci-red", "merge-up") and \
             re.fullmatch(r"#\d+", args.refs[0]):
@@ -134,6 +152,8 @@ def run(args):
     if len(line.encode()) > MAX_LINE:
         print("crew: refusing send: message is %d bytes, over %d; send fewer refs" % (len(line.encode()), MAX_LINE))
         return 2
+    msg["context"] = env  # outside the refs-only bound: the durable envelope (team §9.3)
+    line = json.dumps(msg) + "\n"
     rec = dict(runs(state)).get(args.window, {})
     if remote_run.host_of(rec):
         return remote_send(values, state, args, rec, msg)
@@ -145,7 +165,7 @@ def run(args):
                     len(args.refs) >= 2 and re.fullmatch(r"#\d+", args.refs[0]) and re.fullmatch(r"[0-9a-f]{40}", args.refs[1]):
                 with open(os.path.join(state, "wake", "queue.jsonl"), "a") as f:
                     f.write(json.dumps(dict(event="builder-message", window=args.window, kind=args.kind,
-                                           refs=args.refs, reason="send", id=msg["id"])) + "\n")
+                                           refs=args.refs, reason="send", id=msg["id"], context=env)) + "\n")
                 print("crew: queued builder message %s for route" % msg["id"])
                 return 0
             print("crew: refusing send: no window %s in %s" % (args.window, session))
