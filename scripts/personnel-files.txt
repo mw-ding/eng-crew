@@ -1,0 +1,14 @@
+# Explicit content allowlist; no consumer Python, shell or runtime tree.
+actions/*.md
+docs/*.md
+docs/backends/*.md
+docs/configuration/*.md
+docs/guides/*.md
+docs/metrics/decisions.md
+docs/runbooks/*.md
+docs/runtimes/*.md
+docs/specs/*.md
+roles/eng/*.toml
+roles/seats/**.md
+roles/seats/**.toml
+templates/policy/**.md

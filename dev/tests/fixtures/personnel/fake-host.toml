@@ -1,0 +1,61 @@
+# Fake host declarations for offline content import; no command is executed.
+id = "fake-host"
+version = "1.0.0"
+gaps = []
+
+[capabilities]
+"wake-delivery" = true
+"durable-queues" = true
+"run-identity" = true
+"claims-status" = true
+"connector-access" = true
+"head-bound-land" = true
+"reviewer-independence" = true
+"synthesizer-only-land" = true
+
+[actions]
+"read" = "fake-host read"
+"resolve-policy" = "fake-host resolve-policy"
+"check-ownership" = "fake-host check-ownership"
+"claim" = "fake-host claim"
+"release" = "fake-host release"
+"heartbeat" = "fake-host heartbeat"
+"ack" = "fake-host ack"
+"report" = "fake-host report"
+"notify" = "fake-host notify"
+"wait" = "fake-host wait"
+"spawn-worker" = "fake-host spawn-worker"
+"supervise" = "fake-host supervise"
+"workspace" = "fake-host workspace"
+"artifact" = "fake-host artifact"
+"post-marker" = "fake-host post-marker"
+"tracker" = "fake-host tracker"
+"run-check" = "fake-host run-check"
+"publish-change" = "fake-host publish-change"
+"update-base" = "fake-host update-base"
+"compare-content" = "fake-host compare-content"
+"land" = "fake-host land"
+"owner-channel" = "fake-host owner-channel"
+"knowledge-read" = "fake-host knowledge-read"
+"knowledge-propose-edit" = "fake-host knowledge-propose-edit"
+
+[operations]
+"change.list-open" = "fake-host change.list-open"
+"change.open" = "fake-host change.open"
+"change.read-head" = "fake-host change.read-head"
+"classify.sensitive" = "fake-host classify.sensitive"
+"markers.edit-status" = "fake-host markers.edit-status"
+"markers.write" = "fake-host markers.write"
+"review.post-narrative" = "fake-host review.post-narrative"
+"state-tags.set-approved" = "fake-host state-tags.set-approved"
+"state-tags.set-changes" = "fake-host state-tags.set-changes"
+"tracker.close-item" = "fake-host tracker.close-item"
+"tracker.comment" = "fake-host tracker.comment"
+"tracker.create-item" = "fake-host tracker.create-item"
+"tracker.label" = "fake-host tracker.label"
+"tracker.list-items" = "fake-host tracker.list-items"
+
+[settings."eng/builder"]
+presentation = "Builder"
+engine = "host routing, independent reviewer required"
+extra_skills = []

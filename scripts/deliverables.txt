@@ -74,6 +74,7 @@ docs/metrics/prs.md	internal	n/a	Maintainer docs: metrics and drills, not loaded
 docs/metrics/regression-drills.md	internal	n/a	Maintainer docs: metrics and drills, not loaded by roles
 docs/observe.md	deliverable	all	Protocol bundle (core): the text roles load and cite
 docs/packs.md	deliverable	all	Profile and pack contract: schema packs and installs validate against
+docs/personnel.md	deliverable	all	Personnel content boundary, pinned host import and fake-host consumer proof (#1180)
 docs/profile.md	deliverable	all	Profile and pack contract: schema packs and installs validate against
 docs/project-doc-set.md	deliverable	all	Protocol bundle (core): essential doc set and status banners for target projects, split from the project docs design ([#1024](https://github.com/mw-ding/eng-crew/issues/1024))
 docs/project-docs.md	deliverable	all	Protocol bundle (core): project docs consolidation design for target projects ([#754](https://github.com/mw-ding/eng-crew/issues/754))
@@ -157,6 +158,8 @@ scripts/item-flavor.py	deliverable	all	Role helper: item rigor records, defaults
 scripts/metrics-baseline.py	internal	n/a	Maintainer tool: baseline pipeline metrics before the reorganization ([#1220](https://github.com/mw-ding/eng-crew/issues/1220))
 scripts/metrics-decide.py	deliverable	all	Role helpers: builder and coordinator helpers
 scripts/metrics-refresh.py	deliverable	all	Role helpers: builder and coordinator helpers
+scripts/personnel-bundle.py	deliverable	all	Producer-only personnel content exporter (#1180)
+scripts/personnel-files.txt	deliverable	all	Explicit personnel content manifest (#1180)
 scripts/reflection-candidates.py	deliverable	all	Role helper: offline reflection threshold candidates (findings rows and recurring classes) matched to existing cards ([#1522](https://github.com/mw-ding/mdstack/issues/1522))
 scripts/reflection-effects.py	deliverable	all	Role helper: offline reflection effect table, a before/after row and keep/revise/revert recommendation per accepted proposal ([#1525](https://github.com/mw-ding/mdstack/issues/1525))
 scripts/reflection-measures.py	deliverable	all	Role helpers: offline reflection effect measures from poll and watch observations ([#1524](https://github.com/mw-ding/mdstack/issues/1524))
@@ -181,6 +184,7 @@ templates/handoff-manifest.md	deliverable	all	Template: runtime handoff manifest
 templates/intake-candidate.md	deliverable	all	Templates: evidence adapters, product README seed, cards and step lines
 templates/metrics-regression-issue.md	deliverable	all	Templates: evidence adapters, product README seed, cards and step lines
 templates/owner-return-brief.md	deliverable	all	Template: standalone owner return brief for recorded away mode
+templates/personnel/**	deliverable	all	Personnel composition input for hosts bringing their own machinery (#1180)
 templates/policy/**	deliverable	all	Render input: role policy fragments the runtime templates include, and role skills (Agent Skills format) that index them ([#1184](https://github.com/mw-ding/eng-crew/issues/1184), [#1221](https://github.com/mw-ding/eng-crew/issues/1221))
 templates/product-readme.md	deliverable	all	Templates: evidence adapters, product README seed, cards and step lines
 templates/runtimes/grok-bot/**	deliverable	grok-bot	Render input: routines and trigger JSON, rendered at install
