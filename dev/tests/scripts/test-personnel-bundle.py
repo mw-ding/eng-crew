@@ -16,6 +16,28 @@ FIXTURE = ROOT / "dev/tests/fixtures/personnel/fake-host.toml"
 ROLES = ["eng/" + r for r in ("coordinator", "builder", "reviewer", "synthesizer", "researcher")]
 
 
+def copy_source_tree(source, destination):
+    shutil.copytree(source, destination, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+
+
+class SourceCopyTest(unittest.TestCase):
+    def test_source_copy_skips_bytecode(self):
+        with tempfile.TemporaryDirectory() as temp:
+            source = Path(temp) / "source"
+            cache = source / "nested" / "__pycache__"
+            cache.mkdir(parents=True)
+            (cache / "module.pyc.transient").write_bytes(b"temporary bytecode")
+            (source / "module.pyc").write_bytes(b"bytecode")
+            (source / "nested" / "module.py").write_text("pass\n")
+            destination = Path(temp) / "snapshot"
+
+            copy_source_tree(source, destination)
+
+            self.assertFalse((destination / "nested" / "__pycache__").exists())
+            self.assertFalse((destination / "module.pyc").exists())
+            self.assertEqual((destination / "nested" / "module.py").read_text(), "pass\n")
+
+
 class PersonnelTest(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -24,7 +46,7 @@ class PersonnelTest(unittest.TestCase):
         cls.producer.mkdir()
         # Snapshot the candidate, including new files, into an isolated producer.
         for name in ("scripts", "templates", "roles", "docs", "actions", "core", "profiles", "harnesses", "environments", "connectors", "cli", "packs", "dev", "changes", "memory", ".github"):
-            shutil.copytree(ROOT / name, cls.producer / name)
+            copy_source_tree(ROOT / name, cls.producer / name)
         for path in ROOT.iterdir():
             if path.is_file() and path.name != ".git":
                 shutil.copyfile(path, cls.producer / path.name)
