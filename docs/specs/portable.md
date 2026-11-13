@@ -1652,8 +1652,8 @@ Scope and member ACs come from
 [Riley's readiness pass](https://github.com/mw-ding/mdstack/issues/1795#issuecomment-6849391872)
 §2–§4, with the
 [coordinator's applied choices](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6849413256).
-S0 is recorded as done for this opening slice; its landed PR is filled before
-handoff. No member dispatches before #1814 merges. B1, B2 and L1 then build
+S0 is recorded as done for this opening slice (PR #1816), effective on merge.
+No member dispatches before #1814 merges. B1, B2 and L1 then build
 independently in parallel; prioritize B2 if only one slot is available.
 B3 follows B1's landed reference contract and requires the owner proofs below
 before completion. File overlap between B1/B2 requires integrated testing,
@@ -1662,7 +1662,7 @@ Bookends and B1/B2/L1 use default tier/medium effort; B3 uses deep/high.
 
 | ID | Issue | Scope | Size | Depends on | Status |
 |---|---|---|---|---|---|
-| S0 | #1814 | Opening scope, ACs, applied choices and prerequisites | docs only | none | done |
+| S0 | #1814 | Opening scope, ACs, applied choices and prerequisites (PR #1816) | docs only | none | done |
 | B1 | #1746 | Constant-size grant lookup pointer and existing authority resolution | 30–70 Python; 25–50 prose; 100–180 tests | #1814 | open |
 | B2 | #1566 | Builder/researcher entry headroom and rendered procedure companions | 50–90 prose/registry excluding moved text; 100–170 tests | #1814 | open |
 | B3 | #1774 | Owner-confirmed archive/prune with preservation and refusal proof | 180–280 Python; 35–60 prose; 300–500 tests | #1814, #1746; owner proofs A/B | open |
