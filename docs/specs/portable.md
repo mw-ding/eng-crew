@@ -1355,15 +1355,19 @@ Opened by the spec slice #1789, part of
 §2–§5: two members, one PR per issue, split into logical commits. M51 was
 admitted after M49 and M50 closed and 7.11.0 was cut
 ([decision](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6846260224)).
-No item below dispatches before this slice merges. Every row is planned:
-its issue is `open`. The order is a dependency: #1180 builds on #1318's
-approved import and binding contract. Sizes are estimated changed lines,
-excluding tests. The closing status-sync slice is #1790.
+The opening slice landed in PR #1797. Statuses below are synced by #1790:
+The #1318 design landed in PR #1802, then #1180's personnel delivery in
+PR #1805, and all three landed items are closed in the tracker. Personnel
+delivery is built; shared-pool routing is designed, with T1–T4 still
+unadmitted. Sizes retain the opening plan's estimates, excluding tests.
+M51 closes after this status-sync slice lands.
 
 | ID | Issue | Scope | Size | Depends on | Status |
 |---|---|---|---|---|---|
-| B1 | #1318 | Team/project boundary, profile and role import, repo-qualified admission and per-repo land: design and approved work breakdown only | S–M, 220–350 prose | #1789 | open |
-| B2 | #1180 | Personnel delivery, remainder rows A–D in one PR: content bundle, boundary map, consumer binding, pinned role import | M, 250–450 implementation + 380–620 prose | #1789, #1318's approved contract | open |
+| S0 | #1789 | Opening M51 spec and applied choices (PR #1797) | docs only | none | done |
+| B1 | #1318 | Team/project boundary, profile and role import, repo-qualified admission and per-repo land: design and approved T1–T4 work breakdown only (PR #1802) | S–M, 220–350 prose | #1789 | done |
+| B2 | #1180 | Built personnel delivery, rows A–D: content bundle, boundary map, consumer binding, pinned role import (PR #1805) | M, 250–450 implementation + 380–620 prose | #1789, #1318's approved contract | done |
+| S1 | #1790 | Closing status sync (this slice; PR pending) | docs only | #1789, #1318, #1180 | open |
 
 ACs and paths per row (the readiness pass has the full text and line
 citations):
@@ -1480,7 +1484,15 @@ Version classification, against the
   satisfied differently, it is major, takes the gate-contract path and is
   reclassified in its PR.
 
-So the release carrying M51 is expected to be a minor.
+M51 lessons: distinguish producer dependencies from consumer content;
+verify pinned imports and authority preservation through a fake host, without
+claiming live adoption. A shared team profile alone does not prove shared
+pools or repo-isolated execution: keep T1–T4's scenarios as future tests.
+
+M51's design and personnel delivery landed after the 7.11.0 cut; the
+personnel surface is built in source,
+not a claim of a released bundle or live host installation. The release
+carrying M51 is expected to be a minor.
 
 Sensitive heads: none on the named paths; role-import and land-authority
 text get the content-rule `--diff` check at each head, and a match needs
