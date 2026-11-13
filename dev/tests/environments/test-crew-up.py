@@ -28,6 +28,20 @@ from crew_testlib import Base, CREW, FAKE_PS, FAKE_TMUX_PANES, SCRIPTS, INPUTS, 
 
 
 class Up(Base):
+    def test_missing_copy_trust_warns_before_up_and_never_writes_user_config(self):
+        config = os.path.join(self.tmp, "claude-config")
+        os.makedirs(config)
+        self.env["CLAUDE_CONFIG_DIR"] = config
+        r = self.up()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("warning before up: claude copy trust", r.stdout)
+        self.assertIn("mkdir -p", r.stdout)
+        self.assertFalse(os.path.exists(os.path.join(config, ".claude.json")))
+        r = self.up()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("warning before up: claude copy trust", r.stdout)
+        self.assertEqual(len([c for c in self.calls() if c[0] == "new-session"]), 1)
+
     def test_cursor_coordinator_uses_pointer_and_no_model_override(self):
         self.write_profile(engine="cursor")
         r = self.up()

@@ -106,6 +106,22 @@ class DoctorBase(Base):
 
 
 class Doctor(DoctorBase):
+    def test_claude_copy_trust_is_separate_and_never_written(self):
+        config = os.path.join(self.home, ".claude.json")
+        before = read(config)
+        for args in ((), ("--fix",)):
+            r = self.doctor(*args)
+            self.assertEqual(self.rows(r)["claude copy trust"], "human", r.stdout)
+            self.assertIn("mkdir -p", "\n".join(self.humans(r)))
+            self.assertIn("once per host", "\n".join(self.humans(r)))
+        self.assertEqual(read(config), before)
+        root = os.path.join(self.tmp, "state", "wt")
+        data = json.loads(before)
+        data["projects"][os.path.realpath(root)] = {"hasTrustDialogAccepted": True}
+        with open(config, "w") as f:
+            json.dump(data, f)
+        self.assertEqual(self.rows(self.doctor())["claude copy trust"], "ok")
+
     def test_ready_host_passes(self):
         r = self.doctor()
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
@@ -116,7 +132,7 @@ class Doctor(DoctorBase):
         self.assertEqual(rows["engine opencode"], "warn")  # a tier-order engine the order falls through
         self.assertEqual(rows["version"], "warn")  # a checkout has no VERSION
         self.assertNotIn("fail", rows.values())
-        self.assertEqual(len(self.humans(r)), 1)  # branch protection stays human
+        self.assertEqual(len(self.humans(r)), 2)  # branch protection stays human
 
     def test_recorded_pack_version_row(self):
         manifest = os.path.join(self.state, "install.json")
@@ -297,7 +313,7 @@ class Doctor(DoctorBase):
                 self.assertEqual(rows[check], "human", r.stdout)
             self.assertIn("1 untrusted in %s" % os.path.join(self.codex, "hooks.json"), r.stdout)
             steps = self.humans(r)
-            self.assertEqual(len(steps), 4, r.stdout)
+            self.assertEqual(len(steps), 5, r.stdout)
             self.assertIn("- gh auth login as acme-reviewer (never gh auth switch)", steps)
             self.assertTrue(any("trust every hook under Review hooks" in s for s in steps), steps)
             self.assertTrue(any("mdstack attach ash --rw" in s for s in steps), steps)

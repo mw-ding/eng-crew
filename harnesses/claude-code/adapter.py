@@ -41,7 +41,29 @@ INSTALL_TARGETS = [".claude/agents/crew-%s.md" % r for r in ("builder", "reviewe
 def role_argv(model, effort, wt, state, flags):
     """--add-dir state: every pass reads its brief and writes $CREW_STATUS, verdicts/ (#234 F15). Claude's --add-dir
     takes several values, so a flag must end it before the prompt."""
-    return ["claude", "--model", model, "--effort", effort, "--add-dir", state, *flags]
+    directories, extra = [state], []
+    if role_cwd(wt) != wt:
+        directories.append(wt)
+        extra = ["--append-system-prompt", "Your assigned working copy is %s. Run every shell command with an "
+                 "explicit cd to that directory and use absolute paths for file tools. The startup directory is "
+                 "only the stable folder-trust boundary; work only in your assigned copy." % wt]
+    return ["claude", "--model", model, "--effort", effort, "--add-dir", *directories, *flags, *extra]
+
+
+def role_cwd(wt):
+    """Run copies launch from their stable parent; linked worktrees still launch in the worktree (#1792)."""
+    return os.path.dirname(wt) if os.path.isdir(os.path.join(wt, ".git")) else wt
+
+
+def builder_checks(values):
+    """Read the stable run-copy root's trust without writing any user-level harness config."""
+    root = os.path.realpath(values["paths.worktree_root"])
+    d = trusted(root)
+    if d is None:
+        return [("human", "claude copy trust", "not accepted for " + root,
+                 "before dispatch, run mkdir -p %s && cd %s && claude; pick Yes, I trust this folder, then /exit "
+                 "(once per host; never a blind Enter)" % (shlex.quote(root), shlex.quote(root)))]
+    return [("ok", "claude copy trust", d, "")]
 
 
 def launch_refusal(mode, uid):

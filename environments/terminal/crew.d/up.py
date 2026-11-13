@@ -4,6 +4,7 @@ whose adapter declares a host check, refuse before rendering on a failed one: fo
 config.toml hook that lacks stored trust. Never write Codex config. Also refuse when paths.checkout is a clone of another
 repo, tmux briefs would cite docs under a missing paths.mdstack (#1323), or a launcher sandboxes sessions with no
 writable root over the checkout's .git and neither runtime.options.sandbox_env nor CREW_SANDBOX_ENV is set (#1544).
+Warn before launching when the stable builder-copy trust root is untrusted; only the owner accepts it (#1792).
 
 `runtime.options.launch` picks the topology: coordinator tmux|none, roles tmux|hosted|none, resume fresh|ask|<id>;
 `--resume` overrides launch.resume. A session profile (`runtime.name = "session"`, #1548) gets the coordinator only, in
@@ -236,6 +237,17 @@ def host_ok(values):
     return True
 
 
+def builder_warnings(values):
+    used = {e.split("/")[0] for k, order in values.items()
+            if re.fullmatch(r"engines\.(roles\.)?\w+\.order", k) for e in order}
+    for engine in used:
+        adapter = harnesses.ADAPTERS.get(engine)
+        if hasattr(adapter, "builder_checks"):
+            for status, check, detail, hint in adapter.builder_checks(values):
+                if status != "ok":
+                    print("crew: warning before up: %s: %s; %s" % (check, detail, hint))
+
+
 def install_ok(values, project):
     """Refuse before any write when paths.checkout is a clone of another repo (doctor's checkout row), tmux briefs
     would cite docs under a missing paths.mdstack (#1323), or a session sandbox leaves the checkout's .git unwritable
@@ -331,6 +343,7 @@ def run(args):
         return session_up(args, values, state)
     if not slack_ok(values):
         return 1
+    builder_warnings(values)
     if tmux.has_session(session):
         print("crew: %s already running; attach with: %s" % (session, attach_hint(session)))
         return start_roles(args, values, state)
@@ -437,6 +450,8 @@ def team(args):
     values, root = repos[0][1], os.path.dirname(repos[0][2])
     if not slack_ok(values):
         return 1
+    for _, v, _ in repos:
+        builder_warnings(v)
     if tmux.has_session(session):
         print("crew: %s already running; attach with: %s" % (session, attach_hint(session)))
         return 0

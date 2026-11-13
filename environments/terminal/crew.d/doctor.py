@@ -1,7 +1,7 @@
 """`mdstack doctor` checks whether this host can run the crew (docs/bootstrap.md Q5) and prints one line per check, ok,
 warn, fail or human, with its fix hint: Python, git, gh, tmux, each profile login in gh, engines, each harness
 adapter's host, coordinator and role checks (Codex hook trust, Claude Code folder trust for the project directory and
-for the checkout role worktrees come from, #408), placeholder paths, a session sandbox with no writable root over the
+for the checkout linked worktrees come from, #408, and the stable builder-copy root, #1792), placeholder paths, a session sandbox with no writable root over the
 checkout's .git and no sandbox_env (#1544), a shared session server whose runs inherit its sandbox (#1469), a state dir or worktree root inside a git checkout, the state dir layout, live builder runs marked unconfined and a harness that cannot apply its OS sandbox on the host (#1252), paths.checkout a clone of [repo], bootstrap's install.json
 and paths.mdstack link (#1323), the installed version against the latest release (not queried under a non-github [install] source), the
 launcher in the root's bin/ (missing or stale) and where PATH resolves its name (#1317, #1324), the
@@ -416,10 +416,12 @@ def run(args):
     if tmux and hasattr(coordinator, "coordinator_checks"):
         rows += coordinator.coordinator_checks(values, project_dir)
     repo = checkout(values, args.project)
-    for engine in harnesses.LAUNCHABLE if tmux else []:  # role worktrees key trust on the checkout (#408)
+    for engine in harnesses.LAUNCHABLE if tmux else []:
         adapter = harnesses.ADAPTERS[engine]
         if engine in used and hasattr(adapter, "role_checks") and not (adapter is coordinator and repo == project_dir):
             rows += adapter.role_checks(values, repo)
+        if engine in used and hasattr(adapter, "builder_checks"):
+            rows += adapter.builder_checks(values)
     bad = placeholder_paths(args, values, ("state_dir", "worktree_root"))
     rows += [("fail", "paths", b, "") for b in bad] if bad else in_checkout(values) or state_dir(
         values, args.fix and not args.dry_run)
