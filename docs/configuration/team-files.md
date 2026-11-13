@@ -40,10 +40,49 @@ first.
   is required. The allowlist is: `default_branch`, `precheck` (the
   [`[builder.precheck]`](../profile.md#builderprecheck) table), `sensitive` (a list that
   replaces `sensitive.paths`), `spec` (a list that replaces
-  [`spec.paths`](../profile.md#spec)), and the landing overrides `merge_grant`,
-  `merge_grant_scope`, `mirror_deferral`, `lone_pr_land`, `train_min`,
-  `train_window` and `train_local_checks` (as `runtime.options.*`). Any other key fails as
-  team-only, and a per-repo key in `[team]` fails too.
+  [`spec.paths`](../profile.md#spec)), the closed project keys below, and the
+  landing overrides `merge_grant`, `merge_grant_scope`, `mirror_deferral`,
+  `lone_pr_land`, `train_min`, `train_window` and `train_local_checks` (as
+  `runtime.options.*`). Any other key fails as team-only, and a per-repo key in
+  `[team]` fails too, including `merge_grant` or `merge_grant_scope` under
+  `[team.runtime.options]`: a landing grant never spans the team.
+- Each canonical repo appears once per team. Two sections naming the same
+  `<owner>/<name>`, compared case-insensitively, fail whichever one is
+  selected.
+
+### Project keys
+
+Five optional keys (#1856) hold what a project owns
+([team spec §9.1](../specs/team.md#91-ownership-and-composition)). Each has
+a closed shape, refuses unknown nested fields and, when omitted, leaves
+resolution exactly as before. The first four resolve under `repo.*`, so a
+one-repo `config.toml` may set them in `[repo]` too.
+
+| Key | Shape and checks |
+|---|---|
+| `control_item` | `repo.control_item`: its existing integer or tracker-pattern string id, with `runtime.instance` |
+| `labels` | Table from state tag (`crew:ready`, `crew:in-review`, `crew:changes`, `crew:approved`, `crew:escalated`, `crew:needs-md`, `crew:hold`, `crew:external`, `crew:spec`, `crew:needs-mirror`, `crew:express`) to a nonempty tracker label; an unmapped tag keeps its own name and no two tags share a label. `mdstack poll` and `mdstack route` read and write through it |
+| `milestones` | Nonempty list of distinct tracker milestone ids in priority order: numbers on GitHub. Needs the tracker's `milestone` capability; omitted, the tracker's own order stands |
+| `doc_home` | Project-relative docs directory; absolute paths, `..` and a symlink resolving outside the checkout fail. Omitted, the existing docs home stands |
+| `flavor` | Table with only `name`: a preset or a `[team.flavor.custom]` flavor, never `express`. It may only tighten the flavor below it: a looser rigor knob or a lower cap fails, naming the knob and the layer that set the floor |
+
+### Project context and routing
+
+A project's identity is its resolved team and canonical repo; the
+`<file>#<name>` reference only locates it. A one-repo `config.toml` has the
+derived team `repo:<owner>/<name>`. Relative paths, symlinks to the file and
+an omitted `#<name>` on a one-repo team file give one identity, and a
+nameless team file keeps its file-name team (#1348). `mdstack poll` and
+`mdstack send` stamp a closed `context` envelope on each wake record and inbox
+message: `team`, `project`, `repo`, `item`, `change`, `head`, `pass` and
+`round`, with `null` for whatever does not apply (a new build has no change or
+head). `mdstack send --context <json>` passes an envelope on and refuses one
+that is not this project's. `mdstack route` refuses a record, leaving it queued
+with its `route_error`, before any spawn, post or handoff when its envelope is
+malformed, names another team or repo, or has a project reference resolving
+elsewhere, ids or head disagreeing with its refs, or an item or change URL in
+another repo. In a team file a record without an envelope must come from a run
+or lead in that repo's state. Markers and status lines are unchanged.
 
 ```text
 [team]
@@ -102,9 +141,9 @@ session. `mdstack down --project <file>#<name>` stops the whole shared session.
 ## Multi-project routing design
 
 The [M51 team/project contract](../specs/team.md#9-team-and-project-separation-1318-design-only)
-extends this schema with closed project context and rigor tightening. Its
-proposed keys, shared admission and pool startup are design only; the
-current resolution and startup above remain shipped behavior. The contract
+extends this schema with closed project context and rigor tightening, which
+the project keys and routing above ship (#1856). Shared admission and pool
+startup remain design only; the startup above is shipped behavior. The contract
 uses a two-repo collision example and specifies per-repo land authority.
 For #1318, 7.0+ is fresh and migration is not needed; the conversion below
 remains operator guidance for existing team-file deployments.
