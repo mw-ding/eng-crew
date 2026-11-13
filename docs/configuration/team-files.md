@@ -99,6 +99,16 @@ defaults to `crew-team-<team>` (an explicit `runtime.options.session` wins).
 It starts no pool leads yet, because lead windows have fixed indexes per
 session. `mdstack down --project <file>#<name>` stops the whole shared session.
 
+## Multi-project routing design
+
+The [M51 team/project contract](../specs/team.md#9-team-and-project-separation-1318-design-only)
+extends this schema with closed project context and rigor tightening. Its
+proposed keys, shared admission and pool startup are design only; the
+current resolution and startup above remain shipped behavior. The contract
+uses a two-repo collision example and specifies per-repo land authority.
+For #1318, 7.0+ is fresh and migration is not needed; the conversion below
+remains operator guidance for existing team-file deployments.
+
 ## Migration: two `config.toml` files to one team file
 
 1. Create `<config-home>/teams/<team>.toml`. Move every table that is the same

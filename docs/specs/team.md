@@ -5,7 +5,7 @@
 > - **Current rules:** the [protocol](../protocol.md) and its gate registry; each requirement's **Delivered by** issues
 > - **Built:** M29–M33 (roles, connectors, environments, harnesses, core, cli and dev modules; the dependency lint; the actions CLI in part; the `mdstack` rename)
 > - **Design only:** the `protocols/` and `install/` modules ([§4](#4-target-module-layout)) and the rest of the actions implementation
-> - **Planned:** M51 ([portable.md §5](portable.md#m51-personnel-boundary-and-team-routing-design)): #1318's team/project boundary and routing design, then #1180's personnel delivery (rows A–D)
+> - **Planned:** M51 ([portable.md §5](portable.md#m51-personnel-boundary-and-team-routing-design)): #1318's [team/project contract](#9-team-and-project-separation-1318-design-only) (design only), then #1180's personnel delivery (rows A–D)
 > - **Last checked:** 2026-11-07 at `02ca805`
 
 Status: v0.1 (2026-11-07). Owner: coordinator. Changes land through
@@ -470,8 +470,8 @@ restate it. #1217 updates portable.md to v0.4 with the harness axis, the
 | Q4. Does the runtime-word lint (D5) run before the reorganisation, against today's paths? | #1185 |
 | Q5. How long do the compatibility shims at old paths stay: one major version, or until packs confirm? | #1226 |
 | Q6. Do role classes and seats belong in `docs/specs/` of every project, or only here? | #1219 |
-| Q7. What does a team profile own versus a project, how do profiles and roles compose, and how do admission, claims and land stay inside one repo? | #1318 (design; M51 records the applied choices in [portable.md §5](portable.md#m51-personnel-boundary-and-team-routing-design)) |
-| Q8. How does a host import a personnel bundle and pinned roles without the terminal machinery or a change to role authority? | #1180 rows A–D, on #1318's approved import and binding contract |
+| Q7. What does a team profile own versus a project, how do profiles and roles compose, and how do admission, claims and land stay inside one repo? | #1318: [§9](#9-team-and-project-separation-1318-design-only), design only; applied M51 choices in [portable.md §5](portable.md#m51-personnel-boundary-and-team-routing-design) |
+| Q8. How does a host import a personnel bundle and pinned roles without the terminal machinery or a change to role authority? | #1180 rows A–D, on [§9.6](#96-pinned-personnel-import-and-host-binding)'s import and binding contract (design only) |
 
 ## 8. Out of scope
 
@@ -480,3 +480,257 @@ restate it. #1217 updates portable.md to v0.4 with the harness axis, the
   agent-state API (dropped for now by the owner, 2026-11-07).
 - The CLI and repo rename (M33), beyond keeping the layout rename-ready.
 - Any change to a live merge gate or marker rule.
+
+## 9. Team and project separation (#1318, design only)
+
+**Status: design only.** M51 delivers this contract and #1180's personnel
+content path; shared admission, pools and routing do not ship here. The
+[applied decision](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6846260224)
+adopts [readiness §3–§4](https://github.com/mw-ding/mdstack/issues/1779#issuecomment-6844208107).
+It replaces #1318's draft `[[projects]]` proposal with the existing
+`[team]` / `[repos.<name>]` schema. The implementation breakdown is §9.7;
+its units need separate plan records before admission.
+
+### 9.1 Ownership and composition
+
+A team is roles and seats, identities, engines, capacity and policy serving
+several projects. A project is a repository context, never a second team.
+The mdstack source repository is one project the team can work on.
+
+| Team owns | Project owns |
+|---|---|
+| Role selection, seats, identity and engine defaults | Full repo identity, checkout and default branch |
+| Host, environment, harness and connector defaults | Tracker labels and milestone order |
+| Shared pool caps, presence, load target and reservations | Spec/doc homes and ownership/control record |
+| Base flavor and policy floors | Rigor tightening and recorded landing permission |
+
+Composition stays closed: `core < default < pack/org < team < repo`.
+Pack defaults and an explicit org layer retain their existing order and
+floor validation; the notation does not introduce another layer. Each
+resolved value records its originating layer and file, including the repo
+section. Roles and adapters initially inherit from the team. A repo cannot
+replace identities, role authority, engines, host placement or shared caps.
+Unknown keys fail before rendering or dispatch.
+
+The [team-files reference](../configuration/team-files.md#schema-and-example)
+remains today's schema. Its existing keys continue to resolve. Proposed
+additions below belong to T1, not to the current validator:
+
+| Proposed repo key | Target / validation |
+|---|---|
+| `control_item` | `repo.control_item`; tracker-valid control record in this repo |
+| `flavor` | Closed flavor declaration; resolve item/path rigor against the team floor |
+| `labels` | Closed mapping of existing state-tag names to nonempty tracker label names |
+| `milestones` | Ordered, distinct tracker milestone IDs belonging to this repo |
+| `doc_home` | Project-relative documentation directory, no escape from checkout |
+
+Existing `spec` selects spec paths. The checkout locates both docs and code;
+no knowledge content or credentials enter these keys. T1 must define the
+exact nested types through the existing backend ID/capability declarations
+and reject unrecognized fields. It must not accept these sketches as an
+unvalidated free-form table.
+
+Rigor is the knob-wise strictest of core/pack floors, team base, project,
+item and path records, using [flavor resolution](../flavors.md#resolution).
+Project settings may tighten, never relax that floor: fewer rounds and
+stronger review, validation, evidence or permission requirements win under
+the existing comparison. An attempted relaxation is refused with the key
+and source, not silently applied. Landing grants retain their recorded
+scope; a team default cannot grant authority over every project.
+
+### 9.2 Two projects, one team
+
+This example uses only shipped keys; future routing fields are separate.
+`<config-home>` and `<state-dir>` are operator-selected roots.
+
+```toml
+[team]
+name = "engineering"
+pack = "github"
+accounts = { all = "<bot-login>", reviewer = "<reviewer-login>" }
+runtime = { name = "tmux", options = { builders = 5, reviewers = 5 } }
+paths = { state_dir = "<state-dir>", worktree_root = "<worktree-root>" }
+flavor = { name = "standard" }
+
+[repos.a]
+repo = "example/alpha"
+checkout = "<checkout-a>"
+default_branch = "main"
+
+[repos.b]
+repo = "example/beta"
+checkout = "<checkout-b>"
+default_branch = "trunk"
+```
+
+References are `<config-home>/teams/engineering.toml#a` and `#b` on that
+same file. Resolve each reference to its full repo identity; aliases, file
+symlinks or an omitted selector for a one-repo file must resolve to the same
+canonical project identity. Duplicate entries for one repo in a team are
+refused. There is no first-repo fallback when several repos are configured.
+
+Existing one-repo `config.toml` resolution is preserved. **Migration is not
+needed: 7.0+ is fresh**, with no compatibility conversion in this design.
+An operator changing an already-running team name/state location still
+follows the existing stop/move instructions; this design does not perform
+that rollout or move any live state.
+
+### 9.3 Qualified work and state
+
+Every handoff and result carries a work envelope with team identity,
+project reference, full repo identity, item/change IDs as applicable, full
+head SHA when a change exists, pass and round. A new build has no change/head
+yet; use explicit absence, never an invented SHA. The receiver resolves the
+reference and compares the repo against the independently fetched item's or
+change's repository before acting. Missing, unknown, conflicting or
+unreadable context is a refusal before claim, spawn, post or land.
+
+The durable envelope supplies repo context outside existing marker lines.
+Markers keep today's field sets, signatures, head and round meaning; a
+marker parsed from repo A is never a record for repo B. Backend reads and
+writes name the selected repo explicitly. No new marker field ships here.
+
+Assume both projects have issue `42`, change `7`, pass `review`, round `1`
+and the identical full head `1111111111111111111111111111111111111111`.
+Equality of those values proves no cross-repo identity:
+
+| Artifact | A | B |
+|---|---|---|
+| Work identity | `(engineering, example/alpha, 42, 7, head, review, 1)` | `(engineering, example/beta, 42, 7, head, review, 1)` |
+| Repo state | `<state-dir>/engineering/example__alpha/` | `<state-dir>/engineering/example__beta/` |
+| Claim and inbox | A state, A envelope | B state, B envelope |
+| Reservation | Team ledger, A work identity | Team ledger, B work identity |
+| Worktree | `<worktree-root>/example__alpha/<run-id>/` | `<worktree-root>/example__beta/<run-id>/` |
+| Verdict/evidence/grant read | `example/alpha` change 7 and its control records | `example/beta` change 7 and its control records |
+
+Team-global run IDs and physical session/window allocation prevent two
+issue-42 workers taking the same slot/name. Run records bind that allocation
+to the repo envelope. Claims, inboxes, evidence references, rounds, holds,
+trains and completion status stay under repo state; reservation ownership
+and aggregate capacity stay under team state. A `done` for A releases only
+A's reservation and run. Recovery/reclaim compares the run ID, repo context
+and live process identity, never a bare `#42` or window name.
+
+### 9.4 Admission and shared pools
+
+One coordinator and one set of pool leads serve the team session. One team
+scheduler lock protects the target, aggregate busy count and reservation
+ledger across all projects. A reservation counts once, then transfers to
+its matching run under the existing spawn/release/expiry rules. Team pool
+caps and presence bounds apply to totals, not once per repo.
+
+Collect demand from each repo, then apply its ownership, holds, escalation,
+head and dependency checks before ranking. An unreadable project's state
+blocks that project's demand; it cannot supply eligibility. Unknown shared
+busy counts or ledger state block team admission rather than undercounting
+capacity. A held A issue leaves B eligible. Existing runs still count
+against the shared budget even if their project stops admitting work.
+
+Keep [scheduling priority](../scheduling.md#priority): finishing work before
+new builds, caller-only reservations, cross-pool holds, pool floors and no
+killing busy workers. Floors are per team pool, not per project. Milestone
+order and dependency graphs are local to each repo; compare within class by
+local milestone ordinal, critical-path count, age, then canonical repo and
+work identity for a deterministic tie. Class 7 is each repo's earliest
+eligible active milestone; class 8 runs only when no class 7 work in the
+team is eligible. Cross-repo dependency declarations are not introduced.
+A red default branch blocks that repo's landing, and its repair ranks
+class 1 in team demand; it does not stop another repo's land.
+
+The shared lead grants only its own pool and dispatches the full envelope
+into repo state. Watchers route events to the correct lead without creating
+another pool. Observability names the repo on every decision, reservation,
+refusal and completion. A shared queue cannot turn A's fix into B's build.
+Lands remain outside admission budgeting.
+
+### 9.5 Landing authority and refusals
+
+A shared synthesizer executes separately authorized repo work. Before any
+mutation it resolves the selected project, reads that repo's ownership and
+control records, head, verdict, evidence, CI, holds and permission, and
+checks every [stage 7 gate](../protocol.md#7-merge-gate-synthesizer). Any
+mismatch or unreadable required record blocks. Same change number or head
+SHA never makes a verdict, merge-ok, grant or train result portable across
+repos. Existing verdict portability applies only inside the selected repo.
+
+Serialization and land locks are per canonical repo: one land at a time
+inside A, one inside B. A shared executor must not overlap two lands for A;
+separate repos need no shared permission or land lock. Every train/stack
+has one repo, that repo's base and qualified members. Validate the complete
+membership before branch creation, push, CI dispatch or merge. A mixed-repo
+train or stack is refused with **zero mutation**, including cleanup writes
+or partial execution. Each result routes back to its original project.
+
+These rules are the future isolation contract, not an edit to the gate
+registry's satisfied-by, actor or fail-open columns. T4 must preserve those
+columns; any proposed change to them needs the gate-contract path. Import,
+shared capacity and operator silence never waive CI, ownership, sensitive
+permission, holds or reviewer independence.
+
+### 9.6 Pinned personnel import and host binding
+
+For #1180, compose in the full producer checkout and export content only.
+The host selects stable `domain/role` IDs at a pinned source version/commit.
+A manifest records source pin, selected IDs, binding ID/version, file hashes
+and setting provenance. A missing role or two sources defining the same ID
+is refused; no last-writer replacement or unpinned lookup is permitted.
+External role discovery and generic inheritance remain future work.
+
+The exported content includes descriptors and seats, canonical skills and
+policies, required spec/protocol/marker/action contracts, and composed role
+briefs. The consumer does not require the terminal CLI, resolver, renderer,
+scheduler, leads, trains, runner/reap, wake adapters or sweepers. The producer
+may require those dependencies; labeling all of `core/` portable is wrong.
+Inert terminal descriptor fields are binding metadata, not an executable
+runtime or authority. #1180 publishes the actual file/path boundary map.
+
+A thin host binding supplies wake/delivery, durable queues, run identity,
+claims/status, generic action implementations, connector access and
+head-bound land enforcement. It declares required capabilities and gaps
+under REQ-10. A missing binding, unresolved policy reference, unbound required
+action or unsupported invariant produces no usable install; verify before
+publishing output. Identical inputs produce an idempotent install.
+
+Allowed customization is presentation through profile identities, engine
+selection through existing routing/independence checks, and additive skills
+with provenance. Neither imported descriptors, bindings nor prose overlays
+may replace role class/escalation, marker/pass semantics, reviewer
+independence or synthesizer-only land. Validate data and review composed
+prose; schema validation alone cannot prove authority preservation.
+
+Grok Bot and a generic fake host consume this content. Import starts no
+routine and grants no permission. Existing hosted binding gaps and accepted
+exceptions remain declared; fake-host import is not proof of live adoption.
+Issue #1180 proves every selected brief/procedure loads with the terminal tree
+absent and all required policy/action references bound.
+
+### 9.7 Derived work and acceptance matrix
+
+The applied M51 decision approves the design direction and names T1–T4;
+it does **not** admit those units. After design approval, the coordinator
+files build issues from this breakdown, links their individual plan records
+and updates their delivery references before marking any ready. Each is one
+work-unit PR in logical commits; sizes below exclude tests.
+
+| Unit | Scope and minimum proof | Paths | Depends on / estimate |
+|---|---|---|---|
+| T1 | Closed project keys, canonical context, qualified handoff/result routing; one-repo regression and absent/unknown/mismatch refusals | `core/crew-config.py`, terminal `send.py`, `poll.py`, `route.py`; config/routing tests | Approved #1318; 250–450 lines |
+| T2 | One admission lock/budget/ledger; qualified matching, A held/B eligible, finish-first ranking and team pool floors | Terminal `schedule.py`, `lead.py`; schedule tests and scheduling reference | T1; 300–550 lines |
+| T3 | One set of leads; unique windows/runs/worktrees; repo-state dispatch and correct recovery/reclaim | Terminal `up.py`, `lead.py`, `spawn.py`, `route.py`, `watch.py`, `_shared.py`; pool templates and lifecycle tests | T1, integrated with T2; 400–700 lines |
+| T4 | Repo-bound gates, locks and result routing; wrong verdict/grant and mixed train/stack rejected before mutation | Terminal `land.py`, `land-lock.py`, `train.py`, `_land_stack.py`; synthesizer templates, protocol, land-lock/stack tests | T1; integration after T3; 250–450 lines |
+
+The scenarios below specify future tests, **not observed runtime results**.
+This docs PR verifies wording, references and repository checks only.
+
+| Scenario | Required result / future proof owner |
+|---|---|
+| A and B have the same issue, change, head, pass and round | Distinct envelopes, claims, reservations, worktrees and verdict/grant reads; T1–T4 |
+| A held, B eligible with a free shared slot | A gets no reservation; B can start, and aggregate caps still hold; T2 |
+| No repo, unknown selector, or reference names A but envelope names B | Refusal before claim/spawn/post/land; T1, T3, T4 |
+| A verdict or grant supplied for B at the identical SHA | No land request for B; T4 |
+| Train or stack contains A and B | No branch, push, CI, merge or cleanup mutation; T4 |
+| Team caps reached; another repo queues work | No extra per-repo budget; existing team pool floor rules only; T2 |
+| A completes/restarts while B has matching numeric IDs | Only A's run/reservation changes; B's state is untouched; T3 |
+| One-repo profile and existing marker | Same resolution and marker semantics; T1–T4 regressions |
+| Pinned role missing/colliding, authority override or incomplete binding | No usable personnel install; #1180 |
+| Valid pinned content loaded by fake host without terminal tree | Every selected brief/procedure and required action resolves, rerun idempotent; #1180 |

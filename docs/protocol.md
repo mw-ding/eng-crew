@@ -1935,6 +1935,15 @@ its tested state and its members train again. Steps 3 and 5 and every gate
 above stay with the synthesizer. A train builder that dies is restarted
 once; a second failure closes the train and the synthesizer re-surveys.
 
+## Multi-project isolation design reference
+
+The [M51 team/project design](specs/team.md#9-team-and-project-separation-1318-design-only)
+qualifies ownership, claims, evidence, verdicts and landing permission by
+repo. Its [landing contract](specs/team.md#95-landing-authority-and-refusals)
+and refusal matrix guide T1–T4; they are design only and change no current
+marker or gate satisfaction, actor or fail-open rule. The stage 7 gate
+registry remains authoritative for each repository.
+
 ## 8. Safety
 
 - Work roles listen only to state-transition events: `issue-assigned`,
