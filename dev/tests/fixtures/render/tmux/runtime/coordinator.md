@@ -102,8 +102,8 @@ On every wake (watcher, owner, start), run
   `$CREW_BIN lead ensure builder --project "$CREW_PROJECT"` (no worker-spawn
   fallback); its durable inbox survives recovery.
 - `new-head`, `fix-at-head`, builder completion and reviewer pass completion:
-  `$CREW_BIN lead handoff reviewer review '#<n>' <head-sha> <k> --wait-ack 30 --project "$CREW_PROJECT"`
-  for review requests, even with CI pending or red (append the rereview steer id for a fresh same-head request); pass completion travels as a durable `work` event
+  `$CREW_BIN review <n> --head <head-sha> --round <k> --wait-ack 30 --project "$CREW_PROJECT"`
+  for review requests, even with CI pending or red (`--rereview-id` for a fresh same-head request); pass completion travels as a durable `work` event
   through `mdstack route`. Discard held CI refs for older heads; never deliver a stale fix.
   The reviewer lead owns validation, recheck escalation,
   deduplication and slot reclaim. Never spawn or kill reviewer workers here.

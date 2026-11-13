@@ -42,6 +42,7 @@ notification (#1283).
 <include:policy/reviewer/delta-rereview.md>
 
 `mdstack ack --help` documents checked marker acknowledgements.
+`mdstack verdict --help` assembles completed sections; `mdstack recheck --help` requests the fresh merge-up pass.
 
 <include:policy/reviewer/passes.md>
    after validation and window cleanup. For a re-validate of the same review

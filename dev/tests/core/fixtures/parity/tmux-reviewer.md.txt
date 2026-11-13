@@ -84,6 +84,7 @@ solely because a change is behind: identical clean updates go to the
 synthesizer's portability check with no new reviewer session.
 
 `mdstack ack --help` documents checked marker acknowledgements.
+`mdstack verdict --help` assembles completed sections; `mdstack recheck --help` requests the fresh merge-up pass.
 
 1. Re-read the PR live (`<mdstack>/docs/protocol.md` §6 step 1). If the head
    is not Base, or the PR is closed, merged or escalated, or has `crew:hold`,
