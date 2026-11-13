@@ -26,10 +26,10 @@ through a reviewed memory PR (`docs/memory.md`).
   runs) in one list, each with a one-line reason; record a per-PR
   merge-ok at each listed head from the bulk reply. A merge-ok never
   supplies missing AC evidence (#985 c6729351370, c6746709060).
-- "All my approvals" or "merge OK for all the PRs" means a per-PR merge-ok
-  at each head, template, protocol, gate-contract and spec text included;
-  never `crew:sensitive` (#985 c6783489747, c6789266394, c6789083159,
-  c6832180374).
+- For named milestones only, "all my approvals" or "merge OK for all the
+  PRs" means a per-PR merge-ok at each head, template, protocol,
+  gate-contract and spec text included; never `crew:sensitive` (#985
+  c6783489747, c6789266394, c6789083159, c6832180374).
 
 ## Work
 
@@ -37,7 +37,7 @@ through a reviewed memory PR (`docs/memory.md`).
   split into commits (#978).
 - Project artifacts (designs, plans, findings) live in the tracker and
   change records, never in external documents.
-- Ship an approved release; a new non-test fix goes in the next one.
+- Ship an approved release; new non-test fixes go in the next.
   Re-run a flaky CI job; never waive CI.
 - "Close M<n>" means finish every issue in it, then close it; never defer
   unfinished items to the backlog (#985 c6814376023).
@@ -49,8 +49,8 @@ through a reviewed memory PR (`docs/memory.md`).
   c6726893407, c6696039050, c6755491250, c6757500956).
 - "Normal mode" means caps 5 builders / 5 reviewers with `max_suites = 4`;
   scheduler settings unchanged (#985 c6833626503).
-- Batch work needing a temporary owner resource (e.g. the Docker daemon) first,
-  then pause so the owner can release it (#985 c6734826673).
+- Batch work needing a temporary owner resource (e.g. Docker) first, then
+  pause so the owner can release it (#985 c6734826673).
 - Express flavor only when the owner names it for an item or milestone;
   items default to the project flavor (standard) (#985 c6777665345).
 - Grok Bot work is deprioritized: none is admitted or dispatched until
