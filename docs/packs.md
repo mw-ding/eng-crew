@@ -333,3 +333,9 @@ version refusal, floor refusal and conformance.
 (one name per line, outside this repo) and fails on any whole-word,
 case-insensitive match in a tracked file. Unset means skip. See
 [scripts](../scripts/README.md#denylist).
+
+## Personnel consumers
+
+A host may consume [pinned role content with a thin binding](personnel.md)
+while supplying its own control plane. This content import does not extend
+pack discovery to external role definitions or authorize role inheritance.

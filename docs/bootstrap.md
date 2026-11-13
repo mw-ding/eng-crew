@@ -786,3 +786,10 @@ without a registry.
 | Self-test and `--smoke` ([Q7](#q7-self-test)) | proposed, not filed yet |
 | Uninstall ([Q8](#q8-idempotency-upgrade-and-uninstall)) | proposed, not filed yet |
 | Runbook leads with `mdstack bootstrap` ([Q10](#q10-relation-to-existing-issues)) | proposed, not filed yet |
+
+## Personnel content install
+
+A host bringing its own coordination machinery uses the separate
+[personnel producer](personnel.md#produce-and-install) to install pinned
+content locally. The consumer requires no terminal CLI, resolver or renderer;
+this does not change the full runtime bootstrap flow.

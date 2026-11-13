@@ -169,3 +169,9 @@ others and documents them in its capability declaration:
 | `queued` | `pending` | Waiting for capacity or an async backend |
 | `uncertain-write` | `unknown` | A write may or may not have happened |
 | `unreadable` | `failed` | Required state could not be read |
+
+## Hosts without the terminal CLI
+
+[Personnel import](../docs/personnel.md) accepts host action mappings,
+including API bindings, without installing `cli/mdstack`. The host retains
+the vocabulary, outcomes and authority of this contract.

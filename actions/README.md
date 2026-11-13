@@ -411,3 +411,9 @@ review step, to accept it.
   `knowledge-read`, for an empty or oversized body, or when the key already
   names a different proposal; `unknown` when delivery is uncertain, and the
   caller reads the source back before proposing again.
+
+## Personnel binding
+
+The [personnel consumer](../docs/personnel.md#thin-binding-and-consumer-loading)
+supplies these actions through its own host. Its reviewed binding declares
+capabilities and maps operations; importing content executes no action.

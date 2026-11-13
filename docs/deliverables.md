@@ -112,6 +112,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `docs/metrics/regression-drills.md` | Internal | n/a | Maintainer docs: metrics and drills, not loaded by roles |
 | `docs/observe.md` | Deliverable | all | Protocol bundle (core): the text roles load and cite |
 | `docs/packs.md` | Deliverable | all | Profile and pack contract: schema packs and installs validate against |
+| `docs/personnel.md` | Deliverable | all | Personnel content boundary, pinned host import and fake-host consumer proof (#1180) |
 | `docs/profile.md` | Deliverable | all | Profile and pack contract: schema packs and installs validate against |
 | `docs/project-doc-set.md` | Deliverable | all | Protocol bundle (core): essential doc set and status banners for target projects, split from the project docs design ([#1024](https://github.com/mw-ding/eng-crew/issues/1024)) |
 | `docs/project-docs.md` | Deliverable | all | Protocol bundle (core): project docs consolidation design for target projects ([#754](https://github.com/mw-ding/eng-crew/issues/754)) |
@@ -195,6 +196,8 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `scripts/metrics-baseline.py` | Internal | n/a | Maintainer tool: baseline pipeline metrics before the reorganization ([#1220](https://github.com/mw-ding/eng-crew/issues/1220)) |
 | `scripts/metrics-decide.py` | Deliverable | all | Role helpers: builder and coordinator helpers |
 | `scripts/metrics-refresh.py` | Deliverable | all | Role helpers: builder and coordinator helpers |
+| `scripts/personnel-bundle.py` | Deliverable | all | Producer-only personnel content exporter (#1180) |
+| `scripts/personnel-files.txt` | Deliverable | all | Explicit personnel content manifest (#1180) |
 | `scripts/reflection-candidates.py` | Deliverable | all | Role helper: offline reflection threshold candidates (findings rows and recurring classes) matched to existing cards ([#1522](https://github.com/mw-ding/mdstack/issues/1522)) |
 | `scripts/reflection-effects.py` | Deliverable | all | Role helper: offline reflection effect table, a before/after row and keep/revise/revert recommendation per accepted proposal ([#1525](https://github.com/mw-ding/mdstack/issues/1525)) |
 | `scripts/reflection-measures.py` | Deliverable | all | Role helpers: offline reflection effect measures from poll and watch observations ([#1524](https://github.com/mw-ding/mdstack/issues/1524)) |
@@ -219,6 +222,7 @@ conflicts on ([#325](https://github.com/mw-ding/eng-crew/issues/325)).
 | `templates/intake-candidate.md` | Deliverable | all | Templates: evidence adapters, product README seed, cards and step lines |
 | `templates/metrics-regression-issue.md` | Deliverable | all | Templates: evidence adapters, product README seed, cards and step lines |
 | `templates/owner-return-brief.md` | Deliverable | all | Template: standalone owner return brief for recorded away mode |
+| `templates/personnel/**` | Deliverable | all | Personnel composition input for hosts bringing their own machinery (#1180) |
 | `templates/policy/**` | Deliverable | all | Render input: role policy fragments the runtime templates include, and role skills (Agent Skills format) that index them ([#1184](https://github.com/mw-ding/eng-crew/issues/1184), [#1221](https://github.com/mw-ding/eng-crew/issues/1221)) |
 | `templates/product-readme.md` | Deliverable | all | Templates: evidence adapters, product README seed, cards and step lines |
 | `templates/runtimes/grok-bot/**` | Deliverable | grok-bot | Render input: routines and trigger JSON, rendered at install |

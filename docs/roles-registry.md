@@ -235,3 +235,11 @@ imported data, a binding or a prose overlay.
 This is the migration inventory, not authorization to change those files now.
 Profile tier routing, harness support, lifecycle safety and stage 7 remain
 owned by their existing contracts; registry data must preserve their behavior.
+
+## Pinned content import
+
+[Personnel import](personnel.md#import-settings-and-authority) selects stable
+`eng/role` IDs at a full producer commit and records settings provenance.
+It permits presentation, routed engine selection and pinned additive skills;
+it refuses authority replacement, missing roles and colliding selections.
+This does not add registry layering or external role discovery.
