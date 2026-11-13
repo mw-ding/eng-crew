@@ -8,8 +8,8 @@ description: Researcher triage sweep (classify, band and record issues per the t
 Trigger: Item `triage sweep`.
 
 Fragment: [triage-sweep.md](../../triage-sweep.md), included by the tmux
-and session briefs' Triage sweep sections
-([tmux](../../../../runtimes/tmux/researcher.md),
+rendered tmux procedure and session brief's Triage sweep section
+([tmux](../../../../runtimes/tmux/researcher-triage.md),
 [session](../../../../runtimes/session/researcher.md)), and the
 [triage design](../../../../../docs/triage.md). Grok Bot has no triage
 timer.

@@ -10,7 +10,7 @@ passes = ["build", "fix"]
 inputs = { build = ["issue"], fix = ["issue", "change"] }
 change_pass = "fix"
 engine_source = "tier"
-templates = { tmux = ["templates/runtimes/tmux/builder.md"] }
+templates = { tmux = ["templates/runtimes/tmux/builder.md", "templates/runtimes/tmux/builder-fix.md"] }
 events = { tmux = ["issue-assigned", "ci-failed", "review-changes-requested", "pr-conflicting"] }
 window_band = [10, 19]
 window_name = "{name}-{issue}"
