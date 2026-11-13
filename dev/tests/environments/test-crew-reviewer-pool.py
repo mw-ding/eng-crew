@@ -1,5 +1,6 @@
 """Reviewer lead fixtures: handoff replay, fresh passes, schedule decide admission, cleanup and identity recovery.
-Fake tmux/GitHub; --transcript prints the handoff-to-completion lifecycle. Run in CI.
+Fake tmux/GitHub; --transcript prints the handoff-to-completion lifecycle; --held-wait-transcript runs and prints
+#1836's parked held-request waits. Run in CI.
 """
 import argparse
 import datetime
@@ -527,7 +528,7 @@ class ReviewerPool(route_tests.Route):
         self.assertEqual(self.renudges(start + 2850, [0], seen=self.seen), [0])
         self.assertEqual({a for c in self.calls()[before:] if c[0] == "send-keys" for a in c if a.startswith("inbox: ")},
                          {"inbox: fresh"})
-        if "--transcript" in sys.argv:
+        if "--held-wait-transcript" in sys.argv:
             print("held #12: 2 ids parked by reviewer-pool; 15 min of hold/verdict/mergeable churn, 2 dispatcher "
                   "re-runs, lead and watcher restart: 0 re-nudges")
 
@@ -558,7 +559,7 @@ class ReviewerPool(route_tests.Route):
         self.save()
         self.pool()
         self.assertEqual((self.messages(), self.names()), ([], ["ash", "vera-lead"]))
-        if "--transcript" in sys.argv:
+        if "--held-wait-transcript" in sys.argv:
             print("parked #12 wakes once each on CI, owner answer, ask and hold release, then re-parks; a moved head "
                   "retires both ids")
 
@@ -850,6 +851,9 @@ if __name__ == "__main__":
         names = ["test_reviewer_floor_under_builder_load",
                  "test_review_held_by_builder_call_is_granted_on_next_reviewer_call",
                  "test_builder_completion_wakes_deferred_review"]
+    if "--held-wait-transcript" in sys.argv:  # #1836
+        names = ["test_held_ref_parks_with_a_dispatcher_wait_through_unchanged_hold",
+                 "test_parked_ref_wakes_on_listed_changes_and_reparks"]
     if "--merge-up-transcript" in sys.argv:
         names = ["test_resolved_conflict_merge_up_starts_delta_review",
                  "test_semantic_conflict_fix_starts_delta_review",
