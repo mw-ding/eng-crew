@@ -249,9 +249,10 @@ class MergeUp(Base):
         from crew_testlib import write_pack
         pack = os.path.join(self.tmp, 'pack')
         org = write_pack(pack)
-        mapping = Path(pack, 'render', 'backends', 'example.toml')
-        mapping.write_text(mapping.read_text().replace('update_from_base = "merge"', 'update_from_base = "rebase"'))
-        self.refused('--org-profile', org)
+        with open(os.path.join(pack, 'manifest.toml'), 'a') as f:
+            f.write('\n[strategy]\nupdate_from_base = "rebase"\nretains_prior_heads = true\n')
+        r = self.refused('--org-profile', org)
+        self.assertIn('rebase update strategy refused', r.stdout)
 
     def test_moved_live_head_before_push_rolls_back(self):
         self.advance()
