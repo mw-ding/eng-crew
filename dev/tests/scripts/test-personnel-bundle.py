@@ -16,11 +16,25 @@ FIXTURE = ROOT / "dev/tests/fixtures/personnel/fake-host.toml"
 ROLES = ["eng/" + r for r in ("coordinator", "builder", "reviewer", "synthesizer", "researcher")]
 
 
-def copy_source_tree(source, destination):
+def copy_source_tree(source, destination, optional=False):
+    if optional and not source.exists():
+        return
     shutil.copytree(source, destination, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
 
 
 class SourceCopyTest(unittest.TestCase):
+    def test_missing_changes_is_optional_but_required_source_fails(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            copy_source_tree(root / "changes", root / "snapshot/changes", optional=True)
+            self.assertFalse((root / "snapshot/changes").exists())
+            with self.assertRaises(FileNotFoundError):
+                copy_source_tree(root / "scripts", root / "snapshot/scripts")
+            (root / "scripts").mkdir()
+            copy_source_tree(root / "scripts", root / "snapshot/scripts")
+            self.assertTrue((root / "snapshot/scripts").is_dir())
+        print("snapshot: absent changes skipped; missing required scripts fails; restored scripts copies")
+
     def test_source_copy_skips_bytecode(self):
         with tempfile.TemporaryDirectory() as temp:
             source = Path(temp) / "source"
@@ -46,7 +60,7 @@ class PersonnelTest(unittest.TestCase):
         cls.producer.mkdir()
         # Snapshot the candidate, including new files, into an isolated producer.
         for name in ("scripts", "templates", "roles", "docs", "actions", "core", "profiles", "harnesses", "environments", "connectors", "cli", "packs", "dev", "changes", "memory", ".github"):
-            copy_source_tree(ROOT / name, cls.producer / name)
+            copy_source_tree(ROOT / name, cls.producer / name, optional=name == "changes")
         for path in ROOT.iterdir():
             if path.is_file() and path.name != ".git":
                 shutil.copyfile(path, cls.producer / path.name)
@@ -70,8 +84,8 @@ class PersonnelTest(unittest.TestCase):
         self.binding = Path(self.temp.name) / "binding.toml"
         self.binding.write_text(FIXTURE.read_text())
 
-    def run_cli(self, roles=ROLES, ref=None):
-        command = [sys.executable, str(SCRIPT), "--root", str(self.producer),
+    def run_cli(self, roles=ROLES, ref=None, producer=None):
+        command = [sys.executable, str(SCRIPT), "--root", str(producer or self.producer),
                    "--ref", ref or self.ref, "--binding", str(self.binding), "--out", str(self.out)]
         for role in roles:
             command += ["--role", role]
@@ -122,6 +136,23 @@ class PersonnelTest(unittest.TestCase):
         for roles, ref in [(["eng/builder", "eng/unknown"], None), (["eng/builder"] * 2, None), (ROLES, "HEAD")]:
             with self.subTest(roles=roles, ref=ref):
                 self.refused(roles, ref)
+
+    def test_post_cut_source_without_changes(self):
+        producer = Path(self.temp.name) / "post-cut"
+        copy_source_tree(self.producer, producer)
+        if (producer / "changes").exists():
+            shutil.rmtree(producer / "changes")
+        def git(*args):
+            return subprocess.check_output(["git", "-C", str(producer), *args], stderr=subprocess.PIPE).decode().strip()
+        git("add", "-A")
+        git("-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+            "commit", "--allow-empty", "-qm", "post-cut source")
+        self.assertFalse((producer / "changes").exists())
+        result = self.run_cli(ref=git("rev-parse", "HEAD"), producer=producer)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(result.stderr, "")
+        self.assertTrue((self.out / "personnel.json").is_file())
+        print("post-cut: no changes directory; personnel bundle installs")
 
     def test_binding_and_authority_controls(self):
         valid = FIXTURE.read_text()
