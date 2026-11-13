@@ -1507,8 +1507,8 @@ milestone.
 
 ### M52: completion routing
 
-Opening spec slice #1798 (PR #1800) and closing status-sync slice #1799 are
-the bookends for [#1794](https://github.com/mw-ding/mdstack/issues/1794).
+Opening spec slice #1798 (PR #1800) and closing status-sync slice #1799
+(PR #1811) are the bookends for [#1794](https://github.com/mw-ding/mdstack/issues/1794).
 Scope and ACs come from
 [Riley's readiness pass](https://github.com/mw-ding/mdstack/issues/1794#issuecomment-6846602283),
 §2–§3, with the
