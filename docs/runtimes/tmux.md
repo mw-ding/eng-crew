@@ -841,7 +841,7 @@ binding's commands; a pack supplies its own through the render overlay
 ### mdstack down
 
 ```sh
-cli/mdstack down [--project <config.toml>] [--org-profile <path>]
+cli/mdstack down [--project <config.toml>] [--org-profile <path>] [--keep-grant]
 ```
 
 `mdstack down` refuses while `locks/merge.lock` is held, runs `mdstack kill` on
@@ -863,6 +863,58 @@ After the watcher it stops every
 pane's processes and the session, but keeps each run's worktree, record,
 claim, inbox and status file. Lead identity records are removed as usual;
 `mdstack up` writes fresh ones.
+
+In an attended owner terminal, plain `down` previews finished `merge_grant`
+clauses before shutdown and offers an explicit `prune` confirmation. Declining
+keeps the grant and continues shutdown. An affirmative choice edits authority
+only after every shutdown safeguard passes and teardown succeeds; changed
+profile/scope facts or lost ownership refuse the edit. `--keep-grant`,
+`--preserve`, role shells and noninteractive `down` skip pruning and retain
+their shutdown behavior. No unattended confirmation flag is available.
+
+### mdstack grant prune
+
+```sh
+cli/mdstack grant prune [--project <config.toml>] [--org-profile <path>] [--dry-run]
+```
+
+`--dry-run` prints removed/kept clauses, reasons and source/finished-state
+links without posting, backing up or writing. Applying requires an attended
+owner shell, the configured owner's forge identity and explicit `prune`
+confirmation. Standalone application refuses while crew writers or the land
+lock remain; use owner-run `down` to stop them first. A refusal exits 1;
+decline, no-op and dry-run exit 0. Read failures keep everything and explain why.
+
+Recognition is conservative: only top-level semicolons split whole clauses.
+Finite milestone PR grants and release-cut grants need local source comment
+locators (`#<issue> comment <id>` or their full GitHub URLs). Every named
+milestone must be closed and every named cut must have a non-draft published
+release. Mixed clauses require both. Standing/open/unknown grants, ranges,
+restrictions, archive annotations and mixed or unsupported prose are kept.
+Milestones match their complete leading identifier (`M35` or `M35 — …`),
+requiring exactly one match; `M35.1` and `M350` never match `M35`. Cut versions
+with or without `v` resolve to the repository's `vX.Y.Z` release tag; a cut
+PR's merge does not prove publication. Source reads verify signed, trusted attribution and
+local locators. History remains history.
+
+The supported decision log is the single local issue identified by the
+removed clauses' source locators. Ambiguous logs and non-GitHub tracker,
+release or marker bindings are refused/kept; no new backend operation or
+profile key is required. Only the explicitly selected project's uniquely
+located, single-line string in `[runtime.options]` is writable. Inherited,
+team, inline-table, multiline and symlink layouts are kept/refused without
+materializing an override.
+
+Immediately before application, the command re-reads ownership for `write`,
+the layered profile and scope/source facts. It keeps a collision-safe,
+timestamped byte-for-byte `runs/grant-backup-*.toml.bak`, then posts one signed,
+owner-triggered archive with verbatim removed clauses, source/finished-state
+links and before/after profile hashes. The archive supplies no authority and
+has no grant, steer or gate marker. Uncertain posts are reconciled by read-back,
+including on retry. Only confirmed archive success permits atomic replacement;
+original bytes are compared again before replacement. Backup, archive or write
+failure leaves the profile intact. Only the grant value changes; exact kept
+clauses, restrictions and all other raw/effective values remain intact.
 
 ### mdstack pause
 

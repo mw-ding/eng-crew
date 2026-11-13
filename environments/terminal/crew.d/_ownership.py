@@ -123,6 +123,14 @@ def read_posts(values):
     return posts(r.stdout)
 
 
+def github_api(path, *flags, body=None):
+    """Read source/scope facts or confirm an owner-triggered archive in the existing GitHub operation binding."""
+    result = subprocess.run(["gh", "api", path, *flags], input=body, capture_output=True, text=True)
+    if result.returncode:
+        raise ValueError("tracker/release/source unreadable: " + path)
+    return json.loads(result.stdout)
+
+
 def trusted(values):
     return set(values["identities.owners"]) | {v for k, v in values.items() if k.endswith(".gh_user")}
 
