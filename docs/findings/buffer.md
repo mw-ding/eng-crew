@@ -150,12 +150,20 @@ The live buffer. How to append, when to batch and who owns it are in
   sighting is #1272)
 - **PR / repo:** cards #1126, #1138, #1198, #1210, #1248, #1260 and #1272;
   repairs #888, #992, #1066, #1073, #1080, #1169, #1243, #1253 and #1264. See
-  [real-entrypoint-fixtures](../lessons/2026-11-08-real-entrypoint-fixtures.md)
+  [real-entrypoint-fixtures](../lessons/2026-11-08-real-entrypoint-fixtures.md).
+  Added 2026-11-13 by the
+  [M53-close sweep](https://github.com/mw-ding/mdstack/issues/1781#issuecomment-6866552379)
+  (#1862): #1825, its omitted role-doc/template consumer
+  ([#1126 record](https://github.com/mw-ding/mdstack/issues/1126#issuecomment-6866460059)),
+  and #1833, counted once for its two format findings: fake bare milestone
+  titles and unprefixed tags hid real-tracker failures
+  ([round-1 finding](https://github.com/mw-ding/mdstack/pull/1833#pullrequestreview-5889997782),
+  [repair](https://github.com/mw-ding/mdstack/pull/1833#pullrequestreview-5890269178))
 - **Smell:** A fixture or check took a shortcut around the production path.
   Examples are a moved doc source, a skipped render stage, a shell that
   masks exit codes, a snapshot over git internals, a lint that knew one
   syntax form and a checker that reads only tracked files.
-- **Count:** 7
+- **Count:** 9
 - **Proposed fix layer:** CI check: route tests through the production
   pipeline and make every assertion fail closed.
 - **Status:** fixed by #888, #992, #1066, #1073, #1080, #1169, #1243, #1253
@@ -197,7 +205,10 @@ The live buffer. How to append, when to batch and who owns it are in
   sighting is #1212)
 - **PR / repo:** cards #1125, #1127, #1128, #1131, #1133, #1142, #1143, #1211
   and #1212; repairs #830, #950, #972, #973, #1008, #1043, #1046, #1048,
-  #1094 and #1186
+  #1094 and #1186. Added 2026-11-13 by the
+  [M53-close sweep](https://github.com/mw-ding/mdstack/issues/1781#issuecomment-6866552379)
+  (#1862): #1851, an MD038 code-span occurrence
+  ([#1128 record](https://github.com/mw-ding/mdstack/issues/1128#issuecomment-6866461542))
 - **Smell:** Text that moved or was quoted kept its words but not what its
   readers relied on. Runtime qualifiers were dropped (#1125). Numbered lists
   were split under new headings (#1127). A code span gained a separator
@@ -205,7 +216,7 @@ The live buffer. How to append, when to batch and who owns it are in
   heading broke an anchor (#1133). Generated commands lost `--project` or
   their order (#1142, #1143). A descriptive phrase parsed as a closing
   reference (#1211). A wrapped `#N` line became a heading (#1212).
-- **Count:** 9
+- **Count:** 10
 - **Proposed fix layer:** lint and CI check for the mechanical half
   (markdownlint, the CI `links` job, `check-markdown.py` MD018 and the render
   test's `assert_crew_commands_parse`); prose only for qualifiers, slice
