@@ -30,6 +30,7 @@ import shutil
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 TESTS = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # dev/tests/
 SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(TESTS)), "scripts")
@@ -394,7 +395,7 @@ class ReviewWithoutCI(unittest.TestCase):
     def test_coordinator_routes_new_head_and_combines_failures(self):
         text = " ".join(render()[0]["coordinator.md"].split())
         route = text[text.index("- `new-head`"):text.index("- Reviewer `done:")]
-        self.assertIn("lead handoff reviewer", route)
+        self.assertIn('$CREW_BIN review <n> --head <head-sha> --round <k>', route)
         self.assertIn("Never spawn or kill reviewer workers here", route)
         self.assertIn("even with CI pending or red", route)
         for rule in ("hold while a review, validation or recheck pass", "running or queued",
@@ -405,6 +406,19 @@ class ReviewWithoutCI(unittest.TestCase):
                      "PATH CI_PATH", "failed checks and links", "retain referenced files until the builder reports `done:`", "A CI fix after an approval gets the light re-check",
                      "with the approval's round number"):
             self.assertIn(rule, text)
+
+    def test_review_pointer_guard_negative_control(self):
+        briefs, grant = render()
+        mutated = dict(briefs, **{'coordinator.md': briefs['coordinator.md'].replace(
+            '$CREW_BIN review <n> --head <head-sha> --round <k>', '$CREW_BIN review <n>')})
+        with mock.patch(__name__ + '.render', return_value=(mutated, grant)):
+            with self.assertRaises(AssertionError):
+                self.test_coordinator_routes_new_head_and_combines_failures()
+        with mock.patch(__name__ + '.render', return_value=(briefs, grant)):
+            self.test_coordinator_routes_new_head_and_combines_failures()
+        if os.environ.get('MDSTACK_HELPER_POINTER'):
+            with open(os.environ['MDSTACK_HELPER_POINTER'], 'w') as out:
+                out.write('pointer control: missing head/round fails the rendered-brief assertion; restored command passes.\n')
 
     def test_reviewer_records_ci_and_preserves_merge_gate(self):
         text = " ".join(render()[0]["reviewer.md"].split())

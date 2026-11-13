@@ -329,11 +329,11 @@ that split and touch no shared lines.
 | Helper role | What it does | Becomes |
 |---|---|---|
 | Brief generator | Fills the [worker brief template](roles.md#worker-brief-template) from an issue, role, tier and engine | `mdstack brief` |
-| Review runner | Runs the review pass, then the validate pass in a fresh session, on an engine different from the actual builder engine | `crew review` |
-| Verdict poster | Posts the verdict post with review and validate sections and the `pass=verdict` marker on the full head SHA | `crew verdict` |
+| Review runner | Hands pinned review to the existing lead; passing review routes fresh validation with actual builder-engine exclusion | [`mdstack review`](runtimes/tmux.md#mdstack-review-verdict-and-recheck) |
+| Verdict poster | Checks completed sections and posts one COMMENT verdict bound to full head/base/round, under the actual author | [`mdstack verdict`](runtimes/tmux.md#mdstack-review-verdict-and-recheck) |
 | Ack poster | Checked intake, clean merge-up and owner steering acknowledgements, with no approval power | [`mdstack ack`](runtimes/tmux.md#mdstack-ack) |
 | Merge-up runner | Merges the default branch into a behind change and posts the merge-up note | `crew merge-up` |
-| Light re-check | The §6 merge-up re-approve: one light pass at the new head after an approval | `crew recheck` |
+| Light re-check | Explicit fresh merge-up recheck at the prior approval round; unconfirmed/broader content routes normal review | [`mdstack recheck`](runtimes/tmux.md#mdstack-review-verdict-and-recheck) |
 
 Proposed as follow-ups (below); the coordinator files them.
 
@@ -343,6 +343,12 @@ output. Marker ack is separate from the shipped inbox `action ack`/`acked`;
 its generic steering mode refuses commands with downstream marker effects,
 including `merge-ok` and round resets. These additive helpers are a
 minor version change; they change no protocol marker or merge gate.
+
+The #238 remainder ships the three command surfaces over the existing
+passes and checked posting transport. Verdict runs neither pass, rejects
+incomplete/stale/foreign bindings before any review/tag write, and reconciles
+lost post responses by readback. Single-identity COMMENT verdicts and all
+merge gates retain their meaning; this additive surface is a minor change.
 
 ## Follow-up issues
 

@@ -1495,6 +1495,54 @@ Live state is re-read under a per-PR lock just before posting. Failed post
 responses are reconciled by readback; an uncertain result requires another
 live read before retry. No inbox receipt proves a marker acknowledgement.
 
+### mdstack review, verdict and recheck
+
+```sh
+cli/mdstack review <pr> --head <full-sha> --round <k> --project <config.toml>
+cli/mdstack verdict <pr> --head <full-sha> --base <reviewed-base> --round <k> --actor <run> --project <config.toml>
+cli/mdstack recheck <pr> --head <full-sha> --round <approval-round> --project <config.toml>
+```
+
+The #238 helpers reuse the existing lead, pool and native checked poster.
+`review` hands the explicit head/round to the reviewer lead, preserving
+admission, claims, precheck, flavor and actual builder-engine exclusion.
+After passing review its completion routes a separate fresh validation
+session when required. The coordinator runs neither pass. An open full
+rereview needs `--rereview-id <steer-id>`; completed/running requests are
+deduplicated, and pending handoffs retain the lead's existing identity.
+
+`verdict` consumes completed `## Review` and `## Validation` sections. Its
+defaults read the retained review file and the actor's verdict file;
+`--review` and `--validation` can name completed section files explicitly.
+Review changes supplies only Review and `skipped: review failed`; recheck
+supplies both sections in its single file. The poster assembles the final
+marker, actual-author signature and usage. It runs no review or validation
+and invents no evidence. Section results determine pass/changes; failed
+validation produces changes. An eligible skip is submitted by the review
+actor, includes the normal skipped-validation marker and `Reason:`, and
+must satisfy live item/path rigor. Under `behaviour`, the helper accepts
+that skip only for justified `docs/*.md` wording changes; other shapes
+use independent validation. `validation = off` also permits a justified skip.
+
+Wrong actor, unavailable/full-SHA bindings, missing/duplicate sections or
+markers, inconsistent results, obsolete reset/rereview and already-completed
+passes refuse with exit 2 and no review/tag writes. Ownership, pause and
+live head are rechecked before posting one COMMENT review at the native
+full head. Approved/changes tags are set together and read back; changes
+at the live round cap also sets escalated and directs blockers to the
+coordinator. A lost post response is reconciled by readback. A posted
+verdict with failed tag readback needs tag reconciliation, never a second
+verdict. These tmux helpers install no mirror hold, as in the existing tmux
+binding; the synthesizer still checks the mirror gate before land.
+
+`recheck` requests the existing explicit fresh pass for an approved
+two-parent merge, retaining the prior approval round. The worker checks
+bounded remerge hunks and reruns acceptance checks in that one session.
+Unconfirmed merges or an open full rereview route normal review; broader
+content escalates through the existing completion path. Behind alone never
+requests recheck, and clean-update verdict portability remains the default.
+These commands have no approval or landing power and no delete endpoint.
+
 ### mdstack acked
 
 ```sh
