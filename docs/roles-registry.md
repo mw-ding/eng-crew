@@ -211,6 +211,16 @@ Validate them with `python3 core/crew-roles.py roles/eng` (optionally
 `--project config.toml` for resolved identity and cap keys). The equivalence test
 compares them with runtime metadata and the remaining renderer constants.
 
+## Personnel import design
+
+The [M51 import contract](specs/team.md#96-pinned-personnel-import-and-host-binding)
+selects pinned content by stable domain/role ID and attaches a thin host
+binding. #1180 implements it; it introduces no registry layering or external
+role discovery here. Presentation, engine and additive-skill settings retain
+provenance and existing checks. Role class/escalation, marker/pass semantics,
+reviewer independence and synthesizer-only land cannot be replaced through
+imported data, a binding or a prose overlay.
+
 ## Hard-coded locations to replace
 
 | Location | Registry data that replaces the role-specific knowledge |

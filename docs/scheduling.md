@@ -313,6 +313,15 @@ the scheduler never kills an unrecorded process.
 | Empty reviewer pool keeps one slot | Generalized: the floor applies to both pools |
 | #587's original admission ACs (caps-only default, optional gates) | Build issue S1, the first step: it stops the current zero-admission state before the scheduler exists |
 
+## Team admission design
+
+[M51 shared admission](specs/team.md#94-admission-and-shared-pools) is design
+only: T2 applies this policy to repo-qualified demand under one team budget
+and ledger, with team pool floors and per-repo eligibility. Its explicit
+ranking and collision/refusal scenarios do not change the current
+repo-scoped scheduler. T1 supplies qualified context and T3 shared leads;
+each unit needs a separate plan record before admission.
+
 ## Build issues
 
 Proposed follow-ups for the coordinator to file, about 100 lines each plus
