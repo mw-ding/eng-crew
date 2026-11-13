@@ -5,6 +5,11 @@ incident. A smell is written down once, its count goes up each time it recurs,
 and the repeats are batched into a single issue on the next open milestone (the
 M5 batch). The buffer itself is [buffer.md](buffer.md).
 
+## Reviewed batches
+
+- [M53 repaired learning batch](m53-learning.md): 24 cards, 27 distinct
+  occurrences, retained prevention and source-card dispositions (#1793).
+
 ## Ownership
 
 The coordinator (Ash) owns the buffer: it keeps entries accurate, decides when
