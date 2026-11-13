@@ -1721,8 +1721,8 @@ then the tracking issue #1795 and M53 close.
 - **B3 settled as applied, with live-tracker fixes:** round 1 found that
   exact `M<n>` title matching and `v`-less cut names (`the 7.6.0 cut`) made
   every clause unreadable on this repo's real tracker. Fixtures with bare
-  `M35` titles hid it. The fix also accepts titles starting `M<n> ` (as in
-  `M42 — Org-pack requests`) and resolves bare versions to `v` tags. Lesson: validate a recognizer against the real
+  `M35` titles hid it. The fix also accepts titles that begin with `M<n>` and a
+  space (as in `M42 — Org-pack requests`) and resolves bare versions to `v` tags. Lesson: validate a recognizer against the real
   tracker's shapes, not fixture-only shapes. Rounds 2–3 were evidence-only
   `changes` until the owner ran proofs A and B at `8650751` from their own
   terminal. After a resume, the fresh round passed. A's exit codes, the
