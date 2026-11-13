@@ -66,7 +66,7 @@ def usage(state, name, rec):
     return r.stdout.strip()
 
 
-def post(args, values, state, head, body, validate):
+def post(args, values, state, head, body, validate, after=None):
     """Re-read the binding under a per-PR lock; validate returns False for an existing identity key."""
     import fcntl
     os.makedirs(os.path.join(state, "helper-locks"), exist_ok=True)
@@ -93,7 +93,11 @@ def post(args, values, state, head, body, validate):
         if r.returncode:
             if any(review["body"] == body for review in view(values, args.pr)["reviews"]):
                 print("crew: post confirmed by readback")
+                if after:
+                    after()
                 return 0
             raise ValueError("post response uncertain; reconcile live reviews before retry")
         print("crew: posted COMMENT @ " + head)
+        if after:
+            after()
         return 0
