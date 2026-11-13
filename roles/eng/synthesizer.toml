@@ -10,7 +10,7 @@ passes = ["land"]
 inputs = { land = ["change"] }
 engine_source = "tier"
 templates = { tmux = ["templates/runtimes/tmux/synthesizer.md"] }
-events = { tmux = ["ci-passed", "review-approved", "merge-up", "selfgate-passed"] }
+events = { tmux = ["ci-passed", "review-approved", "merge-up", "selfgate-passed", "merge-ok-recorded"] }
 window_band = [1, 1]
 window_name = "{name}"
 lifetime = "session"
