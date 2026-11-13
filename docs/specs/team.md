@@ -3,10 +3,10 @@
 > - **Status:** partly built
 > - **Applies to:** this repo's layout, axes, roles, actions and modules
 > - **Current rules:** the [protocol](../protocol.md) and its gate registry; each requirement's **Delivered by** issues
-> - **Built:** M29–M33 (roles, connectors, environments, harnesses, core, cli and dev modules; the dependency lint; the actions CLI in part; the `mdstack` rename)
+> - **Built:** M29–M33 (roles, connectors, environments, harnesses, core, cli and dev modules; the dependency lint; the actions CLI in part; the `mdstack` rename); M51 personnel delivery, #1180 rows A–D (PR #1805)
 > - **Design only:** the `protocols/` and `install/` modules ([§4](#4-target-module-layout)) and the rest of the actions implementation
-> - **Planned:** M51 ([portable.md §5](portable.md#m51-personnel-boundary-and-team-routing-design)): #1318's [team/project contract](#9-team-and-project-separation-1318-design-only) (design only), then #1180's personnel delivery (rows A–D)
-> - **Last checked:** 2026-11-07 at `02ca805`
+> - **M51 design delivered:** #1318's [team/project contract](#9-team-and-project-separation-1318-design-only) and approved T1–T4 breakdown (PR #1802); shared-pool routing remains design only and T1–T4 remain unadmitted
+> - **Last checked:** 2026-11-13 at `aacfb7e` (M51 personnel delivery landed)
 
 Status: v0.1 (2026-11-07). Owner: coordinator. Changes land through
 `crew:spec` PRs (review pass only, merge on the owner's merge-ok). Tracking:
@@ -470,8 +470,8 @@ restate it. #1217 updates portable.md to v0.4 with the harness axis, the
 | Q4. Does the runtime-word lint (D5) run before the reorganisation, against today's paths? | #1185 |
 | Q5. How long do the compatibility shims at old paths stay: one major version, or until packs confirm? | #1226 |
 | Q6. Do role classes and seats belong in `docs/specs/` of every project, or only here? | #1219 |
-| Q7. What does a team profile own versus a project, how do profiles and roles compose, and how do admission, claims and land stay inside one repo? | #1318: [§9](#9-team-and-project-separation-1318-design-only), design only; applied M51 choices in [portable.md §5](portable.md#m51-personnel-boundary-and-team-routing-design) |
-| Q8. How does a host import a personnel bundle and pinned roles without the terminal machinery or a change to role authority? | #1180 rows A–D, on [§9.6](#96-pinned-personnel-import-and-host-binding)'s import and binding contract (design only) |
+| Q7. What does a team profile own versus a project, how do profiles and roles compose, and how do admission, claims and land stay inside one repo? | #1318 (PR #1802): [§9](#9-team-and-project-separation-1318-design-only), design delivered; T1–T4 unadmitted; applied M51 choices in [portable.md §5](portable.md#m51-personnel-boundary-and-team-routing-design) |
+| Q8. How does a host import a personnel bundle and pinned roles without the terminal machinery or a change to role authority? | #1180 rows A–D built (PR #1805), on [§9.6](#96-pinned-personnel-import-and-host-binding)'s import and binding contract; fake-host proof, no live adoption claim |
 
 ## 8. Out of scope
 
@@ -483,13 +483,27 @@ restate it. #1217 updates portable.md to v0.4 with the harness axis, the
 
 ## 9. Team and project separation (#1318, design only)
 
-**Status: design only.** M51 delivers this contract and #1180's personnel
-content path; shared admission, pools and routing do not ship here. The
+**Status: routing design delivered (PR #1802); personnel content built
+(PR #1805).** Shared admission, pools and routing remain design only. The
 [applied decision](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6846260224)
 adopts [readiness §3–§4](https://github.com/mw-ding/mdstack/issues/1779#issuecomment-6844208107).
 It replaces #1318's draft `[[projects]]` proposal with the existing
 `[team]` / `[repos.<name>]` schema. The implementation breakdown is §9.7;
 its units need separate plan records before admission.
+
+M51 status, synced by #1790; the landed items are closed in the tracker.
+The milestone closes after its status-sync slice (#1790, PR #1806) lands.
+
+| ID | Issue | Scope | Status |
+|---|---|---|---|
+| S0 | #1789 | Opening spec (PR #1797) | done |
+| B1 | #1318 | Routing design and approved T1–T4 breakdown (PR #1802) | done |
+| B2 | #1180 | Personnel delivery, rows A–D (PR #1805) | done |
+
+Lessons: pinned content and a thin host binding preserve role authority
+without exporting terminal execution. Fake-host import proves the content
+boundary; shared-pool and repo-isolation scenarios in §9.7 remain future
+tests, and live host adoption remains outside M51.
 
 ### 9.1 Ownership and composition
 
@@ -722,8 +736,10 @@ work-unit PR in logical commits; sizes below exclude tests.
 | T3 | One set of leads; unique windows/runs/worktrees; repo-state dispatch and correct recovery/reclaim | Terminal `up.py`, `lead.py`, `spawn.py`, `route.py`, `watch.py`, `_shared.py`; pool templates and lifecycle tests | T1, integrated with T2; 400–700 lines |
 | T4 | Repo-bound gates, locks and result routing; wrong verdict/grant and mixed train/stack rejected before mutation | Terminal `land.py`, `land-lock.py`, `train.py`, `_land_stack.py`; synthesizer templates, protocol, land-lock/stack tests | T1; integration after T3; 250–450 lines |
 
-The scenarios below specify future tests, **not observed runtime results**.
-This docs PR verifies wording, references and repository checks only.
+The routing scenarios below specify future tests, **not observed runtime
+results**. Personnel import/refusal scenarios were exercised by #1180
+(PR #1805); that proof does not establish shared-pool routing or live host
+adoption.
 
 | Scenario | Required result / future proof owner |
 |---|---|
