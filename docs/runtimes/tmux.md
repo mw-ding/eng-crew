@@ -53,7 +53,7 @@ Runtime state lives under `<state-dir>/<owner>__<repo>/`, never only in a pane:
 |---|---|
 | `render/` | Rendered coordinator and role briefs (#131, #137) |
 | `runs/<window>.json` | Run record: index, role, item, worktree, engine, expected harness, start time, run identity (pane id, pane pid and that process's start time), spawn arguments, restart count |
-| `runs/<window>.body.md` | Scratch body a role writes for a `gh` `--body-file` (`$CREW_STATE/runs/$CREW_ID.body.md`, never `/tmp`; the briefs say so, #270); `mdstack kill` deletes it with the record. The coordinator's is `runs/coordinator.body.md`, which it deletes itself, since `mdstack down` leaves window 0's files |
+| `runs/<window>.body.md` | Scratch body a role writes for a `gh` `--body-file` (`$CREW_STATE/runs/$CREW_ID.body.md`, never `/tmp`; the briefs say so, #270); `mdstack kill` deletes it with the record. The coordinator deletes `runs/coordinator.body.md` after posting. Plain `mdstack down` also sweeps regular `runs/coordinator.*` scratch files after a successful stop, including when nothing is running; symlinks, `--preserve` and refusals retain them |
 | `inbox/<window>.jsonl` | Messages to a window, one JSON line each, with a `msg-id` |
 | `leads/builder.json`, `leads/builder.brief.md` | Builder lead identity/restart record and brief; separate from worker runs |
 | `leads/builder-events/` | Durable event files referenced by the lead's inbox; retained while work is pending |
