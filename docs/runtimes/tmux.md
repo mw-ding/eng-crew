@@ -1191,7 +1191,18 @@ step 1, the band cap queue, is under [mdstack dequeue](#mdstack-dequeue) (#136):
   fetch and push URLs, sets `origin/<default>` to the fetched default head
   and detaches at the run's head. Its refs, index and worktree list belong
   to the run; a nested evidence worktree registers in the copy. Other roles
-  keep linked worktrees. A builder launch is **confined** when its harness
+  keep linked worktrees. Claude Code builders start the harness in the
+  stable `paths.worktree_root`, with the run copy added by `--add-dir` and
+  an appended instruction to run shell commands with an explicit `cd` to
+  the assigned copy and use absolute file paths. Trusting that startup root
+  (or a parent outside a repository) once per host covers future spawns and
+  restarts; trust on the checkout alone does not cover independent copies.
+  Before dispatch, run `mkdir -p <worktree-root> && cd <worktree-root> && claude`,
+  pick `Yes, I trust this folder`, then `/exit`. `mdstack doctor` reports
+  missing trust as `claude copy trust`; `up`, spawn and restart warn before
+  creating a window (spawn before its claim). mdstack never writes user-level
+  harness config. Linked reviewer and researcher launches retain their
+  checkout trust boundary. A builder launch is **confined** when its harness
   applies an OS write sandbox whose writable roots mdstack sets: today Codex
   with `permission_mode` `safe` or `auto`. Its roots are then the worktree,
   its own `.git` and the state dir: the launch adds

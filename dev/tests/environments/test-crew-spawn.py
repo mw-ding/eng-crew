@@ -32,6 +32,42 @@ from crew_testlib import CREW, KillLandedBase, LivenessBase, SECRET, SpawnBase
 
 
 class Spawn(SpawnBase):
+    def test_claude_run_copy_uses_stable_trust_root(self):
+        config = os.path.join(self.tmp, "claude-config")
+        os.makedirs(config)
+        self.env["CLAUDE_CONFIG_DIR"] = config
+        path = os.path.join(config, ".claude.json")
+        data = {"projects": {os.path.realpath(self.project_dir): {"hasTrustDialogAccepted": True}}}
+        with open(path, "w") as f:
+            json.dump(data, f)
+        with open(self.project, "a") as f:
+            f.write('\n[engines.default]\norder = ["claude-code/sonnet", "codex/gpt-6.1-sol"]\n')
+        r = self.spawn("builder", "--issue", "7")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("warning before spawn: claude copy trust", r.stdout)
+        call, rec = self.windows()[-1], self.record("ben-7")
+        root = os.path.dirname(rec["worktree"])
+        self.assertEqual(call[call.index("-c") + 1], root)
+        self.assertTrue(os.path.isdir(os.path.join(rec["worktree"], ".git")))
+        self.assertIn("--append-system-prompt", call[-1])
+        self.assertIn("explicit cd", call[-1])
+        self.assertIn("--add-dir %s %s " % (self.state, rec["worktree"]), call[-1])
+        with open(path) as f:
+            self.assertEqual(json.load(f), data)
+        data["projects"][os.path.realpath(root)] = {"hasTrustDialogAccepted": True}
+        with open(path, "w") as f:
+            json.dump(data, f)
+        r = self.spawn("builder", "--issue", "8")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertNotIn("claude copy trust", r.stdout)
+        self.assertEqual(self.windows()[-1][self.windows()[-1].index("-c") + 1], root)
+        self.pr(9, "codex gpt-6.1-sol medium")
+        r = self.spawn("reviewer", "--pr", "9")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        review = self.record("vera-9-r1-review")["worktree"]
+        self.assertTrue(os.path.isfile(os.path.join(review, ".git")))
+        self.assertEqual(self.windows()[-1][self.windows()[-1].index("-c") + 1], review)
+
     def test_solo_refused_before_claim_queue_or_window(self):
         self.env["FAKE_SOLO_ISSUE"] = "7"
         for args in (("--issue", "7"), ("--issue", "7", "--pr", "12", "--pass", "fix")):

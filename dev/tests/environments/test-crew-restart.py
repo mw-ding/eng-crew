@@ -263,6 +263,10 @@ class Restart(LivenessBase):
         r = self.crew("restart", "ben-7", "--project", self.project, "--timeout", "1")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn("keeping unlanded work", r.stdout)
+        call = self.windows()[-1]
+        self.assertEqual(call[call.index("-c") + 1], os.path.dirname(wt))
+        self.assertIn("explicit cd", call[-1])
+        self.assertIn("warning before restart: claude copy trust", r.stdout)
         self.assertIn("exec claude --model sonnet --effort medium", self.windows()[-1][-1])
         after = self.record("ben-7")
         self.assertEqual((after["worktree"], after["claim"], after["engine"], after["harness"], after["exhausted"]),

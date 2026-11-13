@@ -6,6 +6,7 @@ restarts with the same run ID, log issue, input SHA and window. A run probing qu
 usage-limit line, #631) is stopped and relaunched in place, in its own worktree, claim and inbox at its head, on the next
 eligible engine in its role's order, skipping every engine it has exhausted; the brief lists the inbox IDs it never
 acknowledged. A reviewer whose PR head moved, or a run with no eligible engine left, refuses and stays for escalation.
+Claude Code run copies keep the stable-parent startup and warn about missing trust before opening a window (#1792).
 
 On the coordinator's window (window 0) it relaunches the live coordinator in place instead (#1544): the current
 sandbox_env and CREW_* environment, resuming --resume ID (else launch.resume). It refuses while the land lock is held,
@@ -128,6 +129,11 @@ def quota_relaunch(values, session, state, args, rec, exhausted):
 def relaunch(values, session, state, name, rec, items, timeout, project, restarts=1):
     """Restart a run whose worktree holds unlanded work: new window, same worktree, brief and claim."""
     brief = os.path.join(state, "runs", name + ".brief.md")
+    adapter = harnesses.ADAPTERS[rec["engine"]]
+    if rec["role"] == "builder" and hasattr(adapter, "builder_checks"):
+        for status, check, detail, hint in adapter.builder_checks(values):
+            if status != "ok":
+                print("crew: warning before restart: %s: %s; %s" % (check, detail, hint))
     for index, n in tmux.list_windows(session):
         if n == name:
             tmux.kill_window(session, index)
@@ -152,7 +158,8 @@ def relaunch(values, session, state, name, rec, items, timeout, project, restart
     env = window_env(values, state, rec["role"], name, brief, project)
     if confined:
         env["TMPDIR"] = confine.tmpdir(wt)
-    tmux.new_window(session, index, name, wt, env, LAUNCH % (shlex.join(argv), POINTER))
+    cwd = getattr(adapter, "role_cwd", lambda wt: wt)(wt)
+    tmux.new_window(session, index, name, cwd, env, LAUNCH % (shlex.join(argv), POINTER))
     try:
         show_icon(values, session, index, rec["role"])
         wait_harness(session, index, name, rec["harness"], timeout)

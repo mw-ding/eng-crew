@@ -21,6 +21,7 @@ Every worktree is claimed host-wide before it is added (copy-claim.py, docs/runt
 A builder's worktree is its own clone borrowing the checkout's objects, not a linked worktree; a supported launch is
 confined to it by the harness's OS write sandbox, and confinement=enforce refuses an unsupported one before any claim
 (_confine.py, docs/runtimes/tmux.md#confinement, #1252).
+Claude Code copies launch from the stable run-copy parent; missing trust warns before the claim (#1792).
 
 Usage: mdstack spawn ROLE --issue N | --pr N | --sweep | --docs-pass | --reflection WINDOW [--log N] [--input-sha SHA]
        [--run-id ID] | --train N [--pass PASS] [--round K] [--tier T] [--host H --reason TEXT] --project FILE [--org-profile FILE]
@@ -305,6 +306,11 @@ def run(args):
         return 1
     remote = placed["host"] if placed["host"] != primary else None
     engine, model, effort = placed["engine"], placed["model"], values["engines.%s.effort" % args.tier]
+    adapter = harnesses.ADAPTERS[engine]
+    if role == "builder" and not remote and hasattr(adapter, "builder_checks"):
+        for status, check, detail, hint in adapter.builder_checks(values):
+            if status != "ok":
+                print("crew: warning before spawn: %s: %s; %s" % (check, detail, hint))
     try:  # before any claim or window (#1252)
         confined, unconfined = confine.decide(values, role, harnesses.ADAPTERS[engine],
                                               values["runtime.options.permission_mode"], remote, state, repo)
@@ -421,7 +427,8 @@ def run(args):
             env = window_env(values, state, role, name, brief, args.project)
             if confined:
                 env["TMPDIR"] = confine.tmpdir(wt)
-            tmux.new_window(session, free[0], name, wt, env, LAUNCH % (shlex.join(argv), prompt))
+            cwd = getattr(adapter, "role_cwd", lambda wt: wt)(wt)
+            tmux.new_window(session, free[0], name, cwd, env, LAUNCH % (shlex.join(argv), prompt))
             show_icon(values, session, free[0], role)
             wait_harness(session, free[0], name, ENGINE_CMD[engine], args.timeout)
     except (RuntimeError, OSError) as e:
