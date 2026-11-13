@@ -1936,7 +1936,7 @@ gets one PR, with focused commits. Runtime module paths below are under
 ranges, not limits; member work is default/medium except B2, deep/high.
 
 | ID | Issue | Scope | Size (Python; docs/templates) | Depends on | Status | Version |
-|---|---|---|---|---|---|---|---|
+|---|---|---|---|---|---|---|
 | S0 | #1819 | Opening spec and applied choices | 100–170 docs | none | done | none |
 | B1 | #237 | Additive issue brief and checked marker acks | 180–280; 50–90 | #1819, #1566, #1746 | open | minor |
 | B2 | #238 | Review, verdict and recheck commands | 250–400; 60–100 | #1819, #1566, #1746, B1 posting contract | open | minor |
