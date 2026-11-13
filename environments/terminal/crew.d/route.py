@@ -26,7 +26,9 @@ the inbox check and reap share the queue lock with send's inbox append.
 With the synthesizer lead installed (#1569), `review-approved`, `selfgate-passed`, `ci-passed` with a passing verdict
 or self-gate at head, and approved merge-ups become durable `work` events in its land queue, never coordinator
 wakes (a merge-up head's `ci-passed` counts its approved previous head, and a head-pinned coordinator `merge-ok`
-steer counts as the §7 approval override); a superseded one is dropped, and an
+steer counts as the §7 approval override); a poll `merge-ok-recorded` whose authenticated merge-ok is still at
+the live head is forwarded the same way, whatever CI shows, as a reason to re-read gates (#1835); a closed PR or a
+merge-ok no longer at head consumes it. A superseded one is dropped, and an
 unapproved `ci-passed` is consumed unless held CI refs for that PR
 (`ci/<n>-*.json`) still wait on it. Before forwarding, a passing verdict at head from this runtime's reviewer sets
 `crew:approved` and drops a superseded `crew:changes`/`crew:in-review`, read back (#1464).
@@ -66,7 +68,7 @@ TRAIN_CLEAN = re.compile(r"train-report n=\d+ members=\S+ landed=\S+ dropped=non
 # A block's typed items: optional handoff IDs or window names, its #refs, then an optional head and round (#1476).
 BLOCKED = re.compile(r"blocked: (?:(?:\d{8}T\d{6}Z-[0-9a-f]+|[a-z]+-\d+\S*) )*((?:#\d+ ?)+)"
                      r"(?:([0-9a-f]{40})(?: |$))?(?:r(\d+)\b)?")
-LAND_EVENTS = ("review-approved", "selfgate-passed", "ci-passed")
+LAND_EVENTS = ("review-approved", "selfgate-passed", "ci-passed", "merge-ok-recorded")
 # A release cut's CHANGELOG.md patch adds a version section heading (scripts/changelog-cut.py).
 RELEASE_HEADING = re.compile(r"^\+## \[\d+\.\d+\.\d+\]", re.M)
 REVIEW_DONE = re.compile(r"done: #(\d+) ([0-9a-f]{40}) (review|validate|recheck) (pass|changes|escalate)(?:\s.*)?")
@@ -609,6 +611,8 @@ def route_record(args, values, state, w):
         return True
     if (event == "ci-failed" or landing) and pr["state"] == "OPEN" and pr["headRefOid"] != head:
         return True  # superseded head: its new head gets its own CI (#578) and its own land event (#1569)
+    if landing and event == "merge-ok-recorded" and pr["state"] != "OPEN":
+        return True  # a merged or closed PR needs no land: its close-out has its own event (#1835)
     labels = {label["name"] for label in pr["labels"]}
     if pr["state"] != "OPEN" or pr["headRefOid"] != head or pr["isDraft"] or labels & {"crew:escalated", "crew:hold"}:
         if terminal:  # a finished reviewer frees its slot, keeping its verdict files, even when its PR moved on (#719)
@@ -623,6 +627,8 @@ def route_record(args, values, state, w):
                 not approved_merge_up(own, repo, values["repo.default_branch"]) and \
                 not commands()["poll"].express_lane(args, values, pr):  # poll gates an express ci-passed already
             return not glob.glob(os.path.join(state, "ci", "%d-*.json" % n))  # held CI refs: the coordinator drops them
+        if event == "merge-ok-recorded" and not commands()["poll"].merge_ok_identity(pr, values):
+            return True  # no authenticated merge-ok at the live head any more: nothing to re-check (#1835)
         reconcile_approval(values, repo, pr, own)
         return lead.event(args, "synthesizer", w) == 0
     delta = merge_up_delta(pr, head, values["identities.builder.name"])
