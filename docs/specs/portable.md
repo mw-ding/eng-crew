@@ -2201,7 +2201,7 @@ member ACs, sizes and test selection come from
 and the [member AC refresh](https://github.com/mw-ding/mdstack/issues/1846#issuecomment-6865588755).
 Runtime module paths below are under `environments/terminal/crew.d/`;
 `path:line` citations refer to base `f8d3d5a62cc08b1945b394c55a3743e90c310644`.
-S0 is recorded as done for this opening slice (PR #TBD), effective on merge.
+S0 is recorded as done for this opening slice (PR #1849), effective on merge.
 No member dispatches before #1847 merges. Order: B1 → B2 → B3 → S1; L1 runs
 after S0 beside the repairs. B1–B3 share route/wait consumers, so the order
 reduces integration churn; it is not a semantic dependency except B2's
@@ -2210,7 +2210,7 @@ commits. Estimates exclude tests and are planning ranges, not limits.
 
 | ID | Issue | Scope | Size (Python; docs/registry) | Depends on | Status | Version |
 |---|---|---|---|---|---|---|
-| S0 | #1847 | Opening scope, ACs, D1–D4, allocation, flags and test matrix (PR #TBD) | 80–130 docs | none | done | none |
+| S0 | #1847 | Opening scope, ACs, D1–D4, allocation, flags and test matrix (PR #1849) | 80–130 docs | none | done | none |
 | B1 | #1836 | Reproduced held-id wait repair | 40–100; 10–25 | #1847 | open | patch |
 | B2 | #1835 | Signed permission-change wake | 70–130; 15–30 | #1847; #1836 for integrated wait/resume acceptance | open | patch |
 | B3 | #1830 | Item-tier resolution and launch preservation | 100–180; 25–50 | #1847; integrate against #1836/#1835 | open | minor |
