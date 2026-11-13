@@ -186,6 +186,15 @@ spec and both build issues are closed; M52 closes after status sync #1799
 lands. No release containing M52 has shipped: v7.11.0 predates these changes,
 and source completion does not imply a live installation.
 
+M53 brief headroom and grant lifecycle is built in source: bounded grant
+references (PR #1826), builder/researcher entry headroom (PR #1825), the
+24-card learning batch (PR #1824) and owner-confirmed grant pruning
+(PR #1833, after the owner's proofs A and B). All member issues are closed;
+M53 closes after status sync #1815 lands
+([M53 outcome](docs/specs/portable.md#m53-outcome-and-lessons)). v7.12.0
+ships all of these except pruning, which landed after that cut and is in no
+release yet.
+
 M54 coordinator helpers are built in source: issue briefs and checked acks
 (PR #1834), review/verdict/recheck commands (PR #1838), owned merge-ups
 (PR #1837), and coordinator scratch cleanup (PR #1831). All four build
