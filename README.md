@@ -179,6 +179,13 @@ pools remain design only and T1–T4 remain unadmitted
 These landed after the 7.11.0 cut; they do not imply a released personnel
 bundle or live host adoption. M51 closes after status sync #1790 lands.
 
+M52 completion routing is built in source: the policy-only idle exception
+(PR #1804) and signed posted-round verdict wakes (PR #1803) have landed
+([M52 status](docs/specs/portable.md#m52-completion-routing)). Its opening
+spec and both build issues are closed; M52 closes after status sync #1799
+lands. No release containing M52 has shipped: v7.11.0 predates these changes,
+and source completion does not imply a live installation.
+
 Content is built by the crew itself through the normal PR pipeline; every
 change is recorded in `CHANGELOG.md`.
 

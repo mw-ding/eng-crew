@@ -1507,24 +1507,50 @@ milestone.
 
 ### M52: completion routing
 
-Opening spec slice #1798 and closing status-sync slice #1799 are the
-bookends for [#1794](https://github.com/mw-ding/mdstack/issues/1794).
+Opening spec slice #1798 (PR #1800) and closing status-sync slice #1799
+(PR #1811) are the bookends for [#1794](https://github.com/mw-ding/mdstack/issues/1794).
 Scope and ACs come from
 [Riley's readiness pass](https://github.com/mw-ding/mdstack/issues/1794#issuecomment-6846602283),
 §2–§3, with the
 [coordinator's applied choices](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6846633558).
-No build dispatches before #1798 merges. B1 and B2 then build independently
-in parallel; prioritize B1 if only one slot is available. #1799 follows both
-merged builds and their completion evidence, sets their rows to `done` with
-PR/evidence refs and states whether a release actually shipped. Completion
-never implies installation. One issue → one PR; split larger changes into
-small focused commits. Sizes are estimated non-test Python lines, then test
-lines; both builds use the default tier, medium effort.
+The opening spec merged before the independent B1 and B2 builds. Both fixes
+are now built in source: #1772 landed in PR #1804 and #1777 in PR #1803.
+Those issues and #1798 are closed in the tracker; no additional M52 build
+items were admitted. M52 closes after #1799 lands. Completion never implies
+installation. One issue → one PR; larger changes used focused commits.
+Sizes below are the planned non-test Python lines, then test lines; both
+builds used the default tier, medium effort.
 
-| ID | Issue | Scope | Size | Depends on | Status |
-|---|---|---|---|---|---|
-| B1 | #1772 | Informational inbox/ack idle exception; work, upgrade and unlanded safeguards | 40–90; 120–200 | #1798 | open |
-| B2 | #1777 | Same-head posted-round verdict wake identity and duplicate suppression | 60–110; 160–240 | #1798 | open |
+| ID | Issue | Scope | Size | Depends on | Status | PR / evidence |
+|---|---|---|---|---|---|---|
+| D | #1798 | Opening spec and applied choices | docs | none | done | [PR #1800](https://github.com/mw-ding/mdstack/pull/1800) |
+| B1 | #1772 | Informational inbox/ack idle exception; work, upgrade and unlanded safeguards | 40–90; 120–200 | #1798 | done | [PR #1804](https://github.com/mw-ding/mdstack/pull/1804), [review / validation](https://github.com/mw-ding/mdstack/pull/1804#pullrequestreview-5888121459) |
+| B2 | #1777 | Same-head posted-round verdict wake identity and duplicate suppression | 60–110; 160–240 | #1798 | done | [PR #1803](https://github.com/mw-ding/mdstack/pull/1803), [final review / validation](https://github.com/mw-ding/mdstack/pull/1803#pullrequestreview-5888493326) |
+
+Settled questions and lessons:
+
+- **Idle eligibility:** only `owner-policy` and its identifiable ack are
+  informational for idle detection. Actionable or unknown messages, active
+  tools and unlanded work still block reclaim; upgrade still requires delivery
+  acknowledgement. Completion, delivery and reclaim eligibility need separate
+  checks: ignoring policy chatter for idle detection must not bypass upgrade.
+- **Verdict identity:** wake deduplication uses
+  `(head, reset_epoch, posted_round, verdict)`; review ID is provenance and
+  next-dispatch round stays separate. Duplicate posts do not create new wakes,
+  and legacy state seeds without replaying an unchanged verdict. Latest-snapshot
+  polling does not recover intermediate verdict history or promise delivery
+  exactly once across crashes.
+- **Dependent consumers:** B2's first CI run exposed legacy utility callers
+  that need roundless/latest-post verdict selection. The final fix preserves
+  that no-profile mode while configured production poll keeps signed posted
+  rounds ([CI fix and validation](https://github.com/mw-ding/mdstack/pull/1803#pullrequestreview-5888493326)).
+  Targeted poll/route checks supported the build; full CI caught the train and
+  content dependents and stayed required before land.
+
+**Release / installation:** as of 2026-11-13, the latest published release is
+[v7.11.0](https://github.com/mw-ding/mdstack/releases/tag/v7.11.0), cut before
+M52's bookends and fixes landed. No release containing M52 has shipped;
+these source changes establish no live installation or host adoption.
 
 **Target environment: N/A** — local runtime logic, no new platform or device
 dependency. **Owner prerequisites: none** under Codex-first routing, tmux,
