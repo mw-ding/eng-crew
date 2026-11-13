@@ -458,6 +458,110 @@ class ReviewerPool(route_tests.Route):
         self.assertEqual(len(self.messages()), 1)
         self.assertEqual(self.names(), ["ash", "vera-lead"])
 
+    def park(self, label="crew:escalated"):
+        """#1836's production path: a held #12's durable review-changes status event and a direct review, both
+        dispatched by reviewer-pool while the label is live; their inbox ids."""
+        self.live["labels"] = [{"name": label}]
+        self.save()
+        wake = dict(self.status("vera-12-r1-review", "review changes escalated"), round=1)
+        with mock.patch.dict(os.environ, self.env):
+            self.assertEqual(self.lead.event(self.args, "reviewer", wake), 0)
+        self.handoff("review", ["#12", self.sha, "1"])
+        ids = [m["id"] for m in self.messages()]
+        self.pool()
+        return ids
+
+    def waits(self):
+        with open(os.path.join(self.state, "status", "vera-lead.status")) as f:
+            return [line.strip() for line in f if line.startswith("waiting:")]
+
+    def renudges(self, start, offsets, changes=(), seen=None):
+        """Watcher scans and lead retries (backstop, slot release, coordinator) at each offset after `start`, applying
+        `changes` (offset -> callable) first; the offsets whose scan or retry typed an inbox id into vera-lead."""
+        self.seen, typed = seen or {"offsets": {}, "keys": {}}, []
+        changes = dict(changes)
+        for t in offsets:
+            if t in changes:
+                changes[t]()
+            before = len(self.calls())
+            with mock.patch.dict(os.environ, self.env):
+                woke = any(w["reason"] == "lead-backstop" and w.get("window") == "vera-lead"
+                           for w in self.mod.scan(self.state, "crew-acme-widgets", start + t, 900, self.seen))
+                for recheck in (True, False):
+                    self.lead.retry_pending(self.args, "vera-lead", recheck=recheck)
+                self.lead.retry_pending(self.args)  # the coordinator backstop walks every lead
+            if woke or any(c[0] == "send-keys" and any(a.startswith("inbox: ") for a in c) for c in self.calls()[before:]):
+                typed.append(t)
+        return typed
+
+    def test_held_ref_parks_with_a_dispatcher_wait_through_unchanged_hold(self):  # #1836
+        ids = self.park()
+        self.assertEqual(self.waits(), ["waiting: #12 owner id=%s" % i for i in ids])  # after each id's ack
+        self.assertEqual(len(self.messages()), 2)  # parked, not done
+        sample = dict(state="OPEN", head=self.sha, ci="pending", verdict=None, mergeable="MERGEABLE", hold=False,
+                      ready=False)
+        poll = {"observed": {"12": sample}, "held": [], "answers": {}}  # poll has not seen the escalation yet
+
+        def update(**fields):
+            def apply():
+                sample.update(fields.pop("sample", {}))
+                poll.update(fields)
+                self.put("poll-state.json", json.dumps(poll))
+            return apply
+
+        update()()
+        start, quarter = 2_000_000_000, range(0, 961, 30)
+        changes = {60: update(sample=dict(hold=True, verdict="changes"), held=["#12"], answers={"#12": 3}),
+                   300: self.pool, 330: self.pool,  # dispatcher re-runs: a fresh ack after the wait, re-parked
+                   870: update(sample=dict(mergeable="UNKNOWN")), 930: update(sample=dict(mergeable="MERGEABLE"))}
+        self.assertEqual(self.renudges(start, quarter, changes), [])  # the reported 15 minutes: zero re-nudges
+        restarted = json.loads(json.dumps(self.seen))
+        with mock.patch.dict(os.environ, self.env):
+            self.mod.tmux.kill_window("crew-acme-widgets", 3)
+            self.assertEqual(self.lead.ensure(self.args, "reviewer"), 0)  # lead restart keeps inbox and waits
+        self.assertEqual(self.renudges(start + 990, range(0, 1801, 60), seen=restarted), [])  # and the watcher's
+        self.assertEqual(len(self.messages()), 2)
+        with open(os.path.join(self.state, "inbox", "vera-lead.jsonl"), "a") as f:  # a genuinely new handoff
+            f.write(json.dumps(dict(id="fresh", kind="review", refs=["#12", self.sha, "2"])) + "\n")
+        before = len(self.calls())
+        self.assertEqual(self.renudges(start + 2850, [0], seen=self.seen), [0])
+        self.assertEqual({a for c in self.calls()[before:] if c[0] == "send-keys" for a in c if a.startswith("inbox: ")},
+                         {"inbox: fresh"})
+        if "--transcript" in sys.argv:
+            print("held #12: 2 ids parked by reviewer-pool; 15 min of hold/verdict/mergeable churn, 2 dispatcher "
+                  "re-runs, lead and watcher restart: 0 re-nudges")
+
+    def test_parked_ref_wakes_on_listed_changes_and_reparks(self):  # #1836
+        ids = self.park()
+        sample = dict(state="OPEN", head=self.sha, ci="pending", verdict="changes", mergeable="MERGEABLE", hold=True,
+                      ready=False)
+        poll = {"observed": {"12": sample}, "held": ["#12"], "answers": {"#12": 3}}
+        self.put("poll-state.json", json.dumps(poll))
+        start = 2_000_000_000
+        self.assertEqual(self.renudges(start, [0]), [])
+        for t, change in enumerate((lambda: sample.update(ci="passed"),  # CI change
+                                    lambda: poll["answers"].update({"#12": 4}),  # owner answer
+                                    lambda: self.put("asks/12.json", "{}"),  # an owner ask opened
+                                    lambda: poll.update(held=[], answers={})), 1):  # hold released
+            with self.subTest(change=t):
+                change()
+                self.put("poll-state.json", json.dumps(poll))
+                self.assertEqual(self.renudges(start + 60 * t, [0], seen=self.seen), [0])
+                self.pool()  # re-reads live eligibility: still escalated on GitHub, parked again
+                self.assertEqual(self.waits()[-2:], ["waiting: #12 owner id=%s" % i for i in ids])
+                self.assertEqual(self.renudges(start + 60 * t + 30, [0], seen=self.seen), [])
+        self.live["labels"] = [{"name": "crew:hold"}]
+        self.save()
+        self.pool()
+        self.assertEqual(self.waits()[-2:], ["waiting: #12 hold id=%s" % i for i in ids])
+        self.live["headRefOid"] = "f" * 40  # moved work retires; nothing starts and no hold is cleared
+        self.save()
+        self.pool()
+        self.assertEqual((self.messages(), self.names()), ([], ["ash", "vera-lead"]))
+        if "--transcript" in sys.argv:
+            print("parked #12 wakes once each on CI, owner answer, ask and hold release, then re-parks; a moved head "
+                  "retires both ids")
+
     def test_same_head_rereview_ignores_old_section(self):
         self.put("verdicts/pr12-%s-r1-review.md" % self.sha[:7],
                  "<!-- crew:v1 role=reviewer-validator pass=review pr=12 sha=%s round=1 verdict=pass -->" % self.sha)
