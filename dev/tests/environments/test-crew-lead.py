@@ -430,6 +430,42 @@ class BuilderLead(LivenessBase):
         if TRANSCRIPT:
             print("owner and CI waits: 0 wakes in 1 h; CI success wakes at once; re-reported waits are quiet")
 
+    def test_incident_acks_and_hold_churn_never_rearm_a_wait(self):  # #1836: vera-lead's #1833 status shape
+        self.assertEqual(self.ensure(), 0)
+        self.put("inbox/ben-lead.jsonl", json.dumps(dict(id="h", kind="work", refs=["/e.json"])) + "\n")
+        sample = dict(state="OPEN", head="a" * 40, ci="pending", verdict=None, mergeable="MERGEABLE", hold=False,
+                      ready=False)
+        poll = {"observed": {"19": sample}, "held": [], "answers": {}}
+
+        def update(status=None, **fields):
+            def apply():
+                sample.update(fields)
+                held = sample["hold"]
+                poll.update(held=["#19"] if held else [], answers={"#19": 3} if held else {})
+                self.put("poll-state.json", json.dumps(poll))
+                if status:
+                    self.put("status/ben-lead.status", status)
+            return apply
+
+        waits = "ack: h\nwaiting: #19 owner id=h\n"
+        update(waits)()
+        changes = {60: update(hold=True, verdict="changes"),  # poll catches up on the escalation the lead saw live
+                   120: update(waits + "ack: h\n"), 180: update(waits + "ack: h\nack: h\n"),  # dispatcher re-acks
+                   870: update(mergeable="UNKNOWN"), 930: update(mergeable="MERGEABLE")}  # GitHub recomputes
+        now, woke = 2_000_000_000, []
+        self.seen = {"offsets": {}, "keys": {}}
+        for t in range(0, 961, 30):
+            if t in changes:
+                changes[t]()
+            if any(w["reason"] == "lead-backstop" for w in self.scan(now + t, self.seen)):
+                woke.append(t)
+        self.assertEqual(woke, [])
+        self.assertEqual(self.backstop(waits + "ack: h\n"), ([], []))
+        update(hold=False)()  # the hold released after it was absorbed: still wakes
+        self.assertEqual(self.backstop(waits + "ack: h\n"), (["h"], []))
+        if TRANSCRIPT:
+            print("owner wait: 15 min of re-acks, hold catch-up and mergeable churn: 0 wakes; hold release wakes h")
+
     def drive(self, now, admit=()):
         """One watcher scan at `now`, each lead-backstop wake routed in-process with `admit` as the scheduler walk;
         the inbox ids typed into the lead."""

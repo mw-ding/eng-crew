@@ -174,16 +174,24 @@ def deferred_ids(state, name):
 
 
 def fingerprint(state, ref):
-    """Token-free fresh state for a waited ref: mdstack poll's observed PR, its hold, its owner-answer count and an
-    open owner ask."""
+    """Token-free fresh state for a waited ref: mdstack poll's observed PR state, head and CI, its hold, its
+    owner-answer count and an open owner ask. Mergeability and verdict churn are not wait state (#1836)."""
     n = ref.lstrip("#")
     try:
         with open(os.path.join(state, "poll-state.json")) as f:
             poll = json.load(f)
     except (OSError, ValueError):
         poll = {}
-    return [poll.get("observed", {}).get(n), "#" + n in poll.get("held", []), poll.get("answers", {}).get("#" + n),
-            os.path.exists(os.path.join(state, "asks", n + ".json"))]
+    pr = poll.get("observed", {}).get(n)
+    return [None if pr is None else [pr.get(k) for k in ("state", "head", "ci")], "#" + n in poll.get("held", []),
+            poll.get("answers", {}).get("#" + n), os.path.exists(os.path.join(state, "asks", n + ".json"))]
+
+
+def frees(seen, now):
+    """Whether a waited ref's fresh state changed in a way that can free its id: any change except a hold appearing
+    (with its first owner-answer count), which only confirms the hold the dispatcher parked on (#1836)."""
+    return seen != now and not (now[1] and not seen[1] and [seen[0], seen[3]] == [now[0], now[3]] and
+                                seen[2] in (None, now[2]))
 
 
 def waits(state, name=None):
@@ -220,7 +228,7 @@ def actionable(state, name):
         now = fingerprint(state, ref)
         rec = old.get(m["id"])
         rec = rec if rec and rec["line"] == line else {"line": line, "seen": now, "woke": False}
-        rec = dict(rec, woke=rec["woke"] or rec["seen"] != now)  # a copy, so a change is saved
+        rec = dict(rec, seen=now, woke=rec["woke"] or frees(rec["seen"], now))  # a copy; an absorbed hold's release wakes
         mine[m["id"]] = rec
         if not rec["woke"]:
             waiting.add(m["id"])
