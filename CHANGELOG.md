@@ -7,6 +7,35 @@ All notable changes to this repo are recorded here, in the style of
 
 ## [Unreleased]
 
+## [7.12.0] - 2026-11-13
+
+### Added
+
+- Release 7.12.0: M51, personnel delivery and team/project design, then M52, completion routing. M51 exports pinned personnel content with explicit host bindings and integrity checks (#1180), and specifies team/project composition, shared admission and repo-qualified routing without shipping shared pools (#1318). M52 lets finished builders expire after informational messages and their acknowledgments (#1772), and wakes builders or synthesizers once per new signed verdict round at the same head (#1777). Fixes: Claude Code builders use a stable run-copy trust root with doctor/up/spawn/restart guidance (#1792); personnel test snapshots exclude bytecode caches (#1807) and tolerate the absent changes directory after a cut (#1821), with a pinned checkout-version fixture (#1828). The cut also includes M53 brief headroom (#1566), bounded standing-grant references (#1746), repaired learning cards (#1793) and its opening specification (#1814), plus the M54 opening specification (#1819). No new breaking changes. Upgrade: from 7.11.0, `mdstack upgrade --latest --yes` applies as before; follow the one-time run-copy trust step reported by `mdstack doctor` before launching Claude Code builders (#1792). The owner upgrades the live install and restores Opus-first builders after publication. (issue #1817, PR #TBD, 2026-11-13) Box skill copy: none.
+- Capture 24 repaired learning cards in one M53 findings batch, retaining 27 incident occurrences, regression and procedure references, uncertainty and source-card dispositions. (issue #1793, PR #1824, 2026-11-13) Box skill copy: none.
+- Specify M54's coordinator helper surfaces, applied posting and merge-up contracts, member dependencies and acceptance criteria, brief budgets, and affected test matrix before member builds. (issue #1819, PR #1822, 2026-11-13) Box skill copy: none.
+- Specify M53's brief headroom and grant lifecycle slices, applied choices, member acceptance criteria, owner-shell prerequisites and version forecasts before build dispatch. (issue #1814, PR #1816, 2026-11-13) Box skill copy: none.
+- Export pinned personnel content with explicit host bindings, integrity and setting provenance, refusal of authority overrides, and fake-host import proof without terminal machinery. Document the personnel, producer and host execution boundary. (issue #1180, PR #1805, 2026-11-13) Box skill copy: none.
+- Specify M52 completion routing before its builds: the idle-only informational message exception and same-head verdict wake identity, with acceptance criteria, affected tests, build order and patch forecast. (issue #1798, PR #1800, 2026-11-12) Box skill copy: none.
+
+### Changed
+
+- Move tmux builder fix and researcher triage procedures into mandatory rendered companions, preserving their instructions and reserving 2 KiB of baseline entry-brief headroom. (issue #1566, PR #1825, 2026-11-13) Box skill copy: none.
+- Record M52 completion routing as built in source, with landed PRs and review/validation evidence, its settled idle and verdict identity questions, and lessons from dependent consumers. Update README status and distinguish source completion from a published release or live installation. (issue #1799, PR #1811, 2026-11-13) Box skill copy: none.
+- Sync M51 spec and README status with the landed opening spec, routing design and personnel delivery PRs; record settled questions and lessons while keeping shared-pool routing design only and T1–T4 unadmitted. (issue #1790, PR #1806, 2026-11-13) Box skill copy: none.
+- Specify the team/project boundary, pinned personnel import and thin host binding, shared admission and repo-qualified routing, and per-repo landing isolation. The M51 design extends existing team files without shipping shared pools; derived implementation units require separate plan records. (issue #1318, PR #1802, 2026-11-12) Box skill copy: none.
+- The portable spec opens M51 (personnel boundary and team routing design, #1779): two planned rows, #1318 (design and approved work breakdown) and #1180 (personnel delivery rows A–D, after #1318's approved contract), with ACs, paths, sizes and dependencies. It records the coordinator's applied choices (narrowed #1180 rows, closed `[team]`/`[repos.*]` composition, repo-qualified admission and per-repo land, T1–T4 not admitted) and classifies #1318 as patch and #1180 as minor, flagging its role-import contract. The team spec gains a planned-M51 header line and two open questions. (issue #1789, PR #1797, 2026-11-13) Box skill copy: none.
+
+### Fixed
+
+- Pin the personnel bundle test's checkout CHANGELOG independently of the repository release, retaining an exact version assertion across release cuts. (issue #1828, PR #1829, 2026-11-13) Box skill copy: none.
+- Render standing merge grants as bounded live-profile lookup instructions so accumulated grant history cannot overflow role brief budgets; preserve source verification and per-PR permission requirements. (issue #1746, PR #1826, 2026-11-13) Box skill copy: none.
+- Allow the personnel bundle test to snapshot a post-cut checkout without a changes directory, while preserving failure for missing required sources. (issue #1821, PR #1823, 2026-11-13) Box skill copy: none.
+- Exclude Python bytecode caches from personnel test source snapshots so parallel bytecode writes cannot race the copy and fail CI. (issue #1807, PR #1808, 2026-11-13) Box skill copy: none.
+- Finished builders can expire after informational owner-policy messages or their trailing acknowledgments. Pending work and unidentified acknowledgments still block idle detection, while upgrade delivery barriers and reclaim safeguards remain intact. (issue #1772, PR #1804, 2026-11-12) Box skill copy: none.
+- Wake the builder or synthesizer once for a new signed verdict round at an unchanged head, using the posted round and coordinator reset epoch independently of the next review round. Duplicate verdict posts retain their canonical review provenance without another wake, and existing poll state seeds the new identity without replaying an unchanged verdict. (issue #1777, PR #1803, 2026-11-12) Box skill copy: none.
+- Claude Code builders launch from a stable run-copy trust root while keeping their assigned copy and independent Git metadata. Doctor reports the one-time owner trust step, and up, spawn and restart warn before launch when trust is missing. (issue #1792, PR #1801, 2026-11-12) Box skill copy: none.
+
 ## [7.11.0] - 2026-11-12
 
 ### Added
