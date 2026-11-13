@@ -1347,6 +1347,153 @@ cut land.
 
 Release: all of M50 ships in 7.11.0, a minor by the owner's choice.
 
+### M51: personnel boundary and team routing design
+
+Opened by the spec slice #1789, part of
+[#1779](https://github.com/mw-ding/mdstack/issues/1779). Scope comes from
+[Riley's readiness pass](https://github.com/mw-ding/mdstack/issues/1779#issuecomment-6844208107)
+§2–§5: two members, one PR per issue, split into logical commits. M51 was
+admitted after M49 and M50 closed and 7.11.0 was cut
+([decision](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6846260224)).
+No item below dispatches before this slice merges. Every row is planned:
+its issue is `open`. The order is a dependency: #1180 builds on #1318's
+approved import and binding contract. Sizes are estimated changed lines,
+excluding tests. The closing status-sync slice is #1790.
+
+| ID | Issue | Scope | Size | Depends on | Status |
+|---|---|---|---|---|---|
+| B1 | #1318 | Team/project boundary, profile and role import, repo-qualified admission and per-repo land: design and approved work breakdown only | S–M, 220–350 prose | #1789 | open |
+| B2 | #1180 | Personnel delivery, remainder rows A–D in one PR: content bundle, boundary map, consumer binding, pinned role import | M, 250–450 implementation + 380–620 prose | #1789, #1318's approved contract | open |
+
+ACs and paths per row (the readiness pass has the full text and line
+citations):
+
+- **B1 (#1318), design only.** Update the team spec with the decisions
+  below (D1–D3), schema and precedence examples, authority and state
+  boundaries, failure behaviour and the derived units T1–T4. A two-repo
+  example with the same issue number, change number and head SHA shows
+  distinct identities, claims, reservations, worktrees and verdict and
+  grant lookup. It covers A held while B is eligible, an unknown repo, a
+  mismatched grant or verdict, and a mixed-repo train refusal, and it
+  separates specified tests from observed results. Single-repo
+  resolution, today's marker meaning and the existing runtime gaps are
+  preserved. The design names repo qualification of ownership, claims,
+  evidence, verdicts and land permission. The owner's decisions are
+  recorded, and an approved work breakdown is linked before any T unit
+  becomes ready. No shared-pool code ships here. Paths:
+  `docs/specs/team.md`, `docs/configuration/team-files.md`,
+  `docs/roles-registry.md`, `docs/scheduling.md`, and the relevant
+  `docs/protocol.md` contract references.
+- **B2 (#1180), rows A–D.**
+  - **A, content bundle.** From a pinned producer checkout, generate and
+    locally install a versioned personnel bundle: role descriptors,
+    canonical skills and policies, the required specs, protocol and marker
+    contracts, and role briefs composed with an explicit thin host
+    binding. Record the source version, the selected roles and binding,
+    and file hashes. The destination holds and needs no terminal
+    scheduler, leads, trains, reap or runner, wake adapters, sweepers,
+    terminal CLI or resolver. A fake host loads every selected role's
+    brief and procedure with the terminal tree absent; policy references
+    resolve and no required action token is unbound. An invalid or missing
+    binding yields no usable install, and an identical rerun is
+    idempotent. Render in the producer, install only content at the
+    consumer; no `--runtime personnel` flag is invented.
+  - **B, boundary map.** A file and path map separating content, producer
+    dependencies and host execution: `roles/eng/*.toml` and `roles/seats/`
+    as descriptors, `templates/policy/` as canonical skill content, the
+    specs, protocol, flavors, verification and `actions/*.md` as governing
+    contracts, `environments/terminal/` as owned machinery, `harnesses/`
+    and `connectors/` as host-selected adapters, and the
+    resolver/renderer dependency named. Inert terminal metadata in an
+    exported descriptor is binding metadata, not execution or authority.
+    No broad module moves.
+  - **C, consumer binding.** Name Grok Bot and a generic host as
+    consumers. Show how a host loads the content and supplies wake and
+    delivery, run identity, claims and status, generic actions, connector
+    access and head-bound land enforcement, with a fake-host import
+    example and a no-terminal dependency check. Declared capability gaps
+    stay declared; importing content starts no routine and grants no gate
+    or merge permission. Live platform adoption is not an AC.
+  - **D, pinned role import.** A host selects a pinned exported role by
+    stable domain and role ID, attaches its mechanical binding, and applies
+    allowed presentation, engine and extra-skill settings with provenance.
+    Collision and missing-role handling are defined. Role class and
+    escalation, marker and pass semantics, reviewer independence and
+    synthesizer-only land are preserved; replacing them through this path
+    is refused. External role discovery and generic role inheritance stay
+    named future work.
+
+  Paths: `scripts/personnel-bundle.py` (new), a content manifest (new,
+  proposed `scripts/personnel-files.txt`), `templates/personnel/` (new),
+  `templates/policy/`, `scripts/deliverables.txt`, `docs/deliverables.md`,
+  `docs/bootstrap.md`, `docs/personnel.md` (new), `roles/README.md`,
+  `docs/specs/team.md`, `docs/roles-registry.md`,
+  `templates/policy/README.md`, `docs/runtimes/grok-bot.md`,
+  `actions/README.md`, `actions/cli.md`, `docs/packs.md`, and a
+  fake-host fixture and producer, selection and refusal tests under
+  `dev/tests/scripts/`. A needed `core/crew-render.py` edit is flagged in
+  the PR and widens its local test set.
+
+Decisions M51 settles (the coordinator applied the readiness pass's
+recommendations under the owner's
+[standing direction](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6831237295),
+recorded in
+[c6846260224](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6846260224);
+the owner reviews later, and any of them changes on the owner's word):
+
+- **D1, #1180 keeps rows A–D, narrowed** as in B2 above: content bundle,
+  boundary map, consumer binding, and pinned role import that cannot
+  replace authority fields. Superseded: repository consolidation, the
+  home move, the canonical-skill, adapter and registry rebuild, and a
+  fresh private-role inventory.
+- **D2, #1318 extends `[team]` and `[repos.*]`** rather than adding
+  `[[projects]]`. The team owns roles and seats, identities, engines,
+  capacity, base flavor, host and runtime, and shared adapter defaults; a
+  project owns its repo, checkout, default branch, tracker milestones and
+  labels, spec and doc homes, control record, rigor overrides and recorded
+  land permission. Composition is closed: `core < default < pack/org <
+  team < repo`, approved project keys only, and project rigor tightens but
+  never relaxes. Roles are pinned content plus a thin binding.
+- **D3, #1318 routing.** One team admission budget and shared pools, with
+  work envelopes qualified by project, full repo identity, item or change,
+  head, pass and round: designed, not built. Claims, evidence and inboxes
+  stay in repo state; missing, unknown or mismatched repo context is
+  refused and never falls back to the first repo. Land is per repo, with
+  per-repo serialization; a mixed-repo train or stack is refused with zero
+  mutation. A shared synthesizer is an executor, not shared permission.
+- **T1–T4 are derived units, not admitted to M51:** T1 project contexts
+  and qualified routing, T2 team admission, T3 shared leads and worker
+  lifecycle, T4 repo-bound land execution. #1318's design names them;
+  each needs its own plan record.
+
+Version classification, against the
+[Versioning](../deliverables.md#versioning) table:
+
+- **#1318 is patch.** Design and spec text, plus contract references that
+  change no rule. It adds no gate, marker field or profile key; any such
+  change belongs to a T unit and is classified in that unit's plan.
+- **#1180 is minor.** A new script, template set and deliverable entries
+  add surface and remove none. Its role-import contract restates existing
+  authority (role class, markers, reviewer independence, synthesizer-only
+  land) and must not change it. Flag: if that contract edits authority
+  text so that a §7 gate, a marker field or a role's authority is
+  satisfied differently, it is major, takes the gate-contract path and is
+  reclassified in its PR.
+
+So the release carrying M51 is expected to be a minor.
+
+Sensitive heads: none on the named paths; role-import and land-authority
+text get the content-rule `--diff` check at each head, and a match needs
+the owner's per-change reason. Owner steps: none for the design or the
+content-bundle proof; a live shared-team rollout is an operator step
+outside M51.
+
+Merge permission for M51 spec, protocol, template and gate-contract text is
+the owner's merge-ok for all M49–M51 PRs
+([decision](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6832180374)),
+recorded per PR at each head. A status-sync slice (#1790) closes the
+milestone.
+
 ### M52: completion routing
 
 Opening spec slice #1798 and closing status-sync slice #1799 are the
