@@ -132,7 +132,8 @@ def pr_snapshot(pr, required=(), values=None):
     hidden crew:v1 lines only (protocol §4). An expected check absent at head keeps green CI pending (#1536). With the
     profile values, round k counts only this runtime's reviewer and coordinator records, so poll emission and reviewer
     dispatch derive the same round (#1005). Verdict identity keeps the posted round and reset source separate from
-    dispatch round k; duplicate posts retain the first review ID as provenance (#1777)."""
+    dispatch round k; duplicate posts retain the first review ID as provenance (#1777). Utility mode preserves
+    legacy roundless and latest-post verdict selection for gate consumers."""
     head = pr["headRefOid"]
     results = [c.get("state") if c.get("__typename") == "StatusContext" else
                "INFRA" if c.get("status") == "COMPLETED" and c.get("conclusion") in CI_BAD and
@@ -153,9 +154,9 @@ def pr_snapshot(pr, required=(), values=None):
                 signed = values is None or signed_by(values, "reviewer", review)
                 changes += m.get("verdict") == "changes" and signed
                 if signed and m.get("sha") == head and m.get("verdict") in ("pass", "changes") and \
-                        re.fullmatch(r"[1-9][0-9]*", m.get("round", "")):
-                    key = (head, epoch, m["round"], m["verdict"])
-                    if key not in seen:
+                        (values is None or re.fullmatch(r"[1-9][0-9]*", m.get("round", ""))):
+                    key = (head, epoch, m.get("round"), m["verdict"])
+                    if values is None or key not in seen:
                         seen.add(key)
                         verdict, fixed = m["verdict"], False
                         identity, review_id = list(key), review.get("id")

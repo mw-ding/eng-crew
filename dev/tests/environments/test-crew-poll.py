@@ -451,6 +451,20 @@ class PollDecide(unittest.TestCase):
                 self.assertEqual(current["prs"]["171"]["verdict_identity"], state["prs"]["171"]["verdict_identity"])
         self.assertIsNone(self.verdict_poll({}, *wrong)[1]["prs"]["171"]["verdict"])
 
+    def test_utility_mode_preserves_roundless_and_latest_verdict_selection(self):
+        prs = fixture("prs-ci-passed.json")
+        first = self.verdict_post(2)
+        first["body"] = first["body"].replace(" round=2", "")
+        later = dict(first, id="R2", body=first["body"].replace("verdict=changes", "verdict=pass"))
+        for posts, expected in (([first], "changes"), ([first, later], "pass"),
+                                ([first, later, first], "changes")):
+            prs[0]["reviews"] = posts
+            self.assertEqual(self.crew.pr_snapshot(prs[0])["verdict"], expected)
+            self.assertIsNone(self.crew.pr_snapshot(prs[0], values=self.VALUES)["verdict"])
+        rounded = self.verdict_post(3, "pass", "R3")
+        prs[0]["reviews"] = [rounded, self.verdict_post(4), rounded]
+        self.assertEqual(self.crew.pr_snapshot(prs[0])["verdict"], "pass")
+
     def test_signed_reset_source_makes_reused_round_a_new_epoch(self):
         first = self.verdict_post(2)
         for mode in ("steer cmd=resume", "steer cmd=cutover", "resume", "cutover"):
