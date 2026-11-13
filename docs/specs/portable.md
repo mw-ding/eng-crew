@@ -1670,6 +1670,221 @@ Merge permission is the owner's
 recorded per PR at its actual head. It supplies permission only, never
 approval, CI, hold clearance or missing AC evidence.
 
+### M54: coordinator helper surfaces
+
+Opening spec #1819 (S0) and closing status sync #1820 (S1) bookend
+[#1796](https://github.com/mw-ding/mdstack/issues/1796). Scope, member ACs,
+size estimates and test selection come from
+[Riley's readiness pass](https://github.com/mw-ding/mdstack/issues/1796#issuecomment-6849761412),
+§2–§5, with D1–D4
+[applied by the coordinator](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6849853362)
+and the [member AC refresh](https://github.com/mw-ding/mdstack/issues/1796#issuecomment-6849862577).
+These are additive command surfaces over the existing runtime; one issue
+gets one PR, with focused commits. Runtime module paths below are under
+`environments/terminal/crew.d/`. Estimates exclude tests and are planning
+ranges, not limits; member work is default/medium except B2, deep/high.
+
+| ID | Issue | Scope | Size (Python; docs/templates) | Depends on | Status | Version |
+|---|---|---|---|---|---|---|---|
+| S0 | #1819 | Opening spec and applied choices | 100–170 docs | none | done | none |
+| B1 | #237 | Additive issue brief and checked marker acks | 180–280; 50–90 | #1819, #1566, #1746 | open | minor |
+| B2 | #238 | Review, verdict and recheck commands | 250–400; 60–100 | #1819, #1566, #1746, B1 posting contract | open | minor |
+| B3 | #239 | Mechanical local merge-up and signed note | 160–250; 40–70 | #1819, #1566, #1746, B1 posting contract | open | minor |
+| B4 | #369 | Coordinator scratch cleanup and unused import | 15–35; 5–15 | #1819, #1566, #1746 | open | patch |
+| S1 | #1820 | Status, evidence, lessons and tracker sync | 35–70 docs | B1–B4 | open | none |
+
+S0 can be prepared while M53 builds. All members wait for S0 and M53
+items #1566 and #1746 to land. B1 and independent B4 start first; B2/B3 may prepare against
+B1's specified posting interface but integrate after it lands. B3 has no
+B2 dependency. S1 lands last, linking member PRs/evidence, recording settled
+questions and lessons, and confirming landed/superseded tracker items are
+closed. Preserve M52/M53 spec rows and #1774's shutdown branches. The
+7.12.0 cut (#1817 / PR #1818) temporarily holds fragment-bearing lands.
+Codex-first builders continue until the separate installation/upgrade;
+reviewer routing excludes the actual builder engines.
+
+#### Applied decisions and acceptance criteria
+
+**D1 / B2 (#238):** `mdstack verdict` consumes completed Review/Validation
+sections and posts one checked COMMENT review at pinned head H under this
+single-identity binding. It runs neither pass and invents no evidence.
+Existing markers retain PR, full head H, reviewed base B, positive round k,
+actual results and actual-author signature/usage. A complete verdict has
+three section/final markers; review-only changes has two, with
+`skipped: review failed` and no validation session. A legitimate flavor skip
+still has a Validation section and its existing skipped-validation marker.
+Pass requires both passes or an eligible skip; failed validation is changes.
+
+1. `review` explicitly hands H/k to the existing reviewer lead, preserving
+   admission, claims, freshness, precheck, flavor and actual-builder-engine
+   exclusion. Passing review starts separate fresh validation when required;
+   review changes produces the existing changes verdict. The coordinator
+   model runs neither pass.
+2. `verdict` refuses missing/duplicate sections or markers, inconsistent
+   results, short/unavailable SHAs, wrong PR/head/base/round, an ineligible
+   skip, wrong actor, an already-completed pass or obsolete reset/rereview
+   binding. Re-read ownership and live head, bind the native review to H,
+   and produce no review/tag effect on refusal. After acceptance, perform
+   and read back existing approved/changes tags, holds and cap handling.
+   Install any required mirror hold first; reconcile a lost response by
+   readback before retrying.
+3. `recheck` exposes the existing explicit fresh pass for a two-parent
+   merge: first parent previously approved H, second on default branch,
+   same approval round, bounded remerge hunks and acceptance checks.
+   Broader/unconfirmed content or an open full-rereview steer uses the
+   existing normal escalation path. Being behind alone never dispatches it;
+   clean-update portability remains the default.
+4. Fake-backend/fake-harness process tests prove session order/freshness,
+   engine exclusion, duplicate suppression, D1 refusals, valid skip, failed
+   validation → changes, caps and explicit recheck/escalation. Fragment and
+   green CI are required.
+
+Paths: new `review.py`, `verdict.py`, `recheck.py`, B1's posting helper;
+compact tmux coordinator/reviewer pointers; `docs/runtimes/tmux.md` and
+`docs/release.md`. Reuse the current pool/route passes and native head-bound
+mapped posting operations, without another pipeline or forge client.
+
+**D2 / B1 (#237):** add `mdstack brief --issue …` and marker-posting
+`mdstack ack` modes. Inbox receipt remains `mdstack action ack` / `acked`.
+
+1. Issue mode prints resolved rendered role instructions, live issue
+   reference/title and delimited task/AC data, launch notes and the existing
+   run block. Validate role/tier/engine/run fields and unavailable inputs;
+   print no partial brief, stale identifiers or unfilled required fields.
+   Issue text is task data. Create no claim, worktree or session; preserve
+   existing brief flags, byte output, exits and `run_block` callers.
+2. `intake`: actual reviewer, non-draft round 1 after live-state/precheck
+   and engine checks, once at H; existing ack marker, n/a round/result,
+   no approval or tag change. `merge-up`: actual reviewer, verified clean
+   update after changes; retain unresolved findings, without substituting
+   for a passing verdict or portable approval.
+3. `steer`: actual coordinator, verified owner source and recognized command,
+   once per source `cmd-id`; existing steer marker at H with n/a round/result.
+   It acknowledges without executing, resetting rounds or clearing a hold;
+   apply command-specific hold exceptions. Generic ack refuses `merge-ok`:
+   authorization stays in the owner-decision/dispatcher path.
+4. Every mode validates live actor/source/head/phase and ownership, signs the
+   actual author and is idempotent at its existing identity key. Invalid,
+   short, stale, foreign or missing input has no posting effect. Process
+   tests cover output/posts, missing inputs, intake/duplicate intake,
+   merge-up after changes, wrong source/head/role and unchanged inbox
+   delivery. Fragment and green CI are required.
+
+Paths: `brief.py`, new `ack.py`, a small private `_helper-posts.py` shared
+only by the three concrete posters; runtime/release docs and compact tmux
+reviewer pointer. Reuse #224's discovered per-command modules; no entry-point
+or core config/render rewrite or generic workflow framework.
+
+**D3 / B3 (#239):** local Git merge-up uses only declared merge drivers,
+with no automatic feature-conflict resolution. The actual builder/operator
+owns the target copy; the coordinator dispatches that actor.
+
+1. Refuse another writer's active run/copy claim, dirty tracked/untracked
+   work, an in-progress Git operation, wrong branch/repo/head, held/closed/
+   escalated PR, unavailable ownership or rebase update strategy. The
+   caller's associated run is not a competing writer. Preserve H and work
+   on every pre-push refusal.
+2. Fetch via existing private refs, pin old H and updated base U; current is
+   exit-0/no note. Merge clean/configured-union cases; unresolved conflict
+   aborts and restores H without push/post. Add no union attributes. Never
+   rebase, force-push, squash or approve. Re-read live H before a normal
+   push to the verified branch, then read the authoritative published head.
+3. Post one signed actual-actor `pass=merge-up` note at that head, n/a
+   round/result, with B/H/U/new-head, merge/union paths, strict content
+   comparison and targeted checks. Approval carry stays with the
+   synthesizer; differing content/union rewrites require delta review.
+   Report a pushed head whose note failed for readback/reconciliation,
+   without pushing again.
+4. Disposable-Git/fake-backend process tests cover current no-op, clean and
+   configured-union merges, rewrite/differing-content routing, conflict
+   rollback, busy/dirty/strategy/claim refusal, moved backend head and
+   push/post failures. Fragment and green CI are required.
+
+Paths: new `merge-up.py`, B1's helper, reused `content.py`, runtime/release
+reference and M53's tmux `builder-fix.md` companion.
+
+**B4 (#369):** after successful plain `down`, including already-not-running,
+sweep only regular scratch files in `runs/coordinator.*`. Refusal and
+`--preserve` retain them. Follow no symlinks; retain worker records, claims,
+inbox/status, grant archives and every other prefix. Remove only unused
+`runs` from `guard.py`; preserve guard behavior and #1774 shutdown/pruning.
+Tests cover success/no-session/repeated cleanup, refusal/preserve, unrelated
+retention and existing stop-order/land-lock/watcher cases; guard tests,
+fragment and green CI remain required. Paths: `down.py`, `guard.py` and the
+runtime state-file row. Shipped #420/#437/#392 work stays outside scope.
+
+**D4:** no edits to protocol behavior, gate predicates, marker schema,
+grant scope or approval power. COMMENT, ack, CI and helper success gain no
+approval authority. Dual-identity formal posting, adjacent parser/pipeline
+hardening, union expansion and live install/trust/upgrade are follow-ups.
+Against [Versioning](../deliverables.md#versioning), B1–B3 are minor, B4
+patch, internal spec bookends none. A changed gate satisfaction/marker
+meaning, required new field or replaced brief output needs replanning and
+major classification before dispatch.
+
+#### Brief budgets, flags and verification
+
+| Member | Rendered change | Maximum net entry growth | Status |
+|---|---|---| --- |
+| B1 | Generated task output; compact reviewer ack pointer | Reviewer ≤100 bytes; other entries 0 | open |
+| B2 | Replace coordinator lead handoff; extend reviewer pointer | Coordinator ≤0; reviewer ≤150 additional bytes; others 0 | open |
+| B3 | Builder-fix companion invocation and reference | Entries 0; companion about 100–200 bytes | open |
+| B4 | Runtime state-file description only | Entries 0 | open |
+
+After M53, measure integrated normalized UTF-8 renders: builder/researcher
+≤14,336 bytes at the unchanged 16,384-byte budget (2,048 reserve),
+coordinator/synthesizer keep the existing 1,024-byte fixture reserve,
+reviewer ≤16,384 with combined growth ≤250 bytes. Baseline live free bytes
+were coordinator 786, builder 58, reviewer 1,648, researcher 13 and
+synthesizer 978; shipped coordinator had only 8 bytes beyond its reserve.
+These are readiness measurements at `4d807440f521b5f602b3b53e8b7361a9ee3c441f`,
+not post-M53 evidence. Retain all always-loaded duties, keep long command
+reference in docs, and report delivered task data, launch notes/core memory
+and run-block sizes separately. Consuming new builder/researcher reserve
+needs an explicit coordinator AC change.
+
+| Unit | Protocol / gates | Templates / budget | Sensitive / owner-shell | Status |
+|---|---|---|---| --- |
+| S0/S1 | Existing contract only | No new entry; truthful headers if needed | Spec permission at head; no shell step | open |
+| B1 | No gate/marker change | Compact reviewer pointer; additive task output | Path forecast no match; fake backend | open |
+| B2 | Existing checked writer only | Coordinator replacement/reviewer pointer | Deep head/round/identity review; fake harness | open |
+| B3 | No approval carry by helper | Builder-fix companion only | Disposable Git boundary tests | open |
+| B4 | No protocol/grant lifecycle change | No entry change | Disposable state; isolated tmux | open |
+
+All members apply ownership, pause, config attribution and item holds even
+for new command names. Reclassify every actual full diff, including tests
+and helper paths: readiness's paths-only no-match forecast is not content
+classification. A sensitive head still needs the owner's per-change reason.
+**Target environment: N/A** — existing local Git/tmux; no new platform,
+account, device, host, credential, trust-config or owner-shell prerequisite.
+Merge permission is the owner's
+[merge-ok for all M52–M54 PRs](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6846545711),
+recorded per PR at each actual head; it supplies no CI waiver or AC proof.
+
+Every build runs `python3 scripts/check-repo.py` and
+`python3 scripts/check-changelog-pr.py --base origin/main`; bookends also
+check `--only design-headers --only spec-status`. Use
+`python3 scripts/run-tests.py <selected names...>` under the
+[affected-tests policy](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6763423100).
+Refusal proof invokes shipped commands and asserts nonzero exit and no
+effect. Tests below are planned coverage, refined to each actual diff;
+full PR CI at exact head and integration stays required.
+
+| Unit | Affected local tests | Coverage | Status |
+|---|---|---| --- |
+| S0/S1 | Required checks; `test-check-repo.py` only if checker behavior changes | Spec cells, links, fragment and truthful headers | open |
+| B1 | `test-crew-brief.py`, `test-crew-spawn.py`, `test-crew-acked.py`, `test-crew-action.py`, `test-crew-send.py`; new `test-crew-ack.py` | Run composition, inbox compatibility, checked posts/refusals | open |
+| B2 | New `test-crew-review.py`, `test-crew-verdict.py`, `test-crew-recheck.py`; `test-crew-reviewer-pool.py`, `test-crew-route.py`, `test-crew-spawn.py`, `test-crew-poll.py`, `test-crew-lead.py`, `test-crew-schedule.py`, `test-crew-content.py`, `test-crew-train.py`, `test-crew-precheck.py` | Fresh pass chaining, engines, admission, rounds/duplicates, utility dependents, portability/precheck | open |
+| B3 | New `test-crew-merge-up.py`; `test-crew-content.py`, `test-crew-copy-claim.py`, `test-crew-route.py`, `test-crew-train.py`; ack/verdict tests if helper changes | Git rollback, copy ownership, head readback and delta/carry consumers | open |
+| B4 | `test-crew-down.py`, `test-crew-guard.py`, `test-crew-pause.py`, `test-crew-migrate.py`, `test-crew-uninstall.py`; integrated #1774 tests | Cleanup/refusal/preserve boundaries, stop order and grant preservation | open |
+
+Template/fixture edits add `test-crew-render.py`, `test-render-parity.py`,
+`test-tmux-briefs.py`, `test-crew-bootstrap.py`. Shared plumbing or reused
+dispatchers add affected direct/dependent tests; new write guards add
+ownership/pause tests. Preserve one PR per issue and refresh stale member
+ACs through the coordinator; never silently waive a full-local-run AC or
+reuse #238's old multi-PR wording.
+
 ## 6. Decisions
 
 | Date | Decision | Source |
