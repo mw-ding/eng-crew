@@ -1,7 +1,7 @@
 ---
 type: fixed
 issue: 1836
-pr: TBD
+pr: 1865
 date: 2026-11-13
 box-skill: none
 ---
