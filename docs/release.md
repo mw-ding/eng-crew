@@ -214,6 +214,11 @@ from its own checkout; the other release scripts stay Internal. mdstack's repo g
 still requires all five fields here
 ([CONTRIBUTING: CHANGELOG](../CONTRIBUTING.md#changelog)).
 
+The mechanical [`mdstack merge-up`](runtimes/tmux.md#mdstack-merge-up)
+helper (#239) is an additive minor command surface. It reuses Git merges,
+strict content comparison and the native signed COMMENT transport;
+helper success adds no approval, CI waiver or release permission.
+
 ## Release gate
 
 Summary of the registry row that [R1.3](#follow-up-issues) added; the
