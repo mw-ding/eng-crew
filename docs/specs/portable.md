@@ -1169,18 +1169,20 @@ six builds, one PR per issue, larger PRs split into reviewable commits. No
 item below dispatches before this slice merges and the live install is
 upgraded to 7.10.0 (U: an owner-terminal step with dispatch paused, after
 the dry run succeeds; the install record still read 7.6.0 at the readiness
-pass). Every row is planned: its issue is `open`. The order below is
+pass). Every row was planned with its issue `open`. The order below is
 priority, not a dependency; #1722 is last by risk. Sizes are estimated
-changed non-test lines.
+changed non-test lines. Statuses were set by the closing status-sync
+slice #1769: every row has landed, and the builds ran on the 7.6.0 install,
+since the owner deferred U (see below).
 
 | ID | Issue | Scope | Size | Depends on | Status |
 |---|---|---|---|---|---|
-| B1 | #1723 | A primary host accepts a declared command checkout | 120–220 | #1749, U | open |
-| B2 | #1724 | Session researchers are opt-in: an unset cap resolves to 0 (D1) | 50–100 | #1749, U | open |
-| B3 | #1725 | Spec bookends follow the configured spec home or a specs-only external reference (D2) | 180–300 | #1749, U | open |
-| B4 | #1726 | VCS-neutral negative control in the CLI evidence template | 15–35 | #1749, U | open |
-| B5 | #1727 | Session Upgrading documents the one-time bootstrap prerequisite | 10–25 | #1749, U | open |
-| B6 | #1722 | Additive stack binding: revision IDs and per-change readback (D3) | 350–550 | #1749, U | open |
+| B1 | #1723 | A primary host accepts a declared command checkout (PR #1756) | 120–220 | #1749, U | done |
+| B2 | #1724 | Session researchers are opt-in: an unset cap resolves to 0 (D1), with a forward `**Breaking:**` fragment (PR #1759) | 50–100 | #1749, U | done |
+| B3 | #1725 | Spec bookends follow the configured spec home or a specs-only external reference (D2) (PR #1758) | 180–300 | #1749, U | done |
+| B4 | #1726 | VCS-neutral negative control in the CLI evidence template (PR #1763) | 15–35 | #1749, U | done |
+| B5 | #1727 | Session Upgrading documents the one-time bootstrap prerequisite (PR #1762) | 10–25 | #1749, U | done |
+| B6 | #1722 | Additive stack binding: revision IDs and per-change readback (D3); stays minor, as per-change status never meets the tip gate (PR #1766) | 350–550 | #1749, U | done |
 
 ACs and paths per row (the readiness pass has the full text and line
 citations):
@@ -1304,11 +1306,46 @@ the owner's per-change reason. Owner steps: applying the compact
 compaction, #1746). A real non-Git primary checkout is an operator
 deployment step; B1's acceptance uses a stub.
 
-Merge permission for M50 spec, protocol, template and gate-contract text is
-the owner's
-[M49–M51 grant](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6831237295)
-([text](https://github.com/mw-ding/mdstack/issues/1744#issuecomment-6819303787)),
-recorded at each head. A status-sync slice closes the milestone.
+Questions M50 settled at close:
+
+- **D1, D2 and D3.** All three shipped as decided above. #1724 (PR #1759)
+  took the owner's opt-in: an unset session `researchers` cap resolves to
+  0, with the forward `**Breaking:**` fragment and its migration. #1725
+  (PR #1758) added `[docs] specs_external` as a specs-only reference,
+  refused beside an explicit `homes.specs`. #1722 (PR #1766) added the
+  binding without touching legacy `<stack>` operation; per-change mode
+  refuses `stack_tests_against_tip`, so it stayed minor.
+- **Upgrade.** The owner deferred U
+  ([decision](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6832180374)),
+  so the builds ran on the 7.6.0 install instead of waiting for it; the
+  owner upgrades after the 7.11.0 cut
+  ([decision](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6840286560)).
+- **Release class.** With B2 as specified the release could not be a
+  minor without the owner's call. The coordinator proposed 8.0.0; the
+  owner chose a minor: M50 ships in 7.11.0
+  ([decision](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6840322691)),
+  with #1724's `**Breaking:**` default change and its migration kept in
+  the notes, as for 7.10.0.
+
+Lesson:
+
+- **A live harness lab needs an owner-shell capture (#1766).** B6's
+  acceptance required the production-synthesizer stack-land lab with the
+  new three-member `rev-*` scenarios. Builder sessions cannot start a
+  nested harness, and the scripted-engine plumbing test never stands in for
+  the live run, so the PR waited a review round for the owner to run the
+  lab from an ordinary terminal (all four scenarios passed,
+  [capture](https://github.com/mw-ding/mdstack/pull/1766#issuecomment-6840144650)).
+  Ask for such a capture as soon as the lab scenarios exist, and place it
+  in a builder-signed review from the start (the M49 lesson).
+
+Merge permission for M50 spec, protocol, template and gate-contract text was
+the owner's merge-ok for all PRs
+([decision](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6832180374)),
+recorded per PR at each head. M50 closes after this slice and the release
+cut land.
+
+Release: all of M50 ships in 7.11.0, a minor by the owner's choice.
 
 ## 6. Decisions
 
