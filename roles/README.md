@@ -25,3 +25,9 @@ brief per role for the selected environment. A role references only the
 protocol and the actions contract (dependency rule D1). Add a role whose
 lifecycle already exists with one definition plus its tests
 ([Adding a role](../docs/roles-registry.md#adding-a-role)).
+
+## Personnel delivery
+
+A host with its own machinery can import [pinned personnel content](../docs/personnel.md)
+without the terminal CLI or orchestration tree. Descriptors retain their
+authority; a separate host binding supplies mechanics.

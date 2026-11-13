@@ -285,3 +285,12 @@ generic rules in the protocol. They illustrate the protocol and do not change it
 - In the pilot, the per-repo wiring doc lived under the shared state dir as
   `mw-ding__agentconnect/wiring.md`, following the
   `<state-dir>/<owner>__<repo>/wiring.md` convention.
+
+## Personnel consumer path
+
+Grok Bot can consume [pinned personnel content and a thin binding](../personnel.md#thin-binding-and-consumer-loading),
+supplying platform wake, durable delivery, run identity, claims/status,
+connector access and live head-bound landing checks. Import starts no
+routine, grants no permission, and does not remove B2/V2 watches or the gaps
+and accepted exceptions above. The fake-host test proves generic content
+loading only; live platform adoption is not claimed.

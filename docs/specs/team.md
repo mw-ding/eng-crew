@@ -669,6 +669,9 @@ permission, holds or reviewer independence.
 
 ### 9.6 Pinned personnel import and host binding
 
+The #1180 [personnel delivery](../personnel.md) documents the actual path
+boundary and implements the producer entry at `scripts/personnel-bundle.py`.
+
 For #1180, compose in the full producer checkout and export content only.
 The host selects stable `domain/role` IDs at a pinned source version/commit.
 A manifest records source pin, selected IDs, binding ID/version, file hashes

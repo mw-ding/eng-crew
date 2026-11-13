@@ -30,3 +30,11 @@ including file's. Nothing here renders on its own.
 - Edit a fragment and every runtime template that includes it changes. Run
   the render and parity tests (`test-crew-render.py`, `test-render-parity.py`,
   `test-tmux-briefs.py`, `test-crew-bootstrap.py`) after any edit.
+
+## Personnel export
+
+The [personnel producer](../../docs/personnel.md) exports these canonical
+skills and fragments as reference content, binding operation tokens and
+adding a host entry brief. Runtime examples remain reference material; the
+host supplies dispatch parameters and implements generic actions. No policy
+fragment is executable by itself at the consumer.
