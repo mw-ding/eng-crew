@@ -513,13 +513,21 @@ a changed set restarts at 60 seconds, and the timer survives a watcher restart
 in `wake/watch-state.json`. An id that can move only on the owner, a hold or
 CI is a wait: the lead acknowledges it and appends
 `waiting: #<n> owner|hold|ci id=<id>` (the lead templates' Waits paragraph).
-While the ref's fresh state is unchanged, no path re-types that id (lead
-backstop, slot release or coordinator backstop) and route consumes the line.
-Fresh state is token-free: `mdstack poll`'s `observed` entry, `held` list and
-owner-answer count (`answers`) in `poll-state.json` and an open `asks/<n>.json`, recorded per wait in
-`leads/waits.json`, which survives restarts. A change wakes the id on that
-scan, without waiting for a deadline; it stays actionable until a later
-`waiting:` line. New handoffs, such as the coordinator's land re-send on an
+`mdstack reviewer-pool` writes that line itself after its ack for a review,
+validate, recheck or `work` request whose PR is live `crew:escalated`
+(`owner`) or `crew:hold` (`hold`), keeps the id pending and writes it again
+on each re-run while the label stays (#1836); `done:` stays for dispatched
+or obsolete work. While the ref's fresh state is unchanged, no path re-types
+that id (lead backstop, slot release or coordinator backstop) and route
+consumes the line; a repeated ack never re-arms it. Fresh state is
+token-free: the state, head and CI of `mdstack poll`'s `observed` entry, its
+`held` list and owner-answer count (`answers`) in `poll-state.json` and an
+open `asks/<n>.json`, recorded per wait in `leads/waits.json`, which survives
+restarts. A change wakes the id on that scan, without waiting for a deadline;
+it stays actionable until a later `waiting:` line. Mergeability and verdict
+churn are not wait state, and a hold appearing (poll catching up on the
+label the dispatcher saw live) only becomes the new baseline, so its later
+release still wakes the id. New handoffs, such as the coordinator's land re-send on an
 owner answer or route's `ci-passed` event, are new ids and wake at once.
 An acknowledged admission deferral keeps its 60-second token-free
 `admission recheck`, which types only that id and only once its ref is

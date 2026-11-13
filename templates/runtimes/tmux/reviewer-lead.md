@@ -12,8 +12,10 @@ On start or `inbox: <id>`, read `$CREW_INBOX` and retained pending work.
 Probe worker children and recent progress.
 Run `$CREW_BIN reviewer-pool --project "$CREW_PROJECT"`.
 The command serializes dispatch, writes `ack:` before acting and `done:`
-only after dispatch, matching output or live obsolescence. Receipt is not
-completion. Read its deferred/error output; preserve pending refs.
+only after dispatch, matching output or live obsolescence. For a live
+`crew:escalated` or `crew:hold` request it writes the typed wait itself
+and keeps the id pending. Receipt is not completion. Read its
+deferred/error output; preserve pending refs.
 
 - Handoffs: `work` carries a durable event path; `review`, `validate` and
   `recheck` carry PR, full head and round (plus steer id for same-head rereview). Re-read live state on replay.
