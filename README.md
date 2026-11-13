@@ -160,7 +160,7 @@ runbook's [tmux prerequisites](docs/runbook-new-repo.md#tmux-prerequisites).
 
 ## Status
 
-Status is not tracked on this page; it lives where it is recorded:
+Release and work status are recorded here:
 
 - Shipped versions and their notes:
   [GitHub Releases](https://github.com/mw-ding/mdstack/releases).
@@ -171,6 +171,13 @@ Status is not tracked on this page; it lives where it is recorded:
   [docs/specs/portable.md](docs/specs/portable.md) §5.
 - Platform merge enforcement and its limits:
   [docs/merge-enforcement.md](docs/merge-enforcement.md).
+
+M51 personnel delivery is built in source (PR #1805); its team/project
+routing design and approved T1–T4 breakdown landed in PR #1802. Shared
+pools remain design only and T1–T4 remain unadmitted
+([M51 status](docs/specs/portable.md#m51-personnel-boundary-and-team-routing-design)).
+These landed after the 7.11.0 cut; they do not imply a released personnel
+bundle or live host adoption. M51 closes after status sync #1790 lands.
 
 Content is built by the crew itself through the normal PR pipeline; every
 change is recorded in `CHANGELOG.md`.
