@@ -1686,14 +1686,60 @@ before completion. File overlap between B1/B2 requires integrated testing,
 not a semantic dependency. One issue → one PR, with small logical commits.
 Bookends and B1/B2/L1 use default tier/medium effort; B3 uses deep/high.
 
-| ID | Issue | Scope | Size | Depends on | Status |
-|---|---|---|---|---|---|
-| S0 | #1814 | Opening scope, ACs, applied choices and prerequisites (PR #1816) | docs only | none | done |
-| B1 | #1746 | Constant-size grant lookup pointer and existing authority resolution | 30–70 Python; 25–50 prose; 100–180 tests | #1814 | open |
-| B2 | #1566 | Builder/researcher entry headroom and rendered procedure companions | 50–90 prose/registry excluding moved text; 100–170 tests | #1814 | open |
-| B3 | #1774 | Owner-confirmed archive/prune with preservation and refusal proof | 180–280 Python; 35–60 prose; 300–500 tests | #1814, #1746; owner proofs A/B | open |
-| L1 | #1793 | One 24-card learning/disposition batch PR in 2–3 commits | 110–170 Markdown; no product/test code | #1814 | open |
-| S1 | #1815 | Final statuses, decisions, lessons and tracker reconciliation | docs only | #1746, #1566, #1774, #1793 | open |
+| ID | Issue | Scope | Size | Depends on | Status | PR / evidence |
+|---|---|---|---|---|---|---|
+| S0 | #1814 | Opening scope, ACs, applied choices and prerequisites (PR #1816) | docs only | none | done | [PR #1816](https://github.com/mw-ding/mdstack/pull/1816) |
+| B1 | #1746 | Constant-size grant lookup pointer and existing authority resolution | 30–70 Python; 25–50 prose; 100–180 tests | #1814 | done | [PR #1826](https://github.com/mw-ding/mdstack/pull/1826), [review / validation](https://github.com/mw-ding/mdstack/pull/1826#pullrequestreview-5889464177) |
+| B2 | #1566 | Builder/researcher entry headroom and rendered procedure companions | 50–90 prose/registry excluding moved text; 100–170 tests | #1814 | done | [PR #1825](https://github.com/mw-ding/mdstack/pull/1825), [final review / validation](https://github.com/mw-ding/mdstack/pull/1825#pullrequestreview-5889639261) |
+| B3 | #1774 | Owner-confirmed archive/prune with preservation and refusal proof | 180–280 Python; 35–60 prose; 300–500 tests | #1814, #1746; owner proofs A/B | done | [PR #1833](https://github.com/mw-ding/mdstack/pull/1833), [owner proofs A/B](https://github.com/mw-ding/mdstack/pull/1833#pullrequestreview-5898353333), [review / validation](https://github.com/mw-ding/mdstack/pull/1833#pullrequestreview-5898453431) |
+| L1 | #1793 | One 24-card learning/disposition batch PR in 2–3 commits | 110–170 Markdown; no product/test code | #1814 | done | [PR #1824](https://github.com/mw-ding/mdstack/pull/1824), [review](https://github.com/mw-ding/mdstack/pull/1824#pullrequestreview-5889388989) |
+| S1 | #1815 | Final statuses, decisions, lessons and tracker reconciliation | docs only | #1746, #1566, #1774, #1793 | open | this closing sync; pending land |
+
+#### M53 outcome and lessons
+
+S0, B1, B2, B3 and L1 are built in source. Their issues, #1814, #1746,
+then #1566, #1774 and #1793, are closed in the live tracker (2026-11-13). So are
+all 24 L1 source cards: #1381–#1384, #1446, #1466, #1561–#1565, #1601, the
+privacy near-miss #1602, then #1696, #1732–#1734 and #1782–#1788. Each links
+to its row in [docs/findings/m53-learning.md](../findings/m53-learning.md).
+No card was superseded and no missing prevention stayed open. No additional
+M53 build items were admitted. S1 (#1815) stays open until this sync lands;
+then the tracking issue #1795 and M53 close.
+
+- **B1 settled as applied:** a non-`none` grant renders a fixed-length
+  instruction to resolve `merge_grant` live and read its named decisions;
+  `none` stays literal. Short and ~96 KB historical grants render
+  byte-identical output. Follow-up: the instruction names a team/repo
+  context that `crew-config.py resolve` does not take.
+- **B2 settled as applied:** builder fix and researcher triage procedures
+  moved unchanged into `runtime/builder-fix.md` and
+  `runtime/researcher-triage.md`, with the 2,048-byte entry reserve
+  asserted. Round 1 went red on `test-crew-roles.py` because the
+  role-registry doc example and a single-template assertion missed the new
+  companion. A relocation must update every consumer that lists role
+  templates, not only the renderer.
+- **B3 settled as applied, with live-tracker fixes:** round 1 found that
+  exact `M<n>` title matching and `v`-less cut names (`the 7.6.0 cut`) made
+  every clause unreadable on this repo's real tracker. Fixtures with bare
+  `M35` titles hid it. The fix also accepts titles starting `M<n> ` (as in
+  `M42 — Org-pack requests`) and resolves bare versions to `v` tags. Lesson: validate a recognizer against the real
+  tracker's shapes, not fixture-only shapes. Rounds 2–3 were evidence-only
+  `changes` until the owner ran proofs A and B at `8650751` from their own
+  terminal. After a resume, the fresh round passed. A's exit codes, the
+  fixture socket log and B's `ownership --action write` output were not
+  captured; the reviewer judged the saved records sufficient.
+- **Amended AC5 held:** after B1, grant length no longer sizes entry briefs,
+  so B3 claims no brief shrinkage from pruning.
+- **L1 settled as applied:** one batch of 24 cards counts 27 incidents, with
+  no new guard and no live proof claimed.
+
+**Merged / released / installed:** S0, B1, B2 and L1 merged before the
+7.12.0 cut (PR #1832) and ship in
+[v7.12.0](https://github.com/mw-ding/mdstack/releases/tag/v7.12.0), published
+2026-11-13. B3 (PR #1833) merged after that cut and is in no release. On the
+owner's machine, the release link `~/.mdstack/releases/current` resolved to
+`mdstack-7.12.0` when read on 2026-11-13. That read proves no host adoption,
+and `mdstack grant prune` is not in any installed release.
 
 **Target environment: N/A** — local runtime logic, no new platform or device
 dependency. Standard flavor, tmux, Codex-first routing; reviewer selection
@@ -1959,7 +2005,7 @@ reviewer routing excludes the actual builder engines.
 S0 and B1–B4 are built in source; #1819, #237, #238, #239 and #369
 are closed in the live tracker (2026-11-13). No additional M54 build items
 were admitted. S1 (#1820) stays open until this closing sync lands;
-M54 closes afterward. M53's #1774 remains a separate unfinished item.
+M54 closes afterward. M53's #1774 later landed separately in PR #1833.
 
 - **D1 settled:** the existing fresh reviewer/validator pipeline supplies
   the sections; the checked COMMENT poster assembles them at H/k and
