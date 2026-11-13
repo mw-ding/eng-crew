@@ -231,7 +231,8 @@ class PollDecide(unittest.TestCase):
     def test_hidden_marker_at_head_only_and_non_crew_pr_ignored(self):
         _, state = self.crew.decide({}, fixture("prs-ci-passed.json"), [])
         self.assertEqual(state["prs"], {"171": {"head": HEAD, "ci": "passed", "verdict": None, "round": 1,
-                                                "fixed": False, "selfgate": None}})
+                                                "fixed": False, "selfgate": None,
+                                                "verdict_identity": None, "verdict_review_id": None}})
 
     def test_every_event_has_exactly_one_consumer(self):
         self.assertEqual(sorted(self.crew.CONSUMER), sorted(["new-head", "ci-passed", "ci-failed", "ci-infra", "review-changes-requested",
@@ -383,6 +384,116 @@ class PollDecide(unittest.TestCase):
         }
         for why, post in no_reset.items():
             self.assertEqual(self.resumed_round(post), 4, why)
+
+    def verdict_post(self, round, verdict="changes", review_id="R1", **extra):
+        post = self.post("role=reviewer-validator pass=verdict pr=171 sha=%s round=%s verdict=%s"
+                         % (HEAD, round, verdict), "acme-reviewer", "Vera")
+        return dict(post, id=review_id, **extra)
+
+    def verdict_poll(self, state, *posts):
+        prs = fixture("prs-ci-passed.json")
+        prs[0]["reviews"] = list(posts)
+        return self.crew.decide(state, prs, [], values=self.VALUES)
+
+    def test_same_head_new_posted_round_wakes_once_without_reviewer_dispatch(self):
+        first, later = self.verdict_post(2), self.verdict_post(4, review_id="R2")
+        _, state = self.verdict_poll({}, first)
+        events, state = self.verdict_poll(state, first, later)
+        self.assertEqual(events, [{"event": "review-changes-requested", "consumer": "builder",
+                                   "refs": ["#171", HEAD]}])
+        self.assertEqual(state["prs"]["171"]["verdict_identity"], [HEAD, "legacy", "4", "changes"])
+        self.assertEqual(state["prs"]["171"]["round"], 3)  # next dispatch, not posted round 4
+        self.assertEqual(self.verdict_poll(state, first, later)[0], [])
+        passed = self.verdict_post(5, "pass", "R3")
+        events, state = self.verdict_poll(state, first, later, passed)
+        self.assertEqual(events, [{"event": "review-approved", "consumer": "synthesizer",
+                                   "refs": ["#171", HEAD]}])
+        self.assertEqual(self.verdict_poll(state, first, later, passed)[0], [])
+        next_pass = self.verdict_post(6, "pass", "R4")
+        self.assertEqual(self.verdict_poll(state, first, later, passed, next_pass)[0], events)
+
+    def test_duplicate_posts_keep_canonical_provenance_and_formal_round_count(self):
+        first = self.verdict_post(2)
+        _, state = self.verdict_poll({}, first)
+        duplicate = self.verdict_post(2, review_id="duplicate")
+        for posts in ((first, first), (first, duplicate), (first, duplicate, duplicate)):
+            events, current = self.verdict_poll(state, *posts)
+            self.assertEqual(events, [])
+            self.assertEqual(current["prs"]["171"]["verdict_review_id"], "R1")
+            self.assertEqual(current["prs"]["171"]["round"], 1 + len(posts))
+        later = self.verdict_post(4, review_id="R2")
+        _, state = self.verdict_poll(state, first, later)
+        self.assertEqual(self.verdict_poll(state, first, later, duplicate)[0], [])
+        fix = self.post("role=builder pass=fix pr=171 sha=%s round=4 verdict=n/a" % HEAD,
+                        "acme-bot", "Ben")
+        events, state = self.verdict_poll(state, first, later, fix)
+        self.assertEqual([e["event"] for e in events], ["fix-at-head"])
+        self.assertEqual(self.verdict_poll(state, first, later, fix, dict(later, id="R3"))[0], [])
+        self.assertEqual(state["prs"]["171"]["verdict_review_id"], "R2")
+
+    def test_only_valid_signed_current_head_verdicts_change_identity(self):
+        first = self.verdict_post(2)
+        _, state = self.verdict_poll({}, first)
+        good = self.verdict_post(4, review_id="R2")
+        wrong = [dict(good, author={"login": "someone"}),
+                 dict(good, body=good["body"].split("\n—")[0]),
+                 dict(good, body=good["body"].replace("Vera (", "Zed (")),
+                 dict(good, body=good["body"].replace(HEAD, "0" * 40))]
+        wrong += [dict(good, body=good["body"].replace("pass=verdict", "pass=" + kind))
+                  for kind in ("ack", "review", "validate", "fix")]
+        wrong += [dict(good, body=good["body"].replace("round=4", "round=" + value))
+                  for value in ("n/a", "0", "-1", "4x")]
+        wrong.append(dict(good, body=good["body"].replace("verdict=changes", "verdict=n/a")))
+        for post in wrong:
+            with self.subTest(post=post):
+                events, current = self.verdict_poll(state, first, post)
+                self.assertEqual(events, [])
+                self.assertEqual(current["prs"]["171"]["verdict_identity"], state["prs"]["171"]["verdict_identity"])
+        self.assertIsNone(self.verdict_poll({}, *wrong)[1]["prs"]["171"]["verdict"])
+
+    def test_signed_reset_source_makes_reused_round_a_new_epoch(self):
+        first = self.verdict_post(2)
+        for mode in ("steer cmd=resume", "steer cmd=cutover", "resume", "cutover"):
+            reset = dict(self.post("role=coordinator pass=%s pr=171 sha=%s" % (mode, HEAD),
+                                   "acme-bot", "Ash"), id="reset-1")
+            _, state = self.verdict_poll({}, first)
+            events, state = self.verdict_poll(state, first, reset)
+            self.assertEqual(events, [])  # reset alone is not a new verdict
+            later = self.verdict_post(2, review_id="R2")
+            events, state = self.verdict_poll(state, first, reset, later)
+            self.assertEqual([e["event"] for e in events], ["review-changes-requested"])
+            self.assertEqual(state["prs"]["171"]["verdict_identity"], [HEAD, "reset-1", "2", "changes"])
+            self.assertEqual(state["prs"]["171"]["round"], 2)
+            self.assertEqual(self.verdict_poll(state, first, reset, later)[0], [])
+            reset2 = dict(reset, id="reset-2")
+            self.assertEqual([e["event"] for e in self.verdict_poll(state, first, reset, later, reset2, later)[0]],
+                             ["review-changes-requested"])
+        for reset in (dict(reset, author={"login": "someone"}),
+                      dict(reset, body=reset["body"].replace("Ash (", "Zed ("))):
+            _, state = self.verdict_poll({}, first)
+            self.assertEqual(self.verdict_poll(state, first, reset, first)[0], [])
+
+    def test_legacy_state_seeds_without_replay_and_detects_first_new_round(self):
+        first, later = self.verdict_post(2), self.verdict_post(4, review_id="R2")
+        _, state = self.verdict_poll({}, first)
+        legacy = json.loads(json.dumps(state))
+        for key in ("verdict_identity", "verdict_review_id"):
+            del legacy["prs"]["171"][key]
+        events, seeded = self.verdict_poll(legacy, first)
+        self.assertEqual(events, [])
+        self.assertEqual(seeded["prs"]["171"]["verdict_review_id"], "R1")
+        self.assertEqual(self.verdict_poll(seeded, first)[0], [])
+        self.assertEqual([e["event"] for e in self.verdict_poll(legacy, first, later)[0]],
+                         ["review-changes-requested"])
+        for verdict, head in (("pass", HEAD), ("changes", "2" * 40)):
+            post = dict(later, body=later["body"].replace("verdict=changes", "verdict=" + verdict))
+            prs = fixture("prs-ci-passed.json")
+            prs[0].update(headRefOid=head, reviews=[post])
+            if head != HEAD:
+                prs[0]["reviews"][0]["body"] = post["body"].replace(HEAD, head)
+            events, _ = self.crew.decide(legacy, prs, [], values=self.VALUES)
+            self.assertIn("review-approved" if verdict == "pass" else "review-changes-requested",
+                          [e["event"] for e in events])
 
     def test_evidence_only_fix_at_same_head_wakes_reviewer_once(self):  # #139 B2
         fix = "role=builder pass=fix pr=171 sha=%s round=1 verdict=n/a engine=codex model=m effort=e" % HEAD
@@ -604,6 +715,54 @@ class Poll(Base):
         self.assertTrue(all(c[:2] in (["pr", "list"], ["issue", "list"], ["pr", "view"]) for c in calls), calls)
         self.assertIn(["pr", "view", "171", "-R", "acme/widgets", "--json",
                        "number,state,headRefOid,labels,statusCheckRollup,reviews,closingIssuesReferences,mergeable"], calls)
+
+    def test_once_same_head_round_transition_legacy_seed_and_duplicate_suppression(self):
+        shutil.copy(os.path.join(POLL, "issues-none.json"), os.path.join(self.gh_dir, "issues.json"))
+        prs = fixture("prs-ci-passed.json")
+        first = dict(PollDecide.post("role=reviewer-validator pass=verdict pr=171 sha=%s round=2 verdict=changes"
+                                    % HEAD, "acme-reviewer", "Vera"), id="R1")
+        prs[0]["reviews"] = [first]
+        path = os.path.join(self.state, "poll-state.json")
+
+        def poll():
+            with open(os.path.join(self.gh_dir, "prs.json"), "w") as f:
+                json.dump(prs, f)
+            r = self.crew("poll", "--once", "--project", self.project)
+            self.assertEqual((r.returncode, r.stderr), (0, "mdstack: config %s\n" % self.project), r.stdout)
+            return r.stdout
+
+        self.assertIn("baseline", poll())  # a known verdict on the first read is not replayed
+        self.assertEqual(self.queue(), [])
+        with open(path) as f:
+            stored = json.load(f)
+        for key in ("verdict_identity", "verdict_review_id"):
+            del stored["prs"]["171"][key]
+        with open(path, "w") as f:
+            json.dump(stored, f)
+        self.assertEqual(poll(), "")  # legacy state seeds quietly
+        self.assertEqual(self.queue(), [])
+        with open(path) as f:
+            self.assertEqual(json.load(f)["prs"]["171"]["verdict_review_id"], "R1")
+        later = dict(first, id="R2", body=first["body"].replace("round=2", "round=4"))
+        prs[0]["reviews"].append(later)
+        self.assertEqual(poll(), "crew: poll: review-changes-requested -> builder #171 %s\n" % HEAD)
+        self.assertEqual([(r["event"], r["consumer"], r["refs"]) for r in self.queue()],
+                         [("review-changes-requested", "builder", ["#171", HEAD])])
+        self.assertEqual(poll(), "")
+        prs[0]["reviews"].append(dict(later, id="duplicate"))
+        self.assertEqual(poll(), "")
+        self.assertEqual(len(self.queue()), 1)
+        with open(path) as f:
+            self.assertEqual(json.load(f)["prs"]["171"]["verdict_review_id"], "R2")
+        passed = dict(later, id="R3", body=later["body"].replace("round=4", "round=5").replace(
+                      "verdict=changes", "verdict=pass"))
+        prs[0]["reviews"].append(passed)
+        self.assertEqual(poll(), "crew: poll: review-approved -> synthesizer #171 %s\n" % HEAD)
+        self.assertEqual(poll(), "")
+        self.assertEqual([r["consumer"] for r in self.queue()], ["builder", "synthesizer"])
+        with open(os.path.join(self.gh_dir, "gh.log")) as f:
+            calls = list(map(json.loads, f))
+        self.assertTrue(all(c[:2] in (["pr", "list"], ["issue", "list"], ["pr", "view"]) for c in calls))
 
     def test_owner_comment_on_a_held_pr_queues_one_owner_answer(self):  # #394
         self.serve("prs-none.json")

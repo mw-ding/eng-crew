@@ -131,7 +131,8 @@ def pr_snapshot(pr, required=(), values=None):
     after a changes verdict there (an evidence-only fix), and the latest builder selfgate verdict at head, from the
     hidden crew:v1 lines only (protocol §4). An expected check absent at head keeps green CI pending (#1536). With the
     profile values, round k counts only this runtime's reviewer and coordinator records, so poll emission and reviewer
-    dispatch derive the same round (#1005)."""
+    dispatch derive the same round (#1005). Verdict identity keeps the posted round and reset source separate from
+    dispatch round k; duplicate posts retain the first review ID as provenance (#1777)."""
     head = pr["headRefOid"]
     results = [c.get("state") if c.get("__typename") == "StatusContext" else
                "INFRA" if c.get("status") == "COMPLETED" and c.get("conclusion") in CI_BAD and
@@ -141,21 +142,29 @@ def pr_snapshot(pr, required=(), values=None):
          "passed" if results and set(results) <= CI_OK and not missing_checks(pr["statusCheckRollup"], required) \
          else "pending"
     verdict, fixed, changes, selfgate = None, False, 0, None
+    epoch, identity, review_id, seen = "legacy", None, None, set()
     for review in pr["reviews"]:
         for line in CREW_LINE.findall(review["body"]):
             m = dict(kv.split("=", 1) for kv in line.split() if "=" in kv)
             if round_reset(values, review, m):
                 changes = 0
+                epoch = review.get("id") or review.get("submittedAt") or line
             elif m.get("role") == "reviewer-validator" and m.get("pass") == "verdict":
-                changes += m.get("verdict") == "changes" and (values is None or signed_by(values, "reviewer", review))
-                if m.get("sha") == head:
-                    verdict, fixed = m.get("verdict"), False
+                signed = values is None or signed_by(values, "reviewer", review)
+                changes += m.get("verdict") == "changes" and signed
+                if signed and m.get("sha") == head and m.get("verdict") in ("pass", "changes") and \
+                        re.fullmatch(r"[1-9][0-9]*", m.get("round", "")):
+                    key = (head, epoch, m["round"], m["verdict"])
+                    if key not in seen:
+                        seen.add(key)
+                        verdict, fixed = m["verdict"], False
+                        identity, review_id = list(key), review.get("id")
             elif m.get("role") == "builder" and m.get("pass") == "fix" and m.get("sha") == head:
                 fixed = True
             elif m.get("role") == "builder" and m.get("pass") == "selfgate" and m.get("sha") == head:
                 selfgate = m.get("verdict")
     return {"head": head, "ci": ci, "verdict": verdict, "round": 1 + changes, "fixed": fixed and verdict == "changes",
-            "selfgate": selfgate}
+            "selfgate": selfgate, "verdict_identity": identity, "verdict_review_id": review_id}
 
 
 def held_numbers(prs, issues):
@@ -217,7 +226,9 @@ def decide(prev, prs, issues, merge_ups=None, express=(), answers=None, required
             emit("ci-" + cur["ci"], "#" + n, cur["head"])
         elif lane and gate and cur["ci"] == "passed" and (cur["head"], True) != (old.get("head"), old.get("gate")):
             emit("selfgate-passed", "#" + n, cur["head"])
-        if cur["verdict"] and (cur["head"], cur["verdict"]) != (old.get("head"), old.get("verdict")):
+        verdict_changed = cur["verdict_identity"] != old.get("verdict_identity") if "verdict_identity" in old else \
+            (cur["head"], cur["verdict"], cur["round"]) != (old.get("head"), old.get("verdict"), old.get("round"))
+        if cur["verdict"] and verdict_changed:
             emit("review-approved" if cur["verdict"] == "pass" else "review-changes-requested", "#" + n, cur["head"])
         if cur["fixed"] and not lane and (cur["head"], True) != (old.get("head"), old.get("fixed")):  # no new-head (B2)
             emit("fix-at-head", "#" + n, cur["head"], round=cur["round"])
