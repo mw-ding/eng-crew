@@ -10,6 +10,12 @@ M14.1 (14.1a–14.1k); [Usage](#usage) covers it. It
 adds no rule, gate, cap, marker field or label; the [protocol](../protocol.md) still owns them,
 and GitHub stays the tool of record (invariant I5).
 
+M54's additive brief/ack, review/verdict/recheck and owned merge-up helpers,
+plus coordinator scratch cleanup, are built in source
+(PRs #1834, #1838, #1837 and #1831). [M54 status](../specs/portable.md#m54-coordinator-helper-surfaces)
+records evidence and integrated brief budgets. These landed after the
+7.12.0 cut; this binding makes no live deployment claim.
+
 ## Decisions
 
 | #110 question | Decision | Section |
