@@ -963,22 +963,25 @@ Opened by the spec slice #1748, part of
 [#1744](https://github.com/mw-ding/mdstack/issues/1744). Scope comes from
 [Riley's readiness pass](https://github.com/mw-ding/mdstack/issues/1744#issuecomment-6819217773),
 §4: seven members, one PR per issue; #1701 adds a PR only if its evidence
-reproduces a gap. Every row is planned: its issue is `open`. No row
+reproduces a gap. Every row was planned with its issue `open`. No row
 dispatches before this slice merges and the owner has upgraded the live
 install to 7.10.0 from an operator terminal with dispatch paused ("upgrade"
 below). B4 (#1714) also lands after B1 (#1715), so it integrates the settled
 wait and wake contract. Sizes are non-test implementation lines, then test
-lines, then the dispatch tier and effort.
+lines, then the dispatch tier and effort. Statuses were set by the closing
+status-sync slice #1768: every row has landed, and #1757 (PR #1761) was
+added during the milestone as a main-red fix.
 
 | ID | Issue | Scope | Size | Depends on | Status |
 |---|---|---|---|---|---|
-| B1 | #1715 | Lead re-nudge backoff: hybrid retries, no timed re-nudge for acknowledged waits | 100–180; 100–180; default/medium | #1748, upgrade | open |
-| B2 | #1682 | Merge-up delta detection accepts the published merge-up note | 30–80; 60–120; default/medium | #1748, upgrade | open |
-| B3 | #1701 | Finished-builder reclaim: evidence disposition first, code only if a gap reproduces | 0 unless a gap reproduces; 60–120 if needed; default/medium | #1748, upgrade | open |
-| B4 | #1714 | Work pause and resume: the coordinator stays, workers stop with work retained | 300–500 in 4–6 commits; 180–300; deep/high | #1748, upgrade, B1 | open |
-| B5 | #1100 | Dequeue refusal names lead pool ownership, not a missing slot | 10–35; 30–60; default/medium | #1748, upgrade | open |
-| B6 | #1659 | RemoteRun spawn fixture: visible diagnostics, explicit runner freshness | 0; 40–90; default/medium | #1748, upgrade | open |
-| B7 | #1668 | Bootstrap smoke fixtures isolate irrelevant host doctor probes | 0; 40–90; default/medium | #1748, upgrade | open |
+| B1 | #1715 | Lead re-nudge backoff: hybrid retries, no timed re-nudge for acknowledged waits (PR #1755) | 100–180; 100–180; default/medium | #1748, upgrade | done |
+| B2 | #1682 | Merge-up delta detection accepts the published merge-up note (PR #1754) | 30–80; 60–120; default/medium | #1748, upgrade | done |
+| B3 | #1701 | Finished-builder reclaim: evidence disposition first, code only if a gap reproduces. A gap reproduced: the builder lead brief named no action for a `lifecycle` `reclaim` event, so it now runs its pool's `mdstack kill` and marks the id done only once the window and run record are gone (PR #1775) | 0 unless a gap reproduces; 60–120 if needed; default/medium | #1748, upgrade | done |
+| B4 | #1714 | Work pause and resume: the coordinator stays, workers stop with work retained; adds the §7 "No project pause" row (PR #1767) | 300–500 in 4–6 commits; 180–300; deep/high | #1748, upgrade, B1 | done |
+| B5 | #1100 | Dequeue refusal names lead pool ownership, not a missing slot (PR #1752) | 10–35; 30–60; default/medium | #1748, upgrade | done |
+| B6 | #1659 | RemoteRun spawn fixture: visible diagnostics, explicit runner freshness (PR #1753) | 0; 40–90; default/medium | #1748, upgrade | done |
+| B7 | #1668 | Bootstrap smoke fixtures isolate irrelevant host doctor probes (PR #1760) | 0; 40–90; default/medium | #1748, upgrade | done |
+| A1 | #1757 | Main-red fix, added during M49: `down` counts a watcher already gone before SIGTERM as stopped (PR #1761) | n/a | none | done |
 
 ACs and paths per row (the readiness pass has the full text and line
 citations; runtime files are under `environments/terminal/crew.d/`, tests
@@ -1116,11 +1119,46 @@ Owner steps: the 7.10.0 upgrade before any build; after B4 lands, one
 supported-host pause and resume acceptance showing the coordinator survives
 with no worker or land activity, batched with any upgraded B3 trace.
 
-Merge permission for M49 spec, protocol, template and gate-contract text is
-the owner's M49–M51 grant
-([decision](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6831237295),
-[text](https://github.com/mw-ding/mdstack/issues/1744#issuecomment-6819303787)),
-recorded at each head. A status-sync slice closes the milestone.
+Questions M49 settled at close:
+
+- **D1 and D2.** The owner's go-with-suggestions direction
+  ([decision](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6831237295))
+  took the work pause for #1714 and the hybrid backoff for #1715, both as
+  recommended; #1767 and #1755 shipped them.
+- **Upgrade.** The owner deferred the 7.10.0 upgrade
+  ([decision](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6832180374)),
+  so the builds ran on the 7.6.0 install instead of waiting for it; the
+  owner upgrades after the 7.11.0 cut.
+- **#1701.** Its evidence disposition reproduced a gap, so it took the
+  conditional code path (#1775) rather than closing on evidence alone.
+- **Release class.** #1714 is major as specified: it adds the §7 "No
+  project pause" row. The owner chose a minor anyway: M49 ships in 7.11.0
+  ([decision](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6840322691)),
+  with #1714's `**Breaking:**` entry and its migration step kept in the
+  notes, as for 7.10.0. This was the owner's other call the classification
+  above allows.
+
+Lessons:
+
+- **Replay through the whole delivery path (#1682).** #1656's signed
+  `[Ben/merge-up]` note, a form the protocol allows, never reached delta
+  re-review: `route.merge_up_delta` recognized only `fix` and `ci-fix`
+  notes, and the reviewer lead got nothing until a manual handoff about
+  45 minutes later. #1754 replays the verbatim note through poll, route,
+  the reviewer lead inbox and admission, so a delivery gap fails a test
+  instead of stalling a PR.
+- **Owner-shell captures go in a builder-signed review (#1766).** A
+  passing owner-shell capture posted as a coordinator PR comment still
+  failed §3 and the §7 Required evidence gate; it took an extra round to
+  copy it verbatim, with the owner's attribution, into a builder-signed
+  fix review at the capture SHA. Place such a capture there from the start.
+
+Merge permission for M49 spec, protocol, template and gate-contract text was
+the owner's merge-ok for all PRs
+([decision](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6832180374)),
+recorded per PR at each head. M49 closes after this slice merges.
+
+Release: all of M49 ships in 7.11.0, a minor by the owner's choice.
 
 ### M50: portable session contracts and stack binding
 
