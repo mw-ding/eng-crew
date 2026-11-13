@@ -213,10 +213,13 @@ class CurrentBriefs(unittest.TestCase):
 
     def test_rendered_briefs_pass(self):
         briefs, grant = render()
-        self.assertEqual(sorted(briefs), ["builder-lead.md", "builder.md", "coordinator.md", "researcher.md",
+        self.assertEqual(sorted(briefs), ["builder-fix.md", "builder-lead.md", "builder.md", "coordinator.md",
+                                         "researcher-triage.md", "researcher.md",
                                          "reviewer-lead.md", "reviewer.md", "solo.md", "synthesizer-lead.md",
                                          "synthesizer.md"])
-        problems = [p for n, t in briefs.items() for p in lint(n, t, grant)]
+        companions = {"builder.md": "builder-fix.md", "researcher.md": "researcher-triage.md"}
+        problems = [p for n, t in briefs.items() if n not in companions.values()
+                    for p in lint(n, t + briefs.get(companions.get(n), ""), grant)]
         self.assertEqual(problems, [])
 
     def test_reviewer_markers_rereview_and_retained_review(self):
@@ -252,7 +255,8 @@ class CurrentBriefs(unittest.TestCase):
         self.assertNotIn("keep the full local run", text)
 
     def test_builder_selfgate_loop(self):  # #671
-        text = " ".join(render()[0]["builder.md"].split())
+        briefs = render()[0]
+        text = " ".join((briefs["builder.md"] + briefs["builder-fix.md"]).split())
         for rule in ("only when the newest item record names `express` and the change carries `crew:express`",
                      '`core/crew-config.py class-flavor --project "$CREW_PROJECT" --express`',
                      "Lane `crew` (a tightening class match, a missing label or an unreadable resolution) runs the crew lane",
@@ -507,7 +511,8 @@ class TriageSweepBrief(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls.text = " ".join(render()[0]["researcher.md"].split())
+        briefs = render()[0]
+        cls.text = " ".join((briefs["researcher.md"] + briefs["researcher-triage.md"]).split())
         loader = importlib.machinery.SourceFileLoader("crew_cli", os.path.join(os.path.dirname(SCRIPTS), "cli", "mdstack"))
         cls.crew = importlib.util.module_from_spec(importlib.util.spec_from_loader("crew_cli", loader))
         loader.exec_module(cls.crew)

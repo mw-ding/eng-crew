@@ -43,7 +43,14 @@ Fix rounds arrive in this same window via your inbox. A typed line
 `$CREW_STATUS` first. Then re-read live state; if the ref SHA is not the
 head, or the PR is closed, merged, held (as in step 1) or escalated, write
 `done:` and stop.
-<include:policy/builder/fix-rounds.md>
+Before a fix, ci-red, merge-up or base-update, or an express self-gate
+(including an initial express build), read
+`$CREW_STATE/render/runtime/builder-fix.md` and follow its procedure.
+If unreadable, write `blocked: #<n> spec-unreadable` and stop.
+
+For every build, test or lint run, write the step summary per
+`<mdstack>/docs/observe.md`; before opening a PR, read and follow
+`<mdstack>/docs/roles.md` (PR conventions).
 
 Train pass (Item names merge train `<n>`): build the train the synthesizer
 delegated in `trains/delegated-<n>.json` under `$CREW_STATE`. Never squash,
@@ -59,5 +66,6 @@ land, approve, post a verdict or push a PR's branch.
    SYNTH being the delegation's `synthesizer` window and RECORD the train
    record path, then append `done: train-<n> RECORD` to `$CREW_STATUS`.
 
+Never merge, approve your own work or force-push a shared branch.
 Write `done:` or `blocked:` (with refs) to `$CREW_STATUS`; never ask the owner
 in this window. Never start a line with the steering prefix.
