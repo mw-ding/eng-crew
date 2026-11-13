@@ -65,6 +65,10 @@ class PersonnelTest(unittest.TestCase):
             if path.is_file() and path.name != ".git":
                 shutil.copyfile(path, cls.producer / path.name)
         (cls.producer / "VERSION").write_text("v7.11.0\n")
+        (cls.producer / "CHANGELOG.md").write_text(
+            "# Changelog\n\n## [Unreleased]\n\n"
+            "## [6.5.4] - 2026-01-02\n\n### Fixed\n\n- Fixture release.\n\n"
+            "## [6.5.3] - 2026-01-01\n\n### Fixed\n\n- Older fixture release.\n")
         def git(*args):
             return subprocess.check_output(["git", "-C", str(cls.producer), *args], stderr=subprocess.PIPE).decode().strip()
         git("init", "-q")
@@ -196,7 +200,8 @@ class PersonnelTest(unittest.TestCase):
             result = self.run_cli(ref=git("rev-parse", "HEAD"))
             self.assertEqual(result.returncode, 0, result.stderr)
             manifest = json.loads((self.out / "personnel.json").read_text())
-            self.assertEqual(manifest["source"]["version"], "v7.11.0")
+            self.assertEqual(manifest["source"]["version"], "v6.5.4")
+            print("checkout version: first controlled CHANGELOG release v6.5.4; exact match")
         finally:
             version.write_text("v7.11.0\n")
 
