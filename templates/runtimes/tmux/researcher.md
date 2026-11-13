@@ -22,8 +22,10 @@ notes go in the worktree's `.crew/`. Never download or install a binary from
 the internet, bypass OS code-signing or quarantine, or use a mirror registry.
 <include:policy/shared/tmux-kill.md>
 
-When the Item is `triage sweep`, follow [Triage sweep](#triage-sweep) instead
-of Scope and Output. When it is `docs pass`, follow [Docs pass](#docs-pass)
+When the Item is `triage sweep`, read
+`$CREW_STATE/render/runtime/researcher-triage.md` and follow its procedure
+instead of Scope and Output. If unreadable, write
+`blocked: #<n> spec-unreadable` and stop. When it is `docs pass`, follow [Docs pass](#docs-pass)
 instead. Reflection: follow
 `<mdstack>/templates/policy/researcher/skills/protocol-reflection/SKILL.md`.
 
@@ -76,10 +78,6 @@ it. Link the PR from the finding.
 
 Then append `done: #<n> research <url>` to `$CREW_STATUS` (status lines per
 `<mdstack>/docs/protocol.md` §6) and stop.
-
-## Triage sweep
-
-<include:policy/researcher/triage-sweep.md>
 
 ## Docs pass
 

@@ -148,6 +148,20 @@ class ScoutRole(SpawnBase):
 class ShippedDiscovery(unittest.TestCase):
     """The shipped roles keep the former self-test brief lists for tmux and grok-bot; session uses the tmux names (#1541)."""
 
+    def test_triggered_companions_follow_role_runtime_replacement(self):
+        renderer = load("companion_renderer", os.path.join(os.path.dirname(SCRIPTS), "core", "crew-render.py"))
+        for role, companion in (("builder", "builder-fix"), ("researcher", "researcher-triage")):
+            with self.subTest(role=role), tempfile.TemporaryDirectory() as tmp:
+                templates = renderer.ROLES[role]["templates"]["tmux"]
+                self.assertIn("templates/runtimes/tmux/" + companion + ".md", templates)
+                project = Path(tmp, "crew.toml")
+                project.write_text('[runtime]\nname = "tmux"\n[runtime.options.role_runtime]\n'
+                                   + role + ' = "%s"\n' % ("session" if role == "builder" else "grok-bot"))
+                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                    self.assertEqual(renderer.main(["--project", str(project), "--out", tmp]), 0)
+                self.assertTrue(Path(tmp, "runtime", role + ".md").is_file())
+                self.assertFalse(Path(tmp, "runtime", companion + ".md").exists())
+
     def test_former_brief_lists(self):
         spec = importlib.util.spec_from_loader("crew_shipped_cli", SourceFileLoader("crew_shipped_cli", os.path.join(os.path.dirname(SCRIPTS), "cli", "mdstack")))
         crew = importlib.util.module_from_spec(spec)

@@ -10,9 +10,11 @@ Both modes first stop the armed watcher (SIGTERM; refuses if it outlives the gra
 --preserve is the maintenance stop before a migration (#1178): it stops the watcher and every pane's processes, but keeps each run's worktree, record, claim, inbox and status file.
 An attended owner terminal previews finished grants before shutdown and offers `prune` confirmation. Authority is
 edited only after successful teardown. --keep-grant, --preserve and noninteractive/role down skip pruning.
+Plain down also removes regular runs/coordinator.* scratch files after a successful stop, or when nothing is running; symlinks stay.
 """
 import contextlib
 import fcntl
+import glob
 import os
 import signal
 import time
@@ -62,6 +64,13 @@ def land_locked(state):
     return None
 
 
+def clean_coordinator(state, keep_work):
+    if not keep_work:
+        for path in glob.glob(os.path.join(state, "runs", "coordinator.*")):
+            if os.path.isfile(path) and not os.path.islink(path):
+                os.remove(path)
+
+
 def run(args):
     grant = commands()["grant"]
     _, _, state = profile(args, "worktree_root")
@@ -84,10 +93,12 @@ def run(args):
 def teardown(args):
     values, session, state = profile(args, "worktree_root")
     preserve = getattr(args, "preserve", False)
+    keep_work = preserve or getattr(args, "keep_work", False)
     live = tmux.has_session(session)
     remote = any(remote_run.host_of(rec) for _, rec in runs(state))  # they outlive the primary's session
     watching = watcher(state)
     if not live and not preserve and not remote and not watching:
+        clean_coordinator(state, keep_work)
         print("crew: %s not running" % session)
         return 0
     lock = land_locked(state)
@@ -101,6 +112,7 @@ def teardown(args):
     if preserve:
         args.keep_work = True
     if not live and not remote:
+        clean_coordinator(state, keep_work)
         print("crew: %s not running; watcher stopped" % session)
         return 0
     windows = tmux.list_windows(session) if live else []
@@ -128,5 +140,6 @@ def teardown(args):
         tmux.kill_session(session)
     for _, rec in commands()["lead"].records(state):
         os.remove(commands()["lead"].record_path(state, rec["role"].removesuffix("-lead")))
+    clean_coordinator(state, keep_work)
     print("crew: stopped %s" % session if live else "crew: %s not running; its remote runs stopped" % session)
     return 0

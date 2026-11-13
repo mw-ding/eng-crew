@@ -302,6 +302,49 @@ class Render(unittest.TestCase):
 class TmuxBriefs(unittest.TestCase):
     """The real tmux briefs (templates/runtimes/tmux/) render from profiles/tmux.toml to the golden files (#137)."""
 
+    def test_triggered_procedures_are_rendered_and_reachable(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(cr.main(["--project", example_profile(tmp), "--out", tmp]), 0)
+            got = tree(os.path.join(tmp, "runtime"))
+            for role, companion in (("builder", "builder-fix"), ("researcher", "researcher-triage")):
+                with self.subTest(role=role):
+                    entry, procedure = got[role + ".md"], got[companion + ".md"]
+                    self.assertIn("$CREW_STATE/render/runtime/" + companion + ".md", entry)
+                    self.assertIn("If unreadable", entry)
+                    self.assertIn("`blocked: #<n> spec-unreadable` and stop.", entry)
+                    self.assertNotRegex(procedure, r"<(?:op:|include:|strategy:|flavor-)")
+            builder = " ".join(got["builder.md"].split())
+            for rule in ("fix, ci-red, merge-up or base-update", "including an initial express build",
+                         "append `ack: <id>`", "if the ref SHA is not the head", "heartbeat",
+                         "Never squash, land, approve", "never ask the owner", "Step summaries"):
+                self.assertIn(rule.lower(), (builder + got["builder-fix.md"]).lower())
+            self.assertNotIn("Express self-gate (`", got["builder.md"])
+            self.assertIn("gh pr review <n> --comment --body-file <file>", got["builder-fix.md"])
+            self.assertIn("Instead of Scope and Output".lower(), got["researcher.md"].lower())
+            self.assertNotIn("pass=triage-log", got["researcher.md"])
+            self.assertIn("pass=triage-log", got["researcher-triage.md"])
+
+    def test_disabled_researcher_requires_no_companion_operations(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            inputs = os.path.join(tmp, "inputs")
+            shutil.copytree(os.path.join(os.path.dirname(SCRIPTS), "templates"), inputs)
+            procedure = os.path.join(inputs, "runtimes", "tmux", "researcher-triage.md")
+            with open(procedure, "a") as f:
+                f.write("\n<op:tracker.unknown-triage-operation>\n")
+            for cap, expected in ((0, 0), (1, 1)):
+                project = os.path.join(tmp, "crew.toml")
+                with open(project, "w") as f:
+                    f.write('[runtime]\nname = "tmux"\noptions = { researchers = %d }\n' % cap)
+                out = os.path.join(tmp, "out-" + str(cap))
+                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                    code = cr.main(["--project", project, "--inputs", inputs, "--out", out])
+                self.assertEqual(code, expected)
+                if not cap:
+                    self.assertFalse(any("researcher" in rel for rel in tree(out)))
+                else:
+                    self.assertFalse(os.path.exists(out))
+
     def test_flavor_presets_and_unset_in_both_bindings(self):
         expected = {
             "thorough": "review=full; validation=always; evidence=typed; caps=[3, 3]; merge=docs; builder=crew.",
@@ -418,7 +461,7 @@ class TmuxBriefs(unittest.TestCase):
                     with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
                         self.assertEqual(cr.main(["--project", project, "--out", out]), 0)
                     got = tree(os.path.join(out, "runtime"))
-                    brief = " ".join(got["builder.md"].split())
+                    brief = " ".join((got["builder.md"] + got["builder-fix.md"]).split())
                     self.assertIn("`selfgate_engine` (profile `%s`)" % mode, brief)
                     self.assertIn("`[Builder/selfgate] <pass|changes> @ <sha7>` COMMENT review", brief)
                     self.assertNotIn("selfgate", got["solo.md"])
@@ -444,11 +487,11 @@ class TmuxBriefs(unittest.TestCase):
             contract = cr.Renderer({"paths.mdstack": "<mdstack>"}, None).line(
                 "<include:docs/roles.md#pr-conventions>")
             for name in ("builder.md", "solo.md"):
-                self.assertIn(contract, got[name])
+                self.assertIn(contract, got[name] + (got["builder-fix.md"] if name == "builder.md" else ""))
                 self.assertIn("```sh\nsolo-tests\n```", got[name])
                 for rule in ("Closes #<issue#>", "## Acceptance Evidence", "create→complete→delete",
                              "CHANGELOG fragment", "box-skill", "pass=fix", "effort=<effort>"):
-                    self.assertIn(rule, got[name])
+                    self.assertIn(rule, got[name] + (got["builder-fix.md"] if name == "builder.md" else ""))
 
     def test_golden_tmux_briefs(self):
         tmp = tempfile.mkdtemp()
@@ -460,7 +503,8 @@ class TmuxBriefs(unittest.TestCase):
         expected = tree(os.path.join(FIX, "tmux"))
         got = tree(os.path.join(tmp, "out"))
         self.assertEqual(sorted(got), sorted(["runtime/%s.md" % r for r in cr.ROLES] +
-                                            ["runtime/builder-lead.md", "runtime/reviewer-lead.md", "runtime/solo.md",
+                                            ["runtime/builder-fix.md", "runtime/researcher-triage.md",
+                                             "runtime/builder-lead.md", "runtime/reviewer-lead.md", "runtime/solo.md",
                                              "runtime/synthesizer-lead.md"]))
         self.assertEqual(sorted(got), sorted(expected))
         for rel, text in expected.items():
@@ -742,6 +786,9 @@ class TmuxBriefs(unittest.TestCase):
         self.assertIn("A single ready PR with none close merges alone immediately", synth)
         self.assertIn("`$CREW_BIN land-lock acquire", synth)
         for rel, brief in got.items():
+            if rel in ("runtime/builder-fix.md", "runtime/researcher-triage.md"):
+                entry = "builder" if "builder" in rel else "researcher"
+                brief += got["runtime/" + entry + ".md"]
             with self.subTest(brief=rel):
                 self.assertIn("/opt/mdstack/docs/protocol.md", brief)
                 self.assertIn("-R acme/widgets", brief)
@@ -1296,7 +1343,8 @@ class PackOverlay(unittest.TestCase):
         self.assertEqual(got["runtime/builder-lead.md"], before["runtime/builder-lead.md"] + section("builder"))
         self.assertEqual(got["runtime/coordinator.md"], before["runtime/coordinator.md"] + section("coordinator"))
         self.assertEqual(got["runtime/reviewer.md"], before["runtime/reviewer.md"] + section("reviewer"))
-        self.assertEqual({rel for rel in got if got[rel] != before[rel]}, set(got) - {"runtime/solo.md"})
+        self.assertEqual({rel for rel in got if got[rel] != before[rel]},
+                         set(got) - {"runtime/solo.md", "runtime/builder-fix.md", "runtime/researcher-triage.md"})
         budget = os.path.join(self.tmp, "budget")
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
             self.assertEqual(cr.main(["--project", tmux, "--out", budget], normalize_paths=True), 0)
@@ -1333,7 +1381,7 @@ class PackOverlay(unittest.TestCase):
                 code, out, got = self.render(path, "--org-profile", self.org)
                 self.assertEqual(code, 0, out)
                 renders[name, runtime] = tree(got)
-        changed = {"tmux": {"runtime/builder.md", "runtime/solo.md", "runtime/synthesizer.md"},
+        changed = {"tmux": {"runtime/builder.md", "runtime/builder-fix.md", "runtime/solo.md", "runtime/synthesizer.md"},
                    "grok-bot": {"runtime/builder-b1.md", "runtime/builder-b2.md", "runtime/synthesizer.md"}}
         for runtime in ("tmux", "grok-bot"):
             merge, rebase = renders["none", runtime], renders["rebase", runtime]
@@ -1346,10 +1394,10 @@ class PackOverlay(unittest.TestCase):
             self.assertIn(step % "use merge-up", merge[rel])
             self.assertIn(step % "rebase onto `main` and upload", tmux[rel])
         self.assertIn(step % "rebase onto `main` and upload", grok["runtime/builder-b1.md"])
-        self.assertIn("no rebase or force-push.", merge["runtime/builder.md"])
-        self.assertNotIn("no rebase or force-push.", tmux["runtime/builder.md"])
+        self.assertIn("no rebase or force-push.", merge["runtime/builder-fix.md"])
+        self.assertNotIn("no rebase or force-push.", tmux["runtime/builder-fix.md"])
         self.assertIn("rebase onto the default branch, resolve the conflict, upload the result as a new head",
-                      tmux["runtime/builder.md"])
+                      tmux["runtime/builder-fix.md"])
         self.assertIn("Use a merge\ncommit for updates", merge["runtime/solo.md"])
         self.assertNotIn("Use a merge\ncommit for updates", tmux["runtime/solo.md"])
         self.assertIn("rebase onto it and upload a new head (`gh pr update-branch", tmux["runtime/solo.md"])
@@ -1366,7 +1414,8 @@ class PackOverlay(unittest.TestCase):
         self.assertEqual(code, 0, out)
         upstream, got = tree(upstream), tree(got)
         self.assertIn("runtime/researcher.md", upstream)
-        self.assertEqual(got, {rel: text for rel, text in upstream.items() if rel != "runtime/researcher.md"})
+        self.assertEqual(got, {rel: text for rel, text in upstream.items()
+                               if rel not in ("runtime/researcher.md", "runtime/researcher-triage.md")})
 
     def test_researcher_records_by_comment_without_write_item(self):
         """#926: write-item unsupported renders the researcher record via tracker.comment, with no overlay copy."""

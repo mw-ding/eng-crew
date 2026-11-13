@@ -178,7 +178,7 @@ marker_role = "researcher"
 passes = ["research"]
 inputs = { research = ["issue"] }
 engine_source = "tier"
-templates = { tmux = ["templates/runtimes/tmux/researcher.md"] }
+templates = { tmux = ["templates/runtimes/tmux/researcher.md", "templates/runtimes/tmux/researcher-triage.md"] }
 events = { tmux = [] }
 window_band = [40, 44]
 window_name = "{name}-{issue}"
