@@ -7,7 +7,9 @@ env has the stub first on PATH and no forge token or crew variables, and no scen
 disk while it runs (the stub serves from memory); the oracle passes a refusal with zero requests and a
 single-request stack land with one merge post per member, and fails a request despite a hold, a refusal of a passing
 stack, a per-PR merge, a land without its merge posts and a refusal without a blocked: line; a session that never
-acknowledges is unverified (exit 2). The live captures run the real synthesizer (docs/runtimes/session.md, Stack
+acknowledges is unverified (exit 2). #1722: the rev-* scenarios render and run the three-member revision-id binding
+with per-change readback; a held or red member sends zero requests, a passing stack and a lost acknowledgement send
+exactly one, with one merge post per member. The live captures run the real synthesizer (docs/runtimes/session.md, Stack
 land lab). Offline, temp dirs only. Run in CI.
 """
 import os
@@ -35,10 +37,11 @@ ENGINE = textwrap.dedent("""\
     open(os.path.join(lab, "env.txt"), "w").write("\\n".join("%s=%s" % kv for kv in sorted(os.environ.items())))
     os.makedirs(os.path.join(state, "status"), exist_ok=True)
     status = open(os.path.join(state, "status", "sam-lab.status"), "a")
-    status.write("ack: land #7, #8 %s\\n" % re.search(r"- Base: (\\S+)", text).group(1))
+    items = re.findall(r"#(\\d+)", re.search(r"- Item: (.*)", text).group(1))
+    status.write("ack: land %s %s\\n" % (", ".join("#" + n for n in items), re.search(r"- Base: (\\S+)", text).group(1)))
     mode = os.environ["FAKE_MODE"]
     heads = [subprocess.run(["gh", "pr", "view", n, "--json", "headRefOid", "-q", ".headRefOid"], capture_output=True,
-                            text=True).stdout.strip() for n in ("7", "8")]
+                            text=True).stdout.strip() for n in items]
     if mode == "refuse":
         status.write("blocked: #7 stack: #8 fails a gate\\n")
     elif mode == "quiet":
@@ -49,12 +52,12 @@ ENGINE = textwrap.dedent("""\
     else:
         crew = re.search(r"CREW_BIN=([^`]+)`", text).group(1)
         r = subprocess.run([sys.executable, crew, "land", "stack", "--project", profile, "--stack",
-                            "7:%s,8:%s" % tuple(heads)], capture_output=True, text=True)
+                            ",".join("%s:%s" % m for m in zip(items, heads))], capture_output=True, text=True)
         for n, marker in re.findall(r"marker: #(\\d+): (.*)", r.stdout) if mode == "land" else []:
             body = os.path.join(lab, "body.md")
             open(body, "w").write("[Sam/merge]\\n\\n" + marker + "\\n")
             subprocess.run(["gh", "pr", "review", n, "--comment", "--body-file", body])
-        status.write("done: #7\\ndone: #8\\n" if r.returncode == 0 else "blocked: #7 stack land exit 1\\n")
+        status.write("".join("done: #%s\\n" % n for n in items) if r.returncode == 0 else "blocked: #7 stack land exit 1\\n")
     """)
 
 
@@ -136,6 +139,34 @@ class StackLandLab(unittest.TestCase):
             during = f.read().split()
         self.assertFalse({"state.json", "requests.log"} & set(during), during)  # scenario state stays in the server
         self.assertTrue(os.path.exists(os.path.join(lab, "requests.log")))  # written after the run
+
+    def test_three_member_revision_binding(self):
+        """#1722: accepted, refused and lost-acknowledgement runs of the revision-id, per-change binding."""
+        revs = "exstack submit-stack 9 D107 D108 D109"
+        r, lab = self.lab("rev-pass", "land")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("request: %s (exit 0)" % revs, r.stdout)
+        self.assertIn("land-stack 1; gh pr merge 0", r.stdout)
+        self.assertIn("merge posts: #7 1, #8 1, #9 1", r.stdout)
+        self.assertIn("stack intents left: 7-%s.json" % ("a7" * 20), r.stdout)  # landed, kept until stack-done
+        with open(os.path.join(lab, "brief.md")) as f:
+            brief = " ".join(f.read().split())
+        self.assertIn("sends `exstack submit-stack <stack-top> <stack-revisions>` once, only when each member's "
+                      "`exstack member-status <n>` reads `none`", brief)
+        self.assertIn("- Item: #7, #8, #9 - Pass: land", brief)
+        for scenario in ("rev-held", "rev-red-ci"):
+            r, _ = self.lab(scenario, "refuse")
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertIn("land-stack 0; gh pr merge 0", r.stdout)
+            r, _ = self.lab(scenario, "land")  # a session that lands anyway fails the oracle
+            self.assertEqual(r.returncode, 1, r.stdout)
+            self.assertIn("verdict: FAIL: 1 land-stack requests, expected 0", r.stdout)
+            self.assertIn("request: %s (exit 0)" % revs, r.stdout)
+        r, _ = self.lab("rev-lost-ack", "land")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("request: %s (exit 1)" % revs, r.stdout)  # one request, nonzero acknowledgement
+        self.assertIn("land-stack 1; gh pr merge 0", r.stdout)  # read back, never resent
+        self.assertIn("merge posts: #7 1, #8 1, #9 1", r.stdout)
 
     def test_unacknowledged_run_is_unverified(self):
         r, _ = self.lab("held", "refuse", engine="true")

@@ -10,7 +10,11 @@ never reaches a network.
 
 exstack land-stack <stack>: the declared change.land-stack; logs the request, exits state["land_stack_exit"]
 (nonzero plays a lost acknowledgement) and advances nothing else. exstack stack-status <stack>: plays
-state["stack_status"] in order, keeping the last. `gh pr merge` is a per-PR land request: logged, refused.
+state["stack_status"] in order, keeping the last. #1722: exstack submit-stack <top> <revision ids>: the
+revision-id stack request; exits 4 unless the ids are every member's current one, base first, else
+state["land_stack_exit"]. exstack rev <n> <head-sha>: the member's revision id, exit 3 for any other head. exstack
+member-status <n>: plays state["member_status"] rounds, advancing once every member read the round.
+`gh pr merge` is a per-PR land request: logged, refused.
 Anything else exits 1 with `stub: unsupported`, so an unexpected call shows in the log rather than passing.
 """
 import contextlib
@@ -205,6 +209,23 @@ def exstack(args):
         seq = state["stack_status"]
         state["stack_status"] = seq[1:] or seq
         print(seq[0])
+        return 0
+    if args[:1] == ["submit-stack"] and len(args) > 2:
+        revs = state["revs"]
+        if args[2:] != [revs[n] for n in sorted(revs, key=int)]:
+            return 4
+        return state["land_stack_exit"]
+    if args[:1] == ["rev"] and len(args) == 3 and args[1] in state["revs"]:
+        if state["prs"][args[1]]["headRefOid"] != args[2]:
+            return 3
+        print(state["revs"][args[1]])
+        return 0
+    if args[:1] == ["member-status"] and len(args) == 2:
+        rounds = state["member_status"]
+        print(rounds["seq"][0][args[1]])
+        rounds["seen"].append(args[1])
+        if set(rounds["seen"]) >= set(rounds["seq"][0]):
+            state["member_status"] = {"seq": rounds["seq"][1:] or rounds["seq"], "seen": []}
         return 0
     print("stub: unsupported: exstack %s" % " ".join(args), file=sys.stderr)
     return 1

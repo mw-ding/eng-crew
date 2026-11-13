@@ -6,7 +6,10 @@ Usage: run.py [--root DIR] [--scenario NAME ...] [--engine claude] [--model M] [
 For each scenario it writes a session profile (repo acme/widgets) whose `paths.pack` points at a fixture pack
 declaring land.stack, with change.land-stack and change.stack-status bound to the stub `exstack`; renders the
 briefs with core/crew-render.py (the production render path) and appends `mdstack brief`'s run block for a
-two-member stack (#7, then #8 depending on it); and runs one real synthesizer session in this checkout, with the
+two-member stack (#7, then #8 depending on it). The rev-* scenarios (#1722) bind a three-member stack (#9 on #8)
+the way a review tool names one: change.land-stack = `exstack submit-stack <stack-top> <stack-revisions>`,
+change.read-revision-id and per-change readback (land.stack_status = "per-change", change.land-status mapped by
+[land.status]). Each scenario runs one real synthesizer session in this checkout, with the
 stub as `gh` and `exstack` first on PATH and no forge token. The stub serves each member's live head, verdict,
 validation, merge-ok, flavor, holds and CI from the scenario and logs every call; the session decides alone, and
 `$CREW_BIN` is this checkout's cli/mdstack. The lab then reads the stub's request log, the session's status file
@@ -32,6 +35,8 @@ import time
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.abspath(os.path.join(HERE, "..", "..", "..", "..", ".."))
 MAIN, H7, H8, L7, L8 = ("e0" * 20, "a7" * 20, "b8" * 20, "c7" * 20, "d8" * 20)
+H9, L9 = "f9" * 20, "a9" * 20
+REVS = {"7": "D107", "8": "D108", "9": "D109"}
 NONE = "7 none\n8 none"
 LANDED = "7 landed %s\n8 landed %s" % (L7, L8)
 # name: (what differs, state edits, expected land-stack requests, expected merge posts)
@@ -44,7 +49,19 @@ SCENARIOS = {
                   1, 0),
     "lost-ack": ("every gate passes; land-stack exits 1 (lost acknowledgement), then the stack lands",
                  {"land_stack_exit": 1}, 1, 2),
+    "rev-pass": ("revision-id binding, three members; every gate passes", {"binding": "rev"}, 1, 3),
+    "rev-held": ("revision-id binding, three members; #8 carries crew:hold",
+                 {"binding": "rev", "labels8": ["crew:approved", "crew:hold"]}, 0, 0),
+    "rev-red-ci": ("revision-id binding, three members; #8's required check repo-guard is red",
+                   {"binding": "rev", "ci8": "FAILURE"}, 0, 0),
+    "rev-lost-ack": ("revision-id binding, three members; submit-stack exits 1 (lost acknowledgement), then all land",
+                     {"binding": "rev", "land_stack_exit": 1}, 1, 3),
 }
+# The rev-* fixture pack (#1722): no shell in the map, one exstack call per operation.
+REV_MAP = ('land-stack = "exstack submit-stack <stack-top> <stack-revisions>"\n'
+           'read-revision-id = "exstack rev <n> <head-sha>"\nland-status = "exstack member-status <n>"')
+REV_LAND = ('[land]\nstack = true\nstack_status = "per-change"\n[land.status]\nNEW = "none"\nQUEUED = "queued"\n'
+            'MERGING = "landing"\n"MERGED (?P<revision>[0-9a-f]{40})" = "landed"\n"ABANDONED: (?P<reason>.+)" = "failed"\n')
 
 
 def marker_reviews(n, head, verdict=True):
@@ -79,13 +96,19 @@ def stub_state(edits):
     p8["labels"] = edits.get("labels8", p8["labels"])
     p8["checks"][0]["conclusion"] = edits.get("ci8", "SUCCESS")
     p8["reviews"] = marker_reviews(8, H8, edits.get("verdict8", True))
+    prs, items = {"7": p7, "8": p8}, (17, 18)
+    if edits.get("binding") == "rev":
+        prs["9"] = pr(9, H9, "builder/19-top", "builder/18-top", "## Context\n\nCloses #19\n\nDepends on #8")
+        items = (17, 18, 19)
     flavor = ("[Ash/flavor] #%d: standard (default standard)\n\n<!-- crew:v1 role=coordinator pass=flavor issue=%d "
               "flavor=standard default=standard -->\n— 🔥 Ash (CTO) · claude-code · claude-opus-5-5\n")
-    return {"self": "acme-bot", "main": MAIN, "main_runs": [MAIN, L7, L8],
-            "prs": {"7": p7, "8": p8},
+    rounds = [{n: "NEW" for n in prs}, {n: "QUEUED" for n in prs},
+              {n: "MERGED " + rev for n, rev in (("7", L7), ("8", L8), ("9", L9)) if n in prs}]
+    return {"self": "acme-bot", "main": MAIN, "main_runs": [MAIN, L7, L8, L9],
+            "prs": prs, "revs": {n: REVS[n] for n in prs}, "member_status": {"seq": rounds, "seen": []},
             "issues": {str(i): {"labels": ["crew:in-review"], "comments": [
                 {"author": {"login": "acme-bot"}, "body": flavor % (i, i), "createdAt": "2026-11-11T09:00:00Z"}]}
-                for i in (17, 18)},
+                for i in items},
             "stack_status": edits.get("status", [NONE, "7 queued\n8 queued", LANDED]),
             "land_stack_exit": edits.get("land_stack_exit", 0)}
 
@@ -105,16 +128,19 @@ def sha256(path):
 
 def setup(lab, edits):
     """The fixture pack, profile, stub and rendered brief; returns (brief path, profile path, env)."""
+    rev = edits.get("binding") == "rev"
+    bound = REV_MAP if rev else 'land-stack = "exstack land-stack <stack>"\nstack-status = "exstack stack-status <stack>"'
+    caps = ("land-stack = \"supported\"\nland-status = \"supported\"\nread-revision-id = \"supported\"" if rev
+            else "land-stack = \"supported\"\nstack-status = \"supported\"")
     with open(os.path.join(ROOT, "templates", "backends", "github.toml")) as f:
         mapping = f.read().replace(
             'land = "gh pr merge <n> --squash --match-head-commit <head-sha>"',
-            'land = "gh pr merge <n> --squash --match-head-commit <head-sha>"\n'
-            'land-stack = "exstack land-stack <stack>"\nstack-status = "exstack stack-status <stack>"')
+            'land = "gh pr merge <n> --squash --match-head-commit <head-sha>"\n' + bound)
     with open(os.path.join(ROOT, "connectors", "github", "manifest.toml")) as f:
         manifest = f.read().replace('name = "github"', 'name = "stacklab"\nmdstack_version = "v2.1.0"').replace(
-            'land = "supported"', 'land = "supported"\nland-stack = "supported"\nstack-status = "supported"')
+            'land = "supported"', 'land = "supported"\n' + caps)
     concerns = ["change", "review", "tracker", "state-tags", "markers", "ci", "events", "owner-channel"]
-    write(os.path.join(lab, "pack", "manifest.toml"), manifest + "\n[land]\nstack = true\n")
+    write(os.path.join(lab, "pack", "manifest.toml"), manifest + "\n" + (REV_LAND if rev else "[land]\nstack = true\n"))
     write(os.path.join(lab, "pack", "profile.toml"), "".join('[backends.%s]\nname = "stacklab"\n' % c for c in concerns))
     write(os.path.join(lab, "pack", "render", "backends", "stacklab.toml"), mapping)
     profile = os.path.join(lab, "project", "crew.toml")
@@ -130,7 +156,7 @@ def setup(lab, edits):
     if r.returncode != 0:
         raise SystemExit("stack-land lab: render failed:\n" + r.stdout + r.stderr)
     run = subprocess.run([sys.executable, os.path.join(ROOT, "cli", "mdstack"), "brief", "--window", "sam-lab",
-                          "--item", "#7, #8", "--pass", "land", "--base", MAIN, "--worktree", ROOT],
+                          "--item", "#7, #8, #9" if rev else "#7, #8", "--pass", "land", "--base", MAIN, "--worktree", ROOT],
                          capture_output=True, text=True, check=True).stdout
     with open(os.path.join(out, "runtime", "synthesizer.md")) as f:
         brief = f.read().rstrip("\n") + "\n\n" + run
@@ -170,7 +196,7 @@ def observe(lab, state, calls):
     status_path = os.path.join(lab, "state", "acme__widgets", "status", "sam-lab.status")
     status = open(status_path).read().splitlines() if os.path.exists(status_path) else []
     merges = {n: sum("pass=merge" in r["body"] for r in pr["reviews"]) for n, pr in state["prs"].items()}
-    stack = [c for c in calls if c["tool"] == "exstack" and c["argv"][:1] == ["land-stack"]]
+    stack = [c for c in calls if c["tool"] == "exstack" and c["argv"][:1] in (["land-stack"], ["submit-stack"])]
     per_pr = [c for c in calls if c["tool"] == "gh" and c["argv"][:2] == ["pr", "merge"]]
     intents = os.listdir(os.path.join(lab, "state", "acme__widgets", "land", "stack")) if os.path.isdir(
         os.path.join(lab, "state", "acme__widgets", "land", "stack")) else []
@@ -223,8 +249,8 @@ def run_one(name, root, args, pins):
              "stub log: %d calls; land-stack %d; gh pr merge %d" % (len(seen["calls"]), len(seen["stack"]),
                                                                      len(seen["per_pr"]))]
     lines += ["  request: exstack %s (exit %d)" % (" ".join(c["argv"]), c["exit"]) for c in seen["stack"]]
-    lines += ["  stack-status reads: %d" % sum(c["argv"][:1] == ["stack-status"] for c in seen["calls"]
-                                                if c["tool"] == "exstack")]
+    lines += ["  status reads: %d" % sum(c["argv"][:1] in (["stack-status"], ["member-status"]) for c in seen["calls"]
+                                          if c["tool"] == "exstack")]
     lines.append("merge posts: %s" % ", ".join("#%s %d" % kv for kv in sorted(seen["merges"].items())))
     lines.append("stack intents left: %s" % (", ".join(seen["intents"]) or "none"))
     lines += ["status: " + s for s in seen["status"]] or ["status: (empty)"]
@@ -254,7 +280,9 @@ def main(argv=None):
             if shutil.which("claude") else None
         engine = "claude %s, model %s" % (v.stdout.strip() if v else "(not on PATH)", args.model)
     print("stack-land lab (#1614)\nsource: %s%s\nengine: %s\nbackend map: change.land-stack = exstack land-stack "
-          "<stack>; change.stack-status = exstack stack-status <stack>; land.stack = true"
+          "<stack>; change.stack-status = exstack stack-status <stack>; land.stack = true\nbackend map (rev-*, #1722): "
+          "change.land-stack = exstack submit-stack <stack-top> <stack-revisions>; change.read-revision-id = exstack "
+          "rev <n> <head-sha>; change.land-status = exstack member-status <n>; land.stack_status = per-change"
           % (src, " (dirty)" if dirty else "", engine))
     with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as pool:
         results = list(pool.map(lambda n: run_one(n, root, args, None), names))

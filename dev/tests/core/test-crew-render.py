@@ -1025,6 +1025,38 @@ class PackOverlay(unittest.TestCase):
             self.assertIn(rule, recipe)
         self.assertNotIn("mkdir", recipe)
 
+    def test_session_per_change_stack_land_renders(self):
+        """#1722: a land-stack naming <stack-top> and <stack-revisions> renders (both kept run-time placeholders), and
+        per-change readback names each member's land-status in place of stack-status; the rest of the recipe holds."""
+        with open(os.path.join(os.path.dirname(SCRIPTS), "profiles", "session.toml")) as f:
+            session = self.project(f.read().replace('[runtime]\nname = "session"\n', ""))
+        with open(session) as f:
+            text = f.read().replace('name = "tmux"', 'name = "session"', 1)
+        with open(session, "w") as f:
+            f.write(text)
+        self.stack_pack("stack = true\n")
+        code, out, got = self.render(session, "--org-profile", self.org)
+        self.assertEqual(code, 0, out)
+        legacy = tree(got)["runtime/synthesizer.md"]
+        self.stack_pack('stack = true\nstack_status = "per-change"\n')
+        mapping = os.path.join(self.tmp, "pack", "render", "backends", "example.toml")
+        with open(mapping) as f:
+            text = f.read().replace('"ex land-stack <stack>"', '"ex submit <stack-top> <stack-changes> <stack-revisions>"')
+        with open(mapping, "w") as f:
+            f.write(text)
+        code, out, got = self.render(session, "--org-profile", self.org)
+        self.assertEqual(code, 0, out)
+        synth = tree(got)["runtime/synthesizer.md"]
+        flat = " ".join(synth.split())
+        self.assertIn("sends `ex submit <stack-top> <stack-changes> <stack-revisions>` once, only when each member's "
+                      "`ex land-status <n> <head-sha>` reads `none` for every member", flat)
+        self.assertNotIn("stack-status", synth)
+        swap = (("ex submit <stack-top> <stack-changes> <stack-revisions>", "ex land-stack <stack>"),
+                ("each member's `ex land-status <n> <head-sha>`", "`ex stack-status <stack>`"))
+        for new, old in swap:
+            flat = flat.replace(new, old)
+        self.assertEqual(flat, " ".join(legacy.split()))  # only the request and its readback differ
+
     def assert_crew_commands_parse(self, text):
         """Every `$CREW_BIN ...` command in text parses with the crew CLI's own argument parser (#1008 review)."""
         loader = importlib.machinery.SourceFileLoader("crew_cli", os.path.join(os.path.dirname(SCRIPTS), "cli", "mdstack"))

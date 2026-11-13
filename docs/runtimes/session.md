@@ -70,6 +70,11 @@ backend's combined-stack test on the current tip meets tested with the
 default branch, but only when the readback names the check, which each
 member's record then cites. Without `land.stack` the brief renders no stack
 recipe and lands stay one per run; tmux renders and trains are unchanged.
+A backend whose request names one representative change and every
+member's revision id binds `<stack-top>` and `<stack-revisions>`, with
+`change.read-revision-id`; with `land.stack_status = "per-change"` the
+readback is each member's mapped `change.land-status` (#1722,
+[interfaces](../interfaces.md#stack-land)).
 
 The stack land lab (#1614) runs that recipe end to end with a real
 synthesizer session. Run
@@ -84,7 +89,10 @@ head, markers, labels and CI, and it logs every call. The lab then counts
 the stub's `land-stack` requests, per-PR merges and merge posts. Scenarios:
 `held`, `red-ci` and `unapproved` (one member fails, so zero requests),
 `pass` (exactly one request), `malformed` (an incomplete readback, so no
-merge post) and `lost-ack` (one request, read back, never resent). Exit 0
+merge post) and `lost-ack` (one request, read back, never resent). The
+`rev-pass`, `rev-held`, `rev-red-ci` and `rev-lost-ack` scenarios (#1722)
+bind a three-member stack by `<stack-top>` and `<stack-revisions>` with
+per-change readback and expect the same request counts. Exit 0
 means every scenario met its expectation and 1 means one did not. Exit 2
 means unverified: the session never acknowledged the run.
 `dev/tests/scripts/test-stack-land-lab.py` checks the lab's plumbing in CI

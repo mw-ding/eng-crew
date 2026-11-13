@@ -1747,6 +1747,34 @@ class AsyncLandTest(unittest.TestCase):
             self.assertEqual(code, 1, lines)
             self.assertIn(expected, lines)
 
+    def test_manifest_per_change_stack_land(self):
+        """#1722: per-change stack readback needs land-status, not stack-status; a sync stack binding may declare its
+        change placeholder, and status only for per-change readback; per-change refuses the combined-tip claim."""
+        ok = (0, ["crew-config: OK (crew.toml)"])
+        caps = GITHUB_MANIFEST.replace('land = "supported"\n', 'land = "supported"\nland-stack = "supported"\n'
+                                       'land-status = "supported"\nread-revision-id = "supported"\n', 1)
+        per = caps + '\n[land]\nstack = true\nstack_status = "per-change"\nchange_placeholder = "rev"\n'
+        self.assertEqual(validate(per), ok)
+        self.assertEqual(validate(per + '[land.status]\n"MERGED (?P<revision>[0-9a-f]{40})" = "landed"\n'), ok)
+        legacy = caps.replace('land-status = "supported"', 'stack-status = "supported"')
+        self.assertEqual(validate(legacy + '\n[land]\nstack = true\nchange_placeholder = "rev"\n'), ok)
+        for text, expected in (
+                (per.replace('land-status = "supported"', 'land-status = "unsupported"'),
+                 "crew.toml:land.stack: needs change.land-status supported or emulated"),
+                (caps + '\n[land]\nstack = true\n', "crew.toml:land.stack: needs change.stack-status supported or emulated"),
+                (per + 'stack_tests_against_tip = true\n', "crew.toml:land.stack_tests_against_tip: per-change readback "
+                 "names no combined-stack check; expected false"),
+                (caps + '\n[land]\nstack_status = "per-change"\n', "crew.toml:land.stack_status: only valid with stack = true"),
+                (per.replace('"per-change"', '"each"'),
+                 "crew.toml:land.stack_status: unknown value 'each' (expected one of: stack, per-change)"),
+                (legacy + '\n[land]\nstack = true\n[land.status]\nNEW = "none"\n',
+                 'crew.toml:land.status: only valid with mode = "async"'),
+                (GITHUB_MANIFEST + '\n[land]\nchange_placeholder = "rev"\n',
+                 'crew.toml:land.change_placeholder: only valid with mode = "async"')):
+            code, lines = validate(text)
+            self.assertEqual(code, 1, lines)
+            self.assertIn(expected, lines)
+
     def test_profile_may_declare_conditional_operations(self):
         text = VALID.replace('[backends.change]\nname = "github"',
                              '[backends.change]\nname = "github"\ncapabilities = { publish = "unsupported", '

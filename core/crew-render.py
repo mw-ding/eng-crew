@@ -234,7 +234,7 @@ SESSION_LAND_STACK = (
     "`$CREW_BIN land stack --project \"$CREW_PROJECT\" --stack <n>:<head-sha>,...`\n"
     "with every member, base first. It records the intent, re-reads each member's\n"
     "head and sends `<op:change.land-stack>` once, only when\n"
-    "`<op:change.stack-status>` reads `none` for every member; never run either\n"
+    "%s reads `none` for every member; never run either\n"
     "yourself. On exit 1 post no `merge`, release any lock and report its\n"
     "`blocked:` line. On exit 0 post one `[<SynthesizerBot>/merge]` per member,\n"
     "naming the merge-ok or grant used, its `Land rule:` line and that member's\n"
@@ -278,7 +278,8 @@ KEPT = {"n", "sha7", "head-sha", "reviewed-base-sha", "k", "pass", "role", "pass
         "planned | applied | live", "date", "reason", "issue#", "pr", "tier", "engine", "model", "effort",
         "UTC timestamp", "file", "full-40-char-head-sha", "new-head-sha", "gate", "run-id", "worktree",
         "run-url", "harness", "branch", "t", "M", "login", "project", "url", "id", "item", "status-field", "option", "tag",
-        "version", "APPROVE|REQUEST_CHANGES", "sweep-id", "outcome", "band", "shadow|apply", "stack"}
+        "version", "APPROVE|REQUEST_CHANGES", "sweep-id", "outcome", "band", "shadow|apply", "stack",
+        "stack-top", "stack-changes", "stack-revisions"}
 TOKEN = re.compile(r"<([^<>\s!/=-][^<>\n]*)>")
 OP = re.compile(r"op:(.*)\.(.*)")
 PLACEHOLDER = re.compile(r"[a-z][a-z0-9-]*")
@@ -488,7 +489,10 @@ class Renderer:
             if not (self.values.get("land.stack") and self.session_template()):
                 return ""
             lock = SESSION_STACK_LOCK[bool(self.values.get("land.serializes"))].replace("\n   ", "\n")
-            return self.line(SESSION_LAND_STACK % (lock, SESSION_STACK_TIP[bool(self.values.get("land.stack_tests_against_tip"))]))
+            readback = ("each member's `<op:change.land-status>`" if self.values.get("land.stack_status") == "per-change"
+                        else "`<op:change.stack-status>`")  # per-change readback (#1722)
+            return self.line(SESSION_LAND_STACK % (lock, readback,
+                                                   SESSION_STACK_TIP[bool(self.values.get("land.stack_tests_against_tip"))]))
         if name == "land-publish":
             return self.line(LAND_PUBLISH) if self.values.get("land.opens_draft") else ""
         if name == "TeamName":

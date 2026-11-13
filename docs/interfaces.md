@@ -271,7 +271,7 @@ within a minor release.
 | `opens_draft` | bool (`false`) | Changes open as drafts that cannot land until `change.publish` runs |
 | `serializes` | bool (`false`) | The backend lands at most one change per repo at a time, each on the tip the previous land left |
 | `tests_against_tip` | bool (`false`) | The backend tests the exact patch it lands on the current tip, and refuses the land on red |
-| `change_placeholder` | placeholder name (`n`) | The token `mdstack land` fills with the change id in `change.land`, `change.land-status`, `change.read-head` and `change.read-landed`, for a backend whose `<n>` names the tracker item. List it in the backend map's `[placeholders] kept` |
+| `change_placeholder` | placeholder name (`n`) | The token `mdstack land` fills with the change id in `change.land`, `change.land-status`, `change.read-head`, `change.read-landed` and `change.read-revision-id`, for a backend whose `<n>` names the tracker item. List it in the backend map's `[placeholders] kept` |
 | `head_guard` | bool (`true`) | `change.land` refuses a moved head and carries `<head-sha>`. `false` declares that the backend has no such guard. The head is still re-read right before the request, and a stale head sends no request |
 | `status` | table (none) | Native `land-status` output to state: each key is a regular expression matched against the whole output, each value one of `none`, `queued`, `landing`, `landed`, `failed`. A `landed` pattern may capture `(?P<revision>...)`, and a `failed` one `(?P<reason>...)`. Without a revision group, `change.read-landed` prints the landed revision |
 
@@ -373,7 +373,7 @@ the binding nothing changes.
 
 ### Declaration
 
-Two optional keys join the `[land]` table above. They are independent of
+Three optional keys join the `[land]` table above. They are independent of
 `mode`: a `sync` backend may declare a stack land beside its individual
 land.
 
@@ -381,10 +381,17 @@ land.
 |---|---|---|
 | `stack` | bool (`false`) | The backend lands a linear stack atomically through `change.land-stack`, read back by `change.stack-status` |
 | `stack_tests_against_tip` | bool (`false`) | The stack land tests the combined stack on the current tip and refuses on red; its readback names the check |
+| `stack_status` | `stack` \| `per-change` (`stack`) | `per-change` reads the stack back from each member's `change.land-status`, mapped by `[land.status]` (with `change.read-landed` for a revision it does not capture), instead of `change.stack-status` (#1722) |
 
-`resolve` fails when `stack = true` is declared with `change.land-stack` or
-`change.stack-status` unsupported, and when `stack_tests_against_tip = true`
-is declared without `stack = true`. Both operations are conditional, so a
+`resolve` fails when `stack = true` is declared with `change.land-stack`
+unsupported, or with its readback unsupported: `change.stack-status`, or
+`change.land-status` under `per-change`. It fails when
+`stack_tests_against_tip = true` or `stack_status` is declared without
+`stack = true`, and when `per-change` is declared with
+`stack_tests_against_tip = true`, since three landed statuses are no receipt
+of a combined test. A `sync` stack binding may declare `change_placeholder`,
+which fills every per-member stack command; `[land.status]` is valid under
+`sync` only with `per-change`. The operations are conditional, so a
 manifest without `stack` never needs them. Only the session runtime renders
 or runs the stack land; `mdstack land stack` refuses a tmux profile.
 
@@ -394,14 +401,30 @@ or runs the stack land; `mdstack land stack` refuses a tmux profile.
 |---|---|---|
 | Land stack (`land-stack`) | One atomic request for the stack in `<stack>`: space-separated `<change>:<head-sha>` pairs, base first. Refused, landing nothing, if any member's head moved. All members land, or none. A repeated request for the same stack never lands twice | I3, I4 |
 | Stack status (`stack-status`) | For the stack in `<stack>`, one line per member in stack order: `<change> none`, `queued`, `landing`, `landed <full revision>` or `failed <reason>`. With the combined-stack check run, a last line `check <reference>` | I3, I4 |
+| Read revision id (`read-revision-id`) | For a change and `<head-sha>`, the backend's immutable revision id of that head, one token; refuses any other head. Needed only by a `land-stack` naming `<stack-revisions>` | I3 |
+
+Instead of `<stack>`, `land-stack` may name the stack the way a review tool
+does: `<stack-top>` (the last member's id, the representative change),
+`<stack-changes>` (member ids, space-separated, base first) and
+`<stack-revisions>` (each member's revision id, same order). A request must
+carry `<stack>` or `<stack-revisions>`, so it is pinned to the checked heads,
+and the backend refuses it when any member's revision id is no longer
+current. Each id must be one token of letters, digits and `._:+@-`, checked
+before it is substituted. `mdstack land stack` reads the ids at each
+member's checked head and records them in the intent before the first
+status read; a rerun or resume uses the recorded set, never a new one. A
+revision id is request metadata: `sha=` and `landed=` stay full hashes.
 
 Atomic means every member reads the same state. A missing, extra,
 reordered or malformed member line, or members in different states, is
 unknown: never `none`, never permission to request, never a merge record.
 Under `stack_tests_against_tip`, a landed readback without its `check` line
 is unknown, since the declaration alone is no receipt of the combined test.
-`[land.status]` maps only the individual `land-status`; `stack-status` uses
-the core grammar above.
+`stack-status` uses the core grammar above. Under `per-change`, each
+member's mapped `land-status` stands in for its line with the same rules:
+every member in one state, or unknown. Queued beside landing is unknown in
+this mode, so the pass records nothing and keeps the intent for resume;
+the legacy readback still polls that pair.
 
 ### Synthesizer loop
 
@@ -409,7 +432,8 @@ the core grammar above.
    member's own head. One failing member refuses the whole stack, and no
    request is sent.
 2. **Intent first.** `mdstack land stack --stack <n>:<head-sha>,...`
-   records one intent for the stack, reads `stack-status` and requests only
+   records one intent for the stack (with any revision ids), reads
+   `stack-status`, or each member's status under `per-change`, and requests only
    when every member reads `none` and `change.read-head` still returns each
    member's checked head. A lost acknowledgement is read back, never resent.
 3. **Poll and record.** It polls as for an asynchronous land. On a complete

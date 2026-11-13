@@ -1673,21 +1673,27 @@ more ready changes that form one linear `Depends on` stack in one atomic
 request, instead of one per run. Check every gate above for every member at
 that member's own head: verdict markers, precheck, flavor, merge permission,
 holds and stops, and CI. If any member fails, refuse the whole stack and
-request nothing. Otherwise record one intent for the stack, read
-`stack-status`, re-read every member's head, and request `land-stack` once,
-only when every member reads `none` and every head is unmoved
-(`mdstack land stack`). A lost acknowledgement is read back, never resent.
-Success needs a complete readback: every member, in stack order, `landed`
-with its own revision. A missing, extra, reordered or malformed member
-line, or members in different states, is unknown: no `merge` posts and
-the intent is kept for `mdstack land resume`, which never requests. On
+request nothing. Otherwise record one intent for the stack, with each
+member's revision id when the request names them, read `stack-status` (or
+each member's `land-status` under `land.stack_status = "per-change"`),
+re-read every member's head, and request `land-stack` once, only when every
+member reads `none` and every head is unmoved (`mdstack land stack`). A
+lost acknowledgement is read back, never resent; a rerun or resume uses the
+recorded revision ids, never new ones. Success needs a complete readback:
+every member, in stack order, `landed` with its own revision. A missing,
+extra, reordered or malformed member line, or members in different states
+(under `per-change`, queued beside landing too), is unknown: no `merge`
+posts and the intent is kept for `mdstack land resume`, which never
+requests. A revision id never replaces a full head or landed SHA in a
+record. On
 landed, post one `merge` record per member, each naming its landed revision
 under the unchanged marker. Tested with `<default-branch>` must hold for
 every member at the request unless the backend declares
 `land.stack_tests_against_tip = true`; then the backend's combined-stack
 test on the current tip meets it, but only when the readback names the
 check (`check <reference>`), and each member's merge record names that
-check. A declaration without that reference is no receipt. The repo lock
+check. A declaration without that reference is no receipt, and per-change
+readback names none, so it never meets the tip gate. The repo lock
 is held as for an asynchronous land, unless `land.serializes = true`.
 Without `land.stack`, session lands stay one per run; tmux trains are
 unchanged.
