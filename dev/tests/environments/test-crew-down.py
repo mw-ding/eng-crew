@@ -34,6 +34,24 @@ def fake_watcher(tmp):
 
 
 class Down(Base):
+    def test_down_removes_only_coordinator_scratch_with_or_without_session(self):
+        for live in (True, False):
+            with self.subTest(live=live):
+                with open(self.state_file, "w") as f:
+                    json.dump({"crew-acme-widgets": {"0": "ash"}} if live else {}, f)
+                scratch = ("coordinator.body.md", "coordinator.brief.md", "coordinator.status")
+                for name in scratch + ("ben-7.body.md", "coordinator-other.body.md"):
+                    self.put("runs/" + name, "scratch\n")
+                r = self.crew("down", "--project", self.project)
+                self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+                self.assertEqual(r.stderr, "mdstack: config %s\n" % self.project)
+                self.assertEqual(r.stdout, "crew: stopped crew-acme-widgets\n" if live else
+                                 "crew: crew-acme-widgets not running\n")
+                for name in scratch:
+                    self.assertFalse(os.path.exists(os.path.join(self.state, "runs", name)), name)
+                for name in ("ben-7.body.md", "coordinator-other.body.md"):
+                    self.assertTrue(os.path.isfile(os.path.join(self.state, "runs", name)), name)
+
     def test_down_kills_role_windows_then_session(self):
         with open(self.state_file, "w") as f:
             json.dump({"crew-acme-widgets": {"0": "ash", "1": "sam", "10": "ben-7", "20": "vera-9-r1-review"}}, f)
@@ -46,6 +64,7 @@ class Down(Base):
                                  ["kill-session", "-t", "=crew-acme-widgets"]])
 
     def test_down_refuses_while_land_lock_held(self):
+        self.put("runs/coordinator.body.md", "scratch\n")
         with open(self.state_file, "w") as f:
             json.dump({"crew-acme-widgets": {"0": "ash", "1": "sam"}}, f)
         os.makedirs(os.path.join(self.state, "locks"))
@@ -55,6 +74,7 @@ class Down(Base):
         self.assertEqual(r.returncode, 1)
         self.assertIn("land lock", r.stdout)
         self.assertEqual([c for c in self.calls() if c[0].startswith("kill-")], [])
+        self.assertTrue(os.path.isfile(os.path.join(self.state, "runs", "coordinator.body.md")))
 
     def test_down_without_session_is_noop(self):
         r = self.crew("down", "--project", self.project)
@@ -64,6 +84,7 @@ class Down(Base):
 
 class DownLanded(KillLandedBase):
     def test_down_refuses_and_names_windows_with_unlanded_work(self):
+        self.put("runs/coordinator.body.md", "scratch\n")
         wt = self.builder()
         with open(os.path.join(wt, "wip.txt"), "w") as f:
             f.write("x\n")
@@ -73,10 +94,12 @@ class DownLanded(KillLandedBase):
         self.assertIn("refusing down", r.stdout)
         self.assertTrue(os.path.isdir(wt))
         self.assertNotIn("kill-session", [c[0] for c in self.calls()])
+        self.assertTrue(os.path.isfile(os.path.join(self.state, "runs", "coordinator.body.md")))
 
 
 class DownPreserve(KillLandedBase):  # #1178: the maintenance stop before a migration
     def test_preserve_stops_watcher_and_panes_and_keeps_every_run(self):
+        self.put("runs/coordinator.body.md", "scratch\n")
         wt = self.builder()
         with open(os.path.join(wt, "wip.txt"), "w") as f:
             f.write("x\n")
@@ -93,10 +116,11 @@ class DownPreserve(KillLandedBase):  # #1178: the maintenance stop before a migr
                                         text=True).stdout.strip(), "")
         self.assertIn("kill-session", [c[0] for c in self.calls()])
         self.assertTrue(os.path.isfile(os.path.join(wt, "wip.txt")))
-        for rel in ("runs/ben-7.json", "claims/builder-issue7"):
+        for rel in ("runs/ben-7.json", "claims/builder-issue7", "runs/coordinator.body.md"):
             self.assertTrue(os.path.exists(os.path.join(self.state, rel)), rel)
 
     def test_down_stops_the_watcher_even_with_no_session_left(self):  # #1346: a persistent watcher outlives it
+        self.put("runs/coordinator.body.md", "scratch\n")
         pid = fake_watcher(self.tmp)
         self.addCleanup(lambda: subprocess.run(["kill", "-9", str(pid)], capture_output=True))
         self.put("wake/watcher.pid", "%d\n" % pid)
@@ -105,6 +129,7 @@ class DownPreserve(KillLandedBase):  # #1178: the maintenance stop before a migr
         r = self.crew("down", "--project", self.project)
         self.assertEqual((r.returncode, r.stdout), (0, "crew: crew-acme-widgets not running; watcher stopped\n"),
                          r.stderr)
+        self.assertFalse(os.path.exists(os.path.join(self.state, "runs", "coordinator.body.md")))
         deadline = time.monotonic() + 5
         while subprocess.run(["ps", "-o", "command=", "-p", str(pid)], capture_output=True, text=True).stdout.strip():
             self.assertLess(time.monotonic(), deadline)
