@@ -5,7 +5,8 @@
 > - **Current rules:** the [protocol](../protocol.md) and its gate registry; each requirement's **Delivered by** issues
 > - **Built:** M29–M33 (roles, connectors, environments, harnesses, core, cli and dev modules; the dependency lint; the actions CLI in part; the `mdstack` rename); M51 personnel delivery, #1180 rows A–D (PR #1805)
 > - **Design only:** the `protocols/` and `install/` modules ([§4](#4-target-module-layout)) and the rest of the actions implementation
-> - **M51 design delivered:** #1318's [team/project contract](#9-team-and-project-separation-1318-design-only) and approved T1–T4 breakdown (PR #1802); shared-pool routing remains design only and T1–T4 remain unadmitted
+> - **M51 design delivered:** #1318's [team/project contract](#9-team-and-project-separation-1318-design-only) and approved T1–T4 breakdown (PR #1802); shared-pool routing remains design only
+> - **M56 delivery:** T1–T4 admitted under [#1854](https://github.com/mw-ding/mdstack/issues/1854) as #1856–#1859, bookended by #1861 and #1860; rows, choices and order in [§9.8](#98-m56-delivery-1854); all four planned, not built
 > - **Last checked:** 2026-11-13 at `aacfb7e` (M51 personnel delivery landed)
 
 Status: v0.1 (2026-11-07). Owner: coordinator. Changes land through
@@ -470,7 +471,7 @@ restate it. #1217 updates portable.md to v0.4 with the harness axis, the
 | Q4. Does the runtime-word lint (D5) run before the reorganisation, against today's paths? | #1185 |
 | Q5. How long do the compatibility shims at old paths stay: one major version, or until packs confirm? | #1226 |
 | Q6. Do role classes and seats belong in `docs/specs/` of every project, or only here? | #1219 |
-| Q7. What does a team profile own versus a project, how do profiles and roles compose, and how do admission, claims and land stay inside one repo? | #1318 (PR #1802): [§9](#9-team-and-project-separation-1318-design-only), design delivered; T1–T4 unadmitted; applied M51 choices in [portable.md §5](portable.md#m51-personnel-boundary-and-team-routing-design) |
+| Q7. What does a team profile own versus a project, how do profiles and roles compose, and how do admission, claims and land stay inside one repo? | #1318 (PR #1802): [§9](#9-team-and-project-separation-1318-design-only), design delivered; T1–T4 planned under #1854 ([§9.8](#98-m56-delivery-1854)); applied M51 choices in [portable.md §5](portable.md#m51-personnel-boundary-and-team-routing-design) |
 | Q8. How does a host import a personnel bundle and pinned roles without the terminal machinery or a change to role authority? | #1180 rows A–D built (PR #1805), on [§9.6](#96-pinned-personnel-import-and-host-binding)'s import and binding contract; fake-host proof, no live adoption claim |
 
 ## 8. Out of scope
@@ -724,9 +725,8 @@ absent and all required policy/action references bound.
 ### 9.7 Derived work and acceptance matrix
 
 The applied M51 decision approves the design direction and names T1–T4;
-it does **not** admit those units. After design approval, the coordinator
-files build issues from this breakdown, links their individual plan records
-and updates their delivery references before marking any ready. Each is one
+it did not admit them. M56 (#1854) files and orders them; their issues,
+status and delivery references are in [§9.8](#98-m56-delivery-1854). Each is one
 work-unit PR in logical commits; sizes below exclude tests.
 
 | Unit | Scope and minimum proof | Paths | Depends on / estimate |
@@ -753,3 +753,128 @@ adoption.
 | One-repo profile and existing marker | Same resolution and marker semantics; T1–T4 regressions |
 | Pinned role missing/colliding, authority override or incomplete binding | No usable personnel install; #1180 |
 | Valid pinned content loaded by fake host without terminal tree | Every selected brief/procedure and required action resolves, rerun idempotent; #1180 |
+
+### 9.8 M56 delivery (#1854)
+
+M56 implements §9.1–§9.5 and §9.7 for one team serving several repos.
+§9.1–§9.7 stay the contract; this section records only rows, applied
+choices, order and proof boundaries. Member acceptance criteria live in
+their issues, from
+[Riley's readiness pass](https://github.com/mw-ding/mdstack/issues/1854#issuecomment-6866509757)
+§3–§6, under the
+[M56 plan record](https://github.com/mw-ding/mdstack/issues/1854#issuecomment-6866347368).
+S0 is recorded `built` for this opening slice, effective on merge. No
+member dispatches before #1861 merges. One issue → one PR in logical
+commits; the four units are not split further to meet a line budget.
+Estimates exclude tests and are planning ranges, not limits.
+
+| ID | Issue | Scope | Size | Depends on / integration prerequisite | Status |
+|---|---|---|---|---|---|
+| S0 | #1861 | Contract choices, issue references, refusal and proof matrix | 80–140 docs | M56 plan record; D1–D5 | built |
+| T1 | #1856 | Closed project context and qualified durable routing (§9.1–§9.3) | 250–450 | S0 | planned |
+| T2 | #1857 | Shared admission lock, target and ledger (§9.4) | 300–550 | T1; M55 #1836 shared waits | planned |
+| T3 | #1858 | Shared leads and worker lifecycle (§9.3–§9.4) | 400–700 | T1; integrated T2; M55 #1836 and #1830 | planned |
+| T4 | #1859 | Repo-bound land, locks and train/stack refusals (§9.5) | 250–450 | T1; integrated T3; M55 #1835 and #1836 | planned |
+| S1 | #1860 | Delivery references, headers, tracker closure, lessons | 40–90 docs | T1–T4 and M56 acceptance evidence | planned |
+
+Each later land updates its row through the existing delivery references;
+S1 performs the final sync. The overall spec stays **partly built**: the
+`protocols/` and `install/` modules and the rest of the actions work
+(§4) remain design only after M56.
+
+Execution: standard flavor, tmux lane, Claude Code builders first
+([c6865476254](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6865476254)).
+T1–T4 use deep tier, passed explicitly at dispatch until #1830 ships; both
+bookends use default tier. Reviewer selection excludes the builder engine.
+
+#### Applied choices D1–D5
+
+[Applied by the coordinator](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6866530837).
+These M56 choices are unrelated to the §5 dependency rules of the same
+letters.
+
+- **D1 (context):** durable closed context whose identity is
+  `(resolved team, canonical repo)`. `FILE#selector` is a locator, not the
+  identity. A single-repo config derives a deterministic singleton team.
+- **D2 (admission):** one team-root `schedule/` lock, target and ledger of
+  qualified identities. Repo eligibility stays separate; unknown aggregate
+  state refuses.
+- **D3 (leads and runs):** one `(team, pool)` lead with atomic team
+  allocation, immutable execution IDs plus live process identity, repo-state
+  worker records and `<worktree-root>/<repo-slug>/<run-id>/`.
+- **D4 (land):** repo-bound reads and references, per-repo land locks, and
+  train/intent membership qualified before any write. Markers and the
+  §7 registry's satisfied-by, actor and fail-open columns are unchanged.
+- **D5 (surface):** additive team interfaces; one-repo outputs and gate
+  satisfaction unchanged. Milestone version forecast: minor.
+
+The five closed project keys (T1), each rejecting unknown nested fields:
+
+| Key | Closed shape |
+|---|---|
+| `control_item` | Existing `repo.control_item` ID types and tracker-pattern checks, plus same-repo lookup before use |
+| `flavor` | Table with only `name`: a known non-express preset or team-defined flavor, compared against team/core/pack floors; no repo engine, identity, placement or cap fields |
+| `labels` | Closed map from existing canonical state-tag names to nonempty tracker labels; identity when omitted; no colliding destinations; applied to reads and writes |
+| `milestones` | Ordered, distinct native tracker milestone IDs in the binding's existing ID type, same-repo checked; omitted means existing discovery and order |
+| `doc_home` | Nonempty project-relative directory, defaulting to the existing docs home; absolute paths and normalized or symlink escapes refused |
+
+#### Envelope and state split
+
+The durable envelope carries team identity, project reference, canonical
+repo identity, item ID, change ID and full head SHA when a change exists,
+pass and round. A new build's envelope has no `change` or `head`: they are
+explicitly absent, never a guessed SHA. The checkout and base revision a
+build starts from are run-record data, not a published change head, and a
+run record's existing checkout-valued `repo` is not the canonical repo.
+Local completion binds to its run record; a bare `done:` line supplies no
+repo authority. `crew:v1` markers, signatures and status-line meanings are
+unchanged.
+
+| Team root | Repo state |
+|---|---|
+| `schedule/` lock, target and reservation ledger | Claims, worker inbox and status, evidence references, rounds |
+| `(team, pool)` lead inbox, status and handoff record | Holds, escalation, trains, stack intents and completion |
+| Run-ID and physical slot allocation | Land lock and land serialization |
+
+#### Zero-mutation refusals
+
+Each case refuses before the named action and changes no state, including
+cleanup writes.
+
+| Case | Refused before | Proof owner |
+|---|---|---|
+| Multi-repo file without selector, unknown selector or duplicate canonical repo | Render or dispatch | T1 |
+| Unknown nested key, project rigor relaxation or `doc_home` escape | Render or dispatch | T1 |
+| Envelope missing, unreadable or naming a repo other than the item's or change's | Claim, spawn, post or land | T1, T3, T4 |
+| Unreadable aggregate workers or ledger | Any team admission (unreadable A state blocks only A) | T2 |
+| Replay or old completion for A matching B's numeric IDs | Kill, reap or settle of B | T3 |
+| A's verdict, merge-ok, grant or train result offered for B at an identical SHA | B's land request | T4 |
+| Train, stack or persisted intent with a foreign member or base | Allocation, branch, push, CI, merge, resume or cleanup | T4 |
+
+#### Integration order with M55
+
+S0 merges first; T1 develops beside M55. After T1, T2 and T3 may develop
+together, but T2 integrates first. #1836 lands before T2/T3 wait
+acceptance, #1830 before T3 tier acceptance, and #1835 after #1836 and
+before T4 permission and resume acceptance. T4 may prepare isolated gate
+and membership work after T1, then integrates after T3. S1 follows all four.
+File overlap alone does not hold dispatch.
+
+#### Environment, prerequisites and classification
+
+**Target environment: N/A.** Implementation and isolated conformance use
+existing terminal and fake fixtures, disposable repos and a fake backend;
+no target-device or host-launch claim. **Owner prerequisites: none** for
+this bounded proof. Live team adoption and state moves remain a later
+operator step (§9.2).
+
+Permission and sensitivity are separate from owner-shell prerequisites.
+Merge permission is the owner's merge-ok for all M55–M57 PRs
+([c6865236268](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6865236268)),
+recorded per PR at head. Sensitivity is classified per diff at triage and
+on every push; T1–T4's authority, capacity, reclaim and land content are
+candidates, not recorded matches. A `crew:sensitive` match needs the
+owner's per-change reason and is not covered by the bulk merge-ok.
+
+The §9.7 routing scenarios remain future tests. This slice records no
+runtime result, and isolated proof will not assert live adoption.
