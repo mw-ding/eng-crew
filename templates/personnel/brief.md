@@ -1,6 +1,6 @@
 # Personnel brief: {{role}}
 
-Binding: {{binding}}. Load the [canonical role and procedures](../../templates/policy/<role>/SKILL.md)
+Binding: {{binding}}. Load {{policy-entry}}
 and [protocol](../../docs/protocol.md) before handling a dispatched pass.
 Policy fragments are reference material: run parameters are supplied by the
 host, and runtime examples are interpreted through the action table below.

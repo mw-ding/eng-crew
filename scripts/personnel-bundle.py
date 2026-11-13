@@ -156,7 +156,7 @@ def compose(root, ref, roles, binding):
         actions = "\n".join(f"- `{k}`: `{v}`" for k, v in sorted(binding["actions"].items()))
         authority = json.dumps({k: descriptor[k] for k in sorted(AUTHORITY) if k in descriptor}, sort_keys=True)
         text = template.replace("{{role}}", role).replace("{{binding}}", f"{binding['id']}@{binding['version']}")
-        text = text.replace("<role>", name)
+        text = text.replace("{{policy-entry}}", f"[canonical role and procedures](../../templates/policy/{name}/SKILL.md)")
         text = text.replace("{{authority}}", authority).replace("{{actions}}", actions)
         text = text.replace("{{settings}}", json.dumps(settings, sort_keys=True))
         files[f"briefs/eng/{name}.md"] = text.encode()
