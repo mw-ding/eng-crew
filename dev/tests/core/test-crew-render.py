@@ -601,11 +601,11 @@ class TmuxBriefs(unittest.TestCase):
             code = cr.main(["--project", project, "--out", os.path.join(tmp, "out")])
         self.assertEqual(code, 0, out.getvalue())
         synth = tree(os.path.join(tmp, "out"))["runtime/synthesizer.md"]
-        self.assertIn('`merge_grant = "all approved per #9"` (scope `["approved", "spec"]`, spec `["docs/specs/**", "rfcs/**"]`),', synth)
+        self.assertIn('Profile: scope `["approved", "spec"]`, spec `["docs/specs/**", "rfcs/**"]`,', synth)
         self.assertIn("§7 spec changes need merge-ok unless scope has `spec`", synth)
 
     def test_grant_provenance_with_and_without_recorded_grant(self):
-        """#314: a recorded grant renders with its source decision; none invents no grant; both pin authority."""
+        """#1746/#314: grant candidates render lookup instructions; none invents no grant; both pin authority."""
         tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, tmp)
         with open(example_profile(tmp), encoding="utf-8") as f:
@@ -638,13 +638,66 @@ class TmuxBriefs(unittest.TestCase):
                         self.assertIn(rule, synth)
                 self.assertIn("links its recorded decision instead of restating the permission",
                               got["runtime/coordinator.md"])
-        self.assertIn('`merge_grant = "none"`', briefs["none"]["runtime/synthesizer.md"])
+        self.assertIn('Standing grant: none', briefs["none"]["runtime/synthesizer.md"])
         self.assertIn("With `none`, require per-PR owner merge-ok; no standing grant applies.",
                       briefs["none"]["runtime/synthesizer.md"])
         for brief in briefs["none"].values():
             self.assertNotIn("x/111#c1", brief)
-        self.assertIn('`merge_grant = "roadmap PRs per https://x/111#c1"`', briefs["grant"]["runtime/synthesizer.md"])
-        self.assertIn('`merge_grant = "roadmap PRs per https://x/111#c1"`', briefs["grant"]["runtime/coordinator.md"])
+        self.assertIn("Standing-grant candidate: resolve `runtime.options.merge_grant` live", briefs["grant"]["runtime/synthesizer.md"])
+        self.assertIn("Standing-grant candidate: resolve `runtime.options.merge_grant` live", briefs["grant"]["runtime/coordinator.md"])
+
+    def test_grant_reference_is_bounded_and_layered(self):
+        root = os.path.dirname(SCRIPTS)
+        with tempfile.TemporaryDirectory() as tmp:
+            for runtime in ("tmux", "session"):
+                rendered = []
+                for grant in ("current permission per #9 comment 1",
+                              "historical archive #8 comment 2; " * 3000 + "current per #9 comment 1"):
+                    project = os.path.join(tmp, "project.toml")
+                    org = os.path.join(tmp, "org.toml")
+                    with open(project, "w") as f:
+                        f.write('[runtime]\nname = "%s"\n[paths]\nmdstack = "/opt/framework"\n' % runtime)
+                    with open(org, "w") as f:
+                        f.write('[runtime.options]\nmerge_grant = "%s"\n' % grant)
+                    command = [sys.executable, os.path.join(root, "core", "crew-render.py"),
+                               "--project", project, "--org-profile", org, "--out", os.path.join(tmp, "out")]
+                    result = subprocess.run(command, capture_output=True, text=True)
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    got = tree(os.path.join(tmp, "out"))
+                    rendered.append(got)
+                    resolved = subprocess.run([sys.executable, os.path.join(root, "core", "crew-config.py"),
+                                               "resolve", "--project", project, "--org-profile", org],
+                                              capture_output=True, text=True)
+                    self.assertEqual(resolved.returncode, 0, resolved.stderr)
+                    self.assertIn('runtime.options.merge_grant = "%s"  # org' % grant, resolved.stdout)
+                    text = " ".join(got["runtime/synthesizer.md"].split())
+                    self.assertIn('resolve --project "$CREW_PROJECT"', text)
+                    self.assertIn('with `--org-profile` when configured', text)
+                    self.assertIn('read named decisions on the configured tool of record', text)
+                    self.assertIn('foreign/mismatched records and unreadable profiles or sources supply no standing permission', text)
+                    self.assertNotIn(grant, text)
+                    if runtime == "tmux":
+                        self.assertIn('read `$CREW_STATE/render/runtime/synthesizer.md` at start',
+                                      got["runtime/synthesizer-lead.md"])
+                        self.assertIn('resolve --project "$CREW_PROJECT"', got["runtime/coordinator.md"])
+                    self.assertNotIn(grant, "".join(got.values()))
+                    shutil.rmtree(os.path.join(tmp, "out"))
+                self.assertEqual(rendered[0], rendered[1], runtime)
+                self.assertLessEqual(len(rendered[1]["runtime/synthesizer.md"].encode()), 16384)
+            with open(org, "w") as f:
+                f.write('[runtime.options]\nmerge_grant = "layer grant"\n')
+            with open(project, "w") as f:
+                f.write('[runtime]\nname = "tmux"\n[runtime.options]\nmerge_grant = "none"\n')
+            result = subprocess.run(command, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn("Standing grant: none", tree(os.path.join(tmp, "out"))["runtime/synthesizer.md"])
+            shutil.rmtree(os.path.join(tmp, "out"))
+            with open(project, "w") as f:
+                f.write('[runtime]\nname = "tmux"\n[runtime.options]\nmerge_grant = 42\n')
+            result = subprocess.run(command, capture_output=True, text=True)
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("runtime.options.merge_grant", result.stdout)
+            self.assertFalse(os.path.exists(os.path.join(tmp, "out")))
 
     def test_release_delegation_fills_coordinator_brief(self):
         """#1435: a set release_delegation renders in the coordinator brief; the golden covers none."""
@@ -679,7 +732,7 @@ class TmuxBriefs(unittest.TestCase):
         self.assertEqual(code, 0, out.getvalue())
         got = tree(os.path.join(tmp, "out"))
         synth = got["runtime/synthesizer.md"]
-        self.assertIn('`merge_grant = "#110 roadmap PRs"`', synth)
+        self.assertIn("Standing-grant candidate: resolve `runtime.options.merge_grant` live", synth)
         self.assertIn("`hold_label_blocks = false`", synth)
         self.assertIn('`mirror_deferral = "#110 roadmap PRs per #140"`', synth)
         self.assertIn("do not change live Grok Bot behaviour", synth)

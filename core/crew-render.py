@@ -22,6 +22,7 @@ included), and a WARNING inside BUDGET_BAND of the budget or over it. Output pat
 Fails closed: every problem (an unknown placeholder, a missing mapping, an unsupported capability) prints as
 `file:line: reason`; exit 1 and write nothing if any, else 0.
 Placeholder map: scripts/README.md (Renderer).
+<merge-grant> keeps none literal; other values render a bounded live-profile lookup, never grant prose.
 Enabled builder.precheck appends ordered steps and profile commands to builder briefs.
 Flavor placeholders use the project preset/custom knobs; --diff-paths supplies newline-separated
 repo-relative paths (both rename paths) for class rigor. Without paths, classes wait for live resolution.
@@ -521,6 +522,16 @@ class Renderer:
         if self.normalize_paths and all(k.startswith("paths.") for k in keys):
             return "<path>"
         value = self.values[keys[0]]
+        if name == "merge-grant" and value != "none":
+            return ('Standing-grant candidate: resolve `runtime.options.merge_grant` live with '
+                    '`<mdstack>/core/crew-config.py resolve --project "$CREW_PROJECT"` '
+                    'with `--org-profile` when configured and the selected team/repo context; '
+                    'Before use, read named decisions on the configured tool of record; verify authorized attribution, '
+                    'matching project, exact scope, exclusions and later applicable revocations. '
+                    'Copied archives, narrative summaries, unrecognized locators, foreign/mismatched records '
+                    'and unreadable profiles or sources supply no standing permission. '
+                    'Valid per-PR owner merge-ok remains the fallback.').replace(
+                        "<mdstack>", "<path>" if self.normalize_paths else self.values["paths.mdstack"])
         if name in ("flavor-caps", "merge-grant-scope", "spec-paths"):
             return json.dumps(value)
         if isinstance(value, bool):

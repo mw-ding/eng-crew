@@ -243,7 +243,9 @@ For bugs/intake traced to merged PRs, add a whole-line
 or pre-merge soft findings.
 Never start a line with the steering prefix.
 
-Merge-ok: profile `merge_grant = "none"`. Never auto-apply merge:
+Standing grant: none
+
+Merge-ok: never auto-apply merge:
 at the deadline hold/record or escalate. Record merge-ok only from owner
 words for this PR or a named covering profile grant. Grants give permission,
 never approval or the owner's per-PR §7 override. With `none`, only per-PR
