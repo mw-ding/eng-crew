@@ -1942,7 +1942,7 @@ ranges, not limits; member work is default/medium except B2, deep/high.
 | B2 | #238 | Review, verdict and recheck commands | 250–400; 60–100 | #1819, #1566, #1746, B1 posting contract | done | minor | [PR #1838](https://github.com/mw-ding/mdstack/pull/1838), [review / validation](https://github.com/mw-ding/mdstack/pull/1838#pullrequestreview-5891895807) |
 | B3 | #239 | Mechanical local merge-up and signed note | 160–250; 40–70 | #1819, #1566, #1746, B1 posting contract | done | minor | [PR #1837](https://github.com/mw-ding/mdstack/pull/1837), [review / validation](https://github.com/mw-ding/mdstack/pull/1837#pullrequestreview-5892054638) |
 | B4 | #369 | Coordinator scratch cleanup and unused import | 15–35; 5–15 | #1819, #1566, #1746 | done | patch | [PR #1831](https://github.com/mw-ding/mdstack/pull/1831), [review / validation](https://github.com/mw-ding/mdstack/pull/1831#pullrequestreview-5890057874) |
-| S1 | #1820 | Status, evidence, lessons and tracker sync | 35–70 docs | B1–B4 | open | none | This PR; pending land |
+| S1 | #1820 | Status, evidence, lessons and tracker sync | 35–70 docs | B1–B4 | open | none | [PR #1840](https://github.com/mw-ding/mdstack/pull/1840); pending land |
 
 S0 can be prepared while M53 builds. All members wait for S0 and M53
 items #1566 and #1746 to land. B1 and independent B4 start first; B2/B3 may prepare against
