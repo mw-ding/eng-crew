@@ -5,6 +5,7 @@
 > - **Current rules:** the [protocol](../protocol.md) and its gate registry; each requirement's **Delivered by** issues
 > - **Built:** M29–M33 (roles, connectors, environments, harnesses, core, cli and dev modules; the dependency lint; the actions CLI in part; the `mdstack` rename)
 > - **Design only:** the `protocols/` and `install/` modules ([§4](#4-target-module-layout)) and the rest of the actions implementation
+> - **Planned:** M51 ([portable.md §5](portable.md#m51-personnel-boundary-and-team-routing-design)): #1318's team/project boundary and routing design, then #1180's personnel delivery (rows A–D)
 > - **Last checked:** 2026-11-07 at `02ca805`
 
 Status: v0.1 (2026-11-07). Owner: coordinator. Changes land through
@@ -469,6 +470,8 @@ restate it. #1217 updates portable.md to v0.4 with the harness axis, the
 | Q4. Does the runtime-word lint (D5) run before the reorganisation, against today's paths? | #1185 |
 | Q5. How long do the compatibility shims at old paths stay: one major version, or until packs confirm? | #1226 |
 | Q6. Do role classes and seats belong in `docs/specs/` of every project, or only here? | #1219 |
+| Q7. What does a team profile own versus a project, how do profiles and roles compose, and how do admission, claims and land stay inside one repo? | #1318 (design; M51 records the applied choices in [portable.md §5](portable.md#m51-personnel-boundary-and-team-routing-design)) |
+| Q8. How does a host import a personnel bundle and pinned roles without the terminal machinery or a change to role authority? | #1180 rows A–D, on #1318's approved import and binding contract |
 
 ## 8. Out of scope
 
