@@ -1,6 +1,6 @@
 """`mdstack down` stops a repo's tmux crew (SIGTERM then SIGKILL each pane process group first).
 
-Usage: mdstack down --project FILE [--org-profile FILE] [--preserve]
+Usage: mdstack down --project FILE [--org-profile FILE] [--preserve] [--keep-grant]
 
 Runs on a role host (#345) stop through the host's kill, which keeps unlanded work there; one the host cannot stop
 (unlanded work, or the host unreachable) keeps its record, and down exits 1 naming it. Remote runs are stopped even
@@ -8,6 +8,8 @@ when the primary's session is gone.
 
 Both modes first stop the armed watcher (SIGTERM; refuses if it outlives the grace), also with no session left (#1346).
 --preserve is the maintenance stop before a migration (#1178): it stops the watcher and every pane's processes, but keeps each run's worktree, record, claim, inbox and status file.
+An attended owner terminal previews finished grants before shutdown and offers `prune` confirmation. Authority is
+edited only after successful teardown. --keep-grant, --preserve and noninteractive/role down skip pruning.
 """
 import contextlib
 import fcntl
@@ -24,6 +26,7 @@ def register(sub):
     p.add_argument("--project")
     p.add_argument("--org-profile")
     p.add_argument("--preserve", action="store_true", help="stop the watcher and panes; keep every run's work")
+    p.add_argument("--keep-grant", action="store_true", help="skip the finished-grant preview and prune")
 
 
 def watcher(state):
@@ -60,6 +63,25 @@ def land_locked(state):
 
 
 def run(args):
+    grant = commands()["grant"]
+    _, _, state = profile(args, "worktree_root")
+    plan = None
+    if not getattr(args, "preserve", False) and not getattr(args, "keep_grant", False) and grant.attended(state):
+        plan = grant.preview(args)
+        if plan and not grant.confirm(plan):
+            print("crew: grant kept; continuing shutdown")
+            plan = None
+    result = teardown(args)
+    if result or plan is None:
+        return result
+    try:
+        return grant.apply(args, plan)
+    except (OSError, ValueError, KeyError, TypeError) as e:
+        print("crew: grant refused after shutdown: " + str(e))
+        return 1
+
+
+def teardown(args):
     values, session, state = profile(args, "worktree_root")
     preserve = getattr(args, "preserve", False)
     live = tmux.has_session(session)
