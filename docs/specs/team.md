@@ -492,14 +492,13 @@ It replaces #1318's draft `[[projects]]` proposal with the existing
 its units need separate plan records before admission.
 
 M51 status, synced by #1790; the landed items are closed in the tracker.
-The milestone closes after its status-sync slice lands.
+The milestone closes after its status-sync slice (#1790, PR #1806) lands.
 
 | ID | Issue | Scope | Status |
 |---|---|---|---|
 | S0 | #1789 | Opening spec (PR #1797) | done |
 | B1 | #1318 | Routing design and approved T1–T4 breakdown (PR #1802) | done |
 | B2 | #1180 | Personnel delivery, rows A–D (PR #1805) | done |
-| S1 | #1790 | Closing status sync (this slice; PR pending) | open |
 
 Lessons: pinned content and a thin host binding preserve role authority
 without exporting terminal execution. Fake-host import proves the content
