@@ -27,8 +27,8 @@ Reviewed PRs only (`docs/memory.md`).
 - Cut PR waits for milestone's last fragment (#1661), freezes fragment
   PRs; hold by closing unmerged (#985 c6814551260).
 - New edge cases per fix: fail closed, split proven work (#1677, #1684).
-- Until #1792 installed: Codex-first (Claude folder trust in #1707);
-  restore Opus-first after upgrade (#985 c6846454166).
+- Until #1850 installed: Claude builders ack mid-turn inbox at turn
+  end; lead-fault no-ack on a busy one: read pane, never restart.
 - Post-land remove PR review files: route reclaims builder. Post-cut:
   check release, close milestone, capture, admit next (#1559, #1719).
 - Until #1830/#1835/#1836 ship: deep tier via builder-lead note ref;
