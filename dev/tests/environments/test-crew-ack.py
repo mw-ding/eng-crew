@@ -205,9 +205,10 @@ class Ack(Base):
     def test_merge_up_missing_pass_verdict_and_changed_content_refuse(self):
         refs = self.merge()
         previous = self.data['pr']['reviews'][0]['body']
-        self.data['pr']['reviews'][0]['body'] = previous.replace('verdict=changes', 'verdict=pass')
-        self.save()
-        self.refused('merge-up', *refs)
+        for invalid in (previous.replace('verdict=changes', 'verdict=pass'), previous.replace('pr=9', 'pr=10')):
+            self.data['pr']['reviews'][0]['body'] = invalid
+            self.save()
+            self.refused('merge-up', *refs)
         self.data['pr']['reviews'][0]['body'] = previous
         Path(self.project_dir, 'feature').write_text('rewritten\n')
         self.git('add', 'feature')
@@ -220,6 +221,7 @@ class Ack(Base):
 
     def steering(self):
         self.rec['role'] = 'coordinator'
+        self.rec['pass'] = 'coordinate'
         self.env['CREW_ROLE'] = 'coordinator'
         self.data['login'] = 'acme-bot'
         self.data['source'] = {'id': 123, 'user': {'login': 'acme-owner'}, 'body': '/crew hold',
@@ -230,6 +232,11 @@ class Ack(Base):
 
     def test_owner_steer_deduplicates_without_executing(self):
         flags = self.steering()
+        self.rec['pass'] = 'review'
+        self.save()
+        self.refused('steer', *flags)
+        self.rec['pass'] = 'coordinate'
+        self.save()
         r = self.ack('steer', *flags)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn('cmd=hold cmd-id=123', self.effects()[0]['body'])

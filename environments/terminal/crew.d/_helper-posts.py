@@ -41,6 +41,8 @@ def actor(args, values, state, role):
             rec = json.load(f)
     if rec["role"] != role or role != "coordinator" and (rec["args"].get("pr") != args.pr or rec["head"] != args.head):
         raise ValueError("foreign run PR/head/role")
+    if role == "coordinator" and rec.get("pass", "coordinate") != "coordinate":
+        raise ValueError("coordinator run is not a coordinate pass")
     login = commands()["poll"].gh_json("api", "user")["login"]
     if login != values["identities.%s.gh_user" % role]:
         raise ValueError("wrong posting identity")

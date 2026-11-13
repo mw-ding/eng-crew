@@ -74,7 +74,7 @@ def validate(args, values, state, rec, pr):
         refs = [posts.sha(getattr(args, key)) for key in ("verified_base", "verified_head", "updated_base")]
         previous = [m for r in pr["reviews"] if poll.signed_by(values, "reviewer", r)
                     for m in route.markers(r["body"]) if m.get("pass") == "verdict"]
-        if not previous or previous[-1].get("verdict") != "changes" or previous[-1].get("sha") != refs[1] or previous[-1].get("base") != refs[0]:
+        if not previous or previous[-1].get("pr") != str(args.pr) or previous[-1].get("verdict") != "changes" or previous[-1].get("sha") != refs[1] or previous[-1].get("base") != refs[0]:
             raise ValueError("merge-up requires latest changes verdict at verified base/head")
         if rec["pass"] != "review" or rec["args"].get("round") != poll.pr_snapshot(pr, values=values)["round"]:
             raise ValueError("merge-up run round does not match changes verdict")
