@@ -529,7 +529,9 @@ refs or details notify again.
 Handoffs use the existing inbox, status and delivery-ack interface. Event
 files have stable identities for replay. The lead reconciles pending ids,
 worker claims and live GitHub state on start; completed ids are no-ops.
-`mdstack kill` hands builder reclaim to its lead, and automatic dequeue cannot
+`mdstack kill` hands builder reclaim to its lead as a `lifecycle` `reclaim`
+work event, a request the lead completes with its own pool's `mdstack kill`
+before marking the id done (#1701), and automatic dequeue cannot
 dispatch another lead's pool. The watcher observes lead identity/status and
 nudges deferred inbox work on its token-free backstop. It restarts a dead
 or missing lead once through `mdstack lead ensure builder`, keeping its inbox

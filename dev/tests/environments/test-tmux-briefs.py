@@ -303,6 +303,15 @@ class CurrentBriefs(unittest.TestCase):
             self.assertIn(rule, text)
         self.assertNotIn("lead capacity", text)
 
+    def test_builder_lead_completes_lifecycle_reclaim(self):
+        """#1701: a lifecycle reclaim event is a request the lead completes with its pool's kill, not a notice."""
+        text = " ".join(render()[0]["builder-lead.md"].split())
+        rule = text[text.index("- Lifecycle reclaim:"):text.index("- Liveness:")]
+        for want in ("`reason` `lifecycle` and `action` `reclaim`", "is a request, not a notice",
+                     '$CREW_BIN kill WINDOW --project "$CREW_PROJECT"', "keep the id pending and report `lead-fault`",
+                     "Append `done:` only after the window and run record are gone", "`schedule decide`"):
+            self.assertIn(want, rule)
+
     def test_reviewer_lead_admits_through_schedule_decide(self):
         """#625 (S7): the reviewer lead's dispatcher asks `schedule decide`, not its own capacity check."""
         text = " ".join(render()[0]["reviewer-lead.md"].split())

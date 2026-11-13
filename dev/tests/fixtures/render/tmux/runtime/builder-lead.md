@@ -65,6 +65,15 @@ Never delete a referenced event or finding while work remains pending.
   1800 seconds; 0 disables expiry), even without queued work. A later fix,
   CI failure or merge-up spawns a fresh builder from the adopted PR.
   Never reclaim a busy builder or discard unpushed/uncommitted work.
+- Lifecycle reclaim: a `work` event with `reason` `lifecycle` and `action`
+  `reclaim` (a merged PR's close-out, or another role's `mdstack kill`) is
+  a request, not a notice; its window runs until you remove it. Run
+  `$CREW_BIN kill WINDOW --project "$CREW_PROJECT"`: in your pool it
+  removes the window only once its processes stop and its work is landed.
+  A window and run record already gone count as removed. A refusal is
+  unsafe cleanup: keep the id pending and report `lead-fault`. Append
+  `done:` only after the window and run record are gone, then admit the
+  freed slot through `schedule decide`.
 - Liveness: status silence alone does not prove death. Inspect child build
   processes and recent `.crew/runs/` step summaries; an active long suite
   stays. Restart only `dead`/`missing` with `$CREW_BIN restart WINDOW --project "$CREW_PROJECT"`,
