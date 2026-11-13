@@ -1644,6 +1644,257 @@ Merge permission is the owner's
 recorded per PR at its actual head. It supplies permission only, never
 approval, CI, hold clearance or missing AC evidence.
 
+### M53: brief headroom and grant lifecycle
+
+Opening spec slice #1814 and closing status-sync slice #1815 are the
+bookends for [#1795](https://github.com/mw-ding/mdstack/issues/1795).
+Scope and member ACs come from
+[Riley's readiness pass](https://github.com/mw-ding/mdstack/issues/1795#issuecomment-6849391872)
+§2–§4, with the
+[coordinator's applied choices](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6849413256).
+S0 is recorded as done for this opening slice; its landed PR is filled before
+handoff. No member dispatches before #1814 merges. B1, B2 and L1 then build
+independently in parallel; prioritize B2 if only one slot is available.
+B3 follows B1's landed reference contract and requires the owner proofs below
+before completion. File overlap between B1/B2 requires integrated testing,
+not a semantic dependency. One issue → one PR, with small logical commits.
+Bookends and B1/B2/L1 use default tier/medium effort; B3 uses deep/high.
+
+| ID | Issue | Scope | Size | Depends on | Status |
+|---|---|---|---|---|---|
+| S0 | #1814 | Opening scope, ACs, applied choices and prerequisites | docs only | none | done |
+| B1 | #1746 | Constant-size grant lookup pointer and existing authority resolution | 30–70 Python; 25–50 prose; 100–180 tests | #1814 | open |
+| B2 | #1566 | Builder/researcher entry headroom and rendered procedure companions | 50–90 prose/registry excluding moved text; 100–170 tests | #1814 | open |
+| B3 | #1774 | Owner-confirmed archive/prune with preservation and refusal proof | 180–280 Python; 35–60 prose; 300–500 tests | #1814, #1746; owner proofs A/B | open |
+| L1 | #1793 | One 24-card learning/disposition batch PR in 2–3 commits | 110–170 Markdown; no product/test code | #1814 | open |
+| S1 | #1815 | Final statuses, decisions, lessons and tracker reconciliation | docs only | #1746, #1566, #1774, #1793 | open |
+
+**Target environment: N/A** — local runtime logic, no new platform or device
+dependency. Standard flavor, tmux, Codex-first routing; reviewer selection
+uses the actual builder engine. Serialize spec bookend edits/lands with
+M52's closing sync and refresh `main` before each, preserving both sections.
+M53 stays in this spec; no second milestone spec, portable-design rewrite
+or M52 runtime change belongs here.
+
+#### B1: grant reference (#1746)
+
+Applied choice: a constant-size pointer to the existing resolved
+`runtime.options.merge_grant`, followed by the authoritative decisions it
+names. Preserve the string key and `none` behaviour.
+
+1. A non-`none` grant renders a compact instruction to resolve the field
+   live from `$CREW_PROJECT` and its configured layers, then read its named
+   decisions before use. Use `core/crew-config.py resolve --project ...`
+   with configured org/team context; raw project TOML is not necessarily
+   effective. Quote no permission/history. `none` retains explicit per-PR
+   owner merge-ok. Rendering need not query the network or grant authority.
+2. The reader checks authorized attribution, exact scope, exclusions and
+   later applicable revocations on the configured tool of record, and links
+   the decision actually relied upon. Copied archives, narrative summaries,
+   unrecognized locators, foreign/mismatched records or unreadable
+   profiles/sources supply no standing permission; valid per-PR owner
+   merge-ok remains the fallback.
+3. Preserve `merge_grant_scope`, spec globs, ownership, sensitive/gate-contract
+   exclusions, head-bound permission, CI and release approval. Add no marker,
+   profile type or required backend operation. Keep `<merge-grant>` available
+   to overlays and adjust bundled prose so the pointer is not quoted grant text.
+4. Test `none`, ordinary/very long grants, multiple/historical references,
+   layered selection and provenance wording. Compare short/long renders for
+   bounded entry size; retain entry-point refusal/authority cases. A render
+   proves the pointer only, not a successful live authority check.
+
+Paths: `core/crew-render.py`, all bundled `<merge-grant>` uses (tmux
+coordinator, synthesizer merge-gate/authority-sources and session text),
+`docs/configuration/runtime-options.md`, render/parity/bootstrap fixtures
+and tests, and a #1746 fragment. Doctor-specific preflight warnings and
+release-delegation/history compaction remain follow-ups.
+
+#### B2: entry headroom (#1566)
+
+Applied choice: **2,048 bytes of baseline reserve** for builder/researcher
+entry briefs, normalized **≤14,336 bytes** at the unchanged 16,384 default.
+Keep coordinator/synthesizer's 15,360-byte assertions. This is a checked-in
+baseline regression target, not a tighter installation limit for custom
+budgets, prechecks or notes.
+
+1. Replace inline builder fix-round procedure with a mandatory pointer to
+   rendered `runtime/builder-fix.md`, including existing
+   `policy/builder/fix-rounds.md`. Preserve fix/ci-red, base-update, express
+   self-gate, step-summary and PR conventions. Load it for fix/ci-red/base-update
+   or express self-gate, including an initial express build; unreadable means
+   stop/report.
+2. Replace inline researcher triage with a mandatory triage-sweep pointer to
+   rendered `runtime/researcher-triage.md`, including unchanged
+   `policy/researcher/triage-sweep.md`. Keep Scope/Evidence/Output and the short
+   docs-pass procedure inline; keep reflection's existing pointer.
+3. Both pointers name `$CREW_STATE/render/runtime/<file>`, not raw fragments
+   with unresolved operation/profile tokens. Register companions in
+   `roles/eng/builder.toml` and `roles/eng/researcher.toml` for role-runtime
+   replacement and disabled-role omission. At researcher cap 0, neither its
+   companion nor its operations is required.
+4. Always load ownership/live-state/holds, flavor, actual-engine signing,
+   body/scratch placement, evidence/negative-control duties, main build steps,
+   heartbeat, inbox ack/stale-head stops, train boundary, `done:`/`blocked:`
+   lifecycle and no-owner-ask/no-land rules. Move only triggered procedure
+   bodies with identical permission and marker semantics.
+5. Assert the entry ceiling at short/long installation paths; role-owned
+   companions keep ordinary `size_budget`. Preserve normalized/delivered
+   diagnostics and memory/note handling. An added-prose mutant fails the
+   regression; restoration passes. Instruction-presence/lint checks inspect
+   the entry plus its companion at the trigger, retaining triage/express checks.
+6. Preserve fragment-edit sentinel parity; prove rendered commands/tokens,
+   disabled roles, missing-reference handling and reachability. Update the
+   triage skill's section pointer. No renderer rewrite or new lazy-loader.
+
+Paths: tmux builder/researcher and new companion templates, the two role
+registries, triage skill pointer, render/bootstrap/brief and role-registration
+tests with matching goldens, and a #1566 fragment. Shared policy bodies and
+`docs/protocol.md` need no behavioural edit. Separate relocation/metadata
+from coverage in logical commits; moved text can exceed the line estimate.
+
+#### B3: conservative pruning (#1774)
+
+Applied choice: deterministic recognition of whole clauses in the existing
+string; keep ambiguous clauses. `mdstack grant prune --dry-run` previews;
+application needs an attended owner shell and explicit confirmation.
+
+1. Remove only recognized finite scopes with identifiable source records.
+   Every named milestone must be closed and every named cut must have a
+   non-draft published release; mixed clauses require all scopes finished.
+   Item closure/cut-PR merge is insufficient. Keep standing/open/unknown/
+   partly-finished clauses, §7/sensitive restrictions, archive annotations and
+   mixed boundaries. Split only at safe top-level boundaries, never commas
+   inside archived milestone lists. Read exact named scopes; any unreadable
+   tracker/release/source response keeps everything with a reason.
+2. Dry-run lists removed/kept clauses, reasons and source links with no write,
+   backup or archive post. Refuse role-launched/noninteractive application
+   and unattended `--yes`. `down --keep-grant`, noninteractive `down` and
+   `down --preserve` skip pruning while retaining shutdown behaviour.
+3. Preview/confirmation precedes shutdown effects; decline keeps the grant
+   and continues ordinary shutdown. Affirmative pruning passes shutdown
+   blockers, stops writers and completes teardown before authority changes.
+   A stop/retention refusal cannot prune. Immediately before archive/write,
+   re-read ownership for `write`, profile and all scope/source facts; refusal
+   or changed preview requires a new attempt. Keep pause, watcher, land-lock
+   and unlanded safeguards.
+4. Edit only a uniquely located `merge_grant` owned by the explicitly selected
+   writable project file. Keep/refuse inherited org/team grants or unsupported
+   TOML with a reason, never materializing an override. Support the documented
+   single-string representation conservatively; preserve other bytes and
+   exact kept clauses. Reparse/check no authority widened or other effective
+   value changed.
+5. Take a collision-safe timestamped byte-for-byte backup under
+   `<state-dir>/runs/` with a non-JSON extension. Post one signed owner-triggered
+   archive to the configured decision log: removed clauses verbatim,
+   source/finished-state links and before/after identity. It is history with
+   no grant/steer/gate marker. Confirm archive success before atomic replacement
+   and compare original bytes again. Backup/archive/write failure leaves the
+   profile intact; uncertain posts require read-back reconciliation, not
+   blind reposting. An archived but refused write is a historical attempt.
+6. Test shipped commands for finished/mixed scopes, standing/open/unknown/
+   annotations, unreadable state, layered/unsupported profiles, role and
+   noninteractive refusal, decline/opt-out/preserve, ownership loss,
+   backup/archive/write failures, concurrent edits and repeated no-op.
+   Retain shutdown lock/watcher/pause/unlanded cases. Positive proof shows
+   archive-before-replacement, recoverable backup and exact untouched
+   keys/restrictions. Unsupported decision-log/scope bindings refuse;
+   use existing ownership/backend helpers, no new connector requirement.
+7. **Amended #1774 AC5:** after B1, grant length no longer sizes entry briefs.
+   Prove the long historical fixture renders within budget before and after
+   pruning and preserves B2's static headroom. Do not claim pruning shortened
+   constant-size pointers or waive the budget.
+
+Paths: new `environments/terminal/crew.d/grant.py`, `down.py`, shared write
+inventory in `_shared.py`, grant/down usage in `docs/runtimes/tmux.md`, new
+grant tests plus down/pause/ownership tests and a #1774 fragment. Use roughly
+three logical code commits with tests (recognizer, transaction, down
+integration). General TOML rewriting and structured grants stay follow-ups.
+
+**Owner prerequisites — proofs A and B, after B3 builds:** reserve one attended
+owner slot in a separate ordinary shell at a coordinated safe stop. No proof
+has run here; current standing-only live scope cannot prove positive removal.
+
+- **A, disposable positive prune.** Builder supplies concrete absolute CLI,
+  profile, stub-bin and forge-fixture paths plus a complete executable recipe:
+  isolated profile/state/fake forge/fake tmux, signed sandbox sources, closed
+  milestones/published cuts, standing/open/unknown/protected clauses. Unset
+  `TMUX`, `TMUX_PANE`, `CREW_ROLE` and `CREW_ID`; pin every destructive tmux
+  operation to `-S <sandbox-socket>` (`TMUX_TMPDIR` alone is insufficient).
+  Owner runs `grant prune --dry-run`, then plain `down`, types confirmation
+  and captures exit/output, archive read-back, backup and grant-only diff.
+  Add no historical text to the live profile.
+- **B, live preservation/opt-out.** Select the built/installed CLI and actual
+  owner profile; sequentially run `ownership --action write`,
+  `grant prune --dry-run` and `down --keep-grant`, each with `--project`.
+  Stop on refusal. Dry-run keeps standing scope, restrictions and archive
+  annotation; opt-out changes no profile/authority. Restart is a scheduled
+  coordinator follow-up. B3 stays open until human-confirmed positive `down`
+  proof and preservation/refusal evidence are inline on its change; automated
+  yes-input tests or standing-only no-ops are insufficient.
+
+#### L1: learning capture (#1793)
+
+Applied choice: one bounded batch document/PR in 2–3 logical commits.
+
+1. Give every one of #1793's 24 source IDs a row: class, source/repair PR,
+   retained test/procedure path at head, later occurrence/count, uncertainty
+   and explicit lesson/findings disposition. Link cards and reuse applicable
+   lessons; the PR closes #1793 alone.
+2. Retain #1446's #1368/#1527 and #1565's #1528/#1592/#1719 occurrences.
+   Count incidents, not repeated comments/triage. Distinguish #1466's
+   synthetic credential near-miss from established exposure and #1602's
+   log-path disclosure from secret exposure.
+3. For #1696, retain normal-runner discovery checks: definitions precede
+   main invocation and normal-run output/count includes added classes/cases,
+   not merely imported selection. Build no new general discovery guard.
+4. Missing prevention stays an open separately named work unit. After merge,
+   coordinator closes only fully captured/dispositioned cards. Claim no live
+   campaign proof or new product fix; #1788 retains migration procedure,
+   not session-adoption implementation.
+
+Paths: proposed `docs/findings/m53-learning.md`, appropriate short buffer/index
+pointer, applicable existing lessons only, and a #1793 fragment. Compare all
+24 IDs/links and disposition/occurrence rows directly with sources; these
+are capture records, not committed runtime evidence or a source dump.
+
+#### Checks, forecast and closing
+
+All six PRs run `python3 scripts/check-repo.py` and
+`python3 scripts/check-changelog-pr.py --base origin/main`; bookends also run
+`check-repo.py --only design-headers --only spec-status`. Local selection
+follows the owner's standing
+[affected-tests policy](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6763423100),
+explicitly applied to M53: shared plumbing does not require a full local suite.
+B1 covers render/parity/tmux-briefs/bootstrap and affected authority consumers;
+B2 adds role-registration/roles coverage, and drift/install tests only if
+those behaviours change. B3 covers grant/down/pause/ownership and touched
+dependents, plus render/bootstrap for long-grant integration. Template/fixture
+changes retain all four render/parity/brief/bootstrap tests. L1/bookends need
+guards and source comparison, no Python test for prose alone. Each PR lists
+its selection/results and coverage; **PR CI runs the full suite**. New guards
+need accepted/refused entry-point proof; headroom needs fail-then-pass proof.
+
+Forecast against [Versioning](../deliverables.md#versioning): B1 **patch**
+(templates and authority-source presentation, gate-contract-adjacent), B2
+**minor** (new rendered procedure templates/role registry, relocated authority
+instructions), B3 **minor** (new command/flag, likely `crew:sensitive` for owner
+authority removal), L1 **none** (internal capture), spec-only S0/S1 **none**.
+Deliverable status wording in S1 is patch if needed. Forecast M53 as minor,
+not a release cut/version choice. A new required grant schema, changed §7
+satisfaction, marker meaning, installation limit, old exit/parsed-output or
+flag contract needs major replanning before implementation. Classify every
+actual full diff at head; B3 requires the owner's per-change sensitive reason.
+
+S1 records landed PR/proof references, settled choices, lessons and tracker
+reconciliation for members and completed L1 cards. Explicit supersession
+requires a settled disposition. Distinguish merged, released and installed;
+update README Status/binding/design headers only where truth changed. S1/M53
+stay open with missing B3 owner proof or any unfinished member. Merge
+permission is the owner's
+[merge-ok for all M52–M54 PRs](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6846545711),
+recorded per PR at its actual head; it supplies no approval, CI waiver,
+hold clearance, sensitive reason or missing AC proof.
+
 ## 6. Decisions
 
 | Date | Decision | Source |
