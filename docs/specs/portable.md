@@ -2190,6 +2190,220 @@ ownership/pause tests. Preserve one PR per issue and refresh stale member
 ACs through the coordinator; never silently waive a full-local-run AC or
 reuse #238's old multi-PR wording.
 
+### M55: runtime routing repairs
+
+Opening spec slice #1847 (S0) and closing status-sync slice #1848 (S1)
+bookend [#1846](https://github.com/mw-ding/mdstack/issues/1846). Scope,
+member ACs, sizes and test selection come from
+[Riley's readiness pass](https://github.com/mw-ding/mdstack/issues/1846#issuecomment-6865558054)
+§2–§6, with D1–D4
+[applied by the coordinator](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6865577362)
+and the [member AC refresh](https://github.com/mw-ding/mdstack/issues/1846#issuecomment-6865588755).
+Runtime module paths below are under `environments/terminal/crew.d/`;
+`path:line` citations refer to base `f8d3d5a62cc08b1945b394c55a3743e90c310644`.
+S0 is recorded as done for this opening slice (PR #1849), effective on merge.
+No member dispatches before #1847 merges. Order: B1 → B2 → B3 → S1; L1 runs
+after S0 beside the repairs. B1–B3 share route/wait consumers, so the order
+reduces integration churn; it is not a semantic dependency except B2's
+integrated wait/resume acceptance on B1. One issue → one PR, with focused
+commits. Estimates exclude tests and are planning ranges, not limits.
+
+| ID | Issue | Scope | Size (Python; docs/registry) | Depends on | Status | Version |
+|---|---|---|---|---|---|---|
+| S0 | #1847 | Opening scope, ACs, D1–D4, allocation, flags and test matrix (PR #1849) | 80–130 docs | none | done | none |
+| B1 | #1836 | Reproduced held-id wait repair | 40–100; 10–25 | #1847 | open | patch |
+| B2 | #1835 | Signed permission-change wake | 70–130; 15–30 | #1847; #1836 for integrated wait/resume acceptance | open | patch |
+| B3 | #1830 | Item-tier resolution and launch preservation | 100–180; 25–50 | #1847; integrate against #1836/#1835 | open | minor |
+| L1 | #1813 | One retained learning record | 25–45 docs | #1847 | open | none |
+| S1 | #1848 | Status, evidence, decisions, lessons and tracker reconciliation | 35–70 docs | #1847, #1836, #1835, #1830, #1813 | open | none |
+
+**Target environment: N/A** — existing local runtime and disposable
+fake-forge/process fixtures; no new platform or device requirement.
+Standard flavor, tmux lane. B1–B3 use deep tier/high effort, passed as an
+explicit `--tier deep` at dispatch until B3 is installed; L1 and both
+bookends use default tier/medium effort. Execution choice: Claude Code
+builders first
+([c6865476254](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6865476254)),
+superseding the readiness pass's Codex-first line; reviewer selection
+excludes the actual builder engine. M55 stays in this spec; no second spec,
+portable-design rewrite, #1717 permission portability, #1774 proof change
+or M56 scope belongs here.
+
+#### Applied decisions
+
+- **D1 (#1830):** optional `tier=` on signed `pass=flavor` records,
+  resolved independently of flavor. Spawn selects centrally: explicit
+  `--tier`, then the item's tier, then the role default; queue and run
+  records keep the selection. No new helper command or parsed output.
+- **D2 (#1835):** a signed, head-pinned `merge-ok-recorded` poll event to
+  the synthesizer. It is a reason to re-read gates, never approval, hold
+  clearance or a CI waiver.
+- **D3 (#1836):** after a production-path reproduction, the dispatcher
+  writes the existing typed wait after ack and keeps the id; it resumes on a
+  fingerprint change. Re-send only genuinely new work or explicit
+  coordinator recovery.
+- **D4 (#1813):** one docs-only learning PR; S1 links it.
+
+#### B1: held-id wait (#1836)
+
+Source finding: a repeated ack does not invalidate a correctly typed earlier
+wait (`lead.py:207`, `lead.py:222`), but `reviewer-pool` acks every pending
+request and skips held/escalated direct handoffs without a typed wait
+(`reviewer-pool.py:102`, `reviewer-pool.py:137`); route's held-work return can
+leave a durable work event pending (`route.py:613`). This is a candidate
+mechanism; the incident's exact cause is unconfirmed.
+
+1. First retain a failing production-path fixture: inbox handoff →
+   `reviewer-pool` ack/live-hold decision → route where applicable →
+   watcher/lead backstop, for direct review/validate/recheck and durable
+   `work` messages. Record the exact missing/wrong wait or changed
+   fingerprint; do not assume an appended ack alone is the cause.
+2. For a live owner/hold-blocked ref, the dispatcher writes
+   `waiting: #N owner|hold id=ID` after ack, with the actual inbox id, and
+   keeps it pending. Re-running dispatch or another ack does not rearm an
+   unchanged wait; unrelated actionable ids continue. `done: ID` stays for
+   dispatched/completed or obsolete work, not an unresolved hold.
+3. Unchanged held state across the reported fifteen-minute interval, normal
+   lead backstops, slot release, coordinator backstop and lead/watcher
+   restart produce zero re-nudges of the parked id. Keep admission-deferral
+   timing and delivery/restart caps.
+4. Owner answer, hold release, PR/head/CI change or ask change makes the
+   retained id actionable; the dispatcher re-reads live eligibility and
+   parks again if still held. A new handoff stays independently actionable.
+   Moved/closed work retires; no hold is cleared and no duplicate worker
+   starts. Keep the missed-event recovery test.
+
+Paths: `reviewer-pool.py`; `lead.py` only if the reproduction proves a reader
+gap; `templates/runtimes/tmux/reviewer-lead.md` and, if needed,
+`templates/policy/shared/lead-waits.md`; `docs/runtimes/tmux.md`. The fix
+follows the reproduced path and does not broadly suppress acked ids.
+
+#### B2: permission wake (#1835)
+
+Source finding: PR snapshots carry verdict identity but no permission
+identity (`poll.py:167`), and owner-answer reads cover only held/asked refs
+(`poll.py:180`, `poll.py:225`), so an already-green, unheld PR can gain
+permission without a land event.
+
+1. Diff an authenticated coordinator merge-ok identity at the PR's current
+   full SHA, using the existing `pass=steer cmd=merge-ok` record. Emit one
+   `merge-ok-recorded` event to the synthesizer when a new valid identity
+   appears, including when CI was already green. Duplicates and unchanged
+   polls emit none; prose, other authors, malformed markers and other-head
+   records emit none. Scope identity by repository/PR/head/source command;
+   never transfer permission across heads (protocol §7, Merge permission).
+2. Register the event with the synthesizer role and route it through the
+   existing durable land handoff. Permission before CI may trigger a gate
+   check/wait; the later CI transition still retries.
+3. Fake-forge proof starts with the green head's CI event consumed, posts
+   permission, polls/routes and observes one synthesizer work request.
+   Replay and simultaneous approval/CI/permission wakes reconcile to at most
+   one land of that head. Cover stale head, held/closed PR,
+   permission-before-CI and restart/legacy state seeding. First startup
+   stays baseline plus recovery sweep.
+
+Paths: `poll.py`, `route.py`, `roles/eng/synthesizer.toml`,
+`docs/runtimes/tmux.md`, and the event list in
+`templates/runtimes/tmux/synthesizer-lead.md`.
+
+#### B3: item tier (#1830)
+
+Source finding: the lead build recipe omits `--tier`
+(`templates/runtimes/tmux/builder-lead.md:26`), spawn replaces an absent tier
+with the role default (`spawn.py:195`), and route hardcodes default for
+reviewer dispatch and an absent builder's adopted fix (`route.py:240`,
+`route.py:654`). Queue and restart already preserve a selected tier.
+
+1. Accept optional `tier=trivial|default|deep` on authenticated coordinator
+   `pass=flavor issue=N` records; the newest record containing `tier=`
+   supplies the allocation, and a later flavor-only record leaves it intact.
+   Resolve explicit `--tier`, then item tier, then role default, then
+   `default`. Missing item metadata keeps legacy behaviour; a malformed
+   tier or unreadable required lookup refuses before claim/queue/window
+   creation. Tier is a separate author-checked scan; flavor resolution is
+   unchanged.
+2. Resolve in spawn before enqueue/engine selection. Build and adopted
+   fix/ci-red/merge-up spawns use the source issue; PR-only
+   review/validate/recheck resolve the linked issue. Agreeing linked tiers
+   are usable; conflicting tiers need explicit allocation, never first-link
+   selection.
+3. Persist the tier in queue and run args and use it for model effort and
+   the brief. Dequeue, recorded-run restart/quota fallback and
+   preserved-work relaunch retain it; a missing-run respawn resolves the
+   current item record. Reallocating a pending request is an explicit
+   coordinator replacement, not a silent running-session change.
+4. Fixture proof covers build → fix, ci-red and merge-up recovery with a
+   retained and an absent worker; capped enqueue → dequeue; clean restart and
+   preserved-work relaunch; reviewer dispatch; explicit override and legacy
+   fallback. Every run/brief has the selected tier/effort and replay creates
+   no second worker. Keep hold/solo/refusal and engine-diversity gates.
+
+Paths: `spawn.py`, `route.py`; `templates/triage-flavor.md`,
+`templates/runtimes/tmux/builder-lead.md`, `docs/roles.md`,
+`docs/runtimes/tmux.md`; `restart.py`/`dequeue.py` only if the preservation
+fixture exposes a gap.
+
+#### L1: learning record (#1813)
+
+One docs-only PR closing #1813: add `docs/findings/m55-learning.md` and its
+index link in `docs/findings/README.md`. Record the source/repair PR (#1805),
+failure class, one reported occurrence, evidence limits, whole-link
+composition prevention and retained producer/release coverage. Use `applied`
+with named structural evidence; claim `encoded` only if a named check
+enforces that exact source-template condition. Do not extend #1793's
+completed batch. No product or test code.
+
+#### Checks, forecast and closing
+
+Against [Versioning](../deliverables.md#versioning): D1 adds an optional
+marker field, so B3 is **minor**; B1/B2 restore documented wait/routing
+behaviour, **patch** if they add no gate, duty or required marker field; L1
+and S0 are **none**; S1's truthful shipped README/runtime wording is
+**patch** if needed. Forecast M55 as at least **minor**; this is not a
+release cut. A required existing-marker field, changed gate satisfaction,
+state-tag meaning or command exit/parsed-output contract needs major
+replanning before implementation.
+
+| Unit | Protocol / templates | Sensitive forecast | Affected local tests | Status |
+|---|---|---|---|---|
+| S0/S1 | `docs/specs/portable.md`; S1 may touch README, `docs/runtimes/tmux.md`, coordinator memory | Spec permission at head; paths-only no match | Required checks; `--only design-headers --only spec-status` | open |
+| B1 | Reviewer-lead/shared wait text if needed; existing status format | Hold suppression affects dispatch safety; classify actual diff | `test-crew-reviewer-pool.py`, `test-crew-lead.py`, `test-crew-watch.py`, `test-crew-route.py`, `test-crew-schedule.py`, `test-crew-poll.py` | open |
+| B2 | Synthesizer event registry/runtime docs; synthesizer-lead event list | Permission author/head parsing is authority-related; classify actual diff | `test-crew-poll.py`, `test-crew-route.py`, `test-crew-lead.py`, `test-crew-land.py`, `test-crew-train.py`, `test-crew-roles.py` | open |
+| B3 | `templates/triage-flavor.md`, builder-lead template, runtime/role docs; no F1–F7 change | Allocation authentication is authority-related; classify actual diff | `test-crew-spawn.py`, `test-crew-dequeue.py`, `test-crew-restart.py`, `test-crew-route.py`, `test-crew-reviewer-pool.py`; `test-item-flavor.py` if its helper changes | open |
+| L1 | Internal findings/index only | Paths-only no match | Required checks | open |
+
+Every PR runs `python3 scripts/check-repo.py` and
+`python3 scripts/check-changelog-pr.py --base origin/main`, with selected
+tests via `python3 scripts/run-tests.py <names...>` under the
+[affected-tests policy](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6763423100).
+Template or fixture changes add `test-crew-render.py`,
+`test-render-parity.py`, `test-tmux-briefs.py` and `test-crew-bootstrap.py`.
+Shared plumbing adds its affected dependent tests. Each PR lists its
+selection and results, carries its own changelog fragment, and **PR CI runs
+the full suite**. Template changes follow the protocol freeze and mirror
+rules. The readiness pass's paths-only no-match forecast is not content
+classification: classify every actual full diff at head; a sensitive head
+needs the owner's per-change reason. No new gate contract is planned; one
+appearing in a build is reclassified before review.
+
+S1 sets completed rows to `done` with landed PR and acceptance-proof refs
+and leaves unfinished rows `open` unless supersession is settled. It
+reconciles all six issue closures, links L1, records D1–D4 and lessons, and
+updates README Status and touched runtime/binding headers only where truth
+changed, keeping merged, released and installed outcomes separate. The three
+workaround clauses in `memory/roles/coordinator.md` are removed or narrowed
+only after the installed behaviour is confirmed, through a reviewed memory
+PR; otherwise they stay with a source-versus-installation note. M55 closes
+only after S1 lands.
+
+M53's closing sync #1815 edits this spec and the same status/header
+surfaces: serialize those bookend edits, refresh `main` before each, and
+preserve M53's rows and #1774's outstanding owner proofs. M55 code work and
+completion do not wait on those proofs. Merge permission is the owner's
+[merge-ok for all M55–M57 PRs](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6865236268),
+recorded per PR at each actual head; it supplies no approval, CI waiver,
+hold clearance, sensitive reason or missing AC proof.
+
 ## 6. Decisions
 
 | Date | Decision | Source |
