@@ -186,6 +186,13 @@ spec and both build issues are closed; M52 closes after status sync #1799
 lands. No release containing M52 has shipped: v7.11.0 predates these changes,
 and source completion does not imply a live installation.
 
+M54 coordinator helpers are built in source: issue briefs and checked acks
+(PR #1834), review/verdict/recheck commands (PR #1838), owned merge-ups
+(PR #1837), and coordinator scratch cleanup (PR #1831). All four build
+issues are closed; M54 closes after status sync #1820 lands
+([M54 outcome and brief sizes](docs/specs/portable.md#delivered-outcome-and-lessons)).
+They landed after the 7.12.0 cut and establish no live installation.
+
 Content is built by the crew itself through the normal PR pipeline; every
 change is recorded in `CHANGELOG.md`.
 

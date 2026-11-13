@@ -1935,14 +1935,14 @@ gets one PR, with focused commits. Runtime module paths below are under
 `environments/terminal/crew.d/`. Estimates exclude tests and are planning
 ranges, not limits; member work is default/medium except B2, deep/high.
 
-| ID | Issue | Scope | Size (Python; docs/templates) | Depends on | Status | Version |
-|---|---|---|---|---|---|---|
-| S0 | #1819 | Opening spec and applied choices | 100–170 docs | none | done | none |
-| B1 | #237 | Additive issue brief and checked marker acks | 180–280; 50–90 | #1819, #1566, #1746 | open | minor |
-| B2 | #238 | Review, verdict and recheck commands | 250–400; 60–100 | #1819, #1566, #1746, B1 posting contract | open | minor |
-| B3 | #239 | Mechanical local merge-up and signed note | 160–250; 40–70 | #1819, #1566, #1746, B1 posting contract | open | minor |
-| B4 | #369 | Coordinator scratch cleanup and unused import | 15–35; 5–15 | #1819, #1566, #1746 | open | patch |
-| S1 | #1820 | Status, evidence, lessons and tracker sync | 35–70 docs | B1–B4 | open | none |
+| ID | Issue | Scope | Size (Python; docs/templates) | Depends on | Status | Version | PR / evidence |
+|---|---|---|---|---|---|---|---|
+| S0 | #1819 | Opening spec and applied choices | 100–170 docs | none | done | none | [PR #1822](https://github.com/mw-ding/mdstack/pull/1822) |
+| B1 | #237 | Additive issue brief and checked marker acks | 180–280; 50–90 | #1819, #1566, #1746 | done | minor | [PR #1834](https://github.com/mw-ding/mdstack/pull/1834), [review / validation](https://github.com/mw-ding/mdstack/pull/1834#pullrequestreview-5890873205) |
+| B2 | #238 | Review, verdict and recheck commands | 250–400; 60–100 | #1819, #1566, #1746, B1 posting contract | done | minor | [PR #1838](https://github.com/mw-ding/mdstack/pull/1838), [review / validation](https://github.com/mw-ding/mdstack/pull/1838#pullrequestreview-5891895807) |
+| B3 | #239 | Mechanical local merge-up and signed note | 160–250; 40–70 | #1819, #1566, #1746, B1 posting contract | done | minor | [PR #1837](https://github.com/mw-ding/mdstack/pull/1837), [review / validation](https://github.com/mw-ding/mdstack/pull/1837#pullrequestreview-5892054638) |
+| B4 | #369 | Coordinator scratch cleanup and unused import | 15–35; 5–15 | #1819, #1566, #1746 | done | patch | [PR #1831](https://github.com/mw-ding/mdstack/pull/1831), [review / validation](https://github.com/mw-ding/mdstack/pull/1831#pullrequestreview-5890057874) |
+| S1 | #1820 | Status, evidence, lessons and tracker sync | 35–70 docs | B1–B4 | open | none | [PR #1840](https://github.com/mw-ding/mdstack/pull/1840); pending land |
 
 S0 can be prepared while M53 builds. All members wait for S0 and M53
 items #1566 and #1746 to land. B1 and independent B4 start first; B2/B3 may prepare against
@@ -1953,6 +1953,38 @@ closed. Preserve M52/M53 spec rows and #1774's shutdown branches. The
 7.12.0 cut (#1817 / PR #1818) temporarily holds fragment-bearing lands.
 Codex-first builders continue until the separate installation/upgrade;
 reviewer routing excludes the actual builder engines.
+
+#### Delivered outcome and lessons
+
+S0 and B1–B4 are built in source; #1819, #237, #238, #239 and #369
+are closed in the live tracker (2026-11-13). No additional M54 build items
+were admitted. S1 (#1820) stays open until this closing sync lands;
+M54 closes afterward. M53's #1774 remains a separate unfinished item.
+
+- **D1 settled:** the existing fresh reviewer/validator pipeline supplies
+  the sections; the checked COMMENT poster assembles them at H/k and
+  reconciles tags. Helpers add no approval or evidence authority (PR #1838).
+- **D2 settled with a narrower steer set:** issue mode is additive and
+  legacy run-block/inbox output stays intact. Receipt-only steering acks
+  accept only `hold` and `escalate`; effect-bearing commands, including
+  resets and `merge-ok`, refuse. This supersedes the broader recognized-command
+  wording below, per the [consumer-safety clarification](https://github.com/mw-ding/mdstack/issues/237#issuecomment-6851108497).
+  A receipt marker can trigger consumers even when its writer performs no
+  action; classify its downstream effects before calling it an ack.
+- **D3 settled:** the builder owns clean/configured-driver merge-ups;
+  conflicts restore the prior head and posted notes use backend head readback.
+  PR #1837's second round restored pre-push rollback after a moved head;
+  approval carry remains the synthesizer's strict content comparison.
+- **D4 preserved:** no protocol, gate predicate, marker schema, grant scope
+  or approval-power change. #369 now retains symlinks and directories and
+  documents cleanup; grant archives and #1774's branches remain intact.
+  Integrated checks complement fake-backend refusal proof; neither proves
+  live adoption, and full CI remains required.
+
+**Release / installation:** B1–B3 are additive minor command surfaces; B4
+is patch. All four landed after the 7.12.0 cut (PR #1832), so that release
+contains none of them. Source completion supplies no live install/upgrade
+or sensitive permission.
 
 #### Applied decisions and acceptance criteria
 
@@ -2077,10 +2109,10 @@ major classification before dispatch.
 
 | Member | Rendered change | Maximum net entry growth | Status |
 |---|---|---| --- |
-| B1 | Generated task output; compact reviewer ack pointer | Reviewer ≤100 bytes; other entries 0 | open |
-| B2 | Replace coordinator lead handoff; extend reviewer pointer | Coordinator ≤0; reviewer ≤150 additional bytes; others 0 | open |
-| B3 | Builder-fix companion invocation and reference | Entries 0; companion about 100–200 bytes | open |
-| B4 | Runtime state-file description only | Entries 0 | open |
+| B1 | Generated task output; compact reviewer ack pointer | Reviewer ≤100 bytes; other entries 0 | done |
+| B2 | Replace coordinator lead handoff; extend reviewer pointer | Coordinator ≤0; reviewer ≤150 additional bytes; others 0 | done |
+| B3 | Builder-fix companion invocation and reference | Entries 0; companion about 100–200 bytes | done |
+| B4 | Runtime state-file description only | Entries 0 | done |
 
 After M53, measure integrated normalized UTF-8 renders: builder/researcher
 ≤14,336 bytes at the unchanged 16,384-byte budget (2,048 reserve),
@@ -2094,13 +2126,33 @@ reference in docs, and report delivered task data, launch notes/core memory
 and run-block sizes separately. Consuming new builder/researcher reserve
 needs an explicit coordinator AC change.
 
+Integrated measurement at `73a23b531a348a6bc35635979f64f6a05c251878`
+(2026-11-13): production renderer, `profiles/tmux.toml` example fixture,
+normalized paths, UTF-8 bytes; baseline is post-M53 `e6c4e621`.
+
+| Entry | Integrated bytes | Free of 16,384 | M54 delta | Required reserve | Status |
+|---|---|---|---|---|---|
+| Coordinator | 15,319 | 1,065 | −23 | 1,024 | done |
+| Builder | 9,652 | 6,732 | 0 | 2,048 | done |
+| Reviewer | 14,910 | 1,474 | +179 | Combined growth ≤250 | done |
+| Researcher | 4,552 | 11,832 | 0 | 2,048 | done |
+| Synthesizer | 15,264 | 1,120 | 0 | 1,024 | done |
+
+All envelopes pass. B1 adds 65 reviewer bytes; B2 adds 114 and removes
+23 coordinator bytes. Separately loaded companions: builder-fix 7,519
+bytes (+153); researcher-triage 12,104 (unchanged). Task data, launch notes,
+core memory and run block each contribute 0 bytes in this normalized
+fixture: they are excluded, not measured live-delivery sizes. Their delivered
+sizes vary by issue, profile, memory revision and run fields; no fixture
+headroom claim applies to the complete live prompt.
+
 | Unit | Protocol / gates | Templates / budget | Sensitive / owner-shell | Status |
 |---|---|---|---| --- |
 | S0/S1 | Existing contract only | No new entry; truthful headers if needed | Spec permission at head; no shell step | open |
-| B1 | No gate/marker change | Compact reviewer pointer; additive task output | Path forecast no match; fake backend | open |
-| B2 | Existing checked writer only | Coordinator replacement/reviewer pointer | Deep head/round/identity review; fake harness | open |
-| B3 | No approval carry by helper | Builder-fix companion only | Disposable Git boundary tests | open |
-| B4 | No protocol/grant lifecycle change | No entry change | Disposable state; isolated tmux | open |
+| B1 | No gate/marker change | Compact reviewer pointer; additive task output | Path forecast no match; fake backend | done |
+| B2 | Existing checked writer only | Coordinator replacement/reviewer pointer | Deep head/round/identity review; fake harness | done |
+| B3 | No approval carry by helper | Builder-fix companion only | Disposable Git boundary tests | done |
+| B4 | No protocol/grant lifecycle change | No entry change | Disposable state; isolated tmux | done |
 
 All members apply ownership, pause, config attribution and item holds even
 for new command names. Reclassify every actual full diff, including tests
@@ -2119,15 +2171,17 @@ check `--only design-headers --only spec-status`. Use
 [affected-tests policy](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6763423100).
 Refusal proof invokes shipped commands and asserts nonzero exit and no
 effect. Tests below are planned coverage, refined to each actual diff;
+`done` records accepted member completion from the linked reviews, not a
+claim that every forecast test was rerun locally;
 full PR CI at exact head and integration stays required.
 
 | Unit | Affected local tests | Coverage | Status |
 |---|---|---| --- |
 | S0/S1 | Required checks; `test-check-repo.py` only if checker behavior changes | Spec cells, links, fragment and truthful headers | open |
-| B1 | `test-crew-brief.py`, `test-crew-spawn.py`, `test-crew-acked.py`, `test-crew-action.py`, `test-crew-send.py`; new `test-crew-ack.py` | Run composition, inbox compatibility, checked posts/refusals | open |
-| B2 | New `test-crew-review.py`, `test-crew-verdict.py`, `test-crew-recheck.py`; `test-crew-reviewer-pool.py`, `test-crew-route.py`, `test-crew-spawn.py`, `test-crew-poll.py`, `test-crew-lead.py`, `test-crew-schedule.py`, `test-crew-content.py`, `test-crew-train.py`, `test-crew-precheck.py` | Fresh pass chaining, engines, admission, rounds/duplicates, utility dependents, portability/precheck | open |
-| B3 | New `test-crew-merge-up.py`; `test-crew-content.py`, `test-crew-copy-claim.py`, `test-crew-route.py`, `test-crew-train.py`; ack/verdict tests if helper changes | Git rollback, copy ownership, head readback and delta/carry consumers | open |
-| B4 | `test-crew-down.py`, `test-crew-guard.py`, `test-crew-pause.py`, `test-crew-migrate.py`, `test-crew-uninstall.py`; integrated #1774 tests | Cleanup/refusal/preserve boundaries, stop order and grant preservation | open |
+| B1 | `test-crew-brief.py`, `test-crew-spawn.py`, `test-crew-acked.py`, `test-crew-action.py`, `test-crew-send.py`; new `test-crew-ack.py` | Run composition, inbox compatibility, checked posts/refusals | done |
+| B2 | New `test-crew-review.py`, `test-crew-verdict.py`, `test-crew-recheck.py`; `test-crew-reviewer-pool.py`, `test-crew-route.py`, `test-crew-spawn.py`, `test-crew-poll.py`, `test-crew-lead.py`, `test-crew-schedule.py`, `test-crew-content.py`, `test-crew-train.py`, `test-crew-precheck.py` | Fresh pass chaining, engines, admission, rounds/duplicates, utility dependents, portability/precheck | done |
+| B3 | New `test-crew-merge-up.py`; `test-crew-content.py`, `test-crew-copy-claim.py`, `test-crew-route.py`, `test-crew-train.py`; ack/verdict tests if helper changes | Git rollback, copy ownership, head readback and delta/carry consumers | done |
+| B4 | `test-crew-down.py`, `test-crew-guard.py`, `test-crew-pause.py`, `test-crew-migrate.py`, `test-crew-uninstall.py`; integrated #1774 tests | Cleanup/refusal/preserve boundaries, stop order and grant preservation | done |
 
 Template/fixture edits add `test-crew-render.py`, `test-render-parity.py`,
 `test-tmux-briefs.py`, `test-crew-bootstrap.py`. Shared plumbing or reused

@@ -3,9 +3,9 @@
 > - **Status:** partly built
 > - **Applies to:** `release.yml`, `scripts/changelog-cut.py`, `scripts/release-*.py`
 > - **Current rules:** release gate in the [gate registry](protocol.md#gate-registry)
-> - **Built:** [Steps](#steps), [Release gate](#release-gate), release on cut merge (#387) and R1.2–R1.4 (#217–#219)
-> - **Design only:** [Upstreaming the session tooling](#upstreaming-the-session-tooling) and the bootstrap-driven rows of the [Update path](#update-path) were not re-checked; treat them as unverified
-> - **Last checked:** 2026-11-04 at `217cec5`
+> - **Built:** [Steps](#steps), [Release gate](#release-gate), release on cut merge (#387) and R1.2–R1.4 (#217–#219); M54 [session-tooling helpers](#upstreaming-the-session-tooling) (PRs #1834, #1838, #1837)
+> - **Design only:** The bootstrap-driven rows of the [Update path](#update-path) were not re-checked; treat them as unverified
+> - **Last checked:** M54 helper status 2026-11-13 at `73a23b5`; other release/update claims retain their prior scope
 
 How a version of the [deliverables](deliverables.md) is cut, approved and
 published, how installed environments take it, and how to roll back

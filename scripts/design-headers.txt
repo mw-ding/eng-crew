@@ -5,4 +5,4 @@
 # entry whose doc no longer has a design header.
 
 docs/express-lane.md	its milestone (M18.2, #636) has no row in the spec section 5 tables; the lane experiment and Grok Bot express routing remain design only
-docs/release.md	R1 is closed, but the session-tooling upstreaming and the bootstrap-driven update path remain design only, as its banner says
+docs/release.md	R1 and M54 helpers are built, but the bootstrap-driven update rows remain unverified, as its banner says
