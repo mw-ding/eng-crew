@@ -8,7 +8,7 @@ when the primary's session is gone.
 
 Both modes first stop the armed watcher (SIGTERM; refuses if it outlives the grace), also with no session left (#1346).
 --preserve is the maintenance stop before a migration (#1178): it stops the watcher and every pane's processes, but keeps each run's worktree, record, claim, inbox and status file.
-Plain down also removes runs/coordinator.* scratch files after a successful stop, or when nothing is running.
+Plain down also removes regular runs/coordinator.* scratch files after a successful stop, or when nothing is running; symlinks stay.
 """
 import contextlib
 import fcntl
@@ -64,7 +64,7 @@ def land_locked(state):
 def clean_coordinator(state, keep_work):
     if not keep_work:
         for path in glob.glob(os.path.join(state, "runs", "coordinator.*")):
-            if os.path.isfile(path):
+            if os.path.isfile(path) and not os.path.islink(path):
                 os.remove(path)
 
 

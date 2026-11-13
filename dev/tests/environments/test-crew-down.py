@@ -34,6 +34,24 @@ def fake_watcher(tmp):
 
 
 class Down(Base):
+    def test_down_retains_symlinks_and_directories_on_repeated_cleanup(self):
+        self.put("runs/coordinator.body.md", "scratch\n")
+        self.put("runs/ben-7.body.md", "worker\n")
+        link = os.path.join(self.state, "runs", "coordinator.link")
+        directory = os.path.join(self.state, "runs", "coordinator.directory")
+        os.symlink("ben-7.body.md", link)
+        os.mkdir(directory)
+        for _ in range(2):
+            r = self.crew("down", "--project", self.project)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertEqual(r.stdout, "crew: crew-acme-widgets not running\n")
+            self.assertEqual(r.stderr, "mdstack: config %s\n" % self.project)
+            self.assertFalse(os.path.exists(os.path.join(self.state, "runs", "coordinator.body.md")))
+            self.assertTrue(os.path.islink(link))
+            self.assertTrue(os.path.isdir(directory))
+            with open(link) as f:
+                self.assertEqual(f.read(), "worker\n")
+
     def test_down_removes_only_coordinator_scratch_with_or_without_session(self):
         for live in (True, False):
             with self.subTest(live=live):
