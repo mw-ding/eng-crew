@@ -1347,6 +1347,145 @@ cut land.
 
 Release: all of M50 ships in 7.11.0, a minor by the owner's choice.
 
+### M52: completion routing
+
+Opening spec slice #1798 and closing status-sync slice #1799 are the
+bookends for [#1794](https://github.com/mw-ding/mdstack/issues/1794).
+Scope and ACs come from
+[Riley's readiness pass](https://github.com/mw-ding/mdstack/issues/1794#issuecomment-6846602283),
+§2–§3, with the
+[coordinator's applied choices](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6846633558).
+No build dispatches before #1798 merges. B1 and B2 then build independently
+in parallel; prioritize B1 if only one slot is available. #1799 follows both
+merged builds and their completion evidence, sets their rows to `done` with
+PR/evidence refs and states whether a release actually shipped. Completion
+never implies installation. One issue → one PR; split larger changes into
+small focused commits. Sizes are estimated non-test Python lines, then test
+lines; both builds use the default tier, medium effort.
+
+| ID | Issue | Scope | Size | Depends on | Status |
+|---|---|---|---|---|---|
+| B1 | #1772 | Informational inbox/ack idle exception; work, upgrade and unlanded safeguards | 40–90; 120–200 | #1798 | open |
+| B2 | #1777 | Same-head posted-round verdict wake identity and duplicate suppression | 60–110; 160–240 | #1798 | open |
+
+**Target environment: N/A** — local runtime logic, no new platform or device
+dependency. **Owner prerequisites: none** under Codex-first routing, tmux,
+standard flavor; reviewer routing uses the actual builder engine. #1792's
+trust-dialog repair stays separate. M52's spec edits stay in this file;
+`docs/specs/team.md`, `docs/configuration/team-files.md`,
+`docs/roles-registry.md` and role-import code are outside its scope. Serialize
+the bookends with M51 edits to this file.
+
+#### B1: idle eligibility (#1772)
+
+The applied choice is an **idle-only `owner-policy` allowlist with a matching
+informational-ack filter**. New informational kinds need a later explicit
+decision. Runtime paths below are under `environments/terminal/crew.d/`;
+readiness line citations refer to base
+`f4a79465f2d774244a760b791c4000dc7db02c12`.
+
+1. With completed status and no active tool session, an unacked
+   `owner-policy` message does not make `idle_builder()` return `None`.
+   Ignore its matching trailing `ack: <id>` when finding the last work-status
+   line. Keep heartbeat handling and the matching-build completion exception.
+2. Unacked `fix`, `ci-red`, `merge-up`, unmatched `build` and unknown kinds
+   remain busy. An actionable ack after the latest `done:` remains busy
+   until later completion; a later informational ack cannot hide it. An ack
+   with no identifiable inbox entry is conservative/busy.
+3. No `done:`, a later work/progress/block/failure line or a live tool session
+   remains ineligible. Preserve the active-child check; an informational
+   exception never creates completion.
+4. Preserve the status-file mtime clock, TTL boundary and `ttl=0` disable
+   behaviour. A trailing informational ack may restart ordinary TTL grace,
+   but cannot permanently prevent eligibility. At expiry the watcher emits
+   once through the existing lead/dequeue path; add no new clock/state format.
+5. Preserve the unlanded-work refusal (`dequeue.py:31`), retained
+   output/status/step summaries and capacity rules. Dirty/untracked paths
+   and commits absent from fetched default/run/PR refs still refuse reclaim;
+   this is not simply a PR-merged check. A clean published PR may remain
+   open while its idle window expires under the existing retention contract.
+6. Confine the exception to idle detection: `upgrade.busy()` keeps the
+   `unacked()` delivery barrier (`upgrade.py:57`). A narrow helper or optional
+   ignored-kind argument defaults to existing caller behaviour; prove an
+   unacked policy message still blocks upgrade.
+
+Paths: `_shared.py`, its dependent tests and a #1772 fragment; an optional
+short clarification in `docs/runtimes/tmux.md`. Preserve the consumers in
+`watch.py`, `dequeue.py`, `route.py` and `schedule.py`; no shared-plumbing
+refactor or second reaper.
+
+Local test selection uses the
+[affected-tests policy](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6763423100),
+as explicitly applied by the coordinator: run `python3 scripts/run-tests.py
+ test-crew-lead.py test-crew-dequeue.py test-crew-upgrade.py test-crew-watch.py
+ test-crew-route.py`. Expand lead coverage for policy messages and acks,
+actionable/unknown/unidentified acks, later work status, active tools and one
+expiry; dequeue coverage for real reclaim, retention, unlanded work and
+pending fix/CI-red/merge-up; upgrade coverage for the unchanged policy-message
+barrier. Watch and route protect expiry delivery and existing consumers.
+
+#### B2: verdict wake identity (#1777)
+
+The applied choice is **`(head, reset_epoch, posted_round, verdict)`**, with PR
+implicit in per-PR state and the canonical review ID retained as provenance
+only. It changes private wake deduplication, not marker or round-cap meaning.
+
+1. Select the latest valid `role=reviewer-validator pass=verdict` at the full
+   current head, from the configured reviewer login and visible signature
+   using `signed_by()`. Keep posted round separate from next-dispatch `round`.
+   Ack/review/validate/fix notes, wrong-head and foreign/unsigned records
+   cannot create a signed verdict wake. Preserve profile identities in
+   production poll and the existing no-profile utility mode where needed.
+2. Use the logical identity above. `reset_epoch` is the latest accepted
+   signed coordinator resume/cutover source, or a stable legacy/default value.
+   Review ID is not an independent wake reason; existing review `id` and
+   `submittedAt` suffice, with no per-verdict fetch or new marker field.
+3. At unchanged head/verdict text, round 2 → round 4 `changes` emits exactly
+   one `review-changes-requested` to builder. A new `pass` identity emits one
+   `review-approved` to synthesizer. A signed reset followed by a reused
+   round number is a fresh epoch.
+4. Re-polling, repeated input or another post with the same logical identity
+   emits no additional verdict wake, even with a different review ID. Keep
+   canonical identity for duplicates; builder fixes/unrelated notes do not
+   change it. Preserve §5's formal-verdict counting and caps.
+5. Additive private `poll-state.json` fields accept legacy state without a
+   profile edit. Seed missing identity fields without replaying an unchanged
+   known verdict; use existing head/verdict/derived-round differences for
+   the first transition, then logical identity. Preserve the baseline-only
+   first poll with no previous state. Test legacy seeding and a new same-head
+   round arriving against legacy state.
+6. Preserve CI classification, merge-up portability, express routing, event
+   names/consumers/refs, evidence-only `fix-at-head`, next-review round
+   calculation and reset handling. Verdict wakes keep their builder or
+   synthesizer mapping and never accidentally dispatch a reviewer.
+
+Paths: `poll.py`, `dev/tests/environments/test-crew-poll.py` and a #1777
+fragment; optional short binding clarification. Keep `route.py` consumers
+and refs. Prefer inline test records over shared render-fixture edits.
+Run `python3 scripts/run-tests.py test-crew-poll.py test-crew-route.py`;
+add signed same-head/different-round, duplicate/new-ID, reset epoch,
+irrelevant/foreign notes and legacy-state/baseline cases. Route coverage
+protects consumers and reviewer replay guards. This remains latest-snapshot
+sampling, not event-history reconstruction or a crash-exactly-once promise.
+
+All four PRs run `python3 scripts/check-repo.py` and
+`python3 scripts/check-changelog-pr.py`; bookends also check
+`--only design-headers --only spec-status`. PR CI runs the full suite.
+If templates or shared fixtures change, add the render, parity, tmux-briefs
+and bootstrap tests; such growth returns to the coordinator before dispatch.
+
+Version forecast against [Versioning](../deliverables.md#versioning): both
+runtime fixes are **patch**, restoring documented behaviour; internal spec
+bookends alone have **no bump**. No protocol, template or gate-contract change
+is planned. Preserve §4 markers, §5 counting/caps and §7 gates; a required or
+reinterpreted marker or changed gate needs replanning and major classification.
+Classify the full actual diff at each head, especially B1's reclaim
+eligibility; a sensitive head still needs the owner's per-change reason.
+Merge permission is the owner's
+[merge-ok for all M52–M54 PRs](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6846545711),
+recorded per PR at its actual head. It supplies permission only, never
+approval, CI, hold clearance or missing AC evidence.
+
 ## 6. Decisions
 
 | Date | Decision | Source |
