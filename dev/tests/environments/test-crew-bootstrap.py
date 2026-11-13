@@ -434,12 +434,13 @@ class Bootstrap(doctor_tests.DoctorBase):
         bootstrap = mod.commands()["bootstrap"]
         rendered = Path(self.tmp) / "rendered"
         names = ["briefs/builder.md", "runtime/coordinator-steering-dispatcher.md",
-                 "runtime/reviewer-engines.md", "runtime/synthesizer.md"]
+                 "runtime/reviewer-engines.md", "runtime/synthesizer.md",
+                 "runtime/builder-fix.md", "runtime/researcher-triage.md"]
         for name in names + ["runtime/wiring.md"]:
             path = rendered / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text("x" * 11)
-        values = {"size_budget." + role: 10 for role in ("coordinator", "builder", "reviewer", "synthesizer")}
+        values = {"size_budget." + role: 10 for role in ("coordinator", "builder", "reviewer", "synthesizer", "researcher")}
         with mock.patch("sys.stdout", new_callable=io.StringIO) as out:
             self.assertEqual(bootstrap.size_budget(rendered, values), 1)
         for name in names:
@@ -477,6 +478,9 @@ class Bootstrap(doctor_tests.DoctorBase):
             if runtime == "tmux":
                 for role in ("coordinator", "synthesizer"):
                     self.assertLessEqual(counts[0]["runtime/" + role + ".md"], 16384 - 1024)
+                for role in ("builder", "researcher"):
+                    with self.subTest(role=role):
+                        self.assertLessEqual(counts[0]["runtime/" + role + ".md"], 16384 - 2048, role)
 
     def test_missing_brief_records_failed_self_test(self):
         self.own_bundle()

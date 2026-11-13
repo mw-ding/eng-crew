@@ -302,6 +302,49 @@ class Render(unittest.TestCase):
 class TmuxBriefs(unittest.TestCase):
     """The real tmux briefs (templates/runtimes/tmux/) render from profiles/tmux.toml to the golden files (#137)."""
 
+    def test_triggered_procedures_are_rendered_and_reachable(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                self.assertEqual(cr.main(["--project", example_profile(tmp), "--out", tmp]), 0)
+            got = tree(os.path.join(tmp, "runtime"))
+            for role, companion in (("builder", "builder-fix"), ("researcher", "researcher-triage")):
+                with self.subTest(role=role):
+                    entry, procedure = got[role + ".md"], got[companion + ".md"]
+                    self.assertIn("$CREW_STATE/render/runtime/" + companion + ".md", entry)
+                    self.assertIn("If unreadable", entry)
+                    self.assertIn("`blocked: #<n> spec-unreadable` and stop.", entry)
+                    self.assertNotRegex(procedure, r"<(?:op:|include:|strategy:|flavor-)")
+            builder = " ".join(got["builder.md"].split())
+            for rule in ("fix, ci-red, merge-up or base-update", "including an initial express build",
+                         "append `ack: <id>`", "if the ref SHA is not the head", "heartbeat",
+                         "Never squash, land, approve", "never ask the owner", "Step summaries"):
+                self.assertIn(rule.lower(), (builder + got["builder-fix.md"]).lower())
+            self.assertNotIn("Express self-gate (`", got["builder.md"])
+            self.assertIn("gh pr review <n> --comment --body-file <file>", got["builder-fix.md"])
+            self.assertIn("Instead of Scope and Output".lower(), got["researcher.md"].lower())
+            self.assertNotIn("pass=triage-log", got["researcher.md"])
+            self.assertIn("pass=triage-log", got["researcher-triage.md"])
+
+    def test_disabled_researcher_requires_no_companion_operations(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            inputs = os.path.join(tmp, "inputs")
+            shutil.copytree(os.path.join(os.path.dirname(SCRIPTS), "templates"), inputs)
+            procedure = os.path.join(inputs, "runtimes", "tmux", "researcher-triage.md")
+            with open(procedure, "a") as f:
+                f.write("\n<op:tracker.unknown-triage-operation>\n")
+            for cap, expected in ((0, 0), (1, 1)):
+                project = os.path.join(tmp, "crew.toml")
+                with open(project, "w") as f:
+                    f.write('[runtime]\nname = "tmux"\noptions = { researchers = %d }\n' % cap)
+                out = os.path.join(tmp, "out-" + str(cap))
+                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                    code = cr.main(["--project", project, "--inputs", inputs, "--out", out])
+                self.assertEqual(code, expected)
+                if not cap:
+                    self.assertFalse(any("researcher" in rel for rel in tree(out)))
+                else:
+                    self.assertFalse(os.path.exists(out))
+
     def test_flavor_presets_and_unset_in_both_bindings(self):
         expected = {
             "thorough": "review=full; validation=always; evidence=typed; caps=[3, 3]; merge=docs; builder=crew.",
