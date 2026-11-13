@@ -61,6 +61,8 @@ ID/version and declaration, setting provenance and every content file's
 SHA-256. The binding digest covers its normalized declaration. It is an
 integrity record, not a signature or permission grant; the host verifies it
 against the reviewed producer and rejects local authority edits.
+Source version is `VERSION` when present, otherwise the latest release
+heading at the source pin; the full commit distinguishes unreleased content.
 
 ## Thin binding and consumer loading
 

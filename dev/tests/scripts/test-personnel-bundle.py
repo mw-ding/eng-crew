@@ -132,6 +132,21 @@ class PersonnelTest(unittest.TestCase):
         manifest = json.loads((self.out / "personnel.json").read_text())
         self.assertEqual(manifest["provenance"]["eng/builder"]["extra_skills"], "binding:fake-host@1.0.0")
 
+    def test_checkout_version_without_release_version_file(self):
+        version = self.producer / "VERSION"
+        try:
+            version.unlink()
+            def git(*args):
+                return subprocess.check_output(["git", "-C", str(self.producer), *args], stderr=subprocess.PIPE).decode().strip()
+            git("add", "VERSION")
+            git("-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "-qm", "source checkout")
+            result = self.run_cli(ref=git("rev-parse", "HEAD"))
+            self.assertEqual(result.returncode, 0, result.stderr)
+            manifest = json.loads((self.out / "personnel.json").read_text())
+            self.assertEqual(manifest["source"]["version"], "v7.11.0")
+        finally:
+            version.write_text("v7.11.0\n")
+
     def test_unresolved_policy_control(self):
         path = self.producer / "templates/policy/builder/SKILL.md"
         original = path.read_text()

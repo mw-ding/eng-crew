@@ -188,8 +188,10 @@ def compose(root, ref, roles, binding):
             lines[number - 1] = line
         files[path] = "\n".join(lines).encode()
 
+    version = read(root, ref, "VERSION").strip() if "VERSION" in tree else "v" + re.search(
+        r"^## \[([0-9][^\]]*)\]", read(root, ref, "CHANGELOG.md"), re.M)[1]
     manifest = {
-        "schema_version": 1, "source": {"commit": ref, "version": read(root, ref, "VERSION").strip() if "VERSION" in tree else git(root, "describe", "--tags", "--always", ref).decode().strip()},
+        "schema_version": 1, "source": {"commit": ref, "version": version},
         "roles": sorted(roles), "binding": binding,
         "binding_sha256": digest(json.dumps(binding, sort_keys=True).encode()),
         "provenance": {r: {k: f"binding:{binding['id']}@{binding['version']}" for k in binding.get("settings", {}).get(r, {})} for r in roles},
