@@ -91,20 +91,21 @@ def classify(value, values):
                     facts.append("historical source")
             for name in milestones:
                 pages = api("repos/" + repo + "/milestones?state=all&per_page=100", "--paginate", "--slurp")
-                matches = [m for page in pages for m in page if m["title"] == name]
+                matches = [m for page in pages for m in page if m["title"] == name or m["title"].startswith(name + " ")]
                 if len(matches) != 1 or matches[0]["state"] not in ("open", "closed"):
                     raise ValueError("milestone unreadable or ambiguous: " + name)
                 finished &= matches[0]["state"] == "closed"
                 facts.append(name + " " + matches[0]["state"])
                 row["links"].append(matches[0]["html_url"])
             for version in versions:
-                release = api("repos/" + repo + "/releases/tags/" + version)
-                if release["tag_name"] != version or not isinstance(release["draft"], bool) or not isinstance(
+                tag = version if version.startswith("v") else "v" + version
+                release = api("repos/" + repo + "/releases/tags/" + tag)
+                if release["tag_name"] != tag or not isinstance(release["draft"], bool) or not isinstance(
                         release["published_at"], (str, type(None))):
                     raise ValueError("release unreadable: " + version)
                 published = not release["draft"] and bool(release["published_at"])
                 finished &= published
-                facts.append(version + (" published" if published else "unpublished"))
+                facts.append(version + (" published" if published else " unpublished"))
                 row["links"].append(release["html_url"])
             row.update(remove=finished, reason=", ".join(facts), log=refs[0][1])
     except (OSError, ValueError, KeyError, TypeError) as e:

@@ -885,8 +885,10 @@ locators (`#<issue> comment <id>` or their full GitHub URLs). Every named
 milestone must be closed and every named cut must have a non-draft published
 release. Mixed clauses require both. Standing/open/unknown grants, ranges,
 restrictions, archive annotations and mixed or unsupported prose are kept.
-Only exact milestone titles and release tags count; a cut PR's merge does
-not prove publication. Source reads verify signed, trusted attribution and
+Milestones match their complete leading identifier (`M35` or `M35 — …`),
+requiring exactly one match; `M35.1` and `M350` never match `M35`. Cut versions
+with or without `v` resolve to the repository's `vX.Y.Z` release tag; a cut
+PR's merge does not prove publication. Source reads verify signed, trusted attribution and
 local locators. History remains history.
 
 The supported decision log is the single local issue identified by the

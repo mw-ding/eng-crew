@@ -105,8 +105,8 @@ class Grant(Base):
             "sources": {str(n): {"html_url": "https://github.com/acme/widgets/issues/9#issuecomment-" + str(n),
                                   "body": "Owner grants M35 M36 v7.1.0 per this decision.\n— Owner (Owner)",
                                   "user": {"login": "acme-owner"}} for n in (101, 102, 103)},
-            "milestones": [{"title": "M35", "state": "closed", "html_url": "https://github.com/acme/widgets/milestone/35"},
-                           {"title": "M36", "state": "open", "html_url": "https://github.com/acme/widgets/milestone/36"}],
+            "milestones": [{"title": "M35 — 7.1: grant scope", "state": "closed", "html_url": "https://github.com/acme/widgets/milestone/35"},
+                           {"title": "M36 — Open work", "state": "open", "html_url": "https://github.com/acme/widgets/milestone/36"}],
             "releases": {"v7.1.0": {"tag_name": "v7.1.0", "draft": False, "published_at": "2026-11-08T00:00:00Z",
                                      "html_url": "https://github.com/acme/widgets/releases/tag/v7.1.0"}}}
         self.save_facts()
@@ -189,6 +189,49 @@ class Grant(Base):
         result = self.invoke("grant", "prune", "--dry-run", terminal=False)
         self.assertNotIn("remove:", result.stdout)
         self.assertIn("M36 open", result.stdout)
+
+    def test_milestone_titles_match_whole_leading_identifier(self):
+        for title in ("M35.1 — Child milestone", "M350 — Other milestone"):
+            self.facts["milestones"].append({"title": title, "state": "open", "html_url": "https://github.com/acme/widgets/milestone/99"})
+        self.save_facts()
+        result = self.invoke("grant", "prune", "--dry-run", terminal=False)
+        self.assertIn("remove: " + FINITE, result.stdout)
+        self.unchanged()
+        self.facts["milestones"].pop(0)
+        self.save_facts()
+        result = self.invoke("grant", "prune", "--dry-run", terminal=False)
+        self.assertNotIn("remove:", result.stdout)
+        self.assertIn("milestone unreadable or ambiguous: M35", result.stdout)
+        self.unchanged()
+
+    def test_duplicate_milestone_identifiers_keep_every_clause(self):
+        self.facts["milestones"].append({"title": "M35 — Duplicate", "state": "closed", "html_url": "https://github.com/acme/widgets/milestone/99"})
+        self.save_facts()
+        result = self.invoke("grant", "prune", "--dry-run", terminal=False)
+        self.assertNotIn("remove:", result.stdout)
+        self.assertIn("milestone unreadable or ambiguous: M35", result.stdout)
+        self.unchanged()
+
+    def test_bare_and_prefixed_cut_versions_can_finish_together(self):
+        self.grant("; ".join((FINITE.replace("v7.1.0", "7.1.0"),
+                              "the v7.1.0 cut (owner 2026-11-08, #9 comment 101)", STANDING)))
+        result = self.invoke("grant", "prune", "--dry-run", terminal=False)
+        self.assertEqual(result.stdout.count("remove:"), 2, result.stdout)
+        self.assertIn("M35 closed, 7.1.0 published", result.stdout)
+        self.assertIn("v7.1.0 published", result.stdout)
+        self.assertNotIn("keeping everything", result.stdout)
+        self.assertNotIn("releases/tags/7.1.0", (self.forge / "calls.log").read_text())
+        self.unchanged()
+
+    def test_bare_versions_require_nondraft_published_release(self):
+        self.grant("the 7.1.0 cut (owner 2026-11-08, #9 comment 101)")
+        for field, value in (("draft", True), ("published_at", None)):
+            self.facts["releases"]["v7.1.0"][field] = value
+            self.save_facts()
+            result = self.invoke("grant", "prune", "--dry-run", terminal=False)
+            self.assertNotIn("remove:", result.stdout)
+            self.assertIn("7.1.0 unpublished", result.stdout)
+            self.unchanged()
 
     def test_finite_cut_only_and_milestone_only(self):
         for value in ("the v7.1.0 minor cut as the per-release go (owner 2026-11-08, #9 comment 101)",
