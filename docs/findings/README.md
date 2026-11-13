@@ -9,6 +9,8 @@ M5 batch). The buffer itself is [buffer.md](buffer.md).
 
 - [M53 repaired learning batch](m53-learning.md): 24 cards, 27 distinct
   occurrences, retained prevention and source-card dispositions (#1793).
+- [M55 learning record](m55-learning.md): one repaired composition card,
+  personnel template placeholder link, status applied (#1813).
 
 ## Ownership
 
