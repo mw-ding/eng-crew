@@ -1067,6 +1067,50 @@ class Team(Base):
                 self.assertEqual([(x["repo"], x["ref"]) for x in a["admit"]], [("acme/widgets", ref[pool])])
         self.assertEqual(self.mutations(), [])
 
+    def test_shared_team_leads_admit_through_one_ledger_and_a_never_takes_bs_last_slot(self):
+        """Integration with the shared `(team, pool)` leads (#1858): team.json binds both repos, so each lead's inbox is
+        the team root's and its messages name their repo in `context`. A's held build and A's stale-head validation
+        take no reservation; B's same-ID current work wins the one team slot in the one team ledger."""
+        repos = {"acme/widgets": self.a, "acme/gadgets": self.b}
+        self.write(os.path.join(self.root, "team.json"), json.dumps({"team": "eng", "repos": {
+            r: {"project": "%s#%s" % (self.team, r.split("/")[1]), "state": st} for r, st in repos.items()}}))
+        msg = lambda repo, i, kind, refs: dict(id=i, kind=kind, refs=refs, context=dict(
+            repo=repo, project="%s#%s" % (self.team, repo.split("/")[1])))
+        for state in repos.values():
+            for lead in ("ben-lead", "vera-lead"):
+                self.inbox(state, lead, [])
+        self.write_team(builders=1)
+        with open(self.team) as f:
+            text = f.read()
+        with open(self.team, "w") as f:
+            f.write(text.replace("reviewers = 2", "reviewers = 1"))
+        live, stale = "2" * 40, SHA
+        self.inbox(self.root, "ben-lead", [msg("acme/widgets", "a42", "build", ["#42"]),
+                                           msg("acme/gadgets", "b42", "build", ["#42"])])
+        self.inbox(self.root, "vera-lead", [msg("acme/widgets", "a7", "validate", ["#7", stale, "1"]),
+                                            msg("acme/gadgets", "b7", "validate", ["#7", live, "1"])])
+        pr = [{"number": 7, "headRefOid": live}]
+        self.gh({"acme/widgets": {"labels": {"crew:hold": [42]}, "prs": pr}, "acme/gadgets": {"prs": pr}})
+        a = self.call("widgets", "decide", "--pool", "builder")  # A's held build: no grant
+        self.assertEqual((a["admit"], [(h["repo"], h["ref"]) for h in a["held"]]), ([], [("acme/widgets", "#42")]))
+        a = self.call("widgets", "decide", "--pool", "reviewer")  # A's stale validation: no grant
+        self.assertEqual((a["admit"], [(w["repo"], w["reasons"]) for w in a["waiting"]]),
+                         ([], [("acme/widgets", ["stale-head"])]))
+        self.assertFalse(os.path.exists(os.path.join(self.root, "schedule", "reservations.json")) and self.ledger())
+        for pool, ref in (("builder", "#42"), ("reviewer", "#7")):  # B takes each pool's last team slot
+            b = self.call("gadgets", "decide", "--pool", pool)
+            self.assertEqual([(x["repo"], x["ref"], x["reasons"]) for x in b["admit"]], [("acme/gadgets", ref, [])], pool)
+        self.assertEqual(self.ledger(), [("acme/gadgets", "builder", "#42"), ("acme/gadgets", "reviewer", "#7")])
+        self.assertFalse(any(os.path.exists(os.path.join(st, "schedule", "reservations.json"))
+                             for st in repos.values()))
+        a = self.call("widgets", "decide", "--pool", "reviewer")  # B holds the one reviewer slot
+        self.assertEqual(a["admit"], [])
+        self.call("gadgets", "release", "--pool", "reviewer", "#7")
+        self.inbox(self.root, "vera-lead", [msg("acme/widgets", "a7", "validate", ["#7", live, "1"])])
+        a = self.call("widgets", "decide", "--pool", "reviewer")  # control: A's current head, slot free
+        self.assertEqual([(x["repo"], x["ref"]) for x in a["admit"]], [("acme/widgets", "#7")])
+        self.assertEqual(self.mutations(), [])
+
     def route(self, kind, round_, cap=1):
         """The reviewer lead requests `kind` round `round_` of A's #7 while only A's validate round 1 is granted."""
         self.inbox(self.a, "ben-lead", [])

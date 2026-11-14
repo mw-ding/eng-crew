@@ -380,8 +380,9 @@ outputs and reservations are unchanged.
   <pool> <reason>`. A team watcher reads the team summary and raises
   `schedule-stuck` only for its own repo.
 
-One shared `(team, pool)` lead serving every repo is T3 (#1858). Until then
-each repo's lead decides for its own lane.
+The shared `(team, pool)` lead (#1858) decides for each message's repo,
+passing its `context.project`, so its root inbox counts as demand only for
+the repo each message names, through the same predicates and one ledger.
 
 ## Build issues
 
