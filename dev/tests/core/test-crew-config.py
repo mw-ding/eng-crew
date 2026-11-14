@@ -1445,7 +1445,9 @@ class TeamFileTest(unittest.TestCase):
             "a project may only tighten",
             "ext.toml[repos.gadgets]:flavor.name: fast relaxes lighter_lane from docs (flavor standard, set by team) to "
             "docs+tests; a project may only tighten",
-            "ext.toml[repos.gadgets]:flavor.name: fast relaxes caps from [3, 3] (flavor standard, set by team) to [2, 2]; "
+            "ext.toml[repos.gadgets]:flavor.name: fast relaxes caps[0] from 3 (flavor standard, set by team) to 2; "
+            "a project may only tighten",
+            "ext.toml[repos.gadgets]:flavor.name: fast relaxes caps[1] from 3 (flavor standard, set by team) to 2; "
             "a project may only tighten"])
         thorough = TEAM.replace("[team]\n", '[team]\nflavor = { name = "thorough" }\n')  # unset repo: the team's
         self.assertEqual(self.resolve(thorough, "#gadgets")[0]["flavor"]["name"], "thorough")
@@ -1457,6 +1459,29 @@ class TeamFileTest(unittest.TestCase):
                       "never a project, class or base",
                       self.resolve(team.replace('train_window = 120', 'train_window = 120\nflavor = { name = "express" }'),
                                    "#gadgets")[2])
+
+    def test_project_flavor_floor_is_every_lower_layer(self):  # a weaker team never hides a stricter org floor
+        with tempfile.TemporaryDirectory() as d:
+            org, team = os.path.join(d, "org.toml"), os.path.join(d, "eng.toml")
+            with open(org, "w") as f:
+                f.write('[flavor]\nname = "thorough"\n')
+            with open(team, "w") as f:
+                f.write(TEAM.replace("[team]\n", '[team]\nflavor = { name = "standard" }\n').replace(
+                    'train_window = 120', 'train_window = 120\nflavor = { name = "%s" }'))
+            text = open(team).read()
+            for project, expected in (("standard", ["%s[repos.gadgets]:flavor.name: standard relaxes review from full "
+                                                    "(flavor thorough, set by org) to thin; a project may only tighten"
+                                                    % team, "%s[repos.gadgets]:flavor.name: standard relaxes "
+                                                    "validation from always (flavor thorough, set by org) to behaviour; "
+                                                    "a project may only tighten" % team,
+                                                    "%s[repos.gadgets]:flavor.name: standard relaxes "
+                                                    "validation_scope from repo (flavor thorough, set by org) to bounded; "
+                                                    "a project may only tighten" % team]),
+                                      ("thorough", [])):  # the control: matching the strictest floor resolves
+                with open(team, "w") as f:
+                    f.write(text % project)
+                problems = cc.resolve_profile(team + "#gadgets", org)[2]
+                self.assertEqual([p for p in problems if "flavor.name" in p], expected, project)
 
     def test_duplicate_repo_and_team_wide_grant_refuse_for_every_selector(self):
         twice = TEAM + '\n[repos.copy]\nrepo = "ACME/Widgets"\n'

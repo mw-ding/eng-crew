@@ -1355,24 +1355,29 @@ def team_layers(data, file, repo, err):
 
 
 def project_relaxation(layers, merged, err):
-    """A repo section's flavor may tighten, never relax, the flavor below it (team §9.1): any rigor knob or cap below
-    the team/pack/org flavor under the existing comparison is refused with the key and both sources."""
+    """A repo section's flavor may tighten, never relax, its floor (team §9.1): knob-wise the strictest flavor any lower
+    layer names (core, pack, org, team), so a nearer weaker layer never hides a stricter one. A looser rigor knob or a
+    lower cap under the existing comparison is refused with the key and the floor's flavor and layer."""
     mine = dict(layers).get("repo", {}).get("flavor", {}).get("name")
     if mine is None:
         return
-    below, layer = next(((d["flavor"]["name"], n) for n, d in reversed(layers) if n != "repo" and
-                         isinstance(d.get("flavor"), dict) and "name" in d["flavor"]), (UNSET_FLAVOR, "core"))
     named = dict(FLAVOR_PRESETS, **{n: dict(FLAVOR_PRESETS[k["base"]], **{a: b for a, b in k.items() if a != "base"})
                                     for n, k in merged.get("flavor", {}).get("custom", {}).items()})
-    if mine not in named or below not in named:
+    floors = [(d["flavor"]["name"], n) for n, d in layers if n != "repo" and isinstance(d.get("flavor"), dict)
+              and d["flavor"].get("name") in named] or [(UNSET_FLAVOR, "core")]
+    if mine not in named:
         return
-    a, b = named[mine], named[below]
-    for key in [k for k in FLAVOR_ORDER if k != "builder" and FLAVOR_ORDER[k].index(a[k]) > FLAVOR_ORDER[k].index(b[k])]:
-        err("repo", "flavor.name", "%s relaxes %s from %s (flavor %s, set by %s) to %s; a project may only tighten"
-            % (mine, key, b[key], below, layer, a[key]))
-    if any(x < y for x, y in zip(a["caps"], b["caps"])):
-        err("repo", "flavor.name", "%s relaxes caps from %s (flavor %s, set by %s) to %s; a project may only tighten"
-            % (mine, b["caps"], below, layer, a["caps"]))
+    a = named[mine]
+    for key in [k for k in FLAVOR_ORDER if k != "builder"]:
+        below, layer = min(floors, key=lambda f: FLAVOR_ORDER[key].index(named[f[0]][key]))
+        if FLAVOR_ORDER[key].index(a[key]) > FLAVOR_ORDER[key].index(named[below][key]):
+            err("repo", "flavor.name", "%s relaxes %s from %s (flavor %s, set by %s) to %s; a project may only tighten"
+                % (mine, key, named[below][key], below, layer, a[key]))
+    for i, cap in enumerate(a["caps"]):
+        below, layer = max(floors, key=lambda f: named[f[0]]["caps"][i])
+        if cap < named[below]["caps"][i]:
+            err("repo", "flavor.name", "%s relaxes caps[%d] from %d (flavor %s, set by %s) to %d; a project may only "
+                "tighten" % (mine, i, named[below]["caps"][i], below, layer, cap))
 
 
 def doc_home_escape(merged, project, err):
