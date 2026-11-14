@@ -15,6 +15,9 @@ docs/roles-registry.md#lifecycle). Each watcher scan also runs routine_tick: a d
 `wake` has `routine` starts an instance when none runs and messages one instance the routine file (#1247,
 docs/routines.md#terminal).
 
+`mdstack up --team` also records each repo in `<team-root>/team.json` and ensures one `(team, pool)` lead per enabled
+pool through the first repo whose render, pause and ownership allow it; a repeat run starts none (#1858).
+
 Usage: mdstack up [ROLE] (--project FILE[#REPO] | --team FILE) [--org-profile FILE] [--inputs DIR] [--coordinator-only]
                  [--resume ID]
 """
@@ -29,8 +32,8 @@ import subprocess
 import sys
 from crew_shared import (
     brief_src, commands, coordinator_harness, coordinator_window, CREW_BIN, crew_render, HERE, harnesses, kill_run,
-    LAUNCH, load, NAMES, paused, POINTER, profile, ownership_module, proc, refuse_paused, require_ownership, role_notes,
-    ROLES, ROOT, runs, sandbox_env, show_icon, stop_pid, tmux)
+    LAUNCH, load, NAMES, paused, POINTER, profile, ownership_module, proc, refuse_paused, repo_id, require_ownership,
+    role_notes, ROLES, ROOT, runs, sandbox_env, show_icon, stop_pid, team_module, tmux, work_context)
 
 
 TEMPLATES = os.path.join(os.path.dirname(HERE), "templates")
@@ -454,7 +457,7 @@ def team(args):
         builder_warnings(v)
     if tmux.has_session(session):
         print("crew: %s already running; attach with: %s" % (session, attach_hint(session)))
-        return 0
+        return team_roles(args, repos)
     try:
         notes = role_notes(values, root, "coordinator")
     except RuntimeError as e:
@@ -466,6 +469,7 @@ def team(args):
         if not render_briefs(args, ref, state):
             return 1
         record_binding(v, ref, args)
+        team_module.bind(state, v["team.name"], repo_id(v), work_context(ref, v)["project"])
     if launch(values, "coordinator") == "none":
         print("crew: preflight ok; launch.coordinator = none, so no session started (render: %s)" % root)
         return 0
@@ -490,4 +494,21 @@ def team(args):
     for ref, _, state in repos:
         reconcile(state)
         watcher(args, state, ref)
+    return team_roles(args, repos)
+
+
+def team_roles(args, repos):
+    """One lead per enabled team pool, keyed (team, pool) at the team root (team §9.4, #1858); a repeat up finds it
+    live and starts none. Each pool's lead is ensured through the first repo whose render, pause and ownership allow
+    it: a repo refused there gets no work from this and does not stop the lead serving the others."""
+    roles = "none" if args.coordinator_only else launch(repos[0][1], "roles")
+    if roles != "tmux":
+        print("crew: launch.roles = %s; started no role windows" % roles)
+        return 0
+    lead = commands()["lead"]
+    for role in lead.POOLS:
+        eligible = [(ref, v) for ref, v, state in repos if lead.enabled(state, role) and paused(state) is None]
+        through = next((ref for ref, v in eligible if require_ownership(v)), None)
+        if through and lead.ensure(argparse.Namespace(project=through, org_profile=args.org_profile, timeout=15), role):
+            return 1
     return 0

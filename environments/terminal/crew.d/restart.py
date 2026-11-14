@@ -7,6 +7,8 @@ usage-limit line, #631) is stopped and relaunched in place, in its own worktree,
 eligible engine in its role's order, skipping every engine it has exhausted; the brief lists the inbox IDs it never
 acknowledged. A reviewer whose PR head moved, or a run with no eligible engine left, refuses and stays for escalation.
 Claude Code run copies keep the stable-parent startup and warn about missing trust before opening a window (#1792).
+In a team, a relaunch in its own worktree takes a new team run ID and slot under the team lock and refuses, changing
+nothing, when the run's window shows another process (pane, pid or start time differ) (#1858).
 
 On the coordinator's window (window 0) it relaunches the live coordinator in place instead (#1544): the current
 sandbox_env and CREW_* environment, resuming --resume ID (else launch.resume). It refuses while the land lock is held,
@@ -22,8 +24,8 @@ import subprocess
 import time
 from crew_shared import (
     BANDS, brief_src, commands, coordinator_harness, coordinator_window, CREW_BIN, crew_render, ENGINE_CMD, fetch, finished,
-    harness, harnesses, heartbeat, identity, kill_run, LAUNCH, load, main, POINTER, probe, profile, remote_run, ROLES, runs, sandbox_env,
-    refuse_paused, show_icon, stop_pane, tmux, unlanded, wait_harness, window_alias, window_env)
+    harness, harnesses, heartbeat, identity, kill_run, LAUNCH, load, main, own_pane, POINTER, probe, profile, remote_run, repo_id, ROLES, runs,
+    sandbox_env, refuse_paused, show_icon, stop_pane, team_module, tmux, unlanded, wait_harness, window_alias, window_env)
 
 confine = load("crew_confine", "environments/terminal/crew.d/_confine.py")
 
@@ -144,6 +146,18 @@ def relaunch(values, session, state, name, rec, items, timeout, project, restart
                                              "no brief %s" % brief))
         return 1
     index = rec["index"] if rec["index"] in free else free[0]
+    top = team_module.root(state)
+    if top and rec.get("run_id"):  # a new execution generation: a new run ID and slot under the team lock (#1858)
+        team_module.release(top, rec["run_id"], repo_id(values))
+        with team_module.lock(top):
+            alloc = team_module.allocate(top, BANDS[rec["role"]], used, {"repo": repo_id(values), "project": rec.get(
+                "project"), "state": state, "window": name, "claim": rec["claim"]}, prefer=rec["index"])
+        if alloc is None:
+            print("crew: refusing restart: band %d-%d full across the team" % BANDS[rec["role"]])
+            return 1
+        index, rec["run_id"] = alloc["index"], alloc["run_id"]
+        with open(os.path.join(state, "runs", name + ".json"), "w") as f:
+            json.dump(rec, f, indent=2)
     wt, mode = rec["worktree"], values["runtime.options.permission_mode"]
     try:  # the relaunch's engine decides confinement again (#1252)
         confined, reason = confine.decide(values, rec["role"], harnesses.ADAPTERS[rec["engine"]], mode, False, state,
@@ -269,6 +283,11 @@ def run(args):
             items = unlanded(values, rec, wt) if wt and os.path.isdir(wt) else []
         except RuntimeError as e:
             items = ["unchecked: %s" % e]
+    foreign = [i for i, n in tmux.list_windows(session) if n == args.window and not own_pane(session, i, rec)]
+    if items and not host and team_module.root(state) and foreign:  # a successor in its pane survives (#1858)
+        print("crew: refusing restart: window %s is not this repo's run %s (another process in its pane); "
+              "worktree, claim and run record kept" % (args.window, rec.get("run_id")))
+        return 1
     if items:  # never delete unlanded work (#172): relaunch in the same worktree and claim instead
         if done:
             with open(os.path.join(state, "runs", args.window + ".brief.md"), "a", encoding="utf-8") as f:
@@ -282,6 +301,7 @@ def run(args):
     argv = ["spawn", rec["role"], *mode, "--round", str(a["round"]), "--tier", a["tier"],
             "--project", args.project] + (["--org-profile", args.org_profile] if args.org_profile else [])
     argv += (["--issue", str(a["issue"])] if a["issue"] else []) + (["--pr", str(a["pr"])] if a["pr"] else [])
+    argv += ["--handoff", rec["handoff"]] if rec.get("handoff") else []  # the durable lead handoff it answers (#1858)
     if rec.get("rereview_id"):  # same PR/head/pass/round keeps its steer; a moved head refuses as stale (#1477)
         argv += ["--rereview-id", rec["rereview_id"], "--head", rec["head"]]
     r = a.get("reflection")

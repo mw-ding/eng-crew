@@ -1,5 +1,6 @@
 """Reviewer lead's serialized inbox dispatch: fresh passes, replay and slot reclaim; admission is
-`mdstack schedule decide --pool reviewer` (docs/scheduling.md#model).
+`mdstack schedule decide --pool reviewer` (docs/scheduling.md#model). A team lead runs it per message repo; its acks and
+dispositions go to its status at the team root (#1858).
 
 Usage: mdstack reviewer-pool --project FILE [--org-profile FILE]
 """
@@ -8,7 +9,7 @@ import fcntl
 import json
 import os
 import re
-from crew_shared import commands, heartbeat, probe, profile, require_ownership, runs, tmux
+from crew_shared import commands, heartbeat, lead_state, probe, profile, require_ownership, runs, tmux
 
 
 def held(labels):
@@ -100,7 +101,7 @@ def run(args):
     root = os.path.join(state, "leads", "reviewer")
     os.makedirs(root, exist_ok=True)
     name = values["identities.reviewer.name"].lower() + "-lead"
-    status = os.path.join(state, "status", name + ".status")
+    status = os.path.join(lead_state(state), "status", name + ".status")  # a team lead's is at the team root (#1858)
     os.makedirs(os.path.dirname(status), exist_ok=True)
     with open(os.path.join(root, "dispatch.lock"), "a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)

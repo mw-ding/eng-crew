@@ -135,8 +135,10 @@ def work(state, name, rec):
 
 
 def run_identity(rec):
-    """The run behind a window name: a respawn under the same name differs (#1092)."""
-    return [rec.get(k) for k in ("start", "pane_id", "pane_pid", "pane_start", "worktree")]
+    """The run behind a window name: a respawn under the same name differs (#1092), and so does a team run's new
+    execution generation (its run ID, #1858)."""
+    return [rec.get(k) for k in ("start", "pane_id", "pane_pid", "pane_start", "worktree")] + (
+        [rec["run_id"]] if rec.get("run_id") else [])
 
 
 def pull_hosts(values, state, seen, now, stale):
