@@ -8,7 +8,8 @@ through its host's `send` verb, which appends the inbox line and types the nudge
 after the bounded call (exit 1), never queued, and `--wait-ack` reads the ack from the pulled status mirror (#346).
 Each local inbox line and queued builder message carries this project's closed `context` work envelope, naming the
 change and head of refs `#n <sha>` (a role host's inbox line keeps its refs-only shape); `--context` passes an upstream envelope on and refuses, with nothing written or
-sent, one that is malformed or not this project's (#1856).
+sent, one that is malformed or not this project's (#1856). A team's `(team, pool)` lead has its inbox and acks at the
+team root; a builder window may carry its repo tag (`<name>-<issue>-<owner>__<repo>`, #1858).
 
 Usage: mdstack send WINDOW KIND REF... [--wait-ack SECS] --project FILE
 """
@@ -16,8 +17,11 @@ import json
 import os
 import re
 import time
-from crew_shared import (commands, COMPOSER, coordinator_window, crew_render, dialog, NAMES, profile, queue_lock,
-                         remote_run, tmux, wait_ack, runs, synthesizer_work, window_alias, work_context)
+from crew_shared import (commands, COMPOSER, coordinator_window, crew_render, dialog, lead_state, NAMES, profile,
+                         queue_lock, remote_run, tmux, wait_ack, runs, synthesizer_work, window_alias, work_context)
+
+
+WORKER = r"-\d+(?:-[a-z0-9_-]+)?"  # a builder window: <name>-<issue>, in a team with its repo tag (#1858)
 
 
 # mdstack send (tmux.md C3): refs only. A ref is an issue/PR number, a full SHA, an https link or a path; no whitespace,
@@ -142,7 +146,7 @@ def run(args):
             print("crew: refusing send: %s; nothing written" % problem)
             return 2
     builder = values.get("identities.builder.name", NAMES["builder"]).lower()
-    if re.fullmatch(re.escape(builder) + r"-\d+", args.window) and args.kind in ("fix", "ci-red", "merge-up") and \
+    if re.fullmatch(re.escape(builder) + WORKER, args.window) and args.kind in ("fix", "ci-red", "merge-up") and \
             re.fullmatch(r"#\d+", args.refs[0]):
         if commands()["lead"].solo(values, pr=int(args.refs[0][1:])):
             print("crew: solo item; skip builder delivery; post findings/CI on the PR for the owner's session")
@@ -159,13 +163,16 @@ def run(args):
     rec = dict(runs(state)).get(args.window, {})
     if remote_run.host_of(rec):
         return remote_send(values, state, args, rec, msg)
+    queue = state  # a builder message queues for this repo's route; a team lead's inbox is at the team root (#1858)
+    if args.window in dict(commands()["lead"].records(state)):
+        state = lead_state(state)
     with queue_lock(state):
         index = dict((n, i) for i, n in tmux.list_windows(session)).get(args.window) if tmux.has_session(session) else None
         if index is None:
             builder = values.get("identities.builder.name", NAMES["builder"]).lower()
-            if re.fullmatch(re.escape(builder) + r"-\d+", args.window) and args.kind in ("fix", "ci-red") and \
+            if re.fullmatch(re.escape(builder) + WORKER, args.window) and args.kind in ("fix", "ci-red") and \
                     len(args.refs) >= 2 and re.fullmatch(r"#\d+", args.refs[0]) and re.fullmatch(r"[0-9a-f]{40}", args.refs[1]):
-                with open(os.path.join(state, "wake", "queue.jsonl"), "a") as f:
+                with open(os.path.join(queue, "wake", "queue.jsonl"), "a") as f:
                     f.write(json.dumps(dict(event="builder-message", window=args.window, kind=args.kind,
                                            refs=args.refs, reason="send", id=msg["id"], context=env)) + "\n")
                 print("crew: queued builder message %s for route" % msg["id"])

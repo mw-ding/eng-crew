@@ -1,5 +1,6 @@
 """`mdstack dequeue` spawns the oldest request `mdstack spawn` queued beyond the profile band cap; a reflection request
-keeps its run ID, log issue, input SHA and window (#1520).
+keeps its run ID, log issue, input SHA and window (#1520). A request keeps its tier and lead handoff id; in a team a
+builder's window name carries its repo tag (#1858).
 
 Usage: mdstack dequeue [--ref #N] [--timeout SECS] --project FILE [--org-profile FILE]
 """
@@ -9,7 +10,8 @@ import os
 import shutil
 import time
 from crew_shared import (
-    BANDS, commands, idle_builder, kill_run, NAMES, over_cap, pool_cap, profile, queue_lock, remember_pr, runs, tmux, unlanded)
+    BANDS, commands, idle_builder, kill_run, NAMES, over_cap, pool_cap, profile, queue_lock, remember_pr, runs, team_name, tmux,
+    unlanded)
 
 # A queued reflection request's fields and their spawn arguments, carried intact (#1520).
 REFLECTION = (("reflection", "window"), ("run_id", "run"), ("log", "log"), ("input_sha", "sha"))
@@ -107,10 +109,10 @@ def run(args, role=None):
                                     docs_pass=pick.get("docs_pass", False), train=pick.get("train"), pass_=None if pick.get("train") else pick["pass"],
                                     **{k: (pick.get("reflection") or {}).get(f) for k, f in REFLECTION},
                                     head=pick.get("head"), rereview_id=pick.get("rereview_id"), round=pick["round"], tier=pick["tier"],
-                                    host=pick.get("host"), reason=pick.get("override_reason"),
+                                    host=pick.get("host"), reason=pick.get("override_reason"), handoff=pick.get("handoff"),
                                     timeout=getattr(args, "timeout", 15.0),
                                     project=args.project, org_profile=args.org_profile, messages=pick.get("messages", [])))
-    name = values.get("identities.builder.name", NAMES["builder"]).lower() + "-%s" % pick["issue"]
+    name = team_name(values, values.get("identities.builder.name", NAMES["builder"]).lower() + "-%s" % pick["issue"])
     if not rc and pick["role"] == "builder" and name in dict(runs(state)):
         for message in pick.get("messages", []):
             rc = commands()["send"].run(argparse.Namespace(window=name, kind=message["kind"], refs=message["refs"],

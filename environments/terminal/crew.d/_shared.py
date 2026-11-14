@@ -56,6 +56,8 @@ proc = load("crew_proc", "environments/terminal/crew-proc.py")  # OS process hel
 remote_run = load("crew_remote_run", "environments/terminal/crew.d/_remote.py")  # runs on a role host (#345)
 ownership_module = load("crew_ownership", "environments/terminal/crew.d/_ownership.py")
 ownership, require_ownership = ownership_module.ownership, ownership_module.require_ownership
+team_module = load("crew_team", "environments/terminal/crew.d/_team.py")  # team root, leads, allocation (#1858)
+lead_state = team_module.lead_state
 
 
 POINTER = "Read your brief at $CREW_BRIEF and follow it."
@@ -135,6 +137,17 @@ def work_context(project, values):
     """The routing context {team, project, repo} of project's resolved values, for a work envelope (team §9.3);
     computed on demand so the resolved values stay exactly the profile."""
     return crew_render.crew_config.context(project, values.get("team.name"), values["repo.owner"], values["repo.name"])
+
+
+def repo_id(values):
+    """The canonical repo (owner/name, lower case) of resolved values, as a work envelope names it."""
+    return ("%s/%s" % (values["repo.owner"], values["repo.name"])).lower()
+
+
+def team_name(values, name):
+    """A run's window name: in a team, with its repo tag, so same-number work in two repos never shares a name in the
+    team's one session (#1858); unchanged for a one-repo profile."""
+    return "%s-%s" % (name, team_module.tag(repo_id(values))) if values.get("team.name") else name
 
 
 def tracker_labels(values):
@@ -369,7 +382,15 @@ def kill_run(values, session, state, name, reason=None):
 
     Removal needs the window's processes gone and the work landed, or a discard reason recorded on the item;
     otherwise keep the worktree and state files and return the blocking items."""
+    path = os.path.join(state, "runs", name + ".json")
+    rec, top = {}, team_module.root(state)
+    if os.path.exists(path):
+        with open(path) as f:
+            rec = json.load(f)
     for index, n in tmux.list_windows(session):
+        if n == name and top and name not in dict(commands()["lead"].records(state)) and not own_pane(session, index, rec):
+            print("crew: refusing to stop window %s: its pane is not this repo's run %s" % (name, rec.get("run_id")))
+            return ["foreign: window %s" % name]
         if n == name:
             pgid = stop_pane(session, index)
             if pgid:
@@ -378,11 +399,7 @@ def kill_run(values, session, state, name, reason=None):
             tmux.kill_window(session, index)
     if name in dict(commands()["lead"].records(state)):
         return []  # A lead's durable inbox survives stop and supervisor restart.
-    path = os.path.join(state, "runs", name + ".json")
-    rec = {}
-    if os.path.exists(path):
-        with open(path) as f:
-            rec = json.load(f)
+    if rec:
         status = os.path.join(state, "status", name + ".status")
         if os.path.exists(status):
             with open(status) as f:
@@ -410,7 +427,7 @@ def kill_run(values, session, state, name, reason=None):
                 wt, rec["host"], "the host call failed" if reply["result"] != "ok" else "unlanded work in %s%s" % (
                     name, "" if reason is None else " (discard reason not recorded on the item)"), "\n  ".join(items)))
             return items
-    elif wt and os.path.dirname(os.path.realpath(wt)) == os.path.realpath(values["paths.worktree_root"]):
+    elif wt and own_worktree(values, wt, top):
         try:
             items = unlanded(values, rec, wt) if os.path.isdir(wt) else []
         except RuntimeError as e:
@@ -422,6 +439,8 @@ def kill_run(values, session, state, name, reason=None):
         subprocess.run(["git", "-C", rec["repo"], "worktree", "remove", "--force", wt], capture_output=True)
         shutil.rmtree(wt, ignore_errors=True)
         subprocess.run(["git", "-C", rec["repo"], "worktree", "prune"], capture_output=True)
+    if top and rec.get("run_id"):  # its team slot and run ID, only when the allocation is this repo's (#1858)
+        team_module.release(top, rec["run_id"], repo_id(values))
     if rec.get("copy_claim"):  # the run is gone: its holder releases the working-copy claim (#391)
         copy_claim.release(rec["copy_claim"], state, name)
     scratch = [p for p in glob.glob(os.path.join(state, "runs", "**", glob.escape(name) + "[.-]*"), recursive=True)
@@ -431,6 +450,21 @@ def kill_run(values, session, state, name, reason=None):
         if p and os.path.exists(p):
             os.remove(p)
     return []
+
+
+def own_pane(session, index, rec):
+    """In a team session a window name alone is not a run (#1858): the window must be at the run's recorded slot and,
+    once the run recorded one, show its pane."""
+    p = tmux.pane(session, index) or {}
+    return bool(rec) and rec.get("index") == index and rec.get("pane_id") in (None, p.get("id"))
+
+
+def own_worktree(values, wt, top):
+    """Whether kill may remove wt: a direct child of paths.worktree_root, or in a team (top) this repo's
+    <worktree-root>/<repo-tag>/<run-id>/ (team §9.3); another repo's tree never qualifies."""
+    real, base = os.path.realpath(wt), os.path.realpath(values["paths.worktree_root"])
+    return os.path.dirname(real) == base or bool(top) and os.path.dirname(real) == os.path.join(
+        base, team_module.tag(repo_id(values)))
 
 
 def verdict_files(state, name, rec):
@@ -696,9 +730,9 @@ def remember_pr(rec, last):
 def heartbeat(state, name):
     """Last status line and the time of the run's last progress (status file, else run record); the time is None
     when the run record is reaped between listing and stat (#591)."""
-    status = os.path.join(state, "status", name + ".status")
+    lead = dict(commands()["lead"].records(state)).get(name)
+    status = os.path.join(lead_state(state) if lead else state, "status", name + ".status")
     if not os.path.exists(status) or not os.path.getsize(status):
-        lead = dict(commands()["lead"].records(state)).get(name)
         path = commands()["lead"].record_path(state, lead["role"].removesuffix("-lead")) if lead else \
             os.path.join(state, "runs", name + ".json")
         try:
