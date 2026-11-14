@@ -313,14 +313,65 @@ the scheduler never kills an unrecorded process.
 | Empty reviewer pool keeps one slot | Generalized: the floor applies to both pools |
 | #587's original admission ACs (caps-only default, optional gates) | Build issue S1, the first step: it stops the current zero-admission state before the scheduler exists |
 
-## Team admission design
+## Team admission
 
-[M51 shared admission](specs/team.md#94-admission-and-shared-pools) is design
-only: T2 applies this policy to repo-qualified demand under one team budget
-and ledger, with team pool floors and per-repo eligibility. Its explicit
-ranking and collision/refusal scenarios do not change the current
-repo-scoped scheduler. T1 supplies qualified context and T3 shared leads;
-each unit needs a separate plan record before admission.
+Built by #1857 (M56 T2, [team §9.4](specs/team.md#94-admission-and-shared-pools)).
+A [team file](configuration/team-files.md) referenced as `FILE#<repo>` admits
+through one scheduler for all its repos. A one-repo `config.toml` is its own
+singleton team: its `schedule/` stays in its repo state, and its decisions,
+outputs and reservations are unchanged.
+
+- **One lock, target and ledger.** `schedule/` sits at the team root
+  (`<state_dir>/<team>/`), so two repos' leads deciding at once serialize on
+  one lock and never over-admit the last slot. Each repo's `errors.jsonl`
+  stays in its repo state and counts once.
+- **Every repo counted once.** The snapshot reads each repo's run records,
+  suites and orphans into team totals, and each repo's demand, tracker,
+  holds, ownership and pause under `repos`. Pool caps, presence, T, the ramp
+  limit, ceilings and [floors](#floors-and-starvation) apply once to team
+  totals: a floor belongs to the team pool, not to a repo.
+- **Per-repo eligibility.** A repo's demand in a pool is left out, and
+  recorded under `blocked`, when its ownership does not permit starting
+  work (`ownership-<mode>`), it is `paused`, its holds are unreadable
+  (`holds-unreadable`) or that pool's demand is unreadable
+  (`demand-unreadable`). Its running workers still count. Another repo stays
+  eligible. A team repo's `crew:escalated` items are held like `crew:hold`
+  ones, each read through that repo's `repo.labels`. An acknowledged wait
+  whose ref is unchanged (`lead.parked`, #1836) is not demand, so one repo's
+  parked waits never take another's budget.
+- **Unknown shared state refuses.** Unreadable caps, workers (a repo that
+  does not resolve included) or ledger defer every team decision as
+  `caps-unreadable`, `workers-unreadable` or `reservations-unreadable`. An
+  unreadable ledger is never rewritten or read as zero busy work; this holds
+  for a one-repo config too.
+- **Local ranking, team order.** Each repo's demand is classed against its
+  own tracker: milestone order (`repo.milestones` when set), `Depends on`
+  critical paths and `main-red` fixes stay local. Class 7 is each repo's
+  earliest active milestone, so a class 8 build runs only when no class 7
+  build in the team is eligible. Within a class, ties break by milestone
+  order, critical path and age, then canonical repo, ref and kind. A red
+  default branch in A ranks A's fix class 1 and leaves B's work and lands
+  alone.
+- **Caller lane.** A decision grants and reserves only the caller's lane,
+  its `(repo, pool)`. Another lane's would-be grants hold budget for that
+  walk only, as the other pool's do, and wake that lane's lead; a lane whose
+  lead is down is dropped as `lead-down`.
+- **Qualified reservations.** A team reservation records `repo`, `project`,
+  `kind` and `round` beside `ref`, `pool` and `time`. It matches by repo,
+  pool and ref, and a reviewer pass's kind and round. So A's `#7` and B's
+  `#7`, or one PR's review and validation, are separate grants. It transfers
+  only to a run of that repo (and reviewer pass and round), and `mdstack
+  spawn` and `mdstack schedule release` drop only the caller repo's grant.
+- **Observability.** Team outputs are additive: every action and `held`
+  entry names its `repo`, and team actions also carry `project`; decide
+  adds `team`, `repo` and `blocked`; release adds `repo`. The decision log
+  records `block` lines. `deferred.json` keys a team defer as `<repo> #<n>`.
+  The summary lists unread demand per repo and ends with `blocked <repo>
+  <pool> <reason>`. A team watcher reads the team summary and raises
+  `schedule-stuck` only for its own repo.
+
+One shared `(team, pool)` lead serving every repo is T3 (#1858). Until then
+each repo's lead decides for its own lane.
 
 ## Build issues
 
