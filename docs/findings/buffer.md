@@ -314,7 +314,7 @@ The live buffer. How to append, when to batch and who owns it are in
 - **PR / repo:** cards #1132 and #1273; repairs #919, #972 and #1265.
   Added 2026-11-14 by the
   [M56-close sweep](https://github.com/mw-ding/mdstack/issues/1870#issuecomment-6884116200)
-  (#1887): #1866, a regression of the closed #1273 family: it used the
+  (#1887): #1866, a regression of the #1273 family, now closed: it used the
   nearest flavor layer and hid a stricter lower floor
   ([finding](https://github.com/mw-ding/mdstack/pull/1866#pullrequestreview-5899897159),
   [repair](https://github.com/mw-ding/mdstack/pull/1866#pullrequestreview-5900677877))
