@@ -50,6 +50,15 @@ FAKE_GH = textwrap.dedent("""\
     args, d = sys.argv[1:], os.environ["FAKE_GH_DIR"]
     with open(os.path.join(d, "gh.log"), "a") as f:
         f.write(json.dumps({"t": time.time(), "args": args}) + "\\n")
+    audit = os.environ.get("FAKE_GH_AUDIT_REPO")  # #1859: a write naming any other repo fails loudly
+    write = args[:2] in (["pr", "create"], ["pr", "merge"], ["pr", "close"], ["pr", "review"], ["pr", "edit"],
+                         ["issue", "edit"]) or args[:1] == ["api"] and "--method" in args
+    if audit and write:
+        target = args[args.index("-R") + 1] if "-R" in args else re.search(r"repos/([^/]+/[^/]+)/", " ".join(args))
+        target = target if isinstance(target, str) else target.group(1) if target else None
+        if target != audit:
+            open(os.path.join(d, "audit.log"), "a").write(json.dumps(args) + "\\n")
+            sys.exit("audit: write to %s, not %s" % (target, audit))
     pr = lambda n: json.load(open(os.path.join(d, "pr-%s.json" % n)))
     asked = "url" in args[args.index("--json") + 1].split(",") if "--json" in args else False
     url = lambda kind, view: (dict({"url": "https://github.com/acme/widgets/%s/%s" % (kind, args[2])}, **view)
@@ -618,8 +627,11 @@ class LonePrLand(TrainBase):
             json.dump(view, f)
         r = self.train("check", "2")  # now the conflict is real on main
         self.assertIn('name=train-merge status=blocked reason="conflict on %s' % self.remote("refs/heads/main")[:7], r.stdout)
-        route = self.train("route", "1")
-        self.assertIn("merge-up pr=2 status=queued", route.stdout)  # a conflict waits for its builder
+        before = self.record()
+        route = self.train("route", "1")  # #1859: #2's linked issue #1 is unreadable, so route refuses before writing
+        self.assertIn("crew: refusing train route: dropped member #2's required read failed", route.stdout)
+        self.assertEqual(self.record(), before)  # the conflict stays queued for its builder
+        self.assertEqual([d.get("merge_up", "queued") for d in before["dropped"] if d["pr"] == 2], ["queued"])
 
     def test_train_policy_or_no_drop_keeps_the_one_member_train(self):
         self.pr(1, {"a.txt": "one\n"})
@@ -2135,6 +2147,30 @@ class RepoBound(TrainBase):
                 {"pr": d, "head": head, "reason": "overlap", "merge_up": "queued"}]))
             self.url("pull", "pr", d, how)
 
+        def dropped_member(t, path):
+            d = next(counter) + 100
+            head = self.pr(d, {"d%d.txt" % d: "x\n"})
+            rec = self.record(t["k"])
+            self.put_json("trains/train-%d.json" % t["k"], dict(rec, closed=path == "route", dropped=[
+                {"pr": d, "head": head, "reason": "overlap", "merge_up": "queued"}]))
+            return d, head
+
+        def dropped_hold(t, how):  # a dropped member's hold-until dependency route reads
+            d, head = dropped_member(t, t["path"])
+            self.serve(d, head, [], comments=[hold.replace("#77", "#%d" % (200 + d))])
+            self.issue(200 + d, "CLOSED")
+            self.url("issues", "issue", 200 + d, how)
+
+        def dropped_full(t, how):  # a dropped member's full view: UNKNOWN mergeability, then the lookup fails
+            d, head = dropped_member(t, t["path"])
+            if how == "unreadable":
+                with open(os.path.join(self.gh_dir, "pr-%d.json" % d)) as f:
+                    view = dict(json.load(f), mergeable="UNKNOWN")
+                with open(os.path.join(self.gh_dir, "views-%d.json" % d), "w") as f:
+                    json.dump([view, "required dropped read unavailable"], f)
+            else:
+                self.url("pull", "pr", d, how)
+
         def full_read(t, how):  # the member's full lookup, as the gate reads it, failing after a good URL
             if how == "unreadable":
                 with open(os.path.join(self.gh_dir, "views-%d.json" % t["n"]), "w") as f:
@@ -2190,6 +2226,9 @@ class RepoBound(TrainBase):
             ("wait", "member change", member, lambda t: ["wait", t["k"]]),
             ("close", "train record", train_rec, lambda t: ["close", t["k"]]),
             ("close", "dropped member", dropped, lambda t: ["close", t["k"]]),
+            ("close", "dropped hold dependency", dropped_hold, lambda t: ["close", t["k"]]),
+            ("close", "dropped full read", dropped_full, lambda t: ["close", t["k"]]),
+            ("route", "dropped hold dependency", dropped_hold, lambda t: ["route", t["k"]]),
             ("route", "train record", train_rec, lambda t: ["route", t["k"]]),
             ("route", "dropped member", dropped, lambda t: ["route", t["k"]]),
             ("bisect", "train record", train_rec, lambda t: ["bisect", t["k"]]),
@@ -2222,6 +2261,50 @@ class RepoBound(TrainBase):
                                      os.path.join(self.gh_dir, "views-%d.json" % n)):
                         with contextlib.suppress(FileNotFoundError):
                             os.remove(leftover)
+
+    def test_train_close_mutation_audit(self):
+        """#1859: every train close path through a fake backend that fails any write naming another repo; a refused
+        close writes nothing, an accepted one writes only to acme/widgets."""
+        self.env["FAKE_GH_AUDIT_REPO"] = "acme/widgets"
+        hold = "<!-- crew:v1 role=coordinator pass=steer --> hold-until-#%d"
+        for n, (path, how) in enumerate([("kept", "valid"), ("dropped", "valid"), ("dropped", "foreign"),
+                                         ("dropped", "unreadable"), ("hold", "valid"), ("hold", "foreign"),
+                                         ("hold", "unreadable"), ("unknown", "unreadable")], 1):
+            with self.subTest(path=path, how=how):
+                self.built(n)
+                k = max(int(f[6:-5]) for f in os.listdir(os.path.join(self.state, "trains"))
+                        if re.fullmatch(r"train-\d+\.json", f))
+                if path != "kept":
+                    d = 100 + n
+                    head = self.pr(d, {"a%d.txt" % d: "x\n"})
+                    rec = self.record(k)
+                    self.put_json("trains/train-%d.json" % k, dict(rec, dropped=[
+                        {"pr": d, "head": head, "reason": "overlap", "merge_up": "queued"}]))
+                    if path == "dropped":
+                        self.url("pull", "pr", d, how)
+                    elif path == "hold":
+                        self.serve(d, head, [], comments=[hold % (200 + n)])
+                        self.issue(200 + n, "CLOSED")
+                        self.url("issues", "issue", 200 + n, how)
+                    else:
+                        with open(os.path.join(self.gh_dir, "pr-%d.json" % d)) as f:
+                            view = dict(json.load(f), mergeable="UNKNOWN")
+                        with open(os.path.join(self.gh_dir, "views-%d.json" % d), "w") as f:
+                            json.dump([view, "required dropped read unavailable"], f)
+                before, writes = self.tree(), self.writes()
+                result = self.train("close", str(k))
+                new = self.writes()[len(writes):]
+                if how == "valid":
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    self.assertIn(["pr", "close", "900", "-R"], new)
+                    if path != "kept":
+                        self.assertIn("merge-up pr=%d status=updated" % d, result.stdout)
+                else:
+                    self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+                    self.assertIn("crew: refusing train close: ", result.stdout)
+                    self.assertEqual(new, [])  # no write after a refusal
+                    self.assertEqual(self.tree(), before)
+                self.assertFalse(os.path.exists(os.path.join(self.gh_dir, "audit.log")))
 
     def test_one_repo_legacy_record_without_context_stays_this_repos(self):
         self.built(1)
