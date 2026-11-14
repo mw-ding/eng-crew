@@ -3,7 +3,7 @@
 > - **Status:** built
 > - **Applies to:** both runtimes' rendered briefs; `crew-config.py`, `item-flavor.py`, `flavor-suggest.py`
 > - **Current rules:** [change flavor](protocol.md#change-flavor), [gate registry](protocol.md#gate-registry)
-> - **Built:** 18.2–18.8 (#195–#199, #102, #109) and follow-ups A–E (#350–#354) in [Build issues](#build-issues). The intro's "remains follow-up B" predates #351
+> - **Built:** 18.2–18.8 (#195–#199, #102, #109) and follow-ups A–E (#350–#354) in [Build issues](#build-issues); the optional item `tier=` field in M55 (#1830, PR #1868). The intro's "remains follow-up B" predates #351
 > - **Design only:** none found
 > - **Last checked:** 2026-11-04 at `217cec5`
 

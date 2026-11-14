@@ -202,6 +202,14 @@ issues are closed; M54 closes after status sync #1820 lands
 ([M54 outcome and brief sizes](docs/specs/portable.md#delivered-outcome-and-lessons)).
 They landed after the 7.12.0 cut and establish no live installation.
 
+M55 runtime routing repairs are built in source: dispatcher-owned typed
+waits for held reviewer requests (PR #1865), a `merge-ok-recorded` wake for
+the synthesizer (PR #1867) and item tiers carried through every spawn
+(PR #1868), plus one learning record (PR #1852). All member issues are
+closed; M55 closes after status sync #1848 lands
+([M55 outcome](docs/specs/portable.md#m55-outcome-and-lessons)). All three
+repairs landed after the 7.12.0 cut and are in no release yet.
+
 Content is built by the crew itself through the normal PR pipeline; every
 change is recorded in `CHANGELOG.md`.
 

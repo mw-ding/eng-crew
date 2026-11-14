@@ -2254,14 +2254,58 @@ reduces integration churn; it is not a semantic dependency except B2's
 integrated wait/resume acceptance on B1. One issue → one PR, with focused
 commits. Estimates exclude tests and are planning ranges, not limits.
 
-| ID | Issue | Scope | Size (Python; docs/registry) | Depends on | Status | Version |
-|---|---|---|---|---|---|---|
-| S0 | #1847 | Opening scope, ACs, D1–D4, allocation, flags and test matrix (PR #1849) | 80–130 docs | none | done | none |
-| B1 | #1836 | Reproduced held-id wait repair | 40–100; 10–25 | #1847 | open | patch |
-| B2 | #1835 | Signed permission-change wake | 70–130; 15–30 | #1847; #1836 for integrated wait/resume acceptance | open | patch |
-| B3 | #1830 | Item-tier resolution and launch preservation | 100–180; 25–50 | #1847; integrate against #1836/#1835 | open | minor |
-| L1 | #1813 | One retained learning record | 25–45 docs | #1847 | open | none |
-| S1 | #1848 | Status, evidence, decisions, lessons and tracker reconciliation | 35–70 docs | #1847, #1836, #1835, #1830, #1813 | open | none |
+| ID | Issue | Scope | Size (Python; docs/registry) | Depends on | Version | PR / evidence | Status |
+|---|---|---|---|---|---|---|---|
+| S0 | #1847 | Opening scope, ACs, D1–D4, allocation, flags and test matrix (PR #1849) | 80–130 docs | none | none | [PR #1849](https://github.com/mw-ding/mdstack/pull/1849), [review](https://github.com/mw-ding/mdstack/pull/1849#pullrequestreview-5898517490) | done |
+| B1 | #1836 | Reproduced held-id wait repair | 40–100; 10–25 | #1847 | patch | [PR #1865](https://github.com/mw-ding/mdstack/pull/1865), [round 2 review / validation](https://github.com/mw-ding/mdstack/pull/1865#pullrequestreview-5899616033) | done |
+| B2 | #1835 | Signed permission-change wake | 70–130; 15–30 | #1847; #1836 for integrated wait/resume acceptance | patch | [PR #1867](https://github.com/mw-ding/mdstack/pull/1867), [review / validation](https://github.com/mw-ding/mdstack/pull/1867#pullrequestreview-5900285513) | done |
+| B3 | #1830 | Item-tier resolution and launch preservation | 100–180; 25–50 | #1847; integrate against #1836/#1835 | minor | [PR #1868](https://github.com/mw-ding/mdstack/pull/1868), [round 2 review / validation](https://github.com/mw-ding/mdstack/pull/1868#pullrequestreview-5901450160) | done |
+| L1 | #1813 | One retained learning record | 25–45 docs | #1847 | none | [PR #1852](https://github.com/mw-ding/mdstack/pull/1852), [review](https://github.com/mw-ding/mdstack/pull/1852#pullrequestreview-5898806445), [m55-learning.md](../findings/m55-learning.md) | done |
+| S1 | #1848 | Status, evidence, decisions, lessons and tracker reconciliation | 35–70 docs | #1847, #1836, #1835, #1830, #1813 | none | this closing sync; pending land | open |
+
+#### M55 outcome and lessons
+
+S0, B1, B2, B3 and L1 are built in source. Their issues (#1847, #1836,
+then #1835, #1830 and #1813) are closed in the live tracker (2026-11-13),
+and L1's record is [docs/findings/m55-learning.md](../findings/m55-learning.md). No
+row was superseded and no additional M55 build items were admitted. S1
+(#1848) stays open until this sync lands; then the tracking issue #1846 and
+M55 close.
+
+- **D1–D4 built as applied:** each member PR implements its decision as recorded.
+- **B1 settled as applied, with a reproduced mechanism:** the repeated ack
+  was not the cause. `reviewer-pool` acked and skipped a held id without a
+  typed wait, and the lead's wait fingerprint woke the parked id on poll
+  catching up on a label already seen live and on mergeability churn. The
+  dispatcher now writes the wait and the fingerprint takes only PR state,
+  head, CI, holds, owner answers and the ask. Round 1 went `changes`: the
+  fixture covered direct `review` and durable `work` but not the
+  `validate`/`recheck` handoffs the AC enumerated. Lesson: when an AC lists
+  handoff kinds, the fixture covers each one by name. Follow-up: route's
+  held-work return for the builder and synthesizer leads is unchanged.
+- **B2 settled as applied:** an authenticated, head-pinned
+  `merge-ok-recorded` poll event reaches the synthesizer through the durable
+  land handoff; passed round 1. Follow-up: route's existing `ci-passed`
+  merge-ok check still accepts an unauthenticated coordinator-role marker.
+- **B3 settled as applied:** spawn resolves explicit `--tier`, then the
+  item's `tier=`, then the role default, and queue and run records keep it.
+  Round 1 went `changes`: the field regex dropped an empty `tier=`, so a
+  malformed present tier fell back to the default instead of refusing.
+  Lesson: a parser for an optional field distinguishes absent from empty.
+- **L1 settled as applied:** one near-miss caught by CI before merge,
+  recorded `applied`; no new guard and no live proof claimed.
+
+**Merged / released / installed:** S0 (PR #1849) and L1 (PR #1852) are
+docs-only. B1 (PR #1865), B2 (PR #1867) and B3 (PR #1868) merged after the
+[v7.12.0](https://github.com/mw-ding/mdstack/releases/tag/v7.12.0) cut, and
+no later release exists, so none of the three repairs ships yet. On the
+owner's machine, `~/.mdstack/releases/current` resolved to `mdstack-7.12.0`
+when read on 2026-11-13, so the running crew has none of them. The three
+workaround clauses in `memory/roles/coordinator.md` (explicit deep tier,
+hand-off of land after merge-ok on green CI, lead settling held ids) are
+therefore kept: they are fixed in source but not installed. Removing them
+needs an installed release containing PRs #1865, #1867 and #1868, then a
+reviewed memory PR. Keep passing `--tier deep` explicitly until B3 ships.
 
 **Target environment: N/A** — existing local runtime and disposable
 fake-forge/process fixtures; no new platform or device requirement.
@@ -2413,10 +2457,10 @@ replanning before implementation.
 | Unit | Protocol / templates | Sensitive forecast | Affected local tests | Status |
 |---|---|---|---|---|
 | S0/S1 | `docs/specs/portable.md`; S1 may touch README, `docs/runtimes/tmux.md`, coordinator memory | Spec permission at head; paths-only no match | Required checks; `--only design-headers --only spec-status` | open |
-| B1 | Reviewer-lead/shared wait text if needed; existing status format | Hold suppression affects dispatch safety; classify actual diff | `test-crew-reviewer-pool.py`, `test-crew-lead.py`, `test-crew-watch.py`, `test-crew-route.py`, `test-crew-schedule.py`, `test-crew-poll.py` | open |
-| B2 | Synthesizer event registry/runtime docs; synthesizer-lead event list | Permission author/head parsing is authority-related; classify actual diff | `test-crew-poll.py`, `test-crew-route.py`, `test-crew-lead.py`, `test-crew-land.py`, `test-crew-train.py`, `test-crew-roles.py` | open |
-| B3 | `templates/triage-flavor.md`, builder-lead template, runtime/role docs; no F1–F7 change | Allocation authentication is authority-related; classify actual diff | `test-crew-spawn.py`, `test-crew-dequeue.py`, `test-crew-restart.py`, `test-crew-route.py`, `test-crew-reviewer-pool.py`; `test-item-flavor.py` if its helper changes | open |
-| L1 | Internal findings/index only | Paths-only no match | Required checks | open |
+| B1 | Reviewer-lead/shared wait text if needed; existing status format | Hold suppression affects dispatch safety; classify actual diff | `test-crew-reviewer-pool.py`, `test-crew-lead.py`, `test-crew-watch.py`, `test-crew-route.py`, `test-crew-schedule.py`, `test-crew-poll.py` | done |
+| B2 | Synthesizer event registry/runtime docs; synthesizer-lead event list | Permission author/head parsing is authority-related; classify actual diff | `test-crew-poll.py`, `test-crew-route.py`, `test-crew-lead.py`, `test-crew-land.py`, `test-crew-train.py`, `test-crew-roles.py` | done |
+| B3 | `templates/triage-flavor.md`, builder-lead template, runtime/role docs; no F1–F7 change | Allocation authentication is authority-related; classify actual diff | `test-crew-spawn.py`, `test-crew-dequeue.py`, `test-crew-restart.py`, `test-crew-route.py`, `test-crew-reviewer-pool.py`; `test-item-flavor.py` if its helper changes | done |
+| L1 | Internal findings/index only | Paths-only no match | Required checks | done |
 
 Every PR runs `python3 scripts/check-repo.py` and
 `python3 scripts/check-changelog-pr.py --base origin/main`, with selected
