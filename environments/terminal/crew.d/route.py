@@ -240,7 +240,7 @@ def review(args, state, pr, head, pass_, round_):
         admit(args, "#%d" % pr["number"])
     try:
         invoke(args, "spawn", role="reviewer", issue=None, pr=pr["number"], pass_=pass_, round=round_,
-               tier="default", head=head, rereview_id=steer if lead else None)
+               tier=None, head=head, rereview_id=steer if lead else None)
     except RuntimeError:
         if lead:
             commands()["schedule"].schedule_release(scheduler(args, refs=["#%d" % pr["number"]]))
@@ -658,7 +658,7 @@ def route_record(args, values, state, w):
                             f.writelines(json.dumps(e) + "\n" for e in entries)
                         return True
             invoke(args, "spawn", role="builder", issue=issue, pr=n, pass_="fix", round=w.get("round", 1),
-                   tier="default", head=head, messages=[w], wake=False)
+                   tier=None, head=head, messages=[w], wake=False)
         if w["window"] not in dict(runs(state)):
             return True  # capped spawn carries the message until dequeue
         invoke(args, "send", window=w["window"], kind=w["kind"], refs=w["refs"], wait_ack=None)

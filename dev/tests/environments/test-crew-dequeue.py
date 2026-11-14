@@ -47,6 +47,19 @@ class CapQueue(SpawnBase):
         self.assertEqual(self.record("ben-9")["index"], 10)
         self.assertEqual(self.queue(), [])
 
+    def test_queued_request_keeps_the_item_tier_resolved_at_enqueue(self):  # #1830
+        record = "<!-- crew:v1 role=coordinator pass=flavor issue=9 flavor=standard default=standard tier=%s -->\n— 🔥 Ash (CTO) · x"
+        self.env["FAKE_COMMENTS_9"] = json.dumps([{"author": {"login": "acme-bot"}, "body": record % "deep"}])
+        self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
+        self.assertEqual(self.spawn("builder", "--issue", "8").returncode, 0)
+        self.assertTrue(self.spawn("builder", "--issue", "9").stdout.startswith("queued: builder build issue #9"))
+        self.assertEqual([e["tier"] for e in self.queue()], ["deep"])
+        self.env["FAKE_COMMENTS_9"] = json.dumps([{"author": {"login": "acme-bot"}, "body": record % "trivial"}])
+        self.assertEqual(self.crew("kill", "ben-7", "--project", self.project).returncode, 0)  # dequeues ben-9
+        rec = self.record("ben-9")
+        self.assertEqual((rec["args"]["tier"], rec["effort"]), ("deep", "high"))  # no silent reallocation
+        self.assertEqual(self.queue(), [])
+
     def test_dequeue_starts_a_queued_docs_pass(self):  # #1026
         with open(self.project, "a") as f:
             f.write("\n[docs]\nenabled = true\n")

@@ -782,6 +782,99 @@ class Spawn(SpawnBase):
         self.assertTrue(opts and all(c[1:3] == ["-t", "=crew-acme-widgets:"] and "-g" not in c for c in opts), opts)
 
 
+def tier_comment(issue, tier, login="acme-bot", name="Ash", flavor="standard"):
+    """A coordinator `pass=flavor` record carrying the optional tier= (#1830), as gh issue view prints a comment."""
+    field = " tier=%s" % tier if tier else ""
+    return {"author": {"login": login}, "body": "[%s/flavor] #%d: %s (default standard)\n<!-- crew:v1 role=coordinator "
+            "pass=flavor issue=%d flavor=%s default=standard%s -->\n— 🔥 %s (CTO) · Claude Code · opus" % (
+                name, issue, flavor, issue, flavor, field, name)}
+
+
+class ItemTier(SpawnBase):
+    """#1830: without --tier, a builder or reviewer takes the item's recorded tier before any claim, queue or window."""
+
+    def comments(self, issue, *records):
+        self.env["FAKE_COMMENTS_%d" % issue] = json.dumps(list(records))
+
+    def tier(self, name):
+        rec = self.record(name)
+        return rec["args"]["tier"], rec["effort"]
+
+    def test_item_tier_then_explicit_override_then_legacy_and_role_default(self):
+        self.comments(7, tier_comment(7, "deep"), tier_comment(7, None, flavor="thorough"))  # flavor-only keeps it
+        self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
+        self.assertEqual(self.tier("ben-7"), ("deep", "high"))
+        with open(os.path.join(self.state, "runs", "ben-7.brief.md")) as f:
+            self.assertIn("- Engine: codex gpt-6.1-sol high\n", f.read())
+        self.comments(8, tier_comment(8, "deep"))
+        self.assertEqual(self.spawn("builder", "--issue", "8", "--tier", "trivial").returncode, 0)
+        self.assertEqual(self.tier("ben-8"), ("trivial", "low"))
+        self.assertEqual(self.spawn("builder", "--issue", "9").returncode, 0)  # no tier recorded: legacy default
+        self.assertEqual(self.tier("ben-9"), ("default", "medium"))
+        self.comments(10, tier_comment(10, "trivial"))
+        self.assertEqual(self.spawn("researcher", "--issue", "10").returncode, 0)  # its research row stays (#584)
+        self.assertEqual(self.tier("riley-10"), ("deep", "high"))
+
+    def test_only_the_coordinator_identity_allocates(self):
+        self.comments(7, tier_comment(7, "deep", login="someone"), tier_comment(7, "deep", name="Mallory"))
+        self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
+        self.assertEqual(self.tier("ben-7"), ("default", "medium"))
+
+    def test_fix_pass_reads_its_source_issue(self):
+        self.pr(12, "claude-code sonnet medium")
+        self.env["FAKE_PR_ISSUES"] = "7,8"
+        self.comments(7, tier_comment(7, "deep"))
+        self.comments(8, tier_comment(8, "trivial"))
+        r = self.spawn("builder", "--issue", "7", "--pr", "12", "--pass", "fix")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.tier("ben-7"), ("deep", "high"))
+
+    def test_reviewer_takes_agreeing_linked_tiers_and_refuses_a_conflict(self):
+        self.pr(12, "claude-code sonnet medium")
+        self.env["FAKE_PR_ISSUES"] = "7,8,9"
+        self.comments(7, tier_comment(7, "deep"))
+        self.comments(8, tier_comment(8, "deep"))
+        r = self.spawn("reviewer", "--pr", "12")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.tier("vera-12-r1-review"), ("deep", "high"))
+        self.comments(9, tier_comment(9, "trivial"))
+        r = self.spawn("reviewer", "--pr", "12", "--pass", "validate")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("crew: refusing spawn: linked items record conflicting tiers (#7 deep, #8 deep, #9 trivial); "
+                      "pass --tier", r.stdout)
+        self.assertFalse(os.path.exists(os.path.join(self.state, "runs", "vera-12-r1-validate.json")))
+        r = self.spawn("reviewer", "--pr", "12", "--pass", "validate", "--tier", "default")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.tier("vera-12-r1-validate"), ("default", "medium"))
+
+    def test_malformed_or_unreadable_tier_refuses_before_claim_queue_or_window(self):
+        self.pr(12, "claude-code sonnet medium")
+        malformed = json.dumps([tier_comment(7, "deep"), tier_comment(7, "high")])
+        for comments, why in ((malformed, "malformed item tier 'high' on #7 (expected trivial|default|deep)"),
+                              ("not json", "crew: gh issue view: ")):  # the fake gh exits 1, as a failed read does
+            for role, ref, name in (("builder", "--issue", "ben-7"), ("reviewer", "--pr", "vera-12-r1-review")):
+                if role == "builder" and comments == "not json":
+                    continue  # the builder's solo read of the same issue refuses first
+                with self.subTest(why=why, role=role):
+                    self.env["FAKE_COMMENTS_7"] = comments
+                    r = self.spawn(role, ref, "7" if role == "builder" else "12")
+                    self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+                    self.assertIn("crew: refusing spawn: item tier unreadable: " + why, r.stdout)
+                    self.assertEqual(self.windows(), [])
+                    self.assertEqual(os.listdir(os.path.join(self.state, "claims")) if os.path.isdir(
+                        os.path.join(self.state, "claims")) else [], [])
+                    self.assertFalse(os.path.exists(os.path.join(self.state, "runs", name + ".json")))
+                    self.assertFalse(os.path.exists(os.path.join(self.state, "spawn-queue.jsonl")))
+
+    def test_replayed_spawn_creates_no_second_worker(self):
+        self.comments(7, tier_comment(7, "deep"))
+        self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
+        r = self.spawn("builder", "--issue", "7")
+        self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
+        self.assertIn("ben-7 already running", r.stdout)
+        self.assertEqual(len(self.windows()), 1)
+
+
 class LaunchPolicy(SpawnBase):
     """runtime.options.permission_mode sets each engine's role-window permission argv (#293, #288, #269)."""
     FLAGS = {"bypass": ("--permission-mode bypassPermissions --settings "
