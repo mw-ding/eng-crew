@@ -25,7 +25,7 @@ if args[:2] == ["pr", "view"] and args[args.index("--json") + 1] == "state":
 elif args[:2] == ["pr", "list"]:
     print(json.dumps([dict(p, number=int(n)) for n, p in prs.items() if p["state"] == "MERGED"]))
 elif args[:2] in (["issue", "view"], ["pr", "view"]):
-    print(json.dumps({"labels": [], "closingIssuesReferences": []}))
+    print(json.dumps({"labels": [], "comments": [], "closingIssuesReferences": []}))
 else:
     sys.exit(1)
 """
