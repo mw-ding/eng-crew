@@ -137,7 +137,7 @@ class Route(SpawnBase):
                          "repo:acme/gadgets"),
                  (dict(b_env, project=mine), "work envelope project %s is acme/widgets in team repo:acme/widgets, not "
                                              "acme/gadgets" % mine),
-                 (dict(b_env, change=13), "work envelope names #13, not the record's #12"),
+                 (dict(b_env, change=13), "work envelope change #13 is not the record's #12"),
                  (dict(b_env, head="c" * 40), "work envelope head %s is not the record's %s" % ("c" * 40, self.sha)),
                  (dict(b_env, extra=1), "work envelope missing or not the closed key set"),
                  (None, "work envelope missing or not the closed key set")]
@@ -203,6 +203,29 @@ class Route(SpawnBase):
         self.assertEqual([w["route_error"] for w in kept], ["crew: route: refusing builder-queued: " + reason,
                                                             "crew: route: refusing status: " + reason])
         self.assertFalse(os.path.exists(self.gh_log))
+        # round 2: an envelope names the work, not the run that did it; a team-file completion needs its run
+        done = dict(worker, context=self.envelope(team + "#widgets", "acme/widgets", team="eng", item=7, round=None,
+                                                  **{"pass": None}))
+        with open(queue, "w") as f:
+            f.write(json.dumps(done) + "\n")
+        self.crew("route", "--project", team, "--timeout", "1")
+        with open(queue) as f:
+            self.assertEqual(json.load(f)["route_error"], "crew: route: refusing status: completion line from ben-7 has "
+                             "no run or lead record in this repo's state (team eng)")
+        self.assertFalse(os.path.exists(self.gh_log))
+        runs = os.path.join(os.path.dirname(os.path.dirname(queue)), "runs")  # the control: ben-7's run in this state
+        os.makedirs(runs)
+        with open(os.path.join(runs, "ben-7.json"), "w") as f:
+            json.dump(dict(index=None, role="builder", item="7", repo=self.project_dir, worktree=None, claim="builder-issue7",
+                           engine="claude-code", model="sonnet", effort="medium", harness="claude-code", args=dict(issue=7),
+                           **{"pass": "build"}), f)
+        with open(queue, "w") as f:
+            f.write(json.dumps(done) + "\n")
+        self.crew("route", "--project", team, "--timeout", "1")
+        with open(queue) as f:
+            left = [json.loads(line) for line in f]
+        self.assertFalse(any(w.get("route_error", "").startswith("crew: route: refusing") for w in left), left)
+        self.assertIn(["pr", "view", "12", "-R", "acme/widgets"], [c[:5] for c in self.gh_calls()])  # qualified: read
 
     def test_completion_line_binds_to_its_run_and_envelope(self):  # #1856 fix round 1: a bare done: has no authority
         self.spawn("builder", "--issue", "7")
@@ -223,6 +246,19 @@ class Route(SpawnBase):
         self.assertEqual(self.gh_calls() if os.path.exists(self.gh_log) else [], before)  # no backend call, no review
         self.assertEqual(self.names(), ["ash", "ben-7"])
         self.queue(dict(reason="status", window="ben-7", line=line, context=env))  # the control: its own run and ids
+        self.route()
+        self.assertEqual((self.pending(), "vera-12-r1-review" in self.names()), ([], True))
+
+    def test_change_record_compares_the_envelope_change_not_its_item(self):  # #1856 round 2
+        mixed = self.envelope(self.project, "acme/widgets", item=12, change=13)
+        self.queue(self.event(context=mixed))
+        self.route()
+        (kept,) = self.pending()
+        self.assertEqual(kept["route_error"], "crew: route: refusing new-head: work envelope change #13 is not the "
+                                              "record's #12")
+        self.assertEqual((os.path.exists(self.gh_log), self.names()), (False, ["ash"]))
+        os.remove(os.path.join(self.state, "wake", "queue.jsonl"))
+        self.queue(self.event(context=dict(mixed, change=12)))  # the control: the same change starts its review
         self.route()
         self.assertEqual((self.pending(), "vera-12-r1-review" in self.names()), ([], True))
 

@@ -79,6 +79,7 @@ RELEASE_HEADING = re.compile(r"^\+## \[\d+\.\d+\.\d+\]", re.M)
 REVIEW_DONE = re.compile(r"done: #(\d+) ([0-9a-f]{40}) (review|validate|recheck) (pass|changes|escalate)(?:\s.*)?")
 FULL_SHA = re.compile(r"[0-9a-f]{40}")
 BUILT = re.compile(r"done: #(\d+) #(\d+) ([0-9a-f]{40})")
+ITEM_EVENTS = ("issue-assigned", "builder-queued")  # records whose first ref is an item, not a change
 GC_MAX = 5  # removals per backstop wake: mdstack gc's merged-only sweep stays bounded (#316)
 
 
@@ -120,8 +121,10 @@ def qualify(args, values, state, w):
     (another project reference must resolve to them) and agree with the record's refs and any completion line. A record
     without one is bound to a run or lead record in this repo's state, or the profile is a one-repo config, whose
     selected state is its only project; a team file's other envelope-less records refuse, so a bare `done:` there has
-    no repo authority. A completion line's ids (#1856) must match its envelope and the run record it came from; a
-    one-repo replay with neither keeps today's recovery, and the change it names is still read from this repo first."""
+    no repo authority. A completion line's ids (#1856) must match its envelope and the run record it came from; in a
+    team file that run (or lead) must exist even with an envelope, while a one-repo replay with neither keeps today's
+    recovery, and the change it names is still read from this repo first. An issue event's first ref is compared with
+    the envelope's item, any other record's with its change."""
     config, line, refs = crew_render.crew_config, w.get("line", ""), w.get("refs") or []
     claimed = line_identity(line) if w.get("reason") == "status" else {}
     rec = dict(runs(state)).get(w.get("window"))
@@ -131,9 +134,9 @@ def qualify(args, values, state, w):
         problem = config.envelope_problem(env, work_context(args.project, values), lambda ref: config.project_identity(ref, args.org_profile))
         if problem:
             return problem
-        ids = {str(env[k]) for k in ("item", "change") if env[k] is not None}
-        if ids and refs and re.fullmatch(r"#\d+", refs[0]) and refs[0][1:] not in ids:
-            return "work envelope names #%s, not the record's %s" % ("/#".join(sorted(ids)), refs[0])
+        key = "item" if w.get("event") in ITEM_EVENTS else "change"  # the id the record's first ref names
+        if env[key] is not None and refs and re.fullmatch(r"#\d+", refs[0]) and refs[0][1:] != str(env[key]):
+            return "work envelope %s #%s is not the record's %s" % (key, env[key], refs[0])
         if env["head"] and len(refs) > 1 and FULL_SHA.fullmatch(refs[1]) and refs[1] != env["head"]:
             return "work envelope head %s is not the record's %s" % (env["head"], refs[1])
         for key, value in claimed.items():
@@ -145,6 +148,9 @@ def qualify(args, values, state, w):
         problem = config.envelope_problem(bound["context"], work_context(args.project, values))
         if problem:
             return problem
+    if claimed and bound is None and "team.name" in values:  # an envelope names the work, not the run that did it
+        return "completion line from %s has no run or lead record in this repo's state (team %s)" % (
+            w.get("window"), values["team.name"])
     if claimed and rec is not None:
         run = {"item": rec.get("args", {}).get("issue"), "change": rec.get("pr") or rec.get("args", {}).get("pr")}
         if rec["role"] == "reviewer":  # a builder pushes new heads; a reviewer's run is pinned to its head and pass
