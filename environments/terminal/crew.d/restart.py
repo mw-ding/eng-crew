@@ -7,7 +7,8 @@ usage-limit line, #631) is stopped and relaunched in place, in its own worktree,
 eligible engine in its role's order, skipping every engine it has exhausted; the brief lists the inbox IDs it never
 acknowledged. A reviewer whose PR head moved, or a run with no eligible engine left, refuses and stays for escalation.
 Claude Code run copies keep the stable-parent startup and warn about missing trust before opening a window (#1792).
-In a team, a relaunch in its own worktree takes a new team run ID and slot under the team lock (#1858).
+In a team, a relaunch in its own worktree takes a new team run ID and slot under the team lock and refuses, changing
+nothing, when the run's window shows another process (pane, pid or start time differ) (#1858).
 
 On the coordinator's window (window 0) it relaunches the live coordinator in place instead (#1544): the current
 sandbox_env and CREW_* environment, resuming --resume ID (else launch.resume). It refuses while the land lock is held,
@@ -23,7 +24,7 @@ import subprocess
 import time
 from crew_shared import (
     BANDS, brief_src, commands, coordinator_harness, coordinator_window, CREW_BIN, crew_render, ENGINE_CMD, fetch, finished,
-    harness, harnesses, heartbeat, identity, kill_run, LAUNCH, load, main, POINTER, probe, profile, remote_run, repo_id, ROLES, runs,
+    harness, harnesses, heartbeat, identity, kill_run, LAUNCH, load, main, own_pane, POINTER, probe, profile, remote_run, repo_id, ROLES, runs,
     sandbox_env, refuse_paused, show_icon, stop_pane, team_module, tmux, unlanded, wait_harness, window_alias, window_env)
 
 confine = load("crew_confine", "environments/terminal/crew.d/_confine.py")
@@ -282,6 +283,11 @@ def run(args):
             items = unlanded(values, rec, wt) if wt and os.path.isdir(wt) else []
         except RuntimeError as e:
             items = ["unchecked: %s" % e]
+    foreign = [i for i, n in tmux.list_windows(session) if n == args.window and not own_pane(session, i, rec)]
+    if items and not host and team_module.root(state) and foreign:  # a successor in its pane survives (#1858)
+        print("crew: refusing restart: window %s is not this repo's run %s (another process in its pane); "
+              "worktree, claim and run record kept" % (args.window, rec.get("run_id")))
+        return 1
     if items:  # never delete unlanded work (#172): relaunch in the same worktree and claim instead
         if done:
             with open(os.path.join(state, "runs", args.window + ".brief.md"), "a", encoding="utf-8") as f:

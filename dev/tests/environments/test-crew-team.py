@@ -299,6 +299,38 @@ class TeamWorkers(TeamBase):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertFalse(os.path.exists(os.path.join(self.states["alpha"], "runs", self.a + ".json")))
 
+    def test_restart_with_unlanded_work_refuses_a_successor_in_the_same_pane(self):
+        rec = self.record("alpha", self.a)
+        with open(os.path.join(rec["worktree"], "wip.txt"), "w") as f:
+            f.write("unlanded\n")
+        target = "%s:%s" % (SESSION, rec["index"])
+        before, b, alloc = self.snapshot("alpha"), self.snapshot("beta"), self.allocations()
+        for pane, ps in (({"pid": "9999999"}, {}),  # another process in the run's pane
+                         ({}, {"start": {rec["pane_pid"]: "Sat Oct 31 11:00:00 2026"}})):  # same pid, reused
+            with open(self.panes, "w") as f:
+                json.dump({target: dict({"id": rec["pane_id"]}, **pane)}, f)
+            with open(os.path.join(self.tmp, "ps.json"), "w") as f:
+                json.dump(ps, f)
+            calls = len(self.calls())
+            r = self.crew("restart", self.a, "--project", self.refs["alpha"], "--timeout", "1", CREW_POOL="builder")
+            self.assertNotEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertIn("is not this repo's run", r.stdout)
+            self.assertEqual([c for c in self.calls()[calls:] if c[0] in ("kill-window", "new-window")], [])
+            self.assertEqual((self.snapshot("alpha"), self.snapshot("beta"), self.allocations()), (before, b, alloc))
+
+    def test_restart_with_unlanded_work_relaunches_its_own_dead_pane(self):
+        rec = self.record("alpha", self.a)
+        with open(os.path.join(rec["worktree"], "wip.txt"), "w") as f:
+            f.write("unlanded\n")
+        with open(self.panes, "w") as f:  # control: the run's own pane, its process exited
+            json.dump({"%s:%s" % (SESSION, rec["index"]): {"id": rec["pane_id"], "dead": "1"}}, f)
+        calls = len(self.calls())
+        r = self.crew("restart", self.a, "--project", self.refs["alpha"], "--timeout", "1", CREW_POOL="builder")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("in its worktree", r.stdout)
+        self.assertIn("kill-window", [c[0] for c in self.calls()[calls:]])
+        self.assertNotEqual(self.record("alpha", self.a)["run_id"], rec["run_id"])
+
     def test_kill_stops_a_dead_pane_of_the_run(self):
         rec = self.record("alpha", self.a)
         with open(self.panes, "w") as f:  # its process exited: the pane keeps handle and pid, the start time is gone
