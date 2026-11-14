@@ -502,7 +502,8 @@ def run(args):
                                                                                {"train": train} if train else {})))
     save()
     if role in ("builder", "reviewer"):  # its run record has appeared: the grant ends here, not at the next decide (#1050)
-        commands()["schedule"].release(state, role, ["#%d" % n for n in (args.issue, args.pr) if n])
+        commands()["schedule"].release(state, role, ["#%d" % n for n in (args.issue, args.pr) if n], values, pass_,
+                                       args.round)  # a team's: this repo's grant for this pass and round only (#1857)
     if milestones:
         commands()["poll"].triage_take(state, milestones)
     print("crew: started %s (%s, %s %s %s) in %s" % (name, "on " + remote if remote else "window %d" % free[0], engine,
