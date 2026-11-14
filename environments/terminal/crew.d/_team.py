@@ -65,8 +65,10 @@ def repo_of(state):
 
 
 def tag(repo):
-    """A window-name and path segment for a canonical repo: owner__name, tmux- and path-safe."""
-    return re.sub(r"[^a-z0-9_-]", "-", repo.lower().replace("/", "__"))
+    """A window-name and path segment for a canonical repo: owner__name, tmux- and path-safe and one-to-one, so two
+    valid repos never share a tag: `/` is `__`, every byte other than [a-z0-9-] (`_` and `.` included) is `_<hex>`."""
+    return "".join(c if re.fullmatch(r"[a-z0-9-]", c) else "__" if c == "/" else "".join(
+        "_%02x" % b for b in c.encode()) for c in repo.lower())
 
 
 def allocations(top):

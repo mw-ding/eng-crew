@@ -295,6 +295,7 @@ def run(args):
     argv = ["spawn", rec["role"], *mode, "--round", str(a["round"]), "--tier", a["tier"],
             "--project", args.project] + (["--org-profile", args.org_profile] if args.org_profile else [])
     argv += (["--issue", str(a["issue"])] if a["issue"] else []) + (["--pr", str(a["pr"])] if a["pr"] else [])
+    argv += ["--handoff", rec["handoff"]] if rec.get("handoff") else []  # the durable lead handoff it answers (#1858)
     if rec.get("rereview_id"):  # same PR/head/pass/round keeps its steer; a moved head refuses as stale (#1477)
         argv += ["--rereview-id", rec["rereview_id"], "--head", rec["head"]]
     r = a.get("reflection")

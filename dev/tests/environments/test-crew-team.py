@@ -262,6 +262,53 @@ class TeamWorkers(TeamBase):
         self.assertIn(self.record("beta", self.b)["run_id"] + ".json", self.allocations())
         self.assertNotIn(first["run_id"] + ".json", self.allocations())
 
+    def test_restart_keeps_the_durable_handoff_clean_and_in_place(self):
+        for repo, name, dirty in (("alpha", self.a, False), ("beta", self.b, True)):  # fresh spawn; own worktree
+            first = self.record(repo, name)
+            if dirty:
+                with open(os.path.join(first["worktree"], "wip.txt"), "w") as f:
+                    f.write("unlanded\n")
+            session = self.tmux_state()
+            session[SESSION].pop(str(first["index"]))
+            with open(self.state_file, "w") as f:
+                json.dump(session, f)
+            r = self.crew("restart", name, "--project", self.refs[repo], "--timeout", "1", CREW_POOL="builder")
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertIn("in its worktree" if dirty else "started " + name, r.stdout)
+            second = self.record(repo, name)
+            self.assertEqual(second["handoff"], "h-" + repo)
+            self.assertNotEqual(second["run_id"], first["run_id"])  # a new execution generation, same handoff
+
+    def test_kill_refuses_a_successor_process_in_the_same_pane(self):
+        rec = self.record("alpha", self.a)
+        target = "%s:%s" % (SESSION, rec["index"])
+        before, b = self.snapshot("alpha"), self.snapshot("beta")
+        for pane, ps in (({"pid": "9999999"}, {}),  # the pane handle stays, another process runs in it
+                         ({}, {"start": {rec["pane_pid"]: "Sat Oct 31 11:00:00 2026"}})):  # same pid, reused
+            with open(self.panes, "w") as f:
+                json.dump({target: dict({"id": rec["pane_id"]}, **pane)}, f)
+            with open(os.path.join(self.tmp, "ps.json"), "w") as f:
+                json.dump(ps, f)
+            r = self.crew("kill", self.a, "--project", self.refs["alpha"], CREW_POOL="builder")
+            self.assertNotEqual(r.returncode, 0, r.stdout + r.stderr)
+            self.assertIn("its pane is not this repo's run", r.stdout)
+            self.assertEqual((self.snapshot("alpha"), self.snapshot("beta")), (before, b))
+        os.remove(self.panes)  # control: the recorded process again, kill stops it
+        os.remove(os.path.join(self.tmp, "ps.json"))
+        r = self.crew("kill", self.a, "--project", self.refs["alpha"], CREW_POOL="builder")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse(os.path.exists(os.path.join(self.states["alpha"], "runs", self.a + ".json")))
+
+    def test_kill_stops_a_dead_pane_of_the_run(self):
+        rec = self.record("alpha", self.a)
+        with open(self.panes, "w") as f:  # its process exited: the pane keeps handle and pid, the start time is gone
+            json.dump({"%s:%s" % (SESSION, rec["index"]): {"id": rec["pane_id"], "dead": "1"}}, f)
+        with open(os.path.join(self.tmp, "ps.json"), "w") as f:
+            json.dump({"start": {rec["pane_pid"]: ""}}, f)
+        r = self.crew("kill", self.a, "--project", self.refs["alpha"], CREW_POOL="builder")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertFalse(os.path.exists(os.path.join(self.states["alpha"], "runs", self.a + ".json")))
+
     def test_kill_refuses_a_window_whose_pane_is_not_the_run(self):
         rec = self.record("alpha", self.a)
         rec["pane_id"] = "%999"  # the window now shows another process: a successor, not this run
@@ -294,6 +341,29 @@ class TeamWorkers(TeamBase):
             self.assertIn(a["run_id"] + ".json", self.allocations())
             self.assertTrue(self.mod.team_module.release(self.root, a["run_id"], "example/alpha"))
         self.assertNotIn(a["run_id"] + ".json", self.allocations())
+
+
+class RepoTags(TeamBase):
+    def test_valid_repos_whose_names_differ_only_in_punctuation_get_distinct_windows(self):
+        with open(self.team) as f:
+            text = f.read()
+        with open(self.team, "w") as f:
+            f.write(text.replace('"example/alpha"', '"example/alpha.foo"').replace('"example/beta"', '"example/alpha-foo"'))
+        self.assertEqual(self.up().returncode, 0)
+        a, b = self.spawn("alpha", "--issue", "42"), self.spawn("beta", "--issue", "42")
+        self.assertEqual((a.returncode, b.returncode), (0, 0), a.stdout + b.stdout)
+        self.assertEqual(sorted(n for n in self.new_windows() if n.startswith("ben-42")),
+                         ["ben-42-example__alpha-foo", "ben-42-example__alpha_2efoo"])
+
+    def test_tag_is_one_to_one_and_keeps_plain_names(self):
+        tag = self.mod.team_module.tag
+        self.assertEqual(tag("Example/Alpha"), "example__alpha")
+        repos = ["example/alpha.foo", "example/alpha-foo", "example/alpha_foo", "example/alpha__foo", "ex/ample__a",
+                 "ex__ample/a", "example/alpha_2efoo"]
+        tags = [tag(r) for r in repos]
+        self.assertEqual(len(set(tags)), len(repos), tags)
+        for t in tags:
+            self.assertRegex(t, r"^[a-z0-9_-]+$")
 
 
 class OneRepo(Base):

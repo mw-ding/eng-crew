@@ -454,9 +454,18 @@ def kill_run(values, session, state, name, reason=None):
 
 def own_pane(session, index, rec):
     """In a team session a window name alone is not a run (#1858): the window must be at the run's recorded slot and,
-    once the run recorded one, show its pane."""
+    once the run recorded one, show its pane with its live process (pid and start time, as probe reads it), so a
+    successor in the same pane survives. A dead pane matches by handle where the backend drops its pid, else by pid."""
+    if not rec or rec.get("index") != index:
+        return False
+    if rec.get("pane_id") is None:
+        return True
     p = tmux.pane(session, index) or {}
-    return bool(rec) and rec.get("index") == index and rec.get("pane_id") in (None, p.get("id"))
+    if p.get("id") != rec["pane_id"]:
+        return False
+    if p.get("dead") == "1":
+        return "dead-keeps-pid" not in tmux.CAPABILITIES or p.get("pid") == rec.get("pane_pid")
+    return p.get("pid") == rec.get("pane_pid") and proc.proc_start(p["pid"]) == rec.get("pane_start")
 
 
 def own_worktree(values, wt, top):
