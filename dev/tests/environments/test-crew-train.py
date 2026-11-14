@@ -713,7 +713,7 @@ class Pipeline(TrainBase):
         head, reviews = self.view(1)
         self.serve(1, head, reviews, mergeable="UNKNOWN")
         self.assertEqual(self.train("land", "1", "1").returncode, 1)
-        self.assertTrue(self.record()["stopped"]["paused"])
+        self.assertNotIn("stopped", self.record())  # #1859: a failed gate read leaves train 1 unchanged, unfinished
         self.assertEqual(self.train("wait", "2").returncode, 0)
         successor = self.record(2)
         result = self.train("land", "2", "2")
@@ -1405,8 +1405,9 @@ class Land(TrainBase):
         r = self.train("land", "1", "2")
         self.assertEqual(r.returncode, 1, r.stdout + r.stderr)
         self.assertIn("paused pr=2 reason=GitHub mergeability UNKNOWN", r.stdout)
+        self.assertIn("crew: refusing train land: member #2's required read failed", r.stdout)
         self.assertFalse(os.path.exists(os.path.join(self.state, "schedule", "errors.jsonl")))  # not a gateway error
-        self.assertTrue(self.record()["stopped"]["paused"])
+        self.assertNotIn("stopped", self.record())  # #1859: read phase failed, so nothing was written
         self.assertFalse(self.record().get("closed", False))
         self.assertEqual(sum(c["args"][-1].endswith(",comments,mergeable,closingIssuesReferences,url")
                              for c in self.gh_calls("pr", "view", "2")), 10)
@@ -1441,6 +1442,8 @@ class Land(TrainBase):
         with open(os.path.join(self.state, "schedule", "errors.jsonl")) as f:
             self.assertEqual([(e["source"], e["text"]) for e in map(json.loads, f)],
                              [("train-1", "crew: gh pr view failed: HTTP 503 Service Unavailable")] * 20)
+        self.assertNotIn("stopped", self.record())  # #1859: a failed required read writes no pause marker
+        os.remove(os.path.join(self.gh_dir, "views-1.json"))  # GitHub recovers; main moved meanwhile
         self.commit({"moved.txt": "x"}, "main moved")
         self.git("push", "-q", "origin", "main")
         r = self.train("land", "1", "1")
@@ -2073,8 +2076,9 @@ class RepoBound(TrainBase):
     def writes(self):
         with open(self.git_log) as f:
             git = [line for line in f.read().splitlines() if line.split()[:1] in (["clone"], ["push"])]
-        return [c["args"][:2] for c in self.gh_calls() if c["args"][:2] in (
-            ["pr", "create"], ["pr", "merge"], ["pr", "close"], ["pr", "review"], ["pr", "edit"])] + git
+        return [c["args"][:4] for c in self.gh_calls() if c["args"][:2] in (
+            ["pr", "create"], ["pr", "merge"], ["pr", "close"], ["pr", "review"], ["pr", "edit"]) or
+            c["args"][:1] == ["api"] and "--method" in c["args"]] + git  # API writes (update-branch) count too
 
     def edit(self, name, **fields):
         path = os.path.join(self.gh_dir, name)
@@ -2123,13 +2127,27 @@ class RepoBound(TrainBase):
         def member(t, how):  # a change the train writes to (land, rebuild, bisect)
             self.url("pull", "pr", t["n"], how)
 
-        def dropped(t, how):  # a dropped member route merges up
+        def dropped(t, how):  # a dropped member close and route merge up (update-branch, an API write)
             d = next(counter) + 100
-            self.pr(d, {"d%d.txt" % d: "x\n"})
+            head = self.pr(d, {"d%d.txt" % d: "x\n"})
             rec = self.record(t["k"])
-            self.put_json("trains/train-%d.json" % t["k"], dict(rec, closed=True, dropped=[
-                {"pr": d, "head": "0" * 40, "reason": "no-verified-base", "merge_up": "queued"}]))
+            self.put_json("trains/train-%d.json" % t["k"], dict(rec, closed=t["path"] == "route", dropped=[
+                {"pr": d, "head": head, "reason": "overlap", "merge_up": "queued"}]))
             self.url("pull", "pr", d, how)
+
+        def full_read(t, how):  # the member's full lookup, as the gate reads it, failing after a good URL
+            if how == "unreadable":
+                with open(os.path.join(self.gh_dir, "views-%d.json" % t["n"]), "w") as f:
+                    json.dump(["required change read unavailable"], f)
+            else:
+                self.url("pull", "pr", t["n"], how)
+
+        def pending(t, how):  # the last member landed; its merge record is still to post
+            rec = self.record(t["k"])
+            self.put_json("trains/train-%d.json" % t["k"], dict(rec, landed=[
+                {"pr": t["n"], "head": rec["members"][0]["head"], "merge": rec["sha"]}],
+                pending_record={"pr": t["n"], "body": "[Sam/merge] pending"}))
+            self.url("pull", "pr", t["n"], how)
 
         def control(t, how):  # the landing control issue
             self.put("landing-control.json", '{"issue": 99}')
@@ -2163,12 +2181,15 @@ class RepoBound(TrainBase):
             ("land", "train record", train_rec, lambda t: ["land", t["k"], t["n"]]),
             ("land", "predecessor record", predecessor, lambda t: ["land", t["k"], t["n"]]),
             ("land", "member change", member, lambda t: ["land", t["k"], t["n"]]),
+            ("land", "member full read", full_read, lambda t: ["land", t["k"], t["n"]]),
+            ("land", "pending merge record", pending, lambda t: ["land", t["k"], t["n"]]),
             ("land", "landing control", control, lambda t: ["land", t["k"], t["n"]]),
             ("land", "hold dependency", dependency, lambda t: ["land", t["k"], t["n"]]),
             ("wait", "train record", train_rec, lambda t: ["wait", t["k"]]),
             ("wait", "predecessor record", predecessor, lambda t: ["wait", t["k"]]),
             ("wait", "member change", member, lambda t: ["wait", t["k"]]),
             ("close", "train record", train_rec, lambda t: ["close", t["k"]]),
+            ("close", "dropped member", dropped, lambda t: ["close", t["k"]]),
             ("route", "train record", train_rec, lambda t: ["route", t["k"]]),
             ("route", "dropped member", dropped, lambda t: ["route", t["k"]]),
             ("bisect", "train record", train_rec, lambda t: ["bisect", t["k"]]),
@@ -2185,7 +2206,7 @@ class RepoBound(TrainBase):
                     self.built(n)
                     k = max(int(f[6:-5]) for f in os.listdir(os.path.join(self.state, "trains"))
                             if re.fullmatch(r"train-\d+\.json", f) and f != "train-500.json")
-                    t = {"k": k, "n": n, "new": new, "new_head": self.pr(new, {"n%d.txt" % new: "x\n"})}
+                    t = {"k": k, "n": n, "new": new, "new_head": self.pr(new, {"n%d.txt" % new: "x\n"}), "path": path}
                     setup(t, how)
                     before, writes = self.tree(), self.writes()
                     result = self.train(*map(str, argv(t)))
@@ -2197,8 +2218,10 @@ class RepoBound(TrainBase):
                         self.assertIn("nothing written", result.stdout)
                         self.assertEqual(self.writes(), writes)
                         self.assertEqual(self.tree(), before)
-                    with contextlib.suppress(FileNotFoundError):
-                        os.remove(os.path.join(self.state, "landing-control.json"))
+                    for leftover in (os.path.join(self.state, "landing-control.json"),
+                                     os.path.join(self.gh_dir, "views-%d.json" % n)):
+                        with contextlib.suppress(FileNotFoundError):
+                            os.remove(leftover)
 
     def test_one_repo_legacy_record_without_context_stays_this_repos(self):
         self.built(1)

@@ -210,7 +210,12 @@ def train_route(args, values, state, repo, slug, rec):
             print("merge-up pr=%d status=reviewer reason=no-verified-base" % d["pr"])
             continue
         try:
-            view = train_view(poll, slug, d["pr"], args, state, rec["n"])
+            view = getattr(args, "plan", {}).get(d["pr"])
+            if view is None or view.get("mergeable") in (None, "UNKNOWN"):  # not planned, or not yet computed
+                view = train_view(poll, slug, d["pr"], args, state, rec["n"])
+                foreign = repo_bind.off_repo(slug, [("dropped member #%d" % d["pr"], view.get("url"))])
+                if foreign:
+                    raise RuntimeError(foreign)
             tags = {lb["name"] for lb in view["labels"]}
             if tags & {"crew:escalated", "crew:hold"}:
                 continue
@@ -328,7 +333,8 @@ def train_build(args, values, state, repo, slug):
                 rec["dropped"].append({"pr": pr, "head": head, "reason": "head-moved", "merge_up": "none"})
                 continue
             before = git(wt, "rev-parse", "HEAD")
-            view = commands()["poll"].gh_json("pr", "view", str(pr), "-R", slug, "--json", "number,reviews,labels")
+            view = getattr(args, "plan", {}).get(pr) or commands()["poll"].gh_json(
+                "pr", "view", str(pr), "-R", slug, "--json", "number,reviews,labels")
             try:
                 lane, _ = train_express(args, values, slug, view)
             except RuntimeError:
@@ -1032,41 +1038,25 @@ def train_land(args, values, state, repo, slug):
         return 1
     landed = rec.setdefault("landed", [])
     pending = rec.get("pending_record")
-    if pending:
-        if not require_ownership(values, "write"):
-            return 1
-        posted = subprocess.run(["gh", "pr", "review", str(pending["pr"]), "--comment", "-R", slug,
-                                 "--body", pending["body"]], capture_output=True)
-        if posted.returncode:
-            print("paused pr=%d reason=merge record still pending" % pending["pr"])
-            print(train_report(rec))
-            return 1
-        rec.pop("pending_record")
-        rec.pop("stopped", None)
-        train_save(state, rec)
-        if len(landed) == len(rec["members"]):
-            tail = train_close(repo, slug, rec, values)
-            train_save(state, rec)
-            train_route(args, values, state, repo, slug, rec)
-            print("train n=%d landed=%d/%d %s" % (n, len(landed), len(rec["members"]), tail))
-            print(train_report(rec))
-            return 0
+    if pending and len(landed) == len(rec["members"]):  # only the last record is left: its reads are planned
+        return train_post_pending(args, values, state, repo, slug, rec, pending, finish=True)
     i, m = len(landed) + 1, rec["members"][len(landed)]
     if pr != m["pr"]:
         print("crew: train %d lands #%d next, not #%d; nothing landed" % (n, m["pr"], pr))
         return 2
     expected, why, merge_ok, spec, recorded = landed[-1]["merge"] if landed else predecessor_base, None, False, False, False
     rec.pop("stopped", None)
-    try:
+    view = None
+    try:  # read phase (#1859): every read this member's land needs, before the pending record or any write
         checks = subprocess.run(["gh", "pr", "checks", str(rec["pr"]), "-R", slug, "--json", "name,bucket"],
                                 capture_output=True, text=True)
         if checks.returncode not in (0, 1, 8):
-            raise RuntimeError(checks.stderr.strip())
+            raise Refused("train CI unreadable: %s" % checks.stderr.strip())
         try:
             observed = json.loads(checks.stdout or "[]")
             buckets = {c["bucket"] for c in observed}
         except ValueError:
-            raise RuntimeError("train CI UNKNOWN: invalid API JSON")
+            raise Refused("train CI unreadable: invalid API JSON")
         missing = poll.missing_checks(observed, poll.required_checks(values))
         if buckets & {"fail", "cancel"}:
             rec["ci"] = "fail"
@@ -1088,9 +1078,17 @@ def train_land(args, values, state, repo, slug):
             why = "content-different: route to builder for delta re-review"
             rec["dropped"].append({"pr": pr, "head": m["head"], "reason": "content-different"})
         elif not why:
-            view = train_view(poll, slug, pr, args, state, n)
+            view = getattr(args, "plan", {}).get(pr) or train_view(poll, slug, pr, args, state, n)
             why, merge_ok, spec = train_gate(poll, values, slug, view, m["head"], state, m.get("verified_head"),
                                        train_express(args, values, slug, view)[0])
+    except Refused as e:  # nothing written: the train, its PR, branch and record stay as they are
+        print("crew: refusing train land: %s; nothing written" % e)
+        return 1
+    except RuntimeError as e:
+        why, recorded = str(e), isinstance(e, ViewError)
+    if pending and train_post_pending(args, values, state, repo, slug, rec, pending, finish=False):
+        return 1  # write phase: the earlier member's pending merge record first
+    try:
         if not why:
             if not require_ownership(values, "land"):
                 return 1
@@ -1126,9 +1124,6 @@ def train_land(args, values, state, repo, slug):
                 if posted.returncode:
                     rec["pending_record"] = {"pr": pr, "body": body}
                     why = "merge record pending: " + posted.stderr.strip()
-    except Refused as e:  # before this member's writes or cleanup: the train, its PR and branch stay as they are
-        print("crew: refusing train land: %s; nothing written" % e)
-        return 1
     except RuntimeError as e:
         why, recorded = str(e), isinstance(e, ViewError)
     if landed and landed[-1]["pr"] == pr:
@@ -1147,6 +1142,29 @@ def train_land(args, values, state, repo, slug):
     print("train n=%d landed=%d/%d %s" % (n, len(landed), len(rec["members"]), tail))
     print(train_report(rec))
     return 1 if why else 0
+
+
+def train_post_pending(args, values, state, repo, slug, rec, pending, finish):
+    """Write the earlier member's pending merge record, after the read phase; 1 when it failed. finish: it was the
+    last member, so close and route the train too and report it."""
+    if not require_ownership(values, "write"):
+        return 1
+    posted = subprocess.run(["gh", "pr", "review", str(pending["pr"]), "--comment", "-R", slug,
+                             "--body", pending["body"]], capture_output=True)
+    if posted.returncode:
+        print("paused pr=%d reason=merge record still pending" % pending["pr"])
+        print(train_report(rec))
+        return 1
+    rec.pop("pending_record")
+    rec.pop("stopped", None)
+    train_save(state, rec)
+    if finish:
+        tail = train_close(repo, slug, rec, values)
+        train_save(state, rec)
+        train_route(args, values, state, repo, slug, rec)
+        print("train n=%d landed=%d/%d %s" % (rec["n"], len(rec["landed"]), len(rec["members"]), tail))
+        print(train_report(rec))
+    return 0
 
 
 def train_close_cmd(args, values, state, repo, slug):
@@ -1198,13 +1216,15 @@ def recorded(path):
         return "unreadable"
 
 
-def train_foreign(args, values, state, slug, qualified):
-    """The read half of every train action's read-then-write boundary (#1859): why it would act outside the selected
-    repo, or None. Reads every train record and delegation the action names and the predecessor each builds on, and
-    the URL of every change the action can write to: build and delegate members, a delegation's members, and for
-    land, wait, bisect and route every member, dropped member and pending merge record of the train (a rebuild,
-    bisect or merge-up consumes them). One comparison over those and every member qualifier; an unreadable source
-    refuses. land's per-member gate reads (change, landing control, holds) refuse the same way (Refused)."""
+def train_plan(args, values, state, slug, qualified):
+    """The read phase of every train action (#1859): (why it may not act, or None; {pr: full view}). Reads every train
+    record and delegation the action names and the predecessor each builds on, then the full lookup of every change
+    the action can write for: build and delegate members or a delegation's; for land, wait, bisect, route and close
+    every member, each dropped member route will merge up and a pending merge record's change. The member land lands
+    next is read as its gate reads it (train_view). One comparison over the records, every member's URL and every
+    qualifier; a failed or foreign read refuses before the action's first write. land, route and build act on these
+    views, never on a read taken after a write."""
+    poll = commands()["poll"]
     numbers = [n for n in (args.train, args.after) if n]
     numbers += args.items[:1] if args.action in ("wait", "land", "close", "route", "bisect") else []
     records = [("train %d %s" % (n, kind), recorded(path(state, n))) for n in numbers
@@ -1217,19 +1237,33 @@ def train_foreign(args, values, state, slug, qualified):
     members = list(args.items) if args.action in ("build", "delegate") else []
     if args.train and isinstance(records[1][1], dict):
         members = [m.get("pr") for m in records[1][1].get("members", []) if isinstance(m, dict)]
-    train = records[0][1] if args.action in ("land", "wait", "bisect", "route") and isinstance(records[0][1], dict) else {}
-    members += [m.get("pr") if isinstance(m, dict) else m for key in ("members", "dropped")
-                for m in train.get(key) or []] + ([train["pending_record"].get("pr")] if isinstance(
-                    train.get("pending_record"), dict) else [])
-    urls = []
-    for pr in dict.fromkeys(members):
+    train = records[0][1] if args.action in ("land", "wait", "bisect", "route", "close") and isinstance(
+        records[0][1], dict) else {}
+    members += [m.get("pr") if isinstance(m, dict) else m for m in train.get("members") or []]
+    routed = [d.get("pr") for d in train.get("dropped") or [] if isinstance(d, dict) and d.get("reason") != "no-head"
+              and d.get("merge_up", "queued") == "queued"] if args.action in ("land", "route", "close") else []
+    pending = [train["pending_record"].get("pr")] if isinstance(train.get("pending_record"), dict) else []
+    left = [m.get("pr") for m in (train.get("members") or [])[len(train.get("landed") or []):] if isinstance(m, dict)]
+    landing = args.items[1] if args.action == "land" and left[:1] == [args.items[1]] else None  # its next member
+    views, urls = {}, []
+    for pr in dict.fromkeys(members + routed + pending):
         try:
-            urls.append(("member #%s" % pr, commands()["poll"].gh_json("pr", "view", str(pr), "-R", slug, "--json",
-                                                                       "url").get("url")))
-        except (RuntimeError, ValueError, AttributeError) as e:
-            return "member #%s's repo is unreadable (%s)" % (pr, e)
+            if pr == landing:
+                view = train_view(poll, slug, pr, args, state, train.get("n") or 0)
+            else:
+                view = poll.gh_json("pr", "view", str(pr), "-R", slug, "--json", poll.PR_FIELDS + ",comments,url" + (
+                    ",mergeable,headRefName,isCrossRepository,headRepositoryOwner,headRepository,baseRefName"
+                    if pr in routed else ""))
+        except (RuntimeError, ValueError) as e:
+            if pr == landing and train_transient(str(e)):
+                print("paused pr=%d reason=%s; the train is unchanged" % (pr, e))
+            return "member #%s's required read failed (%s)" % (pr, e), {}
+        if not isinstance(view, dict):
+            return "member #%s's required read is unreadable" % pr, {}
+        views[pr] = view
+        urls.append(("member #%s" % pr, view.get("url")))
     return repo_bind.foreign(repo_bind.context(args.project, values), "team.name" in values, records=records,
-                             urls=urls, repos=[("%s#%d" % (q, n), q) for q, n in qualified])
+                             urls=urls, repos=[("%s#%d" % (q, n), q) for q, n in qualified]), views
 
 
 def run(args):
@@ -1252,7 +1286,7 @@ def run(args):
               "each patch on the tip; land each PR alone with mdstack land request" % args.action)
         return 1
     slug = "%s/%s" % (values["repo.owner"], values["repo.name"])
-    problem = train_foreign(args, values, state, slug, qualified)
+    problem, args.plan = train_plan(args, values, state, slug, qualified)
     if problem:  # before any clone, branch, record, push, CI, merge or cleanup (team §9.5)
         print("crew: refusing train %s: %s; nothing written" % (args.action, problem))
         return 1
