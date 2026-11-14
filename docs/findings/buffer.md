@@ -117,12 +117,20 @@ The live buffer. How to append, when to batch and who owns it are in
 - **PR / repo:** cards #1134, #1135, #1136, #1137, #1144, #1147, #1205,
   #1206, #1292, #1293, #1294, #1295 and #1296; repairs #979, #981, #984,
   #991, #996, #1008, #1119, #1154, #1163, #1275, #1277 and #1280. See
-  [complete-contract](../lessons/2026-11-08-complete-contract.md)
+  [complete-contract](../lessons/2026-11-08-complete-contract.md).
+  Added 2026-11-14 by the
+  [M55-close sweep](https://github.com/mw-ding/mdstack/issues/1870#issuecomment-6871909199)
+  (#1873): #1868, its empty-present-tier finding: the parser dropped
+  `tier=` and read a malformed allocation as absent, allowing a
+  default-tier launch
+  ([finding](https://github.com/mw-ding/mdstack/pull/1868#pullrequestreview-5900917439),
+  [repair](https://github.com/mw-ding/mdstack/pull/1868#pullrequestreview-5901190217),
+  [round-2 pass](https://github.com/mw-ding/mdstack/pull/1868#pullrequestreview-5901450160))
 - **Smell:** A gate or action consumed only the fields, lines or flags it
   expected. A missing field, truncated status, unparsed flag, missing run
   record, later changes request or replayed authority read then passed as
   clean.
-- **Count:** 13
+- **Count:** 14
 - **Proposed fix layer:** types/schemas: validate the whole contract and
   treat anything incomplete as unknown; per-site regression tests hold it.
 - **Status:** fixed by #979, #981, #984, #991, #996, #1008, #1154, #1163,
@@ -158,12 +166,20 @@ The live buffer. How to append, when to batch and who owns it are in
   and #1833, counted once for its two format findings: fake bare milestone
   titles and unprefixed tags hid real-tracker failures
   ([round-1 finding](https://github.com/mw-ding/mdstack/pull/1833#pullrequestreview-5889997782),
-  [repair](https://github.com/mw-ding/mdstack/pull/1833#pullrequestreview-5890269178))
+  [repair](https://github.com/mw-ding/mdstack/pull/1833#pullrequestreview-5890269178)).
+  Added 2026-11-14 by the
+  [M55-close sweep](https://github.com/mw-ding/mdstack/issues/1870#issuecomment-6871909199)
+  (#1873): #1865, its omitted validate/recheck handoffs
+  ([finding](https://github.com/mw-ding/mdstack/pull/1865#pullrequestreview-5899267029),
+  [repair](https://github.com/mw-ding/mdstack/pull/1865#pullrequestreview-5899330693)),
+  and #1868, counted once for its CI campaign-stub response shape: the fake
+  issue-view JSON lacked the newly required comments field
+  ([finding and repair](https://github.com/mw-ding/mdstack/pull/1868#pullrequestreview-5901190217))
 - **Smell:** A fixture or check took a shortcut around the production path.
   Examples are a moved doc source, a skipped render stage, a shell that
   masks exit codes, a snapshot over git internals, a lint that knew one
   syntax form and a checker that reads only tracked files.
-- **Count:** 9
+- **Count:** 11
 - **Proposed fix layer:** CI check: route tests through the production
   pipeline and make every assertion fail closed.
 - **Status:** fixed by #888, #992, #1066, #1073, #1080, #1169, #1243, #1253
