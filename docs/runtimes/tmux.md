@@ -590,17 +590,20 @@ lock lives in that repo's state, so one land runs at a time inside A while
 B's lock, and B's red default branch, never block A; `locks/merge.pid`
 records the repo's `context` and the acquiring `window` (a shared lead's
 too). Train and delegation records and async land and stack intents record
-the `context` as well. Before any write, `train` compares every record and
-delegation it names and the predecessor train each one builds on, every
-member qualifier (`<owner>/<name>#<n>`, also `<owner>/<name>#<n>:<sha>` in
-`land stack --stack`) and, for `build` and `delegate`, each member's URL read
-back from the backend; `land`, `wait`, `bisect` and `route` read every
-member, dropped member and pending merge record's change too, since a
-rebuild, bisect or merge-up writes for them. `train land`'s gate reads the
-member's change (verdict, permission), landing control issue and hold
-dependencies; one that is unreadable or not the selected repo's refuses
-before that member's writes, never stopping or closing the train, and `train
-check` reports it as a blocked gate. `land request|resume|done`, the stack land and
+the `context` as well. Every `train` action reads first, then writes: before
+any write it reads every record and delegation it names and the predecessor
+train each one builds on, and the full lookup of every change it can write
+for (`build` and `delegate` members; for `land`, `wait`, `bisect`, `route`
+and `close` every member, each dropped member route merges up and a pending
+merge record's change), comparing each URL and member qualifier
+(`<owner>/<name>#<n>`, also `<owner>/<name>#<n>:<sha>` in
+`land stack --stack`) with the selected repo; `land`, `route` and `build` act
+on those reads. `train land` also reads the train CI, the default branch and
+the member's gate (change, landing control issue, hold dependencies) before
+the pending merge record or any other write. One that is unreadable or not
+the selected repo's refuses with nothing written (a failed gate view still
+prints `paused` but records no pause), never stopping or closing the train;
+`train check` reports such a gate read as blocked. `land request|resume|done`, the stack land and
 `land-lock acquire|release` refuse a record naming another repo before any
 read, request, cleanup or drop. One foreign or unreadable source refuses the
 whole action with nothing written; in a one-repo config a record written
