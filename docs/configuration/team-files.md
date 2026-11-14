@@ -146,15 +146,22 @@ defaults to `crew-team-<team>` (an explicit `runtime.options.session` wins).
 - opens the one coordinator window, with `CREW_STATE` as the root,
   `CREW_TEAM` as the team file and `CREW_PROJECT` as the first repo.
 
-It starts no pool leads yet, because lead windows have fixed indexes per
-session. `mdstack down --project <file>#<name>` stops the whole shared session.
+- records each repo in `<root>/team.json` and ensures one `(team, pool)` lead
+  per enabled pool, whose record, inbox and status live at the root; a repeat
+  run starts none.
+
+Team runs take a team-global run ID and window slot under one root lock;
+their windows carry the repo tag and their worktrees are
+`<worktree-root>/<owner>__<repo>/<run-id>/` (#1858,
+[team pools](../runtimes/tmux.md#team-pools)).
+`mdstack down --project <file>#<name>` stops the whole shared session.
 
 ## Multi-project routing design
 
 The [M51 team/project contract](../specs/team.md#9-team-and-project-separation-1318-design-only)
 extends this schema with closed project context and rigor tightening, which
-the project keys and routing above ship (#1856). Shared admission and pool
-startup remain design only; the startup above is shipped behavior. The contract
+the project keys and routing above ship (#1856), and shared pool leads and
+the worker lifecycle above ship (#1858). Shared admission remains design only. The contract
 uses a two-repo collision example and specifies per-repo land authority.
 For #1318, 7.0+ is fresh and migration is not needed; the conversion below
 remains operator guidance for existing team-file deployments.

@@ -554,6 +554,30 @@ owner channel for explicit repair. Stopping a lead keeps its inbox; a
 successful `mdstack down` clears lead identity while keeping pending handoffs
 for the next start. Synthesizer lands go to the [synthesizer lead](#synthesizer-lead).
 
+### Team pools
+
+In a [team file](../configuration/team-files.md#resolution-and-team-instance)
+each pool has one lead keyed `(team, pool)` (#1858,
+[team §9.3–§9.4](../specs/team.md#93-qualified-work-and-state)). Its record,
+inbox, status and brief live at the team root; every repo's route hands it
+messages carrying that repo's `context` envelope, and a repo's watcher sees,
+parks and retries only its own messages, fingerprinted from its own poll
+state. The lead brief lists each repo's rendered lead brief, and
+`$CREW_PROJECT` is the team file, so a command without the message's
+`context.project` refuses in a multi-repo team. A repo whose ownership
+refuses gets no handoff; the lead keeps serving the others.
+
+One lock at the team root (`allocations/.lock`) mints a team-global run ID
+and takes the window slot before any worktree or window. A team run's window
+name carries its repo tag (`ben-42-<owner>__<repo>`), its worktree is
+`<worktree-root>/<owner>__<repo>/<run-id>/`, and its run record adds
+`run_id`, `context`, `project`, `checkout` and `handoff` (`spawn --handoff`).
+Claims, worker inbox and status stay in repo state. A restart in its own
+worktree takes a new run ID. `mdstack kill` in a team stops a window only at
+the run's recorded slot and pane, removes a worktree only under this repo's
+tag, and releases only this repo's allocation, so A's kill, restart or
+replay never touches B's same-number run.
+
 ## Reviewer lead
 
 The default binding installs `reviewer-lead.md` and starts the reviewer lead
@@ -694,7 +718,10 @@ instances back down to `min` ([role lifecycle](../roles-registry.md#lifecycle), 
 `--team` starts one instance for every repo of a
 [team file](../profile.md#team-files) (#634): one session and coordinator,
 and a render per repo under the team state root. The steps below apply to
-each repo.
+each repo. It then records each repo in `<team-root>/team.json` and ensures
+one `(team, pool)` lead per enabled pool, through the first repo whose render,
+pause and ownership allow it; a repeat run finds the leads live and starts
+none (#1858, [team pools](#team-pools)).
 
 `mdstack up` (#131):
 
