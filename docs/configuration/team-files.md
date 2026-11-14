@@ -87,7 +87,9 @@ repo's state, so a bare `done:` there has no repo authority. A `done:`
 completion line's ids must match its envelope and the run record it came from,
 and in a team file that run or lead record must exist even with an envelope.
 An issue record's first ref is compared with the envelope's `item`, any other
-record's with its `change`.
+record's with its `change`; the item, change, head and round a record names
+must be present in its envelope and equal. `mdstack send` names the change and
+head of refs `#n <sha>`.
 Markers and status lines are unchanged.
 
 ```text
