@@ -11,6 +11,11 @@ import re
 from crew_shared import commands, heartbeat, probe, profile, require_ownership, runs, tmux
 
 
+def held(labels):
+    """The typed wait a live hold label parks a request on (tmux.md lead backstop, #1836), else None."""
+    return "hold" if "crew:hold" in labels else "owner" if "crew:escalated" in labels else None
+
+
 def dispatch(args, values, state, wake):
     route = commands()["route"]
     name = wake.get("window")
@@ -73,8 +78,8 @@ def dispatch(args, values, state, wake):
         if pr["state"] != "OPEN" or pr["headRefOid"] != refs[1]:
             return True
         labels = {l["name"] for l in pr["labels"]}
-        if labels & {"crew:escalated", "crew:hold"}:
-            return False
+        if held(labels):
+            return "%s %s" % (refs[0], held(labels))  # parked: run() writes the typed wait
         if re.fullmatch(r"done: #\d+ [0-9a-f]{40} (review|validate|recheck) changes(?:\s.*)?", wake.get("line", "")):
             return commands()["lead"].event(args, "builder", wake) == 0
     return False
@@ -134,7 +139,11 @@ def run(args):
                         out.write("done: " + message["id"] + "\n")
                     continue
                 labels = {l["name"] for l in live["labels"]}
-                if live["isDraft"] or labels & {"crew:escalated", "crew:hold"}:
+                if held(labels):
+                    with open(status, "a") as out:
+                        out.write("waiting: %s %s id=%s\n" % (pr, held(labels), message["id"]))
+                    continue
+                if live["isDraft"]:
                     continue
                 if message["kind"] == "validate":
                     commands()["poll"].observe_ci(live, "%s/%s" % (values["repo.owner"], values["repo.name"]))
@@ -162,7 +171,10 @@ def run(args):
             except (RuntimeError, OSError) as e:
                 print(e)
                 continue
-            if completed:
+            if isinstance(completed, str):  # a live hold: keep the id pending behind its typed wait (#1836)
+                with open(status, "a") as out:
+                    out.write("waiting: %s id=%s\n" % (completed, message["id"]))
+            elif completed:
                 with open(status, "a") as out:
                     out.write("done: " + message["id"] + "\n")
     return 0

@@ -37,8 +37,10 @@ including work accepted before a restart. Append `ack: <id>` to
 queued.
 
 - `work` refs point to a durable event file from `mdstack route`
-  (`review-approved`, `selfgate-passed`, `ci-passed` or an approved
-  `merge-up` with `previous_head`). `land` refs carry `#<n> <head-sha>`
+  (`review-approved`, `selfgate-passed`, `ci-passed`, an approved
+  `merge-up` with `previous_head`, or `merge-ok-recorded`: a coordinator
+  merge-ok at head, a reason to re-read gates, never approval or a CI
+  waiver). `land` refs carry `#<n> <head-sha>`
   from coordinator recovery. Read them, then re-read live state. A closed,
   merged or superseded PR settles its id with `done: <id>`.
 - Land serially under the land lock, one PR or one train at a time; two or
@@ -60,9 +62,9 @@ reclaim through its lead); never kill other windows.
 Waits: when an acknowledged inbox id can move only on the owner, a hold
 or CI, append `waiting: #<n> owner|hold|ci id=<id>` to `$CREW_STATUS`
 (`#<n>` the PR or issue it waits on). The token-free watcher then stops
-re-typing that id until the PR's polled state, its hold, an owner answer
-or its owner ask changes, or a new handoff arrives; it wakes you on that
-scan. After a wake, re-read live state; write the line again if the wait
+re-typing that id until the PR's polled state, head or CI, a hold
+release, an owner answer or its owner ask changes, or a new handoff
+arrives; it wakes you on that scan. After a wake, re-read live state; write the line again if the wait
 is unchanged. Other pending ids keep their own retries (60, 120, 240, 480,
 then 900 seconds); an acknowledged admission deferral is still rechecked
 every 60 seconds and typed only once admissible. A line without a listed

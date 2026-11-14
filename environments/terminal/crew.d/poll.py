@@ -28,6 +28,9 @@ crew:hold, crew:escalated or crew:needs-md, and the issues such a PR closes; `md
 open refs that leave it are one `hold-released` record for the coordinator; for held refs and refs with an open
 `asks/<n>.json` only, a changed count of owner comments (and PR reviews) is one `owner-answer` record for the
 coordinator while the hold and the ask stay (#394).
+A new authenticated coordinator `pass=steer cmd=merge-ok` record at an open crew PR's current head is one
+`merge-ok-recorded` record for the synthesizer, even after CI went green; a duplicate, another head or author, or an
+unsigned marker is none, and a legacy poll-state entry seeds it quietly (#1835).
 
 Every wake record carries the closed `context` work envelope (team, project, repo, item, change, head, pass, round;
 `null` when absent), and `repo.labels` maps this project's tracker labels to state tags on read (#1856).
@@ -110,6 +113,22 @@ def signed_by(values, role, review):
         (not name or bool(re.search(r"^— .*\b%s \(" % re.escape(name), review["body"], re.M)))
 
 
+def merge_ok_identity(pr, values):
+    """The permission identity of this runtime's coordinator `pass=steer cmd=merge-ok` record at the PR's current full
+    head SHA (protocol §7, Merge permission), scoped by repository, PR, head and command, or None. Without profile
+    values nothing authenticates it. Only a marker naming this PR (or no PR) counts; copies share one identity (#1835)."""
+    head = pr["headRefOid"]
+    for review in pr["reviews"] if values is not None else ():
+        for line in CREW_LINE.findall(review["body"]):
+            m = dict(kv.split("=", 1) for kv in line.split() if "=" in kv)
+            if (m.get("role"), m.get("pass"), m.get("cmd"), m.get("sha")) == ("coordinator", "steer", "merge-ok", head) \
+                    and m.get("pr", str(pr.get("number"))) == str(pr.get("number")) and \
+                    signed_by(values, "coordinator", review):
+                return ["%s/%s" % (values.get("repo.owner"), values.get("repo.name")), "#%s" % pr.get("number"), head,
+                        "merge-ok"]
+    return None
+
+
 def round_reset(values, review, m):
     """A coordinator `steer cmd=resume|cutover` record (protocol §9), or a legacy `pass=resume|cutover` one, restarts
     the round count (§5). With values, only this runtime's coordinator identity resets it (#1005)."""
@@ -169,7 +188,8 @@ def pr_snapshot(pr, required=(), values=None):
             elif m.get("role") == "builder" and m.get("pass") == "selfgate" and m.get("sha") == head:
                 selfgate = m.get("verdict")
     return {"head": head, "ci": ci, "verdict": verdict, "round": 1 + changes, "fixed": fixed and verdict == "changes",
-            "selfgate": selfgate, "verdict_identity": identity, "verdict_review_id": review_id}
+            "selfgate": selfgate, "verdict_identity": identity, "verdict_review_id": review_id,
+            "merge_ok_identity": merge_ok_identity(pr, values)}
 
 
 def held_numbers(prs, issues):
@@ -237,6 +257,9 @@ def decide(prev, prs, issues, merge_ups=None, express=(), answers=None, required
             emit("review-approved" if cur["verdict"] == "pass" else "review-changes-requested", "#" + n, cur["head"])
         if cur["fixed"] and not lane and (cur["head"], True) != (old.get("head"), old.get("fixed")):  # no new-head (B2)
             emit("fix-at-head", "#" + n, cur["head"], round=cur["round"])
+        if cur["merge_ok_identity"] and cur["merge_ok_identity"] != old.get("merge_ok_identity") and \
+                ("merge_ok_identity" in old or not old):  # a legacy entry seeds quietly (#1835)
+            emit("merge-ok-recorded", "#" + n, cur["head"])  # permission after green CI still wakes the lander
     state["issues"] = sorted(i["number"] for i in issues if i["assignees"] and
                              any(label["name"] == "crew:ready" for label in i["labels"]))
     state["held"] = ["#%d" % n for n in held_numbers(prs, issues)]

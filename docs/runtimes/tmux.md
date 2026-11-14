@@ -513,13 +513,21 @@ a changed set restarts at 60 seconds, and the timer survives a watcher restart
 in `wake/watch-state.json`. An id that can move only on the owner, a hold or
 CI is a wait: the lead acknowledges it and appends
 `waiting: #<n> owner|hold|ci id=<id>` (the lead templates' Waits paragraph).
-While the ref's fresh state is unchanged, no path re-types that id (lead
-backstop, slot release or coordinator backstop) and route consumes the line.
-Fresh state is token-free: `mdstack poll`'s `observed` entry, `held` list and
-owner-answer count (`answers`) in `poll-state.json` and an open `asks/<n>.json`, recorded per wait in
-`leads/waits.json`, which survives restarts. A change wakes the id on that
-scan, without waiting for a deadline; it stays actionable until a later
-`waiting:` line. New handoffs, such as the coordinator's land re-send on an
+`mdstack reviewer-pool` writes that line itself after its ack for a review,
+validate, recheck or `work` request whose PR is live `crew:escalated`
+(`owner`) or `crew:hold` (`hold`), keeps the id pending and writes it again
+on each re-run while the label stays (#1836); `done:` stays for dispatched
+or obsolete work. While the ref's fresh state is unchanged, no path re-types
+that id (lead backstop, slot release or coordinator backstop) and route
+consumes the line; a repeated ack never re-arms it. Fresh state is
+token-free: the state, head and CI of `mdstack poll`'s `observed` entry, its
+`held` list and owner-answer count (`answers`) in `poll-state.json` and an
+open `asks/<n>.json`, recorded per wait in `leads/waits.json`, which survives
+restarts. A change wakes the id on that scan, without waiting for a deadline;
+it stays actionable until a later `waiting:` line. Mergeability and verdict
+churn are not wait state, and a hold appearing (poll catching up on the
+label the dispatcher saw live) only becomes the new baseline, so its later
+release still wakes the id. New handoffs, such as the coordinator's land re-send on an
 owner answer or route's `ci-passed` event, are new ids and wake at once.
 An acknowledged admission deferral keeps its 60-second token-free
 `admission recheck`, which types only that id and only once its ref is
@@ -600,7 +608,11 @@ with a passing verdict, self-gate or coordinator `merge-ok` steer at head,
 or on an approved merge-up head
 (an express `ci-passed` is already gated by `mdstack poll`), and approved
 `merge-up` events as durable `work` events into its inbox. They no longer stay queued for the
-coordinator. A land event for a superseded head is dropped; an unapproved
+coordinator. A `merge-ok-recorded` event whose authenticated merge-ok is still
+at the live head goes there too, so permission recorded after CI went green
+wakes the land; permission before CI gets a gate check that waits, and the
+later `ci-passed` retries (#1835). A closed PR or a merge-ok no longer at
+head consumes it. A land event for a superseded head is dropped; an unapproved
 `ci-passed` is consumed unless held CI refs (`ci/<n>-*.json`) wait on it.
 A merge-up with an open rereview or a resolved conflict still goes to
 the reviewer lead. Coordinator recovery uses
@@ -1740,6 +1752,7 @@ exactly one consuming role ([protocol §8](../protocol.md#8-safety)):
 | `crew:ready` issue newly assigned | `issue-assigned` | builder |
 | Open crew PR head turns `CONFLICTING` (`UNKNOWN` is no conflict), including after another land | `pr-conflicting` | builder (merge-up via the builder lead, before any CI) |
 | Express change: new builder `pass=selfgate verdict=pass` at head with CI green | `selfgate-passed` | synthesizer |
+| New authenticated coordinator `pass=steer cmd=merge-ok` record at the current full head SHA, whatever CI shows; duplicates, other heads or authors and a legacy state entry emit none (#1835) | `merge-ok-recorded` | synthesizer (a reason to re-read gates; never approval or a CI waiver) |
 
 A change that resolves express ([express lane](../express-lane.md#routing),
 `crew:express` plus the item record and class rules, read as `mdstack train`

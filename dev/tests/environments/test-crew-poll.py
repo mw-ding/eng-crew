@@ -232,13 +232,15 @@ class PollDecide(unittest.TestCase):
         _, state = self.crew.decide({}, fixture("prs-ci-passed.json"), [])
         self.assertEqual(state["prs"], {"171": {"head": HEAD, "ci": "passed", "verdict": None, "round": 1,
                                                 "fixed": False, "selfgate": None,
-                                                "verdict_identity": None, "verdict_review_id": None}})
+                                                "verdict_identity": None, "verdict_review_id": None,
+                                                "merge_ok_identity": None}})
 
     def test_every_event_has_exactly_one_consumer(self):
         self.assertEqual(sorted(self.crew.CONSUMER), sorted(["new-head", "ci-passed", "ci-failed", "ci-infra", "review-changes-requested",
                                                              "review-approved", "pr-merged", "pr-closed",
                                                              "issue-assigned", "fix-at-head", "merge-up",
-                                                             "selfgate-passed", "pr-conflicting", "hold-released", "owner-answer"]))
+                                                             "selfgate-passed", "pr-conflicting", "hold-released", "owner-answer",
+                                                             "merge-ok-recorded"]))
         self.assertTrue(all(isinstance(v, str) for v in self.crew.CONSUMER.values()))
 
 
@@ -346,6 +348,72 @@ class PollDecide(unittest.TestCase):
     @staticmethod
     def post(marker, login, name):
         return {"author": {"login": login}, "body": "<!-- crew:v1 %s -->\n— %s (Role) · codex · m" % (marker, name)}
+
+    MERGE_OK = "role=coordinator pass=steer pr=171 sha=%s round=n/a verdict=n/a cmd=merge-ok cmd-id=chat"
+
+    def permission(self, state, *reviews, head=HEAD, ci="prs-ci-passed.json"):
+        """One poll of PR #171 at head with the given extra reviews and repo values: (events, state) (#1835)."""
+        prs = fixture(ci)
+        prs[0].update(headRefOid=head, reviews=prs[0]["reviews"] + list(reviews))
+        values = dict(self.VALUES, **{"repo.owner": "acme", "repo.name": "widgets"})
+        events, state = self.crew.decide(state, prs, [], values=values)
+        return [(e["event"], e["consumer"], e["refs"]) for e in events], state
+
+    def test_merge_ok_after_green_ci_wakes_the_synthesizer_once(self):  # #1835
+        _, state = self.permission({})
+        events, state = self.permission(state)  # the green head's ci-passed is already consumed
+        self.assertEqual((events, state["prs"]["171"]["ci"]), ([], "passed"))
+        ok = self.post(self.MERGE_OK % HEAD, "acme-bot", "Ash")
+        events, state = self.permission(state, ok)
+        self.assertEqual(events, [("merge-ok-recorded", "synthesizer", ["#171", HEAD])])
+        self.assertEqual(state["prs"]["171"]["merge_ok_identity"], ["acme/widgets", "#171", HEAD, "merge-ok"])
+        self.assertEqual(self.permission(state, ok)[0], [])  # unchanged poll
+        copy = self.post(self.MERGE_OK.replace("chat", "again") % HEAD, "acme-bot", "Ash")
+        self.assertEqual(self.permission(state, ok, copy)[0], [])  # a duplicate copy of the same identity
+        new = "2" * 40
+        events, moved = self.permission(state, ok, head=new)  # never carried across heads
+        self.assertEqual((events, moved["prs"]["171"]["merge_ok_identity"]), (
+            [("new-head", "reviewer", ["#171", new]), ("ci-passed", "synthesizer", ["#171", new])], None))
+        events, _ = self.permission(moved, ok, self.post(self.MERGE_OK % new, "acme-bot", "Ash"), head=new)
+        self.assertEqual(events, [("merge-ok-recorded", "synthesizer", ["#171", new])])
+
+    def test_merge_ok_before_ci_wakes_and_ci_still_follows(self):  # #1835
+        _, state = self.permission({}, ci="prs-pending.json")
+        ok = self.post(self.MERGE_OK % HEAD, "acme-bot", "Ash")
+        events, state = self.permission(state, ok, ci="prs-pending.json")
+        self.assertEqual(events, [("merge-ok-recorded", "synthesizer", ["#171", HEAD])])
+        events, _ = self.permission(state, ok)
+        self.assertEqual(events, [("ci-passed", "synthesizer", ["#171", HEAD])])
+
+    def test_unauthenticated_or_misplaced_merge_ok_wakes_nobody(self):  # #1835
+        _, state = self.permission({})
+        for case, review in (
+                ("prose", {"author": {"login": "acme-bot"}, "body": "merge-ok\n— 🔥 Ash (CTO) · codex · m"}),
+                ("other author", self.post(self.MERGE_OK % HEAD, "someone", "Ash")),
+                ("unsigned", {"author": {"login": "acme-bot"}, "body": "<!-- crew:v1 %s -->" % (self.MERGE_OK % HEAD)}),
+                ("other runtime", self.post(self.MERGE_OK % HEAD, "acme-bot", "Rex")),
+                ("other role", self.post((self.MERGE_OK % HEAD).replace("coordinator", "builder"), "acme-bot", "Ash")),
+                ("other head", self.post(self.MERGE_OK % ("f" * 40), "acme-bot", "Ash")),
+                ("short head", self.post(self.MERGE_OK % HEAD[:7], "acme-bot", "Ash")),
+                ("other PR", self.post((self.MERGE_OK % HEAD).replace("pr=171", "pr=172"), "acme-bot", "Ash")),
+                ("malformed", self.post("role=coordinator pass=steer cmd=merge-ok sha", "acme-bot", "Ash"))):
+            with self.subTest(case=case):
+                events, after = self.permission(state, review)
+                self.assertEqual((events, after["prs"]["171"]["merge_ok_identity"]), ([], None))
+        prs = fixture("prs-ci-passed.json")  # utility mode (no profile values) authenticates nothing
+        prs[0]["reviews"].append(self.post(self.MERGE_OK % HEAD, "acme-bot", "Ash"))
+        self.assertEqual(self.crew.decide(state, prs, [])[0], [])
+
+    def test_legacy_state_seeds_merge_ok_quietly(self):  # #1835: restart keeps it, a new PR entry wakes
+        ok = self.post(self.MERGE_OK % HEAD, "acme-bot", "Ash")
+        _, state = self.permission({}, ok)
+        legacy = json.loads(json.dumps(state))
+        del legacy["prs"]["171"]["merge_ok_identity"]
+        events, seeded = self.permission(legacy, ok)
+        self.assertEqual((events, seeded), ([], state))
+        self.assertEqual(self.permission(seeded, ok)[0], [])
+        events, _ = self.permission({"prs": {}}, ok)
+        self.assertIn(("merge-ok-recorded", "synthesizer", ["#171", HEAD]), events)
 
     def resumed_round(self, *tail):
         """Round k of a new head after three own changes verdicts, an escalation and tail, with the profile values."""

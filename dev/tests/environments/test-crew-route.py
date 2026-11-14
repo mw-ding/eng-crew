@@ -3,6 +3,8 @@ merged close-out and protected branches, dependency merges that wake the coordin
 Run in CI. --transcript and --inbox-transcript print reproducible CLI lifecycles with volatile fixture paths and
 SHAs scrubbed.
 """
+import importlib.machinery
+import importlib.util
 import json
 import os
 import shlex
@@ -10,7 +12,7 @@ import subprocess
 import sys
 import unittest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # dev/tests/: crew_testlib
-from crew_testlib import FAKE_PS, FAKE_TMUX_PANES, PROFILE, SpawnBase
+from crew_testlib import CREW, FAKE_PS, FAKE_TMUX_PANES, PROFILE, SpawnBase
 
 
 class Route(SpawnBase):
@@ -50,6 +52,7 @@ class Route(SpawnBase):
                     "item = pr.get('_issues', {}).get(n, {'state': 'open'}); print(json.dumps(item)) if item else sys.exit(1)\n"
                     "elif args[:1] == ['api'] and '-X' not in args: print('{}')\n"
                     "elif args[:2] == ['issue', 'list']: print(json.dumps(pr.get('_open', [])))\n"
+                    "elif args[:2] == ['pr', 'list']: print(json.dumps([pr] if pr.get('_listed') else []))\n"
                     "elif args[1:2] == ['list']: print('[]')\n" % (self.gh_log, self.data, self.data))
         self.transcript = []
 
@@ -638,6 +641,84 @@ class Route(SpawnBase):
         self.route()
         self.assertEqual(self.pending(), [self.event("review-approved")])
         self.assertEqual(self.land_queue(), [])
+
+    def merge_ok(self, sha=None, login="acme-bot", name="Ash"):
+        return dict(author={"login": login}, body="[Ash/steer] merge-ok\n<!-- crew:v1 role=coordinator pass=steer pr=12 "
+                    "sha=%s round=n/a verdict=n/a cmd=merge-ok cmd-id=chat -->\n— 🔥 %s (CTO) · codex · m"
+                    % (sha or self.sha, name))
+
+    def poll(self):
+        r = self.crew("poll", "--once", "--project", self.project)
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        return r.stdout
+
+    def land_ids(self):
+        loader = importlib.machinery.SourceFileLoader("crew_cli", CREW)
+        mod = importlib.util.module_from_spec(importlib.util.spec_from_loader("crew_cli", loader))
+        loader.exec_module(mod)
+        return [m["id"] for m in mod.commands()["lead"].actionable(self.state, "sam-lead")]
+
+    def test_merge_ok_after_consumed_green_ci_reaches_the_lander_once(self):  # #1835: poll -> route, fake forge
+        self.synthesizer_lead()
+        verdict = "<!-- crew:v1 role=reviewer-validator pass=verdict pr=12 sha=%s round=1 verdict=pass -->" % self.sha
+        self.live.update(_listed=True, labels=[{"name": "crew:approved"}], reviews=[self.signed(verdict)])
+        self.save()
+        self.assertIn("baseline", self.poll())
+        self.live["statusCheckRollup"] = [dict(__typename="CheckRun", name="repo-guard", status="COMPLETED",
+                                               conclusion="SUCCESS")]
+        self.save()
+        self.assertIn("ci-passed -> synthesizer #12 " + self.sha, self.poll())
+        self.route()  # the green head's CI event is consumed: the lander parks it on the owner's merge-ok
+        self.assertEqual((self.pending(), self.land_queue()), ([], ["ci-passed"]))
+        [parked] = self.land_ids()
+        self.put("status/sam-lead.status", "ack: %s\nwaiting: #12 owner id=%s\n" % (parked, parked))
+        self.assertEqual((self.poll(), self.land_ids()), ("", []))
+        self.live["reviews"].append(self.merge_ok())
+        self.save()
+        self.assertEqual(self.poll(), "crew: poll: merge-ok-recorded -> synthesizer #12 %s\n" % self.sha)
+        [record] = self.pending()
+        self.route()
+        self.assertEqual((self.pending(), self.land_queue()), ([], ["ci-passed", "merge-ok-recorded"]))
+        [woken] = self.land_ids()  # one new work request; the parked id stays parked
+        self.assertNotEqual(woken, parked)
+        self.assertEqual(self.poll(), "")  # unchanged poll
+        self.queue(record)  # a replayed wake reuses its pending handoff
+        self.route()
+        self.assertEqual(self.land_queue(), ["ci-passed", "merge-ok-recorded"])
+        self.queue(self.event("review-approved"), self.event("ci-passed"), self.event("merge-ok-recorded"))
+        self.route()  # simultaneous wakes all reach the one serial lander, never a worker or the coordinator
+        self.assertEqual((self.pending(), self.names()), ([], ["ash", "sam-lead"]))
+        self.assertEqual(self.land_queue()[2:], ["review-approved", "ci-passed", "merge-ok-recorded"])
+        os.remove(os.path.join(self.state, "poll-state.json"))
+        self.assertIn("baseline", self.poll())  # first startup: baseline plus the recovery sweep
+        self.assertEqual(self.pending(), [])
+
+    def test_stale_foreign_held_and_closed_merge_ok_wakes(self):  # #1835
+        self.synthesizer_lead()
+        self.live["reviews"] = [self.merge_ok(), self.merge_ok(sha="f" * 40)]
+        self.save()
+        self.queue(dict(self.event("merge-ok-recorded"), refs=["#12", "f" * 40]))  # superseded head
+        self.route()
+        self.assertEqual((self.pending(), self.land_queue()), ([], []))
+        for case, review in (("other head", self.merge_ok(sha="f" * 40)), ("other author", self.merge_ok(login="x")),
+                             ("other runtime", self.merge_ok(name="Rex"))):
+            with self.subTest(case=case):
+                self.live["reviews"] = [review]
+                self.save()
+                self.queue(self.event("merge-ok-recorded"))
+                self.route()
+                self.assertEqual((self.pending(), self.land_queue()), ([], []))
+        self.live.update(reviews=[self.merge_ok()], labels=[{"name": "crew:hold"}])
+        self.save()
+        self.queue(self.event("merge-ok-recorded"))
+        self.route()  # a hold keeps it for the coordinator; the lander gets nothing
+        self.assertEqual((self.pending(), self.land_queue()), ([self.event("merge-ok-recorded")], []))
+        self.put("wake/queue.jsonl", "")
+        self.live.update(labels=[], state="CLOSED")
+        self.save()
+        self.queue(self.event("merge-ok-recorded"))
+        self.route()
+        self.assertEqual((self.pending(), self.land_queue()), ([], []))
 
     def passed_after_changes(self, *extra, login="acme-reviewer", name="Vera", sha=None):
         verdict = "<!-- crew:v1 role=reviewer-validator pass=verdict pr=12 sha=%s round=%d verdict=%s -->"

@@ -12,8 +12,10 @@ On start or `inbox: <id>`, read `$CREW_INBOX` and retained pending work.
 Probe worker children and recent progress.
 Run `$CREW_BIN reviewer-pool --project "$CREW_PROJECT"`.
 The command serializes dispatch, writes `ack:` before acting and `done:`
-only after dispatch, matching output or live obsolescence. Receipt is not
-completion. Read its deferred/error output; preserve pending refs.
+only after dispatch, matching output or live obsolescence. For a live
+`crew:escalated` or `crew:hold` request it writes the typed wait itself
+and keeps the id pending. Receipt is not completion. Read its
+deferred/error output; preserve pending refs.
 
 - Handoffs: `work` carries a durable event path; `review`, `validate` and
   `recheck` carry PR, full head and round (plus steer id for same-head rereview). Re-read live state on replay.
@@ -50,9 +52,9 @@ completion. Read its deferred/error output; preserve pending refs.
 Waits: when an acknowledged inbox id can move only on the owner, a hold
 or CI, append `waiting: #<n> owner|hold|ci id=<id>` to `$CREW_STATUS`
 (`#<n>` the PR or issue it waits on). The token-free watcher then stops
-re-typing that id until the PR's polled state, its hold, an owner answer
-or its owner ask changes, or a new handoff arrives; it wakes you on that
-scan. After a wake, re-read live state; write the line again if the wait
+re-typing that id until the PR's polled state, head or CI, a hold
+release, an owner answer or its owner ask changes, or a new handoff
+arrives; it wakes you on that scan. After a wake, re-read live state; write the line again if the wait
 is unchanged. Other pending ids keep their own retries (60, 120, 240, 480,
 then 900 seconds); an acknowledged admission deferral is still rechecked
 every 60 seconds and typed only once admissible. A line without a listed
