@@ -572,9 +572,13 @@ and takes the window slot before any worktree or window. A team run's window
 name carries its repo tag (`ben-42-<owner>__<repo>`), its worktree is
 `<worktree-root>/<owner>__<repo>/<run-id>/`, and its run record adds
 `run_id`, `context`, `project`, `checkout` and `handoff` (`spawn --handoff`).
-Claims, worker inbox and status stay in repo state. A restart in its own
-worktree takes a new run ID. `mdstack kill` in a team stops a window only at
-the run's recorded slot and pane, removes a worktree only under this repo's
+The tag is one-to-one: `/` becomes `__` and every other character outside
+`[a-z0-9-]` becomes `_<hex>`, so `example/alpha.foo` is
+`example__alpha_2efoo` and never meets `example/alpha-foo`.
+Claims, worker inbox and status stay in repo state. Every restart takes a new
+run ID and keeps the run's `handoff`. `mdstack kill` in a team stops a window
+only at the run's recorded slot, pane, pane pid and process start time (a dead
+pane matches as the liveness probe reads it), removes a worktree only under this repo's
 tag, and releases only this repo's allocation, so A's kill, restart or
 replay never touches B's same-number run.
 

@@ -151,7 +151,7 @@ defaults to `crew-team-<team>` (an explicit `runtime.options.session` wins).
   run starts none.
 
 Team runs take a team-global run ID and window slot under one root lock;
-their windows carry the repo tag and their worktrees are
+their windows carry a one-to-one repo tag and their worktrees are
 `<worktree-root>/<owner>__<repo>/<run-id>/` (#1858,
 [team pools](../runtimes/tmux.md#team-pools)).
 `mdstack down --project <file>#<name>` stops the whole shared session.
