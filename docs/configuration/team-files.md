@@ -84,7 +84,10 @@ elsewhere, ids or head disagreeing with its refs or completion line, or an item
 or change URL in another repo; that read happens before any lead handoff. In a
 team file a record without an envelope must come from a run or lead in that
 repo's state, so a bare `done:` there has no repo authority. A `done:`
-completion line's ids must match its envelope and the run record it came from.
+completion line's ids must match its envelope and the run record it came from,
+and in a team file that run or lead record must exist even with an envelope.
+An issue record's first ref is compared with the envelope's `item`, any other
+record's with its `change`.
 Markers and status lines are unchanged.
 
 ```text
