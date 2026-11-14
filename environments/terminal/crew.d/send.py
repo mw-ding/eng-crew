@@ -128,13 +128,13 @@ def run(args):
         return 2
     config, given = crew_render.crew_config, getattr(args, "context", None)
     if given is None:
-        env = config.envelope(work_context(values))
+        env = config.envelope(work_context(args.project, values))
     else:
         try:
             env = json.loads(given) if isinstance(given, str) else given
         except ValueError:
             env = None
-        problem = config.envelope_problem(env, work_context(values),
+        problem = config.envelope_problem(env, work_context(args.project, values),
                                           lambda ref: config.project_identity(ref, args.org_profile))
         if problem:
             print("crew: refusing send: %s; nothing written" % problem)

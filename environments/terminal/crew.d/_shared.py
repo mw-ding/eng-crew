@@ -122,8 +122,6 @@ def profile(args, *keys, runtimes=("tmux",)):
         print("\n".join(problems))
         sys.exit(1)
     owner, repo = values["repo.owner"], values["repo.name"]
-    values.update({"context." + k: v for k, v in crew_render.crew_config.context(
-        args.project, values.get("team.name"), owner, repo).items()})  # the routing identity (team §9.3)
     state = os.path.join(os.path.abspath(values["paths.state_dir"]), "%s__%s" % (owner, repo))
     if values["runtime.name"] != "tmux":
         return values, None, state
@@ -133,9 +131,10 @@ def profile(args, *keys, runtimes=("tmux",)):
     return values, session, state
 
 
-def work_context(values):
-    """The profile's routing context {team, project, repo} for a work envelope (team §9.3)."""
-    return {k: values["context." + k] for k in ("team", "project", "repo")}
+def work_context(project, values):
+    """The routing context {team, project, repo} of project's resolved values, for a work envelope (team §9.3);
+    computed on demand so the resolved values stay exactly the profile."""
+    return crew_render.crew_config.context(project, values.get("team.name"), values["repo.owner"], values["repo.name"])
 
 
 def tracker_labels(values):

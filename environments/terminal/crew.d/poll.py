@@ -364,15 +364,15 @@ def express_lane(args, values, view):
         return False
 
 
-def event_context(values, e):
+def event_context(project, values, e):
     """A wake record's work envelope (team §9.3): issue-assigned names its item; a `#n <sha>` record its change and
     head, with the round it carries; anything else names this project only."""
     refs, envelope = e.get("refs", []), crew_render.crew_config.envelope
     if e.get("event") == "issue-assigned":
-        return envelope(work_context(values), item=int(refs[0][1:]))
+        return envelope(work_context(project, values), item=int(refs[0][1:]))
     if len(refs) == 2 and re.fullmatch(r"#\d+", refs[0]) and re.fullmatch(r"[0-9a-f]{40}", refs[1]):
-        return envelope(work_context(values), change=int(refs[0][1:]), head=refs[1], round_=e.get("round"))
-    return envelope(work_context(values))
+        return envelope(work_context(project, values), change=int(refs[0][1:]), head=refs[1], round_=e.get("round"))
+    return envelope(work_context(project, values))
 
 
 def drop_superseded(queue, heads):
@@ -405,7 +405,7 @@ def poll_once(values, state, args):
             with queue_lock(state), open(os.path.join(state, "wake", "queue.jsonl"), "a") as f:
                 f.write(json.dumps({"id": "ownership-" + os.urandom(6).hex(), "source": "poll",
                                    "reason": "ownership:", "event": "ownership", "consumer": "coordinator",
-                                   "refs": [mode], "context": event_context(values, {})}) + "\n")
+                                   "refs": [mode], "context": event_context(args.project, values, {})}) + "\n")
         with open(ownership_path, "w") as f:
             json.dump(mode, f)
         print("crew: ownership: %s; poll emits no work" % mode)
@@ -452,7 +452,7 @@ def poll_once(values, state, args):
         for e in events:
             ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
             f.write(json.dumps({"id": "poll-%s-%s" % (ts, os.urandom(3).hex()), "source": "poll", "reason": "poll", **e,
-                                "context": event_context(values, e), "ts": ts}) + "\n")
+                                "context": event_context(args.project, values, e), "ts": ts}) + "\n")
             print("crew: poll: %s -> %s %s" % (e["event"], e["consumer"], " ".join(e["refs"])))
     now, seen = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), (prev or {}).get("observed", {})
     new["observed"], new["ts"] = {}, now
@@ -677,7 +677,7 @@ def triage_poll(values, state, project, read=gh_json, org=None, native=triage_na
             with queue_lock(state), open(os.path.join(state, "wake", "queue.jsonl"), "a", encoding="utf-8") as f:
                 f.write(json.dumps({"id": "triage-p0-%s-%s" % (ts, os.urandom(3).hex()), "source": "poll",
                                     "reason": "triage-p0", "event": "triage-p0", "consumer": "coordinator",
-                                    "refs": [e["ref"]], "p0": e["p0"], "context": event_context(values, {}),
+                                    "refs": [e["ref"]], "p0": e["p0"], "context": event_context(project, values, {}),
                                     "ts": ts}) + "\n")
             print("crew: poll: triage-p0 -> coordinator %s" % e["ref"])
 

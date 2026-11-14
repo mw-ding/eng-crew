@@ -201,6 +201,55 @@ class Route(SpawnBase):
                                                             "crew: route: refusing status: " + reason])
         self.assertFalse(os.path.exists(self.gh_log))
 
+    def test_completion_line_binds_to_its_run_and_envelope(self):  # #1856 fix round 1: a bare done: has no authority
+        self.spawn("builder", "--issue", "7")
+        env = self.envelope(self.project, "acme/widgets", item=7, round=None, **{"pass": None})
+        line, before = "done: #7 #12 " + self.sha, self.gh_calls() if os.path.exists(self.gh_log) else []
+        cases = [(dict(reason="status", window="ben-7", line=line, context=dict(env, change=13, head="c" * 40)),
+                  "work envelope change 13 is not the completion line's 12"),
+                 (dict(reason="status", window="ben-7", line="done: #8 #12 " + self.sha),
+                  "run ben-7 is for item 7, not the completion line's 8"),
+                 (dict(reason="status", window="ben-9", line=line, context=dict(env, change=13, head="c" * 40)),
+                  "work envelope change 13 is not the completion line's 12")]  # the review's repro: no run either
+        for record, reason in cases:
+            self.queue(record)
+            self.route()
+            (kept,) = self.pending()
+            self.assertEqual(kept["route_error"], "crew: route: refusing status: " + reason)
+            os.remove(os.path.join(self.state, "wake", "queue.jsonl"))
+        self.assertEqual(self.gh_calls() if os.path.exists(self.gh_log) else [], before)  # no backend call, no review
+        self.assertEqual(self.names(), ["ash", "ben-7"])
+        self.queue(dict(reason="status", window="ben-7", line=line, context=env))  # the control: its own run and ids
+        self.route()
+        self.assertEqual((self.pending(), "vera-12-r1-review" in self.names()), ([], True))
+
+    def test_foreign_change_never_reaches_the_reviewer_lead(self):  # #1856 fix round 1: read before any lead handoff
+        bindir = os.path.join(self.tmp, "bin")
+        os.rename(os.path.join(bindir, "tmux"), os.path.join(bindir, "tmux-base"))
+        for name, text in (("tmux", FAKE_TMUX_PANES), ("ps", FAKE_PS)):
+            with open(os.path.join(bindir, name), "w") as f:
+                f.write(text)
+            os.chmod(os.path.join(bindir, name), 0o755)
+        self.env.update(FAKE_PANES=os.path.join(self.tmp, "panes.json"), FAKE_PS=os.path.join(self.tmp, "ps.json"))
+        self.put("render/runtime/reviewer-lead.md", "Manage the reviewer pool.\n")
+        self.live["url"] = "https://github.com/acme/gadgets/pull/12"
+        self.save()
+        env = self.envelope(self.project, "acme/widgets")
+        self.queue(self.event(context=env), self.event("pr-closed", context=env))
+        self.route()
+        self.assertEqual([w["route_error"] for w in self.pending()],
+                         ["crew: route: refusing: change #12 reads as repo acme/gadgets, not acme/widgets"] * 2)
+        self.assertNotIn("vera-lead", self.names())
+        self.assertFalse(os.path.exists(os.path.join(self.state, "inbox", "vera-lead.jsonl")))
+        self.assertEqual([c[:2] + c[-2:] for c in self.gh_calls()], [["pr", "view", "--json", "url"]] * 2)  # reads only
+        os.remove(os.path.join(self.state, "wake", "queue.jsonl"))
+        self.live["url"] = "https://github.com/acme/widgets/pull/12"  # the control: this repo's change reaches the lead
+        self.save()
+        self.queue(self.event(context=env))
+        self.route()
+        self.assertIn("vera-lead", self.names())
+        self.assertEqual(self.pending(), [])
+
     def test_replayed_builder_message_delivers_its_original_envelope(self):  # #1856
         self.spawn("builder", "--issue", "7")
         env = self.envelope(self.project, "acme/widgets")

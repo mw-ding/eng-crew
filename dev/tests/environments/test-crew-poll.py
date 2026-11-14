@@ -1020,8 +1020,7 @@ class TriageScan(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.tmp)
-        self.values = {"repo.owner": "acme", "repo.name": "widgets", "identities.owners": ["owner"],
-                       "context.team": "repo:acme/widgets", "context.project": "/p/crew.toml", "context.repo": "acme/widgets"}
+        self.values = {"repo.owner": "acme", "repo.name": "widgets", "identities.owners": ["owner"]}
         self.closed = [{"number": 1, "title": "M1"}]
 
     def scan(self, rules=None):

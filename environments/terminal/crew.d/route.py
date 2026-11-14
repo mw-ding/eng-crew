@@ -37,7 +37,8 @@ away-only Slack `land` message itself and hands `crew:ready` dependents to the b
 not ready still wake the coordinator.
 Before any action a record must qualify (#1856): its `context` envelope is closed and names this team and repo
 (another project reference resolving to them) and agrees with its refs; without one, a team file's record must come
-from a run or lead in this repo's state. The item or change it reads must carry this repo's URL. A refused record
+from a run or lead in this repo's state, and a `done:` completion line must match the run it came from. The item or
+change it reads, before any lead handoff, must carry this repo's URL. A refused record
 stays queued with its `route_error`. `repo.labels` maps state tags on every label read and write.
 A poll `pr-conflicting` at the live head becomes one builder-lead `merge-up` handoff before any CI (#1398); a moved
 head or resolved conflict is consumed, and held, escalated, solo or lead-less conflicts stay queued.
@@ -75,6 +76,7 @@ LAND_EVENTS = ("review-approved", "selfgate-passed", "ci-passed")
 RELEASE_HEADING = re.compile(r"^\+## \[\d+\.\d+\.\d+\]", re.M)
 REVIEW_DONE = re.compile(r"done: #(\d+) ([0-9a-f]{40}) (review|validate|recheck) (pass|changes|escalate)(?:\s.*)?")
 FULL_SHA = re.compile(r"[0-9a-f]{40}")
+BUILT = re.compile(r"done: #(\d+) #(\d+) ([0-9a-f]{40})")
 GC_MAX = 5  # removals per backstop wake: mdstack gc's merged-only sweep stays bounded (#316)
 
 
@@ -94,35 +96,67 @@ def repo_of(url):
 def same_repo(values, record, what):
     """An independently read item or change must be in this project's repo (team §9.3): a transferred or redirected
     record, or one without a readable URL, refuses before any claim, spawn or post."""
-    found = repo_of(record.get("url"))
-    if found != values["context.repo"]:
+    found, mine = repo_of(record.get("url")), ("%s/%s" % (values["repo.owner"], values["repo.name"])).lower()
+    if found != mine:
         raise RuntimeError("crew: route: refusing: %s reads as repo %s, not %s" % (
-            what, found or "unknown (no readable url)", values["context.repo"]))
+            what, found or "unknown (no readable url)", mine))
     return canonical_labels(values, record)
+
+
+def line_identity(line):
+    """The ids a completion status line claims: a builder's `done: #<issue> #<pr> <head>` or a reviewer's
+    `done: #<pr> <head> <pass> <verdict>`; {} for any other line."""
+    m = BUILT.fullmatch(line)
+    if m:
+        return {"item": int(m[1]), "change": int(m[2]), "head": m[3]}
+    m = REVIEW_DONE.fullmatch(line)
+    return {"change": int(m[1]), "head": m[2], "pass": m[3]} if m else {}
 
 
 def qualify(args, values, state, w):
     """Why wake w may not act in this project, or None (team §9.3). An envelope must be closed, name this team and repo
-    (another project reference must resolve to them) and agree with the record's refs. A record without one is bound
-    to a run or lead record in this repo's state, or the profile is a one-repo config, whose selected state is its
-    only project; a team file's other envelope-less records refuse, since a bare line supplies no repo authority."""
-    config = crew_render.crew_config
+    (another project reference must resolve to them) and agree with the record's refs and any completion line. A record
+    without one is bound to a run or lead record in this repo's state, or the profile is a one-repo config, whose
+    selected state is its only project; a team file's other envelope-less records refuse, so a bare `done:` there has
+    no repo authority. A completion line's ids (#1856) must match its envelope and the run record it came from; a
+    one-repo replay with neither keeps today's recovery, and the change it names is still read from this repo first."""
+    config, line, refs = crew_render.crew_config, w.get("line", ""), w.get("refs") or []
+    claimed = line_identity(line) if w.get("reason") == "status" else {}
+    rec = dict(runs(state)).get(w.get("window"))
+    bound = rec or dict(commands()["lead"].records(state)).get(w.get("window"))
     if "context" in w:
         env = w["context"]
-        problem = config.envelope_problem(env, work_context(values), lambda ref: config.project_identity(ref, args.org_profile))
-        refs = w.get("refs") or []
-        ids = {str(env[k]) for k in ("item", "change") if env[k] is not None} if not problem else set()
+        problem = config.envelope_problem(env, work_context(args.project, values), lambda ref: config.project_identity(ref, args.org_profile))
+        if problem:
+            return problem
+        ids = {str(env[k]) for k in ("item", "change") if env[k] is not None}
         if ids and refs and re.fullmatch(r"#\d+", refs[0]) and refs[0][1:] not in ids:
-            problem = "work envelope names #%s, not the record's %s" % ("/#".join(sorted(ids)), refs[0])
-        if not problem and env["head"] and len(refs) > 1 and FULL_SHA.fullmatch(refs[1]) and refs[1] != env["head"]:
-            problem = "work envelope head %s is not the record's %s" % (env["head"], refs[1])
-        return problem
-    bound = dict(runs(state)).get(w.get("window")) or dict(commands()["lead"].records(state)).get(w.get("window"))
-    if bound is not None:
-        return config.envelope_problem(bound["context"], work_context(values)) if "context" in bound else None
-    if "team.name" not in values or w.get("reason") == "backstop":
-        return None
-    return "no work envelope, and no run or lead record in this repo's state (team %s)" % values["team.name"]
+            return "work envelope names #%s, not the record's %s" % ("/#".join(sorted(ids)), refs[0])
+        if env["head"] and len(refs) > 1 and FULL_SHA.fullmatch(refs[1]) and refs[1] != env["head"]:
+            return "work envelope head %s is not the record's %s" % (env["head"], refs[1])
+        for key, value in claimed.items():
+            if env[key] is not None and str(env[key]) != str(value):
+                return "work envelope %s %s is not the completion line's %s" % (key, env[key], value)
+    elif bound is None and "team.name" in values and w.get("reason") != "backstop":
+        return "no work envelope, and no run or lead record in this repo's state (team %s)" % values["team.name"]
+    if bound is not None and "context" in bound:
+        problem = config.envelope_problem(bound["context"], work_context(args.project, values))
+        if problem:
+            return problem
+    if claimed and rec is not None:
+        run = {"item": rec.get("args", {}).get("issue"), "change": rec.get("pr") or rec.get("args", {}).get("pr")}
+        if rec["role"] == "reviewer":  # a builder pushes new heads; a reviewer's run is pinned to its head and pass
+            run.update(head=rec.get("head"), **{"pass": rec.get("pass")})
+        for key, value in claimed.items():
+            if run.get(key) is not None and str(run[key]) != str(value):
+                return "run %s is for %s %s, not the completion line's %s" % (w["window"], key, run[key], value)
+    return None
+
+
+def read_change(values, n):
+    """The independent read of change #n, checked against this repo before a lead receives work for it (#1856)."""
+    return same_repo(values, gh("pr", "view", str(n), "-R", "%s/%s" % (values["repo.owner"], values["repo.name"]),
+                                "--json", "url"), "change #%d" % n)
 
 
 def invoke(args, cmd, **kw):
@@ -589,16 +623,19 @@ def route_record(args, values, state, w):
     if lead.enabled(state, pool) and (event in ("issue-assigned", "builder-message", "builder-queued") or w.get("reason") in ("stale", "dialog", "quota")):
         return lead.event(args, pool, w) == 0
     if event == "pr-closed" and lead.enabled(state, "reviewer"):
+        read_change(values, int(w["refs"][0].lstrip("#")))
         lead.event(args, "reviewer", w)
     reviewer_event = event in ("new-head", "fix-at-head") or \
         REVIEW_DONE.fullmatch(line)
     if not getattr(args, "reviewer_lead", False) and lead.enabled(state, "reviewer") and reviewer_event:
+        read_change(values, int(REVIEW_DONE.fullmatch(line)[1]) if REVIEW_DONE.fullmatch(line) else
+                    int(w["refs"][0].lstrip("#")))
         if rec and rec["role"] == "reviewer":
             w = dict(w, round=rec["args"]["round"])
         return lead.event(args, "reviewer", w) == 0
     if event == "builder-queued":
         return True
-    built = re.fullmatch(r"done: #(\d+) #(\d+) ([0-9a-f]{40})", line)
+    built = BUILT.fullmatch(line)
     done = REVIEW_DONE.fullmatch(line)
     if done and done[4] in ("pass", "escalate") and rec is None and not getattr(args, "reviewer_lead", False):
         return True
