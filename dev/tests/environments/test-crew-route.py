@@ -258,7 +258,16 @@ class Route(SpawnBase):
                                               "record's #12")
         self.assertEqual((os.path.exists(self.gh_log), self.names()), (False, ["ash"]))
         os.remove(os.path.join(self.state, "wake", "queue.jsonl"))
-        self.queue(self.event(context=dict(mixed, change=12)))  # the control: the same change starts its review
+        for env, reason in ((dict(mixed, change=12, round=2), "work envelope round 2 is not the record's 1"),  # round 3
+                            (dict(mixed, change=None, head=None), "work envelope lacks the change, head this record names"),
+                            (dict(mixed, change=12, round=None), "work envelope lacks the round this record names")):
+            self.queue(self.event(context=env))
+            self.route()
+            (kept,) = self.pending()
+            self.assertEqual(kept["route_error"], "crew: route: refusing new-head: " + reason)
+            os.remove(os.path.join(self.state, "wake", "queue.jsonl"))
+        self.assertEqual((os.path.exists(self.gh_log), self.names()), (False, ["ash"]))
+        self.queue(self.event(context=dict(mixed, change=12)))  # the control: the complete, same change starts its review
         self.route()
         self.assertEqual((self.pending(), "vera-12-r1-review" in self.names()), ([], True))
 

@@ -57,6 +57,8 @@ class Send(SendBase):
         r = self.send("ben-7", "ci-red", "#171")
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertEqual(self.inbox()[0]["context"], dict(own, change=None, head=None, round=None, **{"pass": None}))
+        self.assertEqual(self.send("ben-7", "fix", "#171", sha).returncode, 0)  # refs `#n <sha>` name the change and head
+        self.assertEqual(self.inbox()[1]["context"], dict(own, round=None, **{"pass": None}))
         before = (self.inbox(), [c for c in self.calls() if c[0] == "send-keys"])
         for env, reason in ((dict(own, repo="acme/gadgets", team="repo:acme/gadgets"),
                              "work envelope names acme/gadgets in team repo:acme/gadgets, not acme/widgets"),

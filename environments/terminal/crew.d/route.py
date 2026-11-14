@@ -124,7 +124,8 @@ def qualify(args, values, state, w):
     no repo authority. A completion line's ids (#1856) must match its envelope and the run record it came from; in a
     team file that run (or lead) must exist even with an envelope, while a one-repo replay with neither keeps today's
     recovery, and the change it names is still read from this repo first. An issue event's first ref is compared with
-    the envelope's item, any other record's with its change."""
+    the envelope's item, any other record's with its change; the item, change, head and round a record names must be
+    present in its envelope and equal."""
     config, line, refs = crew_render.crew_config, w.get("line", ""), w.get("refs") or []
     claimed = line_identity(line) if w.get("reason") == "status" else {}
     rec = dict(runs(state)).get(w.get("window"))
@@ -135,6 +136,14 @@ def qualify(args, values, state, w):
         if problem:
             return problem
         key = "item" if w.get("event") in ITEM_EVENTS else "change"  # the id the record's first ref names
+        named = refs and re.fullmatch(r"#\d+", refs[0])
+        need = ([key] if named else []) + (["head"] if named and key == "change" and len(refs) > 1 and
+                                           FULL_SHA.fullmatch(refs[1]) else [])
+        need += ["round"] if w.get("round") is not None else []
+        if [k for k in need if env[k] is None]:  # explicit absence is for work the record does not name
+            return "work envelope lacks the %s this record names" % ", ".join(k for k in need if env[k] is None)
+        if env["round"] is not None and w.get("round") is not None and env["round"] != w["round"]:
+            return "work envelope round %s is not the record's %s" % (env["round"], w["round"])
         if env[key] is not None and refs and re.fullmatch(r"#\d+", refs[0]) and refs[0][1:] != str(env[key]):
             return "work envelope %s #%s is not the record's %s" % (key, env[key], refs[0])
         if env["head"] and len(refs) > 1 and FULL_SHA.fullmatch(refs[1]) and refs[1] != env["head"]:

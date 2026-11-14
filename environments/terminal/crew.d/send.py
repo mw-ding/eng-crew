@@ -6,8 +6,8 @@ Solo findings/CI/merge-up refs are never delivered to builder windows. An `unblo
 earlier `blocked` message's refs is recorded in its inbox without a nudge (#578). A run on a role host gets the message
 through its host's `send` verb, which appends the inbox line and types the nudge there; an unreachable host fails
 after the bounded call (exit 1), never queued, and `--wait-ack` reads the ack from the pulled status mirror (#346).
-Each local inbox line and queued builder message carries this project's closed `context` work envelope (a role host's
-inbox line keeps its refs-only shape); `--context` passes an upstream envelope on and refuses, with nothing written or
+Each local inbox line and queued builder message carries this project's closed `context` work envelope, naming the
+change and head of refs `#n <sha>` (a role host's inbox line keeps its refs-only shape); `--context` passes an upstream envelope on and refuses, with nothing written or
 sent, one that is malformed or not this project's (#1856).
 
 Usage: mdstack send WINDOW KIND REF... [--wait-ack SECS] --project FILE
@@ -127,8 +127,10 @@ def run(args):
               (MAX_REF, ", ".join(repr(r[:40]) for r in bad) or "bad kind %r" % args.kind[:40]))
         return 2
     config, given = crew_render.crew_config, getattr(args, "context", None)
-    if given is None:
-        env = config.envelope(work_context(args.project, values))
+    if given is None:  # refs `#n <sha>` name change n at that head, as route reads a builder message's refs
+        change = len(args.refs) > 1 and re.fullmatch(r"#\d+", args.refs[0]) and re.fullmatch(r"[0-9a-f]{40}", args.refs[1])
+        env = config.envelope(work_context(args.project, values), change=int(args.refs[0][1:]) if change else None,
+                              head=args.refs[1] if change else None)
     else:
         try:
             env = json.loads(given) if isinstance(given, str) else given
