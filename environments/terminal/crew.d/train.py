@@ -559,7 +559,7 @@ def train_check_prs(args, values, state, repo, slug, poll, clone):
     blocked, base = False, fetch(repo, values["repo.default_branch"])
     for pr in args.items:
         view = poll.gh_json("pr", "view", str(pr), "-R", slug, "--json", poll.PR_FIELDS +
-                            ",commits,comments,mergeable,body,files,isDraft,baseRefName,closingIssuesReferences")
+                            ",commits,comments,mergeable,body,files,isDraft,baseRefName,closingIssuesReferences,url")
         head = view["headRefOid"]
         mode = ownership(values)
         results = {"ownership": ("pass", "runtime owns project") if mode == "active" else ("blocked", mode)}
@@ -579,7 +579,10 @@ def train_check_prs(args, values, state, repo, slug, poll, clone):
                     carried = verified_head
             except RuntimeError:
                 pass
-        why, merge_ok, spec = train_gate(poll, values, slug, view, head, state, carried, lane)
+        try:
+            why, merge_ok, spec = train_gate(poll, values, slug, view, head, state, carried, lane)
+        except Foreign as e:  # read-only: reported, never treated as this repo's gate snapshot
+            why, merge_ok, spec = str(e), False, False
         results["state-permission"] = ("blocked", why) if why else ("pass", "current gate snapshot")
         verdict = None
         verdict_head = carried or head
@@ -892,8 +895,13 @@ def train_verified(poll, view, lane=False):
     return None, None
 
 
+class Foreign(RuntimeError):
+    """A gate read whose URL is not the selected repo's (#1859): train land refuses with nothing written, unlike a
+    gate miss, which stops and closes the train."""
+
+
 def landing_stop(poll, slug, view, state):
-    posts = list(view["reviews"])
+    posts, foreign = list(view["reviews"]), None
     path = os.path.join(state, "landing-control.json")
     if os.path.exists(path):
         try:
@@ -903,18 +911,22 @@ def landing_stop(poll, slug, view, state):
                 raise ValueError("invalid control issue")
             read = poll.gh_json("issue", "view", str(control), "-R", slug, "--json", "comments,url")
             foreign = repo_bind.off_repo(slug, [("landing control #%d" % control, read.get("url"))])
-            if foreign:
-                return "%s; nothing may land" % foreign
             posts += read["comments"]
         except (OSError, ValueError, KeyError, TypeError, RuntimeError, AttributeError):
             return "landing control unreadable; nothing may land"
+        if foreign:
+            raise Foreign(foreign)
     stops = poll.landing_steers(posts)["stops"]
     return "open stop-landing: %s" % ", ".join(sorted(set(stops))) if stops else None
 
 
 def train_gate(poll, values, slug, view, head, state, verified_head=None, lane=False):
     """The §7 gates land re-checks at head right before the squash: (first miss or None, merge-ok at head). The other
-    gates are the synthesizer's check right before this call (synthesizer brief)."""
+    gates are the synthesizer's check right before this call (synthesizer brief). Raises Foreign when the change,
+    landing control or a hold dependency reads from another repo (#1859)."""
+    foreign = repo_bind.off_repo(slug, [("change #%d's verdict and permission read" % view["number"], view.get("url"))])
+    if foreign:
+        raise Foreign(foreign)
     stop = landing_stop(poll, slug, view, state)
     rereview = merge_ok = False
     rework, reviewer = None, values.get("identities.reviewer.gh_user")
@@ -961,9 +973,9 @@ def train_gate(poll, values, slug, view, head, state, verified_head=None, lane=F
         except RuntimeError:
             hold_miss = "unresolved coordinator hold-until-#%s: dependency missing or lookup failed" % x
             break
-        hold_miss = repo_bind.off_repo(slug, [("hold-until-#%s dependency" % x, dependency.get("url"))])
-        if hold_miss:
-            break
+        foreign = repo_bind.off_repo(slug, [("hold-until-#%s dependency" % x, dependency.get("url"))])
+        if foreign:
+            raise Foreign(foreign)
         if state == "OPEN":
             hold_miss = "open coordinator hold-until-#%s" % x
             break
@@ -980,8 +992,7 @@ def train_gate(poll, values, slug, view, head, state, verified_head=None, lane=F
             unclassified = str(e)
     sensitive = any(lb["name"] == "crew:sensitive" for lb in view["labels"])
     release = release_hold(poll, values, slug, view["number"])
-    foreign = repo_bind.off_repo(slug, [("change #%d's verdict and permission read" % view["number"], view.get("url"))])
-    why = (foreign if foreign else stop if stop else
+    why = (stop if stop else
            "PR is %s" % view["state"] if view["state"] != "OPEN" else
            "head changed: %s, tested %s" % (view["headRefOid"], head) if view["headRefOid"] != head else
            "state tag %s" % ", ".join(sorted(tags)) if tags else
@@ -1115,6 +1126,9 @@ def train_land(args, values, state, repo, slug):
                 if posted.returncode:
                     rec["pending_record"] = {"pr": pr, "body": body}
                     why = "merge record pending: " + posted.stderr.strip()
+    except Foreign as e:  # before any state write or cleanup: the train, its PR and branch stay as they are
+        print("crew: refusing train land: %s; nothing written" % e)
+        return 1
     except RuntimeError as e:
         why, recorded = str(e), isinstance(e, ViewError)
     if landed and landed[-1]["pr"] == pr:
@@ -1191,6 +1205,11 @@ def train_foreign(args, values, state, slug, qualified):
     numbers += args.items[:1] if args.action in ("wait", "land", "close", "route", "bisect") else []
     records = [("train %d %s" % (n, kind), recorded(path(state, n))) for n in numbers
                for kind, path in (("record", train_path), ("delegation", delegation_path))]
+    for what, rec in list(records):  # the predecessor a record names: land, wait and build consume its result
+        after = rec.get("after") if isinstance(rec, dict) else None
+        if after is not None:
+            records.append(("%s's predecessor train %s record" % (what, after), recorded(
+                train_path(state, after)) if type(after) is int and after >= 1 else "unreadable"))
     members = list(args.items) if args.action in ("build", "delegate") else []
     if args.train and isinstance(records[1][1], dict):
         members = [m.get("pr") for m in records[1][1].get("members", []) if isinstance(m, dict)]

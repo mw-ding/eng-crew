@@ -23,10 +23,12 @@ open(os.path.join(d, "gh.log"), "a").write(json.dumps(args) + "\\n")
 repo = args[args.index("-R") + 1] if "-R" in args else ""
 if args[:2] in (["pr", "view"], ["issue", "view"]):
     path = os.path.join(d, repo.replace("/", "__"), "%s-%s.json" % (args[0], args[2]))
-    view = json.load(open(path)) if os.path.exists(path) else {}
-    print(json.dumps(dict({"url": "https://github.com/%s/%s/%s" % (repo, "pull" if args[0] == "pr" else "issues", args[2]),
-                           "number": int(args[2]), "labels": [], "reviews": [], "comments": [], "state": "OPEN",
-                           "closingIssuesReferences": []}, **view)))
+    view = dict({"url": "https://github.com/%s/%s/%s" % (repo, "pull" if args[0] == "pr" else "issues", args[2]),
+                 "number": int(args[2]), "labels": [], "reviews": [], "comments": [], "state": "OPEN",
+                 "closingIssuesReferences": []}, **(json.load(open(path)) if os.path.exists(path) else {}))
+    if "url" not in args[args.index("--json") + 1].split(","):  # gh returns only the fields asked for
+        view.pop("url")
+    print(json.dumps(view))
 elif args[:2] == ["pr", "create"]:
     print("https://github.com/%s/pull/900" % repo)
 elif args[:2] == ["pr", "checks"]:

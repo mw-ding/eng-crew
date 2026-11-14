@@ -40,8 +40,8 @@ PASS, PENDING, FAIL = ([{"name": name, "bucket": b, "link": LINK + "/job/%d" % i
 # Fake gh: pr view / issue view serve $FAKE_GH_DIR/pr-<n>.json / issue-<n>.json; pr checks plays checks.json in order
 # (null: no checks reported yet, exit 1), keeping the last; pr merge squashes refs/pull/<n>/head onto the origin's main
 # like GitHub does, refusing a head that is not --match-head-commit; pr list serves open.json (default none open);
-# a pr or issue view reports its acme/widgets url unless the served JSON names one (#1859); every call is logged with
-# its time.
+# a pr or issue view asked for `url` reports its acme/widgets url unless the served JSON names one, and never adds
+# one unasked, as gh returns only requested fields (#1859); every call is logged with its time.
 FAKE_GH = textwrap.dedent("""\
     #!/usr/bin/env python3
     import json, os, re, subprocess, sys, tempfile, time
@@ -49,7 +49,9 @@ FAKE_GH = textwrap.dedent("""\
     with open(os.path.join(d, "gh.log"), "a") as f:
         f.write(json.dumps({"t": time.time(), "args": args}) + "\\n")
     pr = lambda n: json.load(open(os.path.join(d, "pr-%s.json" % n)))
-    url = lambda kind, view: dict({"url": "https://github.com/acme/widgets/%s/%s" % (kind, args[2])}, **view) \
+    asked = "url" in args[args.index("--json") + 1].split(",") if "--json" in args else False
+    url = lambda kind, view: (dict({"url": "https://github.com/acme/widgets/%s/%s" % (kind, args[2])}, **view)
+                              if asked else {k: v for k, v in view.items() if k != "url"}) \
         if isinstance(view, dict) else view
     if args[:2] == ["pr", "create"]:
         body = args[args.index("--body") + 1]
@@ -2076,44 +2078,64 @@ class RepoBound(TrainBase):
         with open(path, "w") as f:
             json.dump(dict(data, **fields), f)
 
-    def test_gate_reads_from_another_repo_land_nothing(self):
+    def test_gate_reads_from_another_repo_refuse_land_with_nothing_written(self):
         hold = "<!-- crew:v1 role=coordinator pass=steer --> hold-until-#77"
 
-        def verdict(n, repo):
-            self.edit("pr-%d.json" % n, url="https://github.com/%s/pull/%d" % (repo, n))
+        def verdict(n, url):
+            self.edit("pr-%d.json" % n, url=url % ("pull", n))
 
-        def dependency(n, repo):
+        def dependency(n, url):
             head, reviews = self.view(n)
             self.serve(n, head, reviews + [{"body": hold}])
             self.issue(77, "CLOSED")
-            self.edit("issue-77.json", url="https://github.com/%s/issues/77" % repo)
+            self.edit("issue-77.json", url=url % ("issues", 77))
 
-        def control(n, repo):
+        def control(n, url):
             self.put("landing-control.json", '{"issue": 99}')
             with open(os.path.join(self.gh_dir, "issue-99.json"), "w") as f:
-                json.dump({"state": "OPEN", "comments": [], "url": "https://github.com/%s/issues/99" % repo}, f)
+                json.dump({"state": "OPEN", "comments": [], "url": url % ("issues", 99)}, f)
 
-        cases = [(verdict, "change #%d's verdict and permission read"), (dependency, "hold-until-#77 dependency"),
-                 (control, "landing control #99")]
+        sources = [(verdict, "change #%d's verdict and permission read"), (dependency, "hold-until-#77 dependency"),
+                   (control, "landing control #99")]
+        urls = [("https://github.com/example/beta/%s/%d", "is example/beta, not acme/widgets"),  # foreign
+                ("not a url %s %d", "names no readable repo context"),  # read, but no repo in it
+                ("https://github.com/acme/widgets/%s/%d", None)]  # the control: this repo's lands
         n = 0
-        for setup, what in cases:
-            for repo in ("example/beta", "acme/widgets"):
+        for setup, what in sources:
+            for url, why in urls:
                 n += 1
-                with self.subTest(source=what, repo=repo):
+                with self.subTest(source=what, url=url):
                     self.built(n)
-                    setup(n, repo)
+                    setup(n, url)
+                    before, writes = self.tree(), self.writes()
                     result = self.train("land", str(n), str(n))
                     merged = [c["args"][2] for c in self.gh_calls("pr", "merge")]
-                    if repo == "acme/widgets":
+                    if why is None:
                         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                         self.assertIn(str(n), merged)
                     else:
                         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
-                        self.assertIn("is example/beta, not acme/widgets", result.stdout)
-                        self.assertIn(what % n if "%d" in what else what, result.stdout)
-                        self.assertNotIn(str(n), merged)
+                        self.assertIn("crew: refusing train land: %s %s; nothing written" % (
+                            what % n if "%d" in what else what, why), result.stdout)
+                        self.assertEqual(self.writes(), writes)  # no record post, merge, close or branch delete
+                        self.assertEqual(self.tree(), before)
+                        self.assertTrue(self.remote("refs/heads/crew/train-%d" % n))
                     with contextlib.suppress(FileNotFoundError):
                         os.remove(os.path.join(self.state, "landing-control.json"))
+
+    def test_check_reads_each_gate_url(self):
+        """train check asks gh for the change's url, so a valid local PR passes and another repo's is blocked."""
+        self.pr(1, {"f1.txt": "x\n"})
+        self.complete_view(1)
+        for url, expected in (("https://github.com/acme/widgets/pull/1", "status=pass"),
+                              ("https://github.com/example/beta/pull/1", 'status=blocked reason="change #1\'s '
+                               'verdict and permission read is example/beta, not acme/widgets"')):
+            with self.subTest(url=url):
+                self.edit("pr-1.json", url=url)
+                result = self.train("check", "1")
+                line = next(ln for ln in result.stdout.splitlines() if "name=state-permission" in ln)
+                self.assertIn("name=state-permission " + expected, line)
+        self.assertEqual(self.writes(), [])
 
     def test_foreign_record_or_member_refuses_whole_action_with_nothing_written(self):
         self.built(1)
@@ -2133,6 +2155,11 @@ class RepoBound(TrainBase):
             with open(os.path.join(self.state, "trains", "delegated-4.json"), "w") as f:
                 json.dump(rec, f)
 
+        def predecessor(parent):  # train 1 builds on train 5, whose result land and wait consume
+            record(dict(own, after=5))
+            with open(os.path.join(self.state, "trains", "train-5.json"), "w") as f:
+                f.write(parent if isinstance(parent, str) else json.dumps(parent))
+
         def member_url(n):
             return lambda: self.edit("pr-%d.json" % n, url="https://github.com/example/beta/pull/%d" % n)
 
@@ -2144,6 +2171,12 @@ class RepoBound(TrainBase):
             (lambda: record(beta), ("build", "2", "--after", "1"), "train 1 record is example/beta"),
             (lambda: record("not json"), ("close", "1"), "train 1 record names no readable repo context"),
             (lambda: delegation(delegated), ("build", "--train", "4"), "train 4 delegation is example/beta"),
+            (lambda: predecessor(dict(beta, n=5, ci="fail")), ("land", "1", "1"),
+             "train 1 record's predecessor train 5 record is example/beta"),
+            (lambda: predecessor(dict(beta, n=5, ci="fail")), ("wait", "1"),
+             "train 1 record's predecessor train 5 record is example/beta"),
+            (lambda: predecessor("not json"), ("land", "1", "1"),
+             "train 1 record's predecessor train 5 record names no readable repo context"),
             (lambda: None, ("build", "2", "example/beta#3"), "example/beta#3 is example/beta, not acme/widgets"),
             (lambda: None, ("delegate", "example/beta#2", "3"), "example/beta#2 is example/beta, not acme/widgets"),
             (member_url(3), ("build", "2", "3"), "member #3 is example/beta, not acme/widgets"),
@@ -2162,14 +2195,21 @@ class RepoBound(TrainBase):
                 self.assertIn(why, result.stdout)
                 self.assertEqual(self.tree(), before)
                 self.assertEqual(self.writes(), writes)
-                with contextlib.suppress(FileNotFoundError):
-                    os.remove(os.path.join(self.state, "trains", "delegated-4.json"))
+                for name in ("delegated-4.json", "train-5.json"):
+                    with contextlib.suppress(FileNotFoundError):
+                        os.remove(os.path.join(self.state, "trains", name))
         record(own)  # controls: this repo's record and a member qualified with this repo act
         self.edit("pr-3.json", url="https://github.com/acme/widgets/pull/3")
         result = self.train("build", "2", "acme/widgets#3")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual([m["pr"] for m in self.record(2)["members"]], [2, 3])
         self.assertEqual(self.record(2)["context"], own["context"])
+        record(dict(own, after=5))  # control: this repo's stopped predecessor rebuilds train 1 on main, as before
+        with open(os.path.join(self.state, "trains", "train-5.json"), "w") as f:
+            json.dump(dict(own, n=5, ci="fail"), f)
+        result = self.train("land", "1", "1")
+        self.assertIn("rebuild train=1 reason=predecessor-stopped", result.stdout)
+        os.remove(os.path.join(self.state, "trains", "train-5.json"))
         legacy = dict(own)
         legacy.pop("context")
         record(legacy)  # a one-repo record from before #1859: the selected state is its only project
