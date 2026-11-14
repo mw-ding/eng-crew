@@ -581,7 +581,7 @@ def train_check_prs(args, values, state, repo, slug, poll, clone):
                 pass
         try:
             why, merge_ok, spec = train_gate(poll, values, slug, view, head, state, carried, lane)
-        except Foreign as e:  # read-only: reported, never treated as this repo's gate snapshot
+        except Refused as e:  # read-only: reported, never treated as this repo's gate snapshot
             why, merge_ok, spec = str(e), False, False
         results["state-permission"] = ("blocked", why) if why else ("pass", "current gate snapshot")
         verdict = None
@@ -895,9 +895,10 @@ def train_verified(poll, view, lane=False):
     return None, None
 
 
-class Foreign(RuntimeError):
-    """A gate read whose URL is not the selected repo's (#1859): train land refuses with nothing written, unlike a
-    gate miss, which stops and closes the train."""
+class Refused(RuntimeError):
+    """A required gate read that is unreadable or not the selected repo's (#1859): the change, the landing control
+    issue or a hold dependency. train land refuses with nothing written, unlike a gate miss, which stops and closes
+    the train; train check reports it as blocked."""
 
 
 def landing_stop(poll, slug, view, state):
@@ -913,20 +914,20 @@ def landing_stop(poll, slug, view, state):
             foreign = repo_bind.off_repo(slug, [("landing control #%d" % control, read.get("url"))])
             posts += read["comments"]
         except (OSError, ValueError, KeyError, TypeError, RuntimeError, AttributeError):
-            return "landing control unreadable; nothing may land"
+            raise Refused("landing control unreadable; nothing may land")
         if foreign:
-            raise Foreign(foreign)
+            raise Refused(foreign)
     stops = poll.landing_steers(posts)["stops"]
     return "open stop-landing: %s" % ", ".join(sorted(set(stops))) if stops else None
 
 
 def train_gate(poll, values, slug, view, head, state, verified_head=None, lane=False):
     """The §7 gates land re-checks at head right before the squash: (first miss or None, merge-ok at head). The other
-    gates are the synthesizer's check right before this call (synthesizer brief). Raises Foreign when the change,
-    landing control or a hold dependency reads from another repo (#1859)."""
+    gates are the synthesizer's check right before this call (synthesizer brief). Raises Refused when the change,
+    landing control or a hold dependency is unreadable or reads from another repo (#1859)."""
     foreign = repo_bind.off_repo(slug, [("change #%d's verdict and permission read" % view["number"], view.get("url"))])
     if foreign:
-        raise Foreign(foreign)
+        raise Refused(foreign)
     stop = landing_stop(poll, slug, view, state)
     rereview = merge_ok = False
     rework, reviewer = None, values.get("identities.reviewer.gh_user")
@@ -971,11 +972,10 @@ def train_gate(poll, values, slug, view, head, state, verified_head=None, lane=F
             dependency = poll.gh_json("issue", "view", x, "-R", slug, "--json", "state,url")
             state = dependency["state"]
         except RuntimeError:
-            hold_miss = "unresolved coordinator hold-until-#%s: dependency missing or lookup failed" % x
-            break
+            raise Refused("unresolved coordinator hold-until-#%s: dependency missing or lookup failed" % x)
         foreign = repo_bind.off_repo(slug, [("hold-until-#%s dependency" % x, dependency.get("url"))])
         if foreign:
-            raise Foreign(foreign)
+            raise Refused(foreign)
         if state == "OPEN":
             hold_miss = "open coordinator hold-until-#%s" % x
             break
@@ -1126,7 +1126,7 @@ def train_land(args, values, state, repo, slug):
                 if posted.returncode:
                     rec["pending_record"] = {"pr": pr, "body": body}
                     why = "merge record pending: " + posted.stderr.strip()
-    except Foreign as e:  # before any state write or cleanup: the train, its PR and branch stay as they are
+    except Refused as e:  # before this member's writes or cleanup: the train, its PR and branch stay as they are
         print("crew: refusing train land: %s; nothing written" % e)
         return 1
     except RuntimeError as e:
@@ -1199,8 +1199,12 @@ def recorded(path):
 
 
 def train_foreign(args, values, state, slug, qualified):
-    """Why this action would act outside the selected repo, or None: one comparison over every train record and
-    delegation it names, every member qualifier and, for build and delegate, each member's URL read from the backend."""
+    """The read half of every train action's read-then-write boundary (#1859): why it would act outside the selected
+    repo, or None. Reads every train record and delegation the action names and the predecessor each builds on, and
+    the URL of every change the action can write to: build and delegate members, a delegation's members, and for
+    land, wait, bisect and route every member, dropped member and pending merge record of the train (a rebuild,
+    bisect or merge-up consumes them). One comparison over those and every member qualifier; an unreadable source
+    refuses. land's per-member gate reads (change, landing control, holds) refuse the same way (Refused)."""
     numbers = [n for n in (args.train, args.after) if n]
     numbers += args.items[:1] if args.action in ("wait", "land", "close", "route", "bisect") else []
     records = [("train %d %s" % (n, kind), recorded(path(state, n))) for n in numbers
@@ -1213,6 +1217,10 @@ def train_foreign(args, values, state, slug, qualified):
     members = list(args.items) if args.action in ("build", "delegate") else []
     if args.train and isinstance(records[1][1], dict):
         members = [m.get("pr") for m in records[1][1].get("members", []) if isinstance(m, dict)]
+    train = records[0][1] if args.action in ("land", "wait", "bisect", "route") and isinstance(records[0][1], dict) else {}
+    members += [m.get("pr") if isinstance(m, dict) else m for key in ("members", "dropped")
+                for m in train.get(key) or []] + ([train["pending_record"].get("pr")] if isinstance(
+                    train.get("pending_record"), dict) else [])
     urls = []
     for pr in dict.fromkeys(members):
         try:

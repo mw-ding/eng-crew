@@ -216,15 +216,24 @@ class Locks(TeamLand):
     def test_foreign_lock_record_refused_before_cleanup_and_own_record_cleaned(self):
         self.addCleanup(self.lock, "alpha", "release")  # no holder outlives the test, even when a refusal regresses
         for action in ("acquire", "release"):
-            for repo in ("beta", "alpha"):
+            for repo in ("unreadable", "beta", "alpha"):  # the lock record x {unreadable, foreign, valid}
                 with self.subTest(action=action, record=repo):
                     self.lock("alpha", "release")  # a holder a regressed case left never outlives its record
                     stale = {"pid": 999999, "start": "never", "owner": None, "window": "sam-lead",
-                             "context": self.ctx[repo]}  # a dead holder's record
+                             "context": self.ctx.get(repo)}  # a dead holder's record
                     self.put("alpha", "locks/merge.pid", stale)
+                    if repo == "unreadable":
+                        with open(self.pidfile("alpha"), "w") as f:
+                            f.write("not json")
                     before = self.snapshot()
                     r = self.lock("alpha", action)
-                    if repo == "beta":
+                    if repo == "unreadable":
+                        self.assertEqual(r.returncode, 1, r.stdout)
+                        self.assertIn("crew: refusing %s: land lock record %s names no readable repo context; "
+                                      "nothing cleaned, signalled or removed" % (action, self.pidfile("alpha")),
+                                      r.stdout)
+                        self.assertEqual(self.snapshot(), before)
+                    elif repo == "beta":
                         self.assertEqual(r.returncode, 1, r.stdout)
                         self.assertIn("crew: refusing %s: land lock record %s is example/beta in team eng, not "
                                       "example/alpha in team eng; nothing cleaned, signalled or removed"

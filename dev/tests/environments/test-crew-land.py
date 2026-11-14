@@ -620,17 +620,24 @@ class SessionStackLand(LandFixture):
         for action, extra, refused in (("stack", {}, "blocked: land stack #7 @ aaaaaaa, #8 @ ddddddd: "),
                                        ("resume", {}, "blocked: " + refusal),
                                        ("stack-done", {"landed": [LANDED, STACK_LANDED]}, "crew: refusing stack-done")):
-            for ctx in (beta, own):
-                with self.subTest(action=action, repo=ctx["repo"]):
+            for ctx in ("unreadable", beta, own):  # each required read x {unreadable, foreign, valid}
+                with self.subTest(action=action, read=ctx if ctx == "unreadable" else ctx["repo"]):
                     os.makedirs(os.path.dirname(path), exist_ok=True)
                     with open(path, "w") as f:
-                        json.dump(dict({"members": [[7, HEAD], [8, STACK_HEAD]], "context": ctx}, **extra), f)
+                        f.write("not json" if ctx == "unreadable" else json.dumps(
+                            dict({"members": [[7, HEAD], [8, STACK_HEAD]], "context": ctx}, **extra)))
                     with open(path, "rb") as f:
                         before = f.read()
                     self.stack_statuses(self.LANDED_BOTH)
                     calls = len(self.calls())
                     r = self.stack(action)
-                    if ctx is beta:
+                    if ctx == "unreadable":
+                        self.assertEqual(r.returncode, 1, r.stdout)
+                        self.assertRegex(r.stdout, r"blocked|refusing")
+                        self.assertEqual(len(self.calls()), calls)
+                        with open(path, "rb") as f:
+                            self.assertEqual(f.read(), before)
+                    elif ctx is beta:
                         self.assertEqual(r.returncode, 1, r.stdout)
                         self.assertIn(refused, r.stdout)
                         self.assertIn(FOREIGN, r.stdout)
@@ -875,17 +882,24 @@ class RepoBoundIntents(LandFixture):
                  ("resume", {}, "blocked: land intent 7-%s.json: recorded land intent %s" % (HEAD, FOREIGN)),
                  ("done", {"landed": LANDED}, "crew: refusing done #7 @ aaaaaaa: recorded land intent " + FOREIGN)]
         for action, extra, refusal in cases:
-            for ctx in (beta, own):
-                with self.subTest(action=action, repo=ctx["repo"]):
+            for ctx in ("unreadable", beta, own):  # each required read x {unreadable, foreign, valid}
+                with self.subTest(action=action, read=ctx if ctx == "unreadable" else ctx["repo"]):
                     os.makedirs(os.path.dirname(path), exist_ok=True)
                     with open(path, "w") as f:
-                        json.dump(dict({"pr": 7, "head": HEAD, "context": ctx, "recorded": "t"}, **extra), f)
+                        f.write("not json" if ctx == "unreadable" else json.dumps(
+                            dict({"pr": 7, "head": HEAD, "context": ctx, "recorded": "t"}, **extra)))
                     with open(path, "rb") as f:
                         before = f.read()
                     self.statuses("landed " + LANDED)
                     calls = len(self.calls())
                     r = self.land(action)
-                    if ctx is beta:
+                    if ctx == "unreadable":
+                        self.assertEqual(r.returncode, 1, r.stdout)
+                        self.assertRegex(r.stdout, r"refusing|blocked: land intent .* unreadable")
+                        self.assertEqual(len(self.calls()), calls)
+                        with open(path, "rb") as f:
+                            self.assertEqual(f.read(), before)
+                    elif ctx is beta:
                         self.assertEqual(r.returncode, 1, r.stdout)
                         self.assertIn(refusal, r.stdout)
                         self.assertEqual(len(self.calls()), calls)  # no status read, head read or request
