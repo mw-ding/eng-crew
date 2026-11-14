@@ -2174,6 +2174,21 @@ class RepoBound(TrainBase):
             else:
                 self.url("pull", "pr", d, how)
 
+        def content_drop(t, how):  # land drops its member as content-different, then routes it in the same command
+            rec = self.record(t["k"])
+            rec["members"][0]["updated_base"] = rec["members"][0]["step"]
+            self.put_json("trains/train-%d.json" % t["k"], rec)
+            head, reviews = self.view(t["n"])
+            self.serve(t["n"], head, reviews, comments=["see hold-until-#%d" % (500 + t["n"])])
+            self.issue(500 + t["n"], "CLOSED")
+            if how == "unreadable":  # the gate-time read succeeds; route's full read of the drop fails
+                with open(os.path.join(self.gh_dir, "pr-%d.json" % t["n"])) as f:
+                    ok = json.load(f)
+                with open(os.path.join(self.gh_dir, "views-%d.json" % t["n"]), "w") as f:
+                    json.dump([ok, "required dropped read unavailable"], f)
+            else:
+                self.url("issues", "issue", 500 + t["n"], how)
+
         def full_read(t, how):  # the member's full lookup, as the gate reads it, failing after a good URL
             if how == "unreadable":
                 with open(os.path.join(self.gh_dir, "views-%d.json" % t["n"]), "w") as f:
@@ -2222,6 +2237,7 @@ class RepoBound(TrainBase):
             ("land", "member change", member, lambda t: ["land", t["k"], t["n"]]),
             ("land", "member full read", full_read, lambda t: ["land", t["k"], t["n"]]),
             ("land", "pending merge record", pending, lambda t: ["land", t["k"], t["n"]]),
+            ("land", "content-different drop", content_drop, lambda t: ["land", t["k"], t["n"]]),
             ("land", "landing control", control, lambda t: ["land", t["k"], t["n"]]),
             ("land", "hold dependency", dependency, lambda t: ["land", t["k"], t["n"]]),
             ("wait", "train record", train_rec, lambda t: ["wait", t["k"]]),

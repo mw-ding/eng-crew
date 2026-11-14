@@ -220,6 +220,20 @@ def route_reads(poll, slug, args, state, n, pr):
     return {"view": view, "holds": holds, "solo": solo, "urls": urls}
 
 
+def plan_route(args, slug, state, n, pr):
+    """A member land drops in its own read phase: take route's reads for it there (route_reads); a failed or foreign
+    read raises Refused, so nothing is written (#1859)."""
+    try:
+        reads = route_reads(commands()["poll"], slug, args, state, n, pr)
+    except (RuntimeError, ValueError, KeyError, TypeError) as e:
+        raise Refused("dropped member #%d's required read failed (%s)" % (pr, e))
+    foreign = repo_bind.off_repo(slug, reads["urls"])
+    if foreign:
+        raise Refused(foreign)
+    args.plan_routes = dict(getattr(args, "plan_routes", None) or {})
+    args.plan_routes[pr] = reads
+
+
 def train_route(args, values, state, repo, slug, rec):
     """Merge up each queued dropped member from the reads train_plan took for it (route_reads), never a new read."""
     if not rec.get("closed"):
@@ -233,7 +247,7 @@ def train_route(args, values, state, repo, slug, rec):
             print("merge-up pr=%d status=reviewer reason=no-verified-base" % d["pr"])
             continue
         planned = getattr(args, "plan_routes", {}).get(d["pr"])
-        if planned is None:  # dropped by this command, so not in its read phase: `train route` plans and routes it
+        if planned is None:  # not read by this command's read phase: `train route` plans and routes it
             print("merge-up pr=%d status=queued reason=not in this command's read plan" % d["pr"])
             continue
         try:
@@ -1097,6 +1111,7 @@ def train_land(args, values, state, repo, slug):
                 repo, m["verified_base"], m.get("verified_head", m["head"]), m["updated_base"], m["step"]):
             why = "content-different: route to builder for delta re-review"
             rec["dropped"].append({"pr": pr, "head": m["head"], "reason": "content-different"})
+            plan_route(args, slug, state, n, pr)  # still the read phase: route's reads for this drop, before writes
         elif not why:
             view = getattr(args, "plan", {}).get(pr) or train_view(poll, slug, pr, args, state, n)
             why, merge_ok, spec = train_gate(poll, values, slug, view, m["head"], state, m.get("verified_head"),
