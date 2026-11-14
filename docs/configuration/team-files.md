@@ -156,12 +156,14 @@ their windows carry a one-to-one repo tag and their worktrees are
 [team pools](../runtimes/tmux.md#team-pools)).
 `mdstack down --project <file>#<name>` stops the whole shared session.
 
-## Multi-project routing design
+## Multi-project routing
 
-The [M51 team/project contract](../specs/team.md#9-team-and-project-separation-1318-design-only)
-extends this schema with closed project context and rigor tightening, which
-the project keys and routing above ship (#1856), and shared pool leads and
-the worker lifecycle above ship (#1858). Shared admission remains design only. The contract
+The [M51 team/project contract](../specs/team.md#9-team-and-project-separation-1318)
+extends this schema with closed project context and rigor tightening. M56
+built it for the terminal runtime: the project keys and routing above
+(#1856), [team admission](../scheduling.md#team-admission) (#1857), shared
+pool leads and the worker lifecycle above (#1858), and repo-bound landing
+(#1859); see [M56 outcome](../specs/team.md#m56-outcome-and-lessons). The contract
 uses a two-repo collision example and specifies per-repo land authority.
 For #1318, 7.0+ is fresh and migration is not needed; the conversion below
 remains operator guidance for existing team-file deployments.
