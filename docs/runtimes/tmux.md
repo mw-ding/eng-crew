@@ -591,11 +591,14 @@ B's lock, and B's red default branch, never block A; `locks/merge.pid`
 records the repo's `context` and the acquiring `window` (a shared lead's
 too). Train and delegation records and async land and stack intents record
 the `context` as well. Before any write, `train` compares every record and
-delegation it names, every member qualifier (`<owner>/<name>#<n>`, also
-`<owner>/<name>#<n>:<sha>` in `land stack --stack`) and, for `build` and
-`delegate`, each member's URL read back from the backend; `train land` reads
-the member's verdict, permission, landing control and holds only when their
-URLs are the selected repo's. `land request|resume|done`, the stack land and
+delegation it names and the predecessor train each one builds on, every
+member qualifier (`<owner>/<name>#<n>`, also `<owner>/<name>#<n>:<sha>` in
+`land stack --stack`) and, for `build` and `delegate`, each member's URL read
+back from the backend. `train land`'s gate reads the member's change
+(verdict, permission), landing control issue and hold dependencies only when
+their URLs are the selected repo's; a foreign or repo-less one refuses before
+any state write, never stopping or closing the train, and `train check`
+reports it as a blocked gate. `land request|resume|done`, the stack land and
 `land-lock acquire|release` refuse a record naming another repo before any
 read, request, cleanup or drop. One foreign or unreadable source refuses the
 whole action with nothing written; in a one-repo config a record written
