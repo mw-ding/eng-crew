@@ -64,7 +64,7 @@ one-repo `config.toml` may set them in `[repo]` too.
 | `labels` | Table from state tag (`crew:ready`, `crew:in-review`, `crew:changes`, `crew:approved`, `crew:escalated`, `crew:needs-md`, `crew:hold`, `crew:external`, `crew:spec`, `crew:needs-mirror`, `crew:express`) to a nonempty tracker label; an unmapped tag keeps its own name and no two tags share a label. `mdstack poll` and `mdstack route` read and write through it |
 | `milestones` | Nonempty list of distinct tracker milestone ids in priority order: numbers on GitHub. Needs the tracker's `milestone` capability; omitted, the tracker's own order stands |
 | `doc_home` | Project-relative docs directory; absolute paths, `..` and a symlink resolving outside the checkout fail. Omitted, the existing docs home stands |
-| `flavor` | Table with only `name`: a preset or a `[team.flavor.custom]` flavor, never `express`. It may only tighten the flavor below it: a looser rigor knob or a lower cap fails, naming the knob and the layer that set the floor |
+| `flavor` | Table with only `name`: a preset or a `[team.flavor.custom]` flavor, never `express`. It may only tighten its floor, knob-wise the strictest flavor any lower layer names (pack, org, team): a looser rigor knob or a lower cap fails, naming the knob and the layer that set the floor |
 
 ### Project context and routing
 
@@ -80,9 +80,12 @@ head). `mdstack send --context <json>` passes an envelope on and refuses one
 that is not this project's. `mdstack route` refuses a record, leaving it queued
 with its `route_error`, before any spawn, post or handoff when its envelope is
 malformed, names another team or repo, or has a project reference resolving
-elsewhere, ids or head disagreeing with its refs, or an item or change URL in
-another repo. In a team file a record without an envelope must come from a run
-or lead in that repo's state. Markers and status lines are unchanged.
+elsewhere, ids or head disagreeing with its refs or completion line, or an item
+or change URL in another repo; that read happens before any lead handoff. In a
+team file a record without an envelope must come from a run or lead in that
+repo's state, so a bare `done:` there has no repo authority. A `done:`
+completion line's ids must match its envelope and the run record it came from.
+Markers and status lines are unchanged.
 
 ```text
 [team]
