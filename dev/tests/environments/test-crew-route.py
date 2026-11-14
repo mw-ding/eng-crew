@@ -39,8 +39,8 @@ class Route(SpawnBase):
                     "        if flag == '--remove-label' and name not in pr.get('_sticky', []): names.remove(name)\n"
                     "    pr['labels'] = [{'name': n} for n in names]; json.dump(pr, open(%r, 'w'))\n"
                     "elif args[:2] == ['repo', 'view']: print(json.dumps({'defaultBranchRef': {'name': 'main'}}))\n"
-                    "elif args[:2] == ['issue', 'view']: print(json.dumps(dict({'url': 'https://github.com/acme/widgets/issues/' + args[2]}, "
-                    "**pr.get('_issue', {'labels': [{'name': 'crew:ready'}], 'state': 'CLOSED', 'stateReason': 'COMPLETED'}))))\n"
+                    "elif args[:2] == ['issue', 'view']: print(json.dumps(dict({'url': 'https://github.com/acme/widgets/issues/' + args[2], "
+                    "'comments': []}, **pr.get('_issue', {'labels': [{'name': 'crew:ready'}], 'state': 'CLOSED', 'stateReason': 'COMPLETED'}))))\n"
                     "elif args[:1] == ['api'] and '/files' in args[1]: print(json.dumps(pr.get('_files', [])))\n"
                     "elif args[:1] == ['api'] and '/milestones/' in args[1]: print(json.dumps(pr.get('_milestone', {})))\n"
                     "elif args[:1] == ['api'] and '/actions/jobs/' in args[1]: print(json.dumps(pr.get('_job', {})))\n"
@@ -450,7 +450,7 @@ class Route(SpawnBase):
         self.queue(self.event(), dict(reason="status", window="ben-7", line="done: #7 #12 " + self.sha))
         self.assertIn("crew: route: #12 resolves express; the reviewer pool skips it", self.route().stdout)
         self.assertEqual((self.names(), self.pending()), (["ash"], []))
-        self.live["_issue"] = {"labels": []}  # unreadable resolution: the crew lane reviews it
+        self.live["_issue"] = {"comments": []}  # unreadable resolution (no labels): the crew lane reviews it
         self.save()
         self.queue(self.event())
         self.assertIn("crew lane: express resolution unreadable", self.route().stdout)
@@ -553,6 +553,32 @@ class Route(SpawnBase):
             self.assertEqual(json.load(f)["refs"], ["#12", self.sha])
         self.assertEqual(self.pending(), [])
         self.transcript.append(("state", "missing builder: send queued refs; route respawned builder fix and delivered refs"))
+
+    def test_absent_builder_and_reviewer_dispatch_take_the_item_tier(self):  # #1830
+        record = ("[Ash/flavor] #7: standard (default standard)\n<!-- crew:v1 role=coordinator pass=flavor issue=7 "
+                  "flavor=standard default=standard tier=deep -->\n— 🔥 Ash (CTO) · Claude Code · opus")
+        self.live["_issue"] = {"labels": [], "comments": [{"author": {"login": "acme-bot"}, "body": record}]}
+        self.save()
+        for kind in ("fix", "ci-red"):  # absent worker: route respawns the adopted PR's fix pass
+            with self.subTest(kind=kind):
+                self.crew("send", "ben-7", kind, "#12", self.sha, "--project", self.project)
+                self.route()
+                rec = self.record("ben-7")
+                self.assertEqual((rec["pass"], rec["args"]["tier"], rec["effort"]), ("fix", "deep", "high"))
+                self.route()  # a replayed route starts no second worker
+                self.assertEqual(self.names().count("ben-7"), 1)
+                self.assertEqual(self.crew("kill", "ben-7", "--project", self.project).returncode, 0)
+        self.assertEqual(self.spawn("builder", "--issue", "7").returncode, 0)
+        for kind in ("fix", "ci-red", "merge-up"):  # retained worker: delivered in place, its tier unchanged
+            self.assertEqual(self.crew("send", "ben-7", kind, "#12", self.sha, "--project", self.project).returncode, 0)
+            self.route()
+        self.assertEqual((self.names().count("ben-7"), self.record("ben-7")["args"]["tier"]), (1, "deep"))
+        with open(os.path.join(self.state, "inbox", "ben-7.jsonl")) as f:
+            self.assertEqual([json.loads(line)["kind"] for line in f], ["fix", "ci-red", "merge-up"])
+        self.queue(self.event())
+        self.route()
+        rec = self.record("vera-12-r1-review")
+        self.assertEqual((rec["args"]["tier"], rec["effort"]), ("deep", "high"))
 
     def test_replacement_message_waits_in_spawn_queue_until_capacity(self):
         with open(self.project, "a") as f:

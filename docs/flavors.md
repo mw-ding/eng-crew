@@ -252,6 +252,9 @@ Reason: <one line; required when <flavor> is below <default> on any rigor knob>
   default and tell the coordinator. The `Reason:` line is read with the
   marker, the record's only parsed line besides it.
 - No record: `thorough`, and roles tell the coordinator (`flavor-missing`).
+- An optional `tier=<tier>` field allocates the item's execution tier
+  ([roles](roles.md#tiers)). It is read apart from the flavor and changes no
+  rigor knob or gate.
 - The owner may set any item flavor; the coordinator records the owner's
   words as the reason. Builders and reviewers never lower a flavor; they ask
   the coordinator.

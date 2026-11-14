@@ -1176,7 +1176,10 @@ step 1, the band cap queue, is under [mdstack dequeue](#mdstack-dequeue) (#136):
   `<n>-<sha7>-reviewer-r<k>-<pass>/`, so each round gets its own). A failed fetch refuses (no
   stale base); so do a path inside the primary checkout and an existing path.
 - Engine: the first `claude-code` or `codex` entry of `engines.<tier>.order`
-  (`--tier`, default `default`) with that tier's effort. A reviewer or
+  with that tier's effort. The tier is `--tier`, else for a builder or
+  reviewer the item's recorded `tier=`
+  ([Tiers](../roles.md#tiers)), else the role's `default_tier`, else
+  `default`; the queue entry and run record keep it. A reviewer or
   validator skips every engine named on an `Engine:` line in the PR's commit
   messages, in the trailer block or not (`none` merge-ups excluded). With no
   such line it skips the engine in the PR-body builder marker and in each

@@ -109,7 +109,7 @@ s=$(printf '%s\\n' "$@" | sed -n '/^--state$/{n;p;q;}')
 for f in ${s:+"$d/$1-$2-$s.json"} "$d/$1-$2-$3.json" "$d/$1-$2.json"; do [ -f "$f" ] && exec cat "$f"; done
 case "$1 $2" in
   "auth token") echo gho_campaignstub;;
-  "issue view"|"pr view") echo '{"labels":[],"closingIssuesReferences":[],"state":"OPEN","title":"stub","body":""}';;
+  "issue view"|"pr view") echo '{"labels":[],"comments":[],"closingIssuesReferences":[],"state":"OPEN","title":"stub","body":""}';;
   *) echo '[]';;
 esac
 """

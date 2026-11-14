@@ -24,6 +24,9 @@ Never delete a referenced event or finding while work remains pending.
   Check live windows, run records, claims and `spawn-queue.jsonl` by issue.
   Adopt an existing PR as `--pass fix --issue <n> --pr <pr>`; otherwise use
   `$CREW_BIN spawn builder --issue <n> --project "$CREW_PROJECT"` once.
+  Spawn takes the item's recorded tier itself; add `--tier` only when the
+  coordinator names one for this dispatch. A spawn refusal is a
+  `spawn-failure` block.
 - Train handoff (`train train-<n>`, the base, then `#<pr> <head-sha>` per
   member, from the synthesizer): start its worker at once with
   `$CREW_BIN spawn builder --train <n> --project "$CREW_PROJECT"` (a full

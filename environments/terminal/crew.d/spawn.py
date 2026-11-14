@@ -22,6 +22,8 @@ A builder's worktree is its own clone borrowing the checkout's objects, not a li
 confined to it by the harness's OS write sandbox, and confinement=enforce refuses an unsupported one before any claim
 (_confine.py, docs/runtimes/tmux.md#confinement, #1252).
 Claude Code copies launch from the stable run-copy parent; missing trust warns before the claim (#1792).
+Without --tier, a builder or reviewer takes the item's tier from the newest coordinator-signed `pass=flavor` record
+carrying `tier=` (#1830); the queue and run records keep the resolved tier, so dequeue and restart retain it.
 
 Usage: mdstack spawn ROLE --issue N | --pr N | --sweep | --docs-pass | --reflection WINDOW [--log N] [--input-sha SHA]
        [--run-id ID] | --train N [--pass PASS] [--round K] [--tier T] [--host H --reason TEXT] --project FILE [--org-profile FILE]
@@ -40,6 +42,8 @@ from crew_shared import (
 
 placement = load("crew_placement", "environments/terminal/crew.d/_placement.py")
 confine = load("crew_confine", "environments/terminal/crew.d/_confine.py")
+item_flavor = load("crew_spawn_item_flavor", "scripts/item-flavor.py")
+ITEM_TIER_ROLES = ("builder", "reviewer")  # item work; the researcher keeps its research row (#584)
 # A reflection window ID (docs/self-improve.md#reflection); coalesced windows join with +.
 WINDOW = re.compile(r"(?:week-\d{4}-W\d{2}|close-\d+)(?:\+(?:week-\d{4}-W\d{2}|close-\d+))*")
 
@@ -72,6 +76,29 @@ def engine_order(values, tier, avoid=None, role=None, local=True):
 def pick_engine(values, tier, avoid=None, role=None):
     order = engine_order(values, tier, avoid, role)
     return order[0][0], order[0][1], values["engines.%s.effort" % tier]
+
+
+def item_tier(values, role, issue, pr):
+    """The item's recorded tier (#1830) for a builder or reviewer, else None: a build or fix reads its source issue, a
+    PR-only pass the PR's linked issues, whose recorded tiers must agree. Only coordinator-signed comments count. An
+    unreadable read, or a malformed or conflicting tier, raises RuntimeError before any claim, queue entry or window."""
+    if role not in ITEM_TIER_ROLES or not (issue or pr):
+        return None
+    read, poll, repo = commands()["route"].gh, commands()["poll"], "%s/%s" % (values["repo.owner"], values["repo.name"])
+    tiers = {}
+    try:
+        issues = [issue] if issue else [i["number"] for i in read(
+            "pr", "view", str(pr), "-R", repo, "--json", "closingIssuesReferences")["closingIssuesReferences"]]
+        for n in issues:
+            comments = read("issue", "view", str(n), "-R", repo, "--json", "comments")["comments"]
+            tiers[n] = item_flavor.resolve_tier(n, [c["body"] for c in comments if poll.signed_by(values, "coordinator", c)])
+    except (KeyError, TypeError, ValueError, RuntimeError) as e:
+        raise RuntimeError("crew: refusing spawn: item tier unreadable: %s" % e)
+    found = {t for t in tiers.values() if t}
+    if len(found) > 1:
+        raise RuntimeError("crew: refusing spawn: linked items record conflicting tiers (%s); pass --tier" % ", ".join(
+            "#%d %s" % (n, t) for n, t in sorted(tiers.items()) if t))
+    return found.pop() if found else None
 
 
 def host_facts(args, values, session, state):
@@ -181,7 +208,8 @@ def register(sub):
     p.add_argument("--head", help="expected PR head; refuse a changed head, including a queued spawn")
     p.add_argument("--rereview-id", help="reviewer only, with --pr and --head: the rereview steer this pass answers")
     p.add_argument("--round", type=int, default=1, help="verdict round k, for reviewer window names")
-    p.add_argument("--tier", choices=["trivial", "default", "deep"], help="default: the role's default_tier, else default")
+    p.add_argument("--tier", choices=list(item_flavor.TIERS),
+                   help="default: the item's recorded tier, then the role's default_tier, else default")
     p.add_argument("--timeout", type=float, default=15.0, help="seconds to see the harness in the foreground")
     p.add_argument("--host", help="placement override: run on this inventory host; needs --reason")
     p.add_argument("--reason", help="why the host is overridden; posted on the item before the spawn")
@@ -192,7 +220,6 @@ def register(sub):
 def run(args):
     role = args.role
     data = ROLES[role]
-    args.tier = args.tier or data.get("default_tier", "default")  # the researcher's research row: high effort (#584)
     tool = ("toolchain_bin",) if data["lifetime"] == "issue" else ()
     values, session, state = profile(args, "worktree_root", *tool)
     if role == "synthesizer" and commands()["lead"].enabled(state, role):  # its lead lands in window 1 (#1569)
@@ -259,6 +286,11 @@ def run(args):
         except RuntimeError as e:
             print(e)
             return 1
+    try:  # explicit --tier, then the item's recorded tier, then the role's default_tier (#584), else default (#1830)
+        args.tier = args.tier or item_tier(values, role, args.issue, args.pr) or data.get("default_tier", "default")
+    except RuntimeError as e:
+        print(e)
+        return 1
     nm = values.get(data["identity_key"] + ".name", NAMES[role]).lower()
     instance = getattr(args, "instance", None)  # mdstack up <role>: an on-demand instance, named by mdstack up (#1231)
     name = instance or data["window_name"].format(name=nm, issue="sweep" if sweep else "docs" if docs_pass else "reflection" if reflection else "train%d" % train if train else args.issue, change=args.pr, round=args.round, **{"pass": pass_})

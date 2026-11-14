@@ -13,9 +13,16 @@ carry the owner's words as the reason. Tier measures difficulty separately.
 ```text
 [<CoordinatorBot>/flavor] #<n>: <flavor> (default <default>)
 Reason: <reason>
-<!-- crew:v1 role=coordinator pass=flavor issue=<n> flavor=<flavor> default=<default> -->
+<!-- crew:v1 role=coordinator pass=flavor issue=<n> flavor=<flavor> default=<default> tier=<tier> -->
 <CoordinatorSignature> · <harness> · <model>
 ```
+
+`tier=` is optional: add it (`trivial`, `default` or `deep`) only to allocate
+the item's execution tier, and omit it otherwise. `mdstack spawn` reads the
+newest of your records that carries `tier=`, so a later record without it
+keeps the allocation; an explicit `--tier` still wins, and no allocation
+leaves the role default. A malformed tier refuses the item's spawns until a
+newer record corrects it. The tier never changes the flavor or any gate.
 
 Check the proposed record with `scripts/item-flavor.py --project config.toml
 --issue N` (add `--default NAME` for a verified class default), passing JSON
