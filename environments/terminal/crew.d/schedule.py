@@ -431,18 +431,22 @@ def head_of(item):
 def ineligible(r, item):
     """The first AC2 predicate (team §9.4) a team demand item fails in its own repo `r`, else None. Each predicate must
     read positively, so an unknown input defers the item exactly as a mismatch does: the repo's ownership, pause and
-    readable holds, tracker and demand (blocked()), its hold or escalation, a head-bound item's head equal to its open
-    PR's live head, and a build's local dependencies closed. Only that item is refused; other repos are untouched."""
+    readable holds, tracker and demand (blocked()), its hold or escalation, every PR pass (each kind but `build`)
+    naming a readable head equal to its open PR's live head, and a build's local dependencies closed. Only that item
+    is refused; other repos are untouched."""
     why = blocked(r, item["pool"])
     if why:
         return why
     if item["held"]:
         return "held"
-    head = head_of(item)
-    if head and r.get("heads", UNKNOWN) == UNKNOWN:
-        return "heads-unreadable"
-    if head and r["heads"].get(item["ref"][1:]) != head:
-        return "stale-head"
+    if item["kind"] != "build":
+        head = head_of(item)
+        if head is None:
+            return "head-unreadable"
+        if r.get("heads", UNKNOWN) == UNKNOWN:
+            return "heads-unreadable"
+        if r["heads"].get(item["ref"][1:]) != head:
+            return "stale-head"
     return "depends-open" if item.get("depends_open") else None
 
 

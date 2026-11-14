@@ -1000,6 +1000,10 @@ class Team(Base):
         gh = lambda conf: lambda: self.gh(conf)
         cfg = lambda extra: lambda: self.write_team(builders=1, extra=extra, runtime=', instance = "eng"')
         both = lambda *fs: lambda: [f() for f in fs]
+        request = lambda head: lambda: self.inbox(self.b, "vera-lead", [dict(id="v7", kind="validate", refs=[
+            "#7", *([head] if head else []), "1"][:3 if head else 1])])
+        fix = lambda refs: lambda: self.inbox(self.b, "ben-lead", [dict(id="f7", kind="fix", refs=refs)])
+        fix7 = ("#7", "fix")
         rows = [  # predicate, case, pool, setup, B's refusal (None: admitted), where it is reported
             ("ownership", "unknown", "builder", cfg(owned), "ownership-read-only", "blocked"),
             ("ownership", "mismatch", "builder", both(cfg(owned), gh({"acme/gadgets": {"posts": [claim("tmux@other")]}})),
@@ -1022,6 +1026,11 @@ class Team(Base):
             ("dependency", "mismatch", "builder", gh(dep(41)), "depends-open", "waiting"),
             ("dependency", "pass", "builder", gh(dep()), None, None),
             ("head", "unknown", "reviewer", gh({"acme/gadgets": {"heads_fail": True}}), "heads-unreadable", "waiting"),
+            ("head", "unknown", "reviewer", request("unknown"), "head-unreadable", "waiting"),  # requested head
+            ("head", "unknown", "reviewer", request(None), "head-unreadable", "waiting"),  # no head named
+            ("head", "unknown", "builder", fix(["#7"]), "head-unreadable", "waiting", fix7),  # fix without its head
+            ("head", "mismatch", "builder", fix(["#7", other]), "stale-head", "waiting", fix7),
+            ("head", "pass", "builder", fix(["#7", live]), None, None, fix7),
             ("head", "mismatch", "reviewer", gh({"acme/gadgets": {"prs": [{"number": 7, "headRefOid": other}]}}),
              "stale-head", "waiting"),
             ("head", "mismatch", "reviewer", gh({"acme/gadgets": {"prs": []}}), "stale-head", "waiting"),  # PR not open
@@ -1034,7 +1043,9 @@ class Team(Base):
                 text = f.read()
             with open(self.team, "w") as f:
                 f.write(text.replace("reviewers = 2", "reviewers = 1"))
-        for pred, case, pool, setup, why, where in rows:
+        kinds = {"builder": "build", "reviewer": "validate"}
+        for pred, case, pool, setup, why, where, *mine in rows:
+            b_ref, b_kind = mine[0] if mine else (ref[pool], kinds[pool])
             with self.subTest("%s/%s" % (pred, case)):
                 self.write_team(builders=1)
                 self.gh({})
@@ -1050,11 +1061,12 @@ class Team(Base):
                 cap1()
                 b = self.call("gadgets", "decide", "--pool", pool)
                 if why is None:
-                    self.assertEqual([(x["repo"], x["ref"]) for x in b["admit"]], [("acme/gadgets", ref[pool])])
+                    self.assertEqual([(x["repo"], x["ref"], x["kind"]) for x in b["admit"]],
+                                     [("acme/gadgets", b_ref, b_kind)])
                     continue
                 self.assertEqual(b["admit"], [])
                 self.assertFalse(os.path.exists(ledger) and self.ledger())
-                item = dict(pool=pool, ref=ref[pool], kind="build" if pool == "builder" else "validate", repo="acme/gadgets")
+                item = dict(pool=pool, ref=b_ref, kind=b_kind, repo="acme/gadgets")
                 if where == "blocked":
                     self.assertEqual([d["reasons"] for d in b["deferred"]], [[why]])
                     self.assertIn(dict(repo="acme/gadgets", pool=pool, reasons=[why]), b["blocked"])
@@ -1099,7 +1111,8 @@ class Team(Base):
         self.assertFalse(os.path.exists(os.path.join(self.root, "schedule", "reservations.json")) and self.ledger())
         for pool, ref in (("builder", "#42"), ("reviewer", "#7")):  # B takes each pool's last team slot
             b = self.call("gadgets", "decide", "--pool", pool)
-            self.assertEqual([(x["repo"], x["ref"], x["reasons"]) for x in b["admit"]], [("acme/gadgets", ref, [])], pool)
+            self.assertEqual([(x["repo"], x["ref"], x["reasons"]) for x in b["admit"]], [("acme/gadgets", ref, [])],
+                             pool)
         self.assertEqual(self.ledger(), [("acme/gadgets", "builder", "#42"), ("acme/gadgets", "reviewer", "#7")])
         self.assertFalse(any(os.path.exists(os.path.join(st, "schedule", "reservations.json"))
                              for st in repos.values()))
