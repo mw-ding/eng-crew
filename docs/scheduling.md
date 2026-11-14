@@ -332,13 +332,16 @@ outputs and reservations are unchanged.
   totals: a floor belongs to the team pool, not to a repo.
 - **Per-repo eligibility.** A repo's demand in a pool is left out, and
   recorded under `blocked`, when its ownership does not permit starting
-  work (`ownership-<mode>`), it is `paused`, its holds are unreadable
-  (`holds-unreadable`) or that pool's demand is unreadable
-  (`demand-unreadable`). Its running workers still count. Another repo stays
-  eligible. A team repo's `crew:escalated` items are held like `crew:hold`
-  ones, each read through that repo's `repo.labels`. An acknowledged wait
-  whose ref is unchanged (`lead.parked`, #1836) is not demand, so one repo's
-  parked waits never take another's budget.
+  work (`ownership-<mode>`), it is `paused`, its holds or tracker are
+  unreadable (`holds-unreadable`, `tracker-unreadable`) or that pool's
+  demand is unreadable (`demand-unreadable`). Its running workers still
+  count. Another repo stays eligible. A team repo's `crew:escalated` items
+  are held like `crew:hold` ones, each read through that repo's
+  `repo.labels`. A build whose `Depends on` names an issue still open in its
+  own repo is not ranked; decide lists it under `waiting` with those
+  numbers. An acknowledged wait whose ref is unchanged (`lead.parked`,
+  #1836) is not demand, so one repo's parked waits never take another's
+  budget.
 - **Unknown shared state refuses.** Unreadable caps, workers (a repo that
   does not resolve included) or ledger defer every team decision as
   `caps-unreadable`, `workers-unreadable` or `reservations-unreadable`. An
@@ -367,7 +370,7 @@ outputs and reservations are unchanged.
   release` drop only the caller repo's grant.
 - **Observability.** Team outputs are additive: every action and `held`
   entry names its `repo`, and team actions also carry `project`; decide
-  adds `team`, `repo` and `blocked`; release adds `repo`. The decision log
+  adds `team`, `repo`, `blocked` and `waiting`; release adds `repo`. The decision log
   records `block` lines. `deferred.json` keys a team defer as `<repo> #<n>`.
   The summary lists unread demand per repo and ends with `blocked <repo>
   <pool> <reason>`. A team watcher reads the team summary and raises

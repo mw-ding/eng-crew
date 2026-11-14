@@ -976,6 +976,32 @@ class Team(Base):
         out = self.call("widgets", "decide", "--pool", "builder")
         self.assertEqual([(a["ref"], a["class"], a["reasons"]) for a in out["admit"]], [("#43", 8, [])])
 
+    def test_open_local_dependency_blocks_only_that_repos_build(self):
+        issue = lambda n, body="": dict(number=n, milestone={"title": "M1"}, body=body, title=str(n))
+        self.gh({"acme/widgets": {"issues": [issue(41), issue(42, "Depends on #41")]}, "acme/gadgets": {"issues": [issue(42)]}})
+        out = self.call("widgets", "decide", "--pool", "builder")  # A's #42 waits on A's open #41
+        self.assertEqual([(a["repo"], a["ref"]) for a in out["admit"]], [])
+        self.assertEqual(out["waiting"], [dict(pool="builder", ref="#42", kind="build", repo="acme/widgets", depends=[41])])
+        self.assertFalse(os.path.exists(os.path.join(self.root, "schedule", "reservations.json")) and self.ledger())
+        out = self.call("gadgets", "decide", "--pool", "builder")  # B's same-ID #42 has no dependency
+        self.assertEqual([(a["repo"], a["ref"]) for a in out["admit"]], [("acme/gadgets", "#42")])
+        self.gh({"acme/widgets": {"issues": [issue(42, "Depends on #41")]}, "acme/gadgets": {"issues": [issue(42)]}})
+        out = self.call("widgets", "decide", "--pool", "builder")  # control: #41 closed, A's #42 is eligible
+        self.assertEqual(([(a["repo"], a["ref"]) for a in out["admit"]], out["waiting"]), ([("acme/widgets", "#42")], []))
+        self.assertEqual(self.mutations(), [])
+
+    def test_unreadable_tracker_blocks_only_that_repo(self):
+        self.gh({"acme/widgets": {"issues": None}})
+        out = self.call("widgets", "decide", "--pool", "builder")
+        self.assertEqual((out["admit"], [d["reasons"] for d in out["deferred"]]), ([], [["tracker-unreadable"]]))
+        self.assertIn(dict(repo="acme/widgets", pool="builder", reasons=["tracker-unreadable"]), out["blocked"])
+        out = self.call("gadgets", "decide", "--pool", "builder")  # B's tracker reads: B stays eligible
+        self.assertEqual([(a["repo"], a["ref"]) for a in out["admit"]], [("acme/gadgets", "#42")])
+        self.gh({})
+        out = self.call("widgets", "decide", "--pool", "builder")  # control: A's tracker reads again
+        self.assertEqual(([(a["repo"], a["ref"]) for a in out["admit"]], out["blocked"]), ([("acme/widgets", "#42")], []))
+        self.assertEqual(self.mutations(), [])
+
     def route(self, kind, round_, cap=1):
         """The reviewer lead requests `kind` round `round_` of A's #7 while only A's validate round 1 is granted."""
         self.inbox(self.a, "ben-lead", [])

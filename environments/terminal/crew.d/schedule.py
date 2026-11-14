@@ -328,7 +328,8 @@ def classify(snap, red_fixes=None):
     per item, unsorted; decide never walks unknown holds. Kinds outside the eight classes and pools with unknown demand
     are left out. `red_fixes` defaults to the tracker's open `main-red` issues. A team snapshot classifies each repo
     against its own tracker, holds and workers (milestones and dependencies stay local) and tags every item with its
-    repo and project reference; a blocked repo's demand in a pool is left out."""
+    repo and project reference; a blocked repo's demand in a pool is left out. A team build whose `Depends on` names
+    an issue still open in its own repo carries those numbers as `depends_open` and is not ranked (team §9.4)."""
     if "repos" in snap:
         found = []
         for repo, r in sorted(snap["repos"].items()):
@@ -336,7 +337,12 @@ def classify(snap, red_fixes=None):
                        demand={p: [] if blocked(r, p) else r["demand"][p] for p in ("builder", "reviewer")},
                        workers=snap["workers"] if snap["workers"] == UNKNOWN else
                        [w for w in snap["workers"] if w.get("repo") == repo])
-            found += [dict(i, repo=repo, project=r["project"], **({"round": round_of(i)} if i["pool"] == "reviewer" else {}))
+            issues = [] if r["tracker"] == UNKNOWN else r["tracker"]["issues"]
+            open_ = {i["number"] for i in issues}
+            depends = {i["number"]: sorted(set(i["depends"]) & open_) for i in issues}
+            found += [dict(i, repo=repo, project=r["project"], **({"round": round_of(i)} if i["pool"] == "reviewer" else {}),
+                           **({"depends_open": depends[i["issue"]]} if i["kind"] == "build" and depends.get(i["issue"])
+                              else {}))
                       for i in classify(sub, red_fixes)]
         return found
     tracker = snap["tracker"] if snap.get("tracker", UNKNOWN) != UNKNOWN else dict(milestones=[], max_active=1, issues=[])
@@ -379,20 +385,22 @@ def rank(snap, red_fixes=None):
     path (more waiters first) and age (oldest first). `red_fixes` are the issue or PR numbers whose builds or fixes
     repair a red default branch (class 1); by default the tracker's open `main-red` issues and their PRs. Team items
     then tie-break by canonical repo and work identity, so the order is deterministic across repos."""
-    return sorted((r for r in classify(snap, red_fixes) if not r["held"]),
+    return sorted((r for r in classify(snap, red_fixes) if not r["held"] and not r.get("depends_open")),
                   key=lambda r: (r["class"], r["milestone_order"], -r["waiting"], r.get("ts") or "~") +
                   ((r["repo"], r["ref"], r["kind"]) if "repo" in r else ()))
 
 
 def blocked(r, pool):
     """Why a team repo's demand in `pool` is not eligible, else None: its ownership does not permit starting work, it
-    is paused, or its holds or that pool's demand cannot be read (team §9.4). Its runs still count as busy."""
+    is paused, or its holds, tracker or that pool's demand cannot be read (team §9.4). Its runs still count as busy."""
     if r["ownership"] == UNKNOWN or not ownership_module.permits(r["ownership"], "start"):
         return "ownership-" + r["ownership"]
     if r["paused"] is not None:
         return "paused"
     if r["holds"] == UNKNOWN:
         return "holds-unreadable"
+    if r["tracker"] == UNKNOWN:
+        return "tracker-unreadable"
     return "demand-unreadable" if r["demand"][pool] == UNKNOWN else None
 
 
@@ -691,7 +699,8 @@ def team_blocks(snap):
 
 def schedule_decide(args):
     """One decision for args.pool under schedule/lock; returns the JSON printed to the lead. A team adds its name, the
-    caller's repo and each repo's refusals (`blocked`), and every action names its repo."""
+    caller's repo, each repo's refusals (`blocked`) and builds waiting on an open local dependency (`waiting`), and
+    every action names its repo."""
     values, session, state = profile(args)
     sched = os.path.join(home(values, state), "schedule")
     os.makedirs(sched, exist_ok=True)
@@ -725,7 +734,9 @@ def schedule_decide(args):
                held=[] if unreadable else [dict(pool=r["pool"], ref=r["ref"], kind=r["kind"],
                                                 **({"repo": r["repo"]} if team else {})) for r in held(snap)])
     if team:
-        out.update(team=snap["team"], repo=canonical(values), blocked=team_blocks(snap))
+        out.update(team=snap["team"], repo=canonical(values), blocked=team_blocks(snap), waiting=[] if unreadable else [
+            dict(pool=r["pool"], ref=r["ref"], kind=r["kind"], repo=r["repo"], depends=r["depends_open"])
+            for r in classify(snap) if r.get("depends_open") and not r["held"]])
     return out
 
 
