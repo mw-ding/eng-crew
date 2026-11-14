@@ -125,12 +125,27 @@ The live buffer. How to append, when to batch and who owns it are in
   default-tier launch
   ([finding](https://github.com/mw-ding/mdstack/pull/1868#pullrequestreview-5900917439),
   [repair](https://github.com/mw-ding/mdstack/pull/1868#pullrequestreview-5901190217),
-  [round-2 pass](https://github.com/mw-ding/mdstack/pull/1868#pullrequestreview-5901450160))
+  [round-2 pass](https://github.com/mw-ding/mdstack/pull/1868#pullrequestreview-5901450160)).
+  Added 2026-11-14 by the
+  [M56-close sweep](https://github.com/mw-ding/mdstack/issues/1870#issuecomment-6884116200)
+  (#1887): #1866, its completion/envelope and lead-read predicates
+  ([findings](https://github.com/mw-ding/mdstack/pull/1866#pullrequestreview-5899897159),
+  [class-wide repair](https://github.com/mw-ding/mdstack/pull/1866#pullrequestreview-5901365620));
+  #1875, its grant/eligibility/head predicates
+  ([findings](https://github.com/mw-ding/mdstack/pull/1875#pullrequestreview-5902166313),
+  [complete head repair](https://github.com/mw-ding/mdstack/pull/1875#pullrequestreview-5904001857));
+  #1876, the successor-process check omitted from retained-work restart
+  ([finding](https://github.com/mw-ding/mdstack/pull/1876#pullrequestreview-5903121022),
+  [repair](https://github.com/mw-ding/mdstack/pull/1876#pullrequestreview-5903247333));
+  and #1877, its incomplete train read-before-write coverage
+  ([findings](https://github.com/mw-ding/mdstack/pull/1877#pullrequestreview-5904913556),
+  [repair](https://github.com/mw-ding/mdstack/pull/1877#pullrequestreview-5906333201)),
+  each PR counted once
 - **Smell:** A gate or action consumed only the fields, lines or flags it
   expected. A missing field, truncated status, unparsed flag, missing run
   record, later changes request or replayed authority read then passed as
   clean.
-- **Count:** 14
+- **Count:** 18
 - **Proposed fix layer:** types/schemas: validate the whole contract and
   treat anything incomplete as unknown; per-site regression tests hold it.
 - **Status:** fixed by #979, #981, #984, #991, #996, #1008, #1154, #1163,
@@ -174,12 +189,18 @@ The live buffer. How to append, when to batch and who owns it are in
   [repair](https://github.com/mw-ding/mdstack/pull/1865#pullrequestreview-5899330693)),
   and #1868, counted once for its CI campaign-stub response shape: the fake
   issue-view JSON lacked the newly required comments field
-  ([finding and repair](https://github.com/mw-ding/mdstack/pull/1868#pullrequestreview-5901190217))
+  ([finding and repair](https://github.com/mw-ding/mdstack/pull/1868#pullrequestreview-5901190217)).
+  Added 2026-11-14 by the
+  [M56-close sweep](https://github.com/mw-ding/mdstack/issues/1870#issuecomment-6884116200)
+  (#1887): #1877, its fake returned a URL real gh had not been asked for,
+  hiding a broken ordinary `train check`
+  ([finding](https://github.com/mw-ding/mdstack/pull/1877#pullrequestreview-5903990882),
+  [repair inventory](https://github.com/mw-ding/mdstack/pull/1877#pullrequestreview-5906333201))
 - **Smell:** A fixture or check took a shortcut around the production path.
   Examples are a moved doc source, a skipped render stage, a shell that
   masks exit codes, a snapshot over git internals, a lint that knew one
   syntax form and a checker that reads only tracked files.
-- **Count:** 11
+- **Count:** 12
 - **Proposed fix layer:** CI check: route tests through the production
   pipeline and make every assertion fail closed.
 - **Status:** fixed by #888, #992, #1066, #1073, #1080, #1169, #1243, #1253
@@ -248,11 +269,18 @@ The live buffer. How to append, when to batch and who owns it are in
   sighting is #1199)
 - **PR / repo:** cards #1141, #1145, #1195, #1196, #1197, #1199 and #1070;
   repairs #1007, #1009, #1063, #1065, #1071, #1073, #1081, #1150 and #1186.
-  See [terminal-record-consumers](../lessons/2026-11-08-terminal-record-consumers.md)
+  See [terminal-record-consumers](../lessons/2026-11-08-terminal-record-consumers.md).
+  Added 2026-11-14 by the
+  [M56-close sweep](https://github.com/mw-ding/mdstack/issues/1870#issuecomment-6884116200)
+  (#1887): #1876, its clean restart dropped the correctly produced durable
+  handoff
+  ([finding](https://github.com/mw-ding/mdstack/pull/1876#pullrequestreview-5902179715),
+  [repair](https://github.com/mw-ding/mdstack/pull/1876#pullrequestreview-5903113186),
+  [passing source verdict](https://github.com/mw-ding/mdstack/pull/1876#pullrequestreview-5903457187))
 - **Smell:** A record was produced correctly, then lost downstream. The
   consumers were accuracy history, ID parsing, the wake matcher, the reaper,
   scheduler inputs and the reservation ledger.
-- **Count:** 7
+- **Count:** 8
 - **Proposed fix layer:** CI check: key records by stable identity and test
   each consumer with the record as the runtime produces it.
 - **Status:** fixed by #1007, #1009, #1063, #1065, #1071, #1081 and #1150;
@@ -283,12 +311,18 @@ The live buffer. How to append, when to batch and who owns it are in
 
 - **Date:** 2026-11-08 (recorded by #1342 from repaired cards; the last
   sighting is #1273)
-- **PR / repo:** cards #1132 and #1273; repairs #919, #972 and #1265
+- **PR / repo:** cards #1132 and #1273; repairs #919, #972 and #1265.
+  Added 2026-11-14 by the
+  [M56-close sweep](https://github.com/mw-ding/mdstack/issues/1870#issuecomment-6884116200)
+  (#1887): #1866, a regression of the #1273 family, now closed: it used the
+  nearest flavor layer and hid a stricter lower floor
+  ([finding](https://github.com/mw-ding/mdstack/pull/1866#pullrequestreview-5899897159),
+  [repair](https://github.com/mw-ding/mdstack/pull/1866#pullrequestreview-5900677877))
 - **Smell:** Pack handling validated each input alone. A pack without
   `profile.toml` lost `pack.version` and a backend without a render map
   raised TypeError (#1132). A weaker custom flavor split across environment
   and pack layers passed the floor check (#1273).
-- **Count:** 2
+- **Count:** 3
 - **Proposed fix layer:** types/schemas: validate the merged view across every
   layer and every supported absence, through the real discovery path.
 - **Status:** fixed by #919, #972 and #1265; every regression test survives at
