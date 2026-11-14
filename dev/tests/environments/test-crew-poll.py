@@ -783,9 +783,12 @@ class Poll(Base):
         out = self.serve("prs-pending.json")
         self.assertIn("new-head -> reviewer #171 " + HEAD, out)
         (rec,) = self.queue()
-        self.assertEqual(sorted(rec), ["consumer", "event", "id", "reason", "refs", "round", "source", "ts"])
+        self.assertEqual(sorted(rec), ["consumer", "context", "event", "id", "reason", "refs", "round", "source", "ts"])
         self.assertEqual((rec["source"], rec["reason"], rec["event"], rec["consumer"], rec["refs"]),
                          ("poll", "poll", "new-head", "reviewer", ["#171", HEAD]))
+        self.assertEqual(rec["context"], {  # the durable envelope: one-repo singleton team, change and head (#1856)
+            "team": "repo:acme/widgets", "project": os.path.realpath(self.project), "repo": "acme/widgets",
+            "item": None, "change": 171, "head": HEAD, "pass": None, "round": rec["round"]})
         self.serve("prs-pending.json")
         self.assertEqual(len(self.queue()), 1)
         self.serve("prs-none.json", **{"171": "pr-171-merged.json"})

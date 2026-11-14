@@ -1373,8 +1373,9 @@ class TeamFileTest(unittest.TestCase):
     def test_repo_sections_take_only_allowlisted_keys(self):
         bad = TEAM.replace('repo = "acme/widgets"', 'repo = "acme/widgets"\nbuilders = 9\nidentities = {}')
         problems = self.resolve(bad, "#widgets")[2]
-        allowed = "repo, default_branch, precheck, sensitive, spec, checkout, merge_grant, merge_grant_scope, mirror_deferral, " \
-            "mirror, lone_pr_land, train_min, train_window, train_local_checks"
+        allowed = "repo, default_branch, precheck, sensitive, spec, checkout, control_item, labels, milestones, doc_home, " \
+            "flavor, merge_grant, merge_grant_scope, mirror_deferral, mirror, lone_pr_land, train_min, train_window, " \
+            "train_local_checks"
         self.assertEqual(problems, ["ext.toml:repos.widgets.builders: not allowed in a repo section (team-only; allowed: %s)" % allowed,
                                     "ext.toml:repos.widgets.identities: not allowed in a repo section (team-only; allowed: %s)" % allowed])
         problems = self.resolve(TEAM.replace("[team]\n", '[team]\nmerge_grant = "x"\n').replace(
@@ -1383,6 +1384,127 @@ class TeamFileTest(unittest.TestCase):
                                     "ext.toml:repos.widgets.repo: expected <owner>/<name>"])
         self.assertIn("ext.toml[repos.gadgets]:runtime.options.train_window: expected integer, got string",
                       self.resolve(TEAM.replace("train_window = 120", 'train_window = "2m"'), "#gadgets")[2])
+
+    def test_closed_project_keys_resolve_with_provenance(self):  # #1856: team §9.8's five keys, from the repo section
+        text = TEAM.replace('runtime = { name = "tmux",', 'runtime = { name = "tmux", instance = "eng",').replace(
+            'train_window = 120', 'train_window = 120\ncontrol_item = 5\nlabels = { "crew:ready" = "ready" }\n'
+            'milestones = [3, 1]\ndoc_home = "handbook"\nflavor = { name = "thorough" }')
+        merged, prov, problems, _ = self.resolve(text, "#gadgets")
+        self.assertEqual(problems, [])
+        self.assertEqual({k: merged["repo"][k] for k in ("control_item", "labels", "milestones", "doc_home")},
+                         {"control_item": 5, "labels": {"crew:ready": "ready"}, "milestones": [3, 1], "doc_home": "handbook"})
+        self.assertEqual({prov[k] for k in ("repo.control_item", "repo.labels.crew:ready", "repo.milestones",
+                                            "repo.doc_home", "flavor.name")}, {"repo"})
+        self.assertEqual(merged["flavor"]["name"], "thorough")
+        widgets = self.resolve(text, "#widgets")[0]  # omitted keys keep today's resolution: nothing added
+        self.assertEqual((widgets["repo"], widgets["flavor"]), ({"owner": "acme", "name": "widgets", "default_branch": "main"},
+                                                                {"name": "standard"}))
+
+    def test_closed_project_keys_refuse_unknown_and_invalid_values(self):
+        def problems(lines):
+            return self.resolve(TEAM.replace('train_window = 120', 'train_window = 120\n' + lines), "#gadgets")[2]
+        self.assertEqual(problems('flavor = { name = "thorough", engines = {} }'),
+                         ["ext.toml:repos.gadgets.flavor.engines: unknown key"])
+        self.assertIn("ext.toml[repos.gadgets]:repo.labels.crew:hold: label 'ready\\n' is also crew:ready's label; each "
+                      "state tag needs its own", problems('labels = { "crew:ready" = " ready", "crew:hold" = "ready\\n" }'))
+        self.assertEqual(problems('milestones = [1.0]'), ["ext.toml[repos.gadgets]:repo.milestones[0]: expected a milestone "
+                                                          "number >= 1"])  # an integral float is not a milestone number
+        self.assertEqual(problems('labels = { "crew:done" = "done", "crew:hold" = "crew:ready", "crew:spec" = " " }'), [
+            "ext.toml[repos.gadgets]:repo.labels.crew:done: unknown state tag (expected one of: %s)" % ", ".join(cc.STATE_TAGS),
+            "ext.toml[repos.gadgets]:repo.labels.crew:hold: label 'crew:ready' is also crew:ready's label; each state tag "
+            "needs its own",
+            "ext.toml[repos.gadgets]:repo.labels.crew:spec: expected a nonempty tracker label"])
+        self.assertEqual(problems('milestones = [2, 2, "v1", 0]'), [
+            "ext.toml[repos.gadgets]:repo.milestones[1]: duplicate milestone 2",
+            "ext.toml[repos.gadgets]:repo.milestones[2]: expected a milestone number >= 1",
+            "ext.toml[repos.gadgets]:repo.milestones[3]: expected a milestone number >= 1"])
+        self.assertEqual(problems("milestones = []"), ["ext.toml[repos.gadgets]:repo.milestones: expected a nonempty list "
+                                                       "(omit it for the tracker's own milestone order)"])
+        for home in ("../outside", "/abs", "docs/../../x", ""):
+            self.assertEqual(problems('doc_home = "%s"' % home), [
+                "ext.toml[repos.gadgets]:repo.doc_home: expected a nonempty project-relative directory without .. "
+                "(no escape from the checkout)"], home)
+        self.assertEqual(problems('control_item = 0'), ["ext.toml[repos.gadgets]:repo.control_item: must be >= 1",
+                                                        "(resolved):runtime.instance: control_item needs an instance label "
+                                                        "([a-z0-9-], 1-63 characters)"])
+
+    def test_project_flavor_tightens_never_relaxes(self):  # team §9.1: strictest of team and project; relaxing refuses
+        team = TEAM.replace("[team]\n", '[team]\nflavor = { name = "standard" }\n')
+        merged, prov, problems, _ = self.resolve(team.replace('train_window = 120', 'train_window = 120\n'
+                                                              'flavor = { name = "thorough" }'), "#gadgets")
+        self.assertEqual((problems, merged["flavor"]["name"], prov["flavor.name"]), ([], "thorough", "repo"))
+        self.assertEqual(self.resolve(team.replace('train_window = 120', 'train_window = 120\nflavor = { name = "fast" }'),
+                                      "#gadgets")[2], [
+            "ext.toml[repos.gadgets]:flavor.name: fast relaxes validation from behaviour (flavor standard, set by team) "
+            "to off; a project may only tighten",
+            "ext.toml[repos.gadgets]:flavor.name: fast relaxes evidence from typed (flavor standard, set by team) to "
+            "inline; a project may only tighten",
+            "ext.toml[repos.gadgets]:flavor.name: fast relaxes merge from docs (flavor standard, set by team) to auto; "
+            "a project may only tighten",
+            "ext.toml[repos.gadgets]:flavor.name: fast relaxes precheck from on (flavor standard, set by team) to off; "
+            "a project may only tighten",
+            "ext.toml[repos.gadgets]:flavor.name: fast relaxes lighter_lane from docs (flavor standard, set by team) to "
+            "docs+tests; a project may only tighten",
+            "ext.toml[repos.gadgets]:flavor.name: fast relaxes caps[0] from 3 (flavor standard, set by team) to 2; "
+            "a project may only tighten",
+            "ext.toml[repos.gadgets]:flavor.name: fast relaxes caps[1] from 3 (flavor standard, set by team) to 2; "
+            "a project may only tighten"])
+        thorough = TEAM.replace("[team]\n", '[team]\nflavor = { name = "thorough" }\n')  # unset repo: the team's
+        self.assertEqual(self.resolve(thorough, "#gadgets")[0]["flavor"]["name"], "thorough")
+        self.assertIn("ext.toml[repos.gadgets]:flavor.name: standard relaxes review from full (flavor thorough, set by "
+                      "team) to thin; a project may only tighten",
+                      self.resolve(thorough.replace('train_window = 120', 'train_window = 120\nflavor = { name = "standard" }'),
+                                   "#gadgets")[2])
+        self.assertIn("ext.toml[repos.gadgets]:flavor.name: express is an item flavor only (record plus crew:express); "
+                      "never a project, class or base",
+                      self.resolve(team.replace('train_window = 120', 'train_window = 120\nflavor = { name = "express" }'),
+                                   "#gadgets")[2])
+
+    def test_project_flavor_floor_is_every_lower_layer(self):  # a weaker team never hides a stricter org floor
+        with tempfile.TemporaryDirectory() as d:
+            org, team = os.path.join(d, "org.toml"), os.path.join(d, "eng.toml")
+            with open(org, "w") as f:
+                f.write('[flavor]\nname = "thorough"\n')
+            with open(team, "w") as f:
+                f.write(TEAM.replace("[team]\n", '[team]\nflavor = { name = "standard" }\n').replace(
+                    'train_window = 120', 'train_window = 120\nflavor = { name = "%s" }'))
+            text = open(team).read()
+            for project, expected in (("standard", ["%s[repos.gadgets]:flavor.name: standard relaxes review from full "
+                                                    "(flavor thorough, set by org) to thin; a project may only tighten"
+                                                    % team, "%s[repos.gadgets]:flavor.name: standard relaxes "
+                                                    "validation from always (flavor thorough, set by org) to behaviour; "
+                                                    "a project may only tighten" % team,
+                                                    "%s[repos.gadgets]:flavor.name: standard relaxes "
+                                                    "validation_scope from repo (flavor thorough, set by org) to bounded; "
+                                                    "a project may only tighten" % team]),
+                                      ("thorough", [])):  # the control: matching the strictest floor resolves
+                with open(team, "w") as f:
+                    f.write(text % project)
+                problems = cc.resolve_profile(team + "#gadgets", org)[2]
+                self.assertEqual([p for p in problems if "flavor.name" in p], expected, project)
+
+    def test_duplicate_repo_and_team_wide_grant_refuse_for_every_selector(self):
+        twice = TEAM + '\n[repos.copy]\nrepo = "ACME/Widgets"\n'
+        for ref in ("#widgets", "#gadgets", "#copy"):
+            self.assertIn("ext.toml:repos.copy.repo: ACME/Widgets is repos.widgets's repo too; a team holds each repo once",
+                          self.resolve(twice, ref)[2])
+        self.assertIn("ext.toml:repos.copy.repo: acme/widgets\n is repos.widgets's repo too; a team holds each repo once",
+                      self.resolve(TEAM + '\n[repos.copy]\nrepo = "acme/widgets\\n"\n', "#widgets")[2])  # equivalence
+        wide = TEAM.replace("options = { builders = 3 }", 'options = { builders = 3, merge_grant = "all PRs" }')
+        self.assertIn("ext.toml:team.runtime.options.merge_grant: a landing grant is per repo; set it in [repos.<name>] "
+                      "so its scope never spans the team", self.resolve(wide, "#widgets")[2])
+        self.assertEqual(self.resolve(TEAM, "#gadgets")[2], [])  # the control: a per-repo grant still resolves
+
+    def test_doc_home_symlink_escape_refuses(self):
+        with tempfile.TemporaryDirectory() as d:
+            checkout = os.path.join(d, "widgets")
+            os.makedirs(os.path.join(checkout, "handbook"))
+            os.symlink(d, os.path.join(checkout, "out"))
+            text = TEAM.replace('repo = "acme/widgets"', 'repo = "acme/widgets"\ncheckout = "%s"\ndoc_home = "%%s"' % checkout)
+            self.assertEqual(self.resolve(text % "handbook", "#widgets")[2], [])
+            self.assertEqual(self.resolve(text % "out/elsewhere", "#widgets")[2], [
+                "ext.toml[repos.widgets]:repo.doc_home: out/elsewhere resolves outside the checkout %s"
+                % os.path.realpath(checkout)])
 
     def test_repo_section_sets_mirror(self):
         merged, prov, problems, _ = self.resolve(TEAM.replace('train_window = 120', 'train_window = 120\nmirror = "none"'),
@@ -1498,6 +1620,63 @@ def resolve_with_packs(project, manifest):
         finally:
             cc.CONNECTORS_DIR = saved
         return code, [ln.replace(packs + os.sep, "connectors/") for ln in lines]
+
+
+
+class ProjectContextTest(unittest.TestCase):
+    """Canonical project identity and the closed work envelope (team §9.3, D1; #1856)."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(__import__("shutil").rmtree, self.tmp)
+        self.team = self.write("teams/eng.toml", TEAM.replace("[team]\n", '[team]\nname = "eng"\n'))
+        self.solo = self.write("solo/one.toml", TEAM.replace("[team]\n", '[team]\nname = "eng"\n').split("[repos.gadgets]")[0])
+        self.single = self.write("single/config.toml", VALID.replace('name = "widgets"', 'name = "Widgets"'))
+
+    def write(self, rel, text):
+        path = os.path.join(self.tmp, rel)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(text)
+        return path
+
+    def test_aliases_symlinks_and_omitted_selector_give_one_identity(self):
+        os.symlink(self.solo, os.path.join(self.tmp, "alias.toml"))
+        refs = [self.solo, self.solo + "#widgets", os.path.join(self.tmp, "alias.toml"),
+                os.path.join(self.tmp, "solo", "..", "solo", "one.toml#widgets")]
+        self.assertEqual({cc.project_identity(ref) for ref in refs}, {("eng", "acme/widgets")})
+        self.assertEqual({cc.context(ref, "eng", "acme", "widgets")["project"] for ref in refs},
+                         {os.path.realpath(self.solo) + "#widgets"})
+        self.assertEqual(cc.project_identity(self.single), ("repo:acme/widgets", "acme/widgets"))  # derived singleton
+        self.assertEqual(cc.project_identity(self.team + "#gadgets"), ("eng", "acme/gadgets"))
+        for ref, reason in ((self.team, "lists 2 repos; select one"), (self.team + "#nope", "names no repo 'nope'")):
+            with self.assertRaises(ValueError) as e:
+                cc.project_identity(ref)
+            self.assertIn(reason, str(e.exception))
+
+    def test_envelope_refusals_and_controls(self):
+        a = cc.context(self.team + "#widgets", "eng", "acme", "widgets")
+        b = cc.context(self.team + "#gadgets", "eng", "acme", "gadgets")
+        head = "1a" * 20
+        env = cc.envelope(a, item=42, change=7, head=head, pass_="review", round_=1)
+        self.assertEqual(sorted(env), sorted(cc.ENVELOPE))
+        self.assertIsNone(cc.envelope_problem(env, a))  # the control: A's envelope acts in A
+        self.assertIsNone(cc.envelope_problem(cc.envelope(a), a))  # a new build: change and head explicitly absent
+        alias = dict(env, project=self.team.replace("teams/", "teams/../teams/") + "#widgets")
+        self.assertIsNone(cc.envelope_problem(alias, a))  # another locator for the same identity
+        self.assertEqual(cc.envelope_problem(env, b), "work envelope names acme/widgets in team eng, not acme/gadgets in team eng")
+        self.assertEqual(cc.envelope_problem(dict(env, repo="acme/gadgets", team="eng"), b),
+                         "work envelope project %s is acme/widgets in team eng, not acme/gadgets" % a["project"])
+        self.assertIn("work envelope project /nowhere.toml does not resolve (",
+                      cc.envelope_problem(dict(env, project="/nowhere.toml"), a))
+        self.assertIn("does not resolve", cc.envelope_problem(dict(env, project=self.team + "#nope"), a))
+        closed = "work envelope missing or not the closed key set (%s)" % ", ".join(cc.ENVELOPE)
+        for bad in (None, {}, dict(env, extra=1), {k: v for k, v in env.items() if k != "round"}):
+            self.assertEqual(cc.envelope_problem(bad, a), closed)
+        for key, value in (("head", "abc"), ("head", head.upper()), ("round", 0), ("pass", "Review"), ("change", "7 x"),
+                           ("team", "")):
+            self.assertEqual(cc.envelope_problem(dict(env, **{key: value}), a), "work envelope has an invalid " + key)
+        self.assertEqual(cc.envelope_problem(dict(env, change=None), a), "work envelope has an invalid head")
 
 
 class ManifestFoldTest(unittest.TestCase):

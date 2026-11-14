@@ -528,10 +528,10 @@ replace identities, role authority, engines, host placement or shared caps.
 Unknown keys fail before rendering or dispatch.
 
 The [team-files reference](../configuration/team-files.md#schema-and-example)
-remains today's schema. Its existing keys continue to resolve. Proposed
-additions below belong to T1, not to the current validator:
+is the schema. Its existing keys continue to resolve, and T1 (#1856) adds
+the keys below with the closed shapes in §9.8:
 
-| Proposed repo key | Target / validation |
+| Repo key | Target / validation |
 |---|---|
 | `control_item` | `repo.control_item`; tracker-valid control record in this repo |
 | `flavor` | Closed flavor declaration; resolve item/path rigor against the team floor |
@@ -763,7 +763,8 @@ their issues, from
 [Riley's readiness pass](https://github.com/mw-ding/mdstack/issues/1854#issuecomment-6866509757)
 §3–§6, under the
 [M56 plan record](https://github.com/mw-ding/mdstack/issues/1854#issuecomment-6866347368).
-S0 is recorded `built` for this opening slice, effective on merge. No
+S0 is recorded `built` for this opening slice, effective on merge; T1 is
+recorded `built` by #1856's change, effective on its merge. No
 member dispatches before #1861 merges. One issue → one PR in logical
 commits; the four units are not split further to meet a line budget.
 Estimates exclude tests and are planning ranges, not limits.
@@ -771,7 +772,7 @@ Estimates exclude tests and are planning ranges, not limits.
 | ID | Issue | Scope | Size | Depends on / integration prerequisite | Status |
 |---|---|---|---|---|---|
 | S0 | #1861 | Contract choices, issue references, refusal and proof matrix | 80–140 docs | M56 plan record; D1–D5 | built |
-| T1 | #1856 | Closed project context and qualified durable routing (§9.1–§9.3) | 250–450 | S0 | planned |
+| T1 | #1856 | Closed project context and qualified durable routing (§9.1–§9.3) | 250–450 | S0 | built |
 | T2 | #1857 | Shared admission lock, target and ledger (§9.4) | 300–550 | T1; M55 #1836 shared waits | planned |
 | T3 | #1858 | Shared leads and worker lifecycle (§9.3–§9.4) | 400–700 | T1; integrated T2; M55 #1836 and #1830 | planned |
 | T4 | #1859 | Repo-bound land, locks and train/stack refusals (§9.5) | 250–450 | T1; integrated T3; M55 #1835 and #1836 | planned |

@@ -181,6 +181,9 @@ HARNESS_ROOTS = ["project", "home"]  # a file entry's target root (#1032): home 
 ID_CONCERNS = {"item": "tracker", "change": "change"}
 ID_MARKER_KEYS = ["change", "item"]  # the change map's marker_key: selfgate keys on pr= or issue= (#876, #1031)
 ID_DEFAULT = "[1-9][0-9]*"
+# Canonical state tags (docs/protocol.md §4) a project's repo.labels may rename on its tracker (team §9.8).
+STATE_TAGS = ["crew:ready", "crew:in-review", "crew:changes", "crew:approved", "crew:escalated", "crew:needs-md",
+              "crew:hold", "crew:external", "crew:spec", "crew:needs-mirror", "crew:express"]
 ID_UNSAFE = set(" \t\r\n<>=\"'`")  # an id must never break a marker line or a command argument
 TEMPLATES_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "templates")
 
@@ -751,6 +754,39 @@ def validate_install(table, err):
         err("install.git_commit", "not used by source %s (git only)" % source)
 
 
+def validate_project(profile, err):
+    """The closed project keys under [repo] (team §9.1, §9.8): labels, milestones and doc_home."""
+    repo, backends = profile["repo"] if isinstance(profile["repo"], dict) else {}, profile.get("backends")
+    tracker = backends.get("tracker") if isinstance(backends, dict) and isinstance(backends.get("tracker"), dict) else {}
+    labels = repo.get("labels")
+    if isinstance(labels, dict):
+        effective = {tag: labels[tag].strip() if isinstance(labels.get(tag), str) else tag for tag in STATE_TAGS}
+        for tag, label in sorted(labels.items()):
+            if tag not in STATE_TAGS:
+                err("repo.labels." + tag, "unknown state tag (expected one of: %s)" % ", ".join(STATE_TAGS))
+            elif not isinstance(label, str) or not label.strip():
+                err("repo.labels." + tag, "expected a nonempty tracker label")
+            elif other := next((t for t in STATE_TAGS if t != tag and effective[t] == effective[tag]), None):
+                err("repo.labels." + tag, "label %r is also %s's label; each state tag needs its own" % (label, other))
+    milestones = repo.get("milestones")
+    if isinstance(milestones, list):
+        github = tracker.get("name") == "github"  # GitHub milestone numbers; another binding may use a safe string id
+        if not milestones:
+            err("repo.milestones", "expected a nonempty list (omit it for the tracker's own milestone order)")
+        for i, m in enumerate(milestones):
+            if not (type(m) is int and m >= 1 or not github and isinstance(m, str) and m and not ID_UNSAFE & set(m)):
+                err("repo.milestones[%d]" % i, "expected a milestone %s" % ("number >= 1" if github else "id"))
+            elif m in milestones[:i]:
+                err("repo.milestones[%d]" % i, "duplicate milestone %s" % json.dumps(m))
+        caps = tracker.get("capabilities") if isinstance(tracker.get("capabilities"), dict) else {}
+        if caps.get("milestone", "unsupported") == "unsupported":
+            err("repo.milestones", "needs the tracker backend's milestone capability")
+    home = repo.get("doc_home")
+    if isinstance(home, str) and (not home.strip() or os.path.isabs(home) or home.startswith("~")
+                                  or ".." in home.replace("\\", "/").split("/")):
+        err("repo.doc_home", "expected a nonempty project-relative directory without .. (no escape from the checkout)")
+
+
 def validate(profile, err, backends=BACKENDS, pack_dir=None, item=None):
     """item: the tracker backend's declared [ids] item pattern as (pattern, map name), None when undeclared."""
     if "pack" in profile:
@@ -887,7 +923,9 @@ def validate(profile, err, backends=BACKENDS, pack_dir=None, item=None):
                 err("spec.paths[%d]" % i, "expected a nonempty repo-relative glob without ..")
     if "repo" in top:
         check_table(err, "repo", top["repo"], {"owner": (str, REQUIRED), "name": (str, REQUIRED), "default_branch": (str, "main"),
-                                               "control_item": ((int, str), None)})
+                                               "control_item": ((int, str), None), "labels": (dict, None),
+                                               "milestones": (list, None), "doc_home": (str, None)})
+        validate_project(profile, err)
     if "runtime" in top:
         rt = check_table(err, "runtime", top["runtime"], {"name": (str, REQUIRED), "options": (dict, {}), "timezone": (str, None), "instance": (str, None)})
         check_choice(err, "runtime.name", rt.get("name"), list(RUNTIME_OPTIONS))
@@ -1211,7 +1249,10 @@ def fold_manifests(merged, prov, files, err, external=None, land=None, strategy=
 TEAM_TABLES = ["runtime", "backends", "identities", "engines", "paths", "hosts", "placement", "sensitive", "spec",
                "tools", "size_budget", "builder", "flavor", "report"]
 REPO_KEYS = dict({"default_branch": "repo.default_branch", "precheck": "builder.precheck", "sensitive": "sensitive.paths",
-                  "spec": "spec.paths", "checkout": "paths.checkout"},  # checkout: the repo's clone (#1287)
+                  "spec": "spec.paths", "checkout": "paths.checkout",  # checkout: the repo's clone (#1287)
+                  # closed project keys (team §9.8); flavor is a table with only name, checked in team_layers
+                  "control_item": "repo.control_item", "labels": "repo.labels", "milestones": "repo.milestones",
+                  "doc_home": "repo.doc_home", "flavor": "flavor"},
                  **{k: "runtime.options." + k for k in ("merge_grant", "merge_grant_scope", "mirror_deferral", "mirror",
                                                         "lone_pr_land", "train_min", "train_window",
                                                         "train_local_checks")})
@@ -1245,6 +1286,15 @@ def team_layers(data, file, repo, err):
         if not re.fullmatch(r"[a-z0-9-]{1,63}", name):
             err("team", "(file)", "team file name must be <team>.toml with [a-z0-9-] (1-63 characters), "
                 "or set team.name")
+    seen = {}
+    for section_name, section in repos.items():  # one canonical repo per team, whichever section is selected
+        value = section.get("repo") if isinstance(section, dict) else None
+        key = value.strip().lower() if isinstance(value, str) else None  # normalized once, then compared
+        if key in seen:
+            err("team", "repos.%s.repo" % section_name, "%s is repos.%s's repo too; a team holds each repo once"
+                % (value, seen[key]))
+        elif key is not None:
+            seen[key] = section_name
     if repo is None and len(repos) > 1:
         return err("team", "repos", "lists %d repos; select one as %s#<repo>" % (len(repos), file))
     repo = repo or next(iter(repos))
@@ -1256,6 +1306,10 @@ def team_layers(data, file, repo, err):
             continue
         if key in TEAM_TABLES:
             out[key] = copy.deepcopy(value)
+            options = value.get("options") if key == "runtime" and isinstance(value, dict) else None
+            for grant in sorted(set(options or {}) & {"merge_grant", "merge_grant_scope"} if isinstance(options, dict) else []):
+                err("team", "team.runtime.options." + grant, "a landing grant is per repo; set it in [repos.<name>] "
+                    "so its scope never spans the team")
         else:
             err("team", "team." + key, "unknown team key" + (" (per-repo; set it in [repos.<name>])"
                                                              if key in REPO_KEYS or key == "repo" else ""))
@@ -1282,7 +1336,10 @@ def team_layers(data, file, repo, err):
             owner, _, rname = value.partition("/") if isinstance(value, str) else ("", "", "")
             if not owner or not rname or "/" in rname:
                 err("team", "repos.%s.repo" % repo, "expected <owner>/<name>")
-            mine["repo"] = {"owner": owner, "name": rname}
+            mine.setdefault("repo", {}).update(owner=owner, name=rname)
+        elif key == "flavor":
+            mine["flavor"] = check_table(lambda k, reason: err("team", "repos.%s.%s" % (repo, k), reason), "flavor",
+                                         value, {"name": (str, REQUIRED)})
         elif key in REPO_KEYS:
             table, _, leaf = REPO_KEYS[key].rpartition(".")
             node = mine
@@ -1295,6 +1352,107 @@ def team_layers(data, file, repo, err):
     if "repo" not in section:
         err("team", "repos.%s.repo" % repo, "missing required key")
     return out, mine, repo, name
+
+
+def project_relaxation(layers, merged, err):
+    """A repo section's flavor may tighten, never relax, its floor (team §9.1): knob-wise the strictest flavor any lower
+    layer names (core, pack, org, team), so a nearer weaker layer never hides a stricter one. A looser rigor knob or a
+    lower cap under the existing comparison is refused with the key and the floor's flavor and layer."""
+    mine = dict(layers).get("repo", {}).get("flavor", {}).get("name")
+    if mine is None:
+        return
+    named = dict(FLAVOR_PRESETS, **{n: dict(FLAVOR_PRESETS[k["base"]], **{a: b for a, b in k.items() if a != "base"})
+                                    for n, k in merged.get("flavor", {}).get("custom", {}).items()})
+    floors = [(d["flavor"]["name"], n) for n, d in layers if n != "repo" and isinstance(d.get("flavor"), dict)
+              and d["flavor"].get("name") in named] or [(UNSET_FLAVOR, "core")]
+    if mine not in named:
+        return
+    a = named[mine]
+    for key in [k for k in FLAVOR_ORDER if k != "builder"]:
+        below, layer = min(floors, key=lambda f: FLAVOR_ORDER[key].index(named[f[0]][key]))
+        if FLAVOR_ORDER[key].index(a[key]) > FLAVOR_ORDER[key].index(named[below][key]):
+            err("repo", "flavor.name", "%s relaxes %s from %s (flavor %s, set by %s) to %s; a project may only tighten"
+                % (mine, key, named[below][key], below, layer, a[key]))
+    for i, cap in enumerate(a["caps"]):
+        below, layer = max(floors, key=lambda f: named[f[0]]["caps"][i])
+        if cap < named[below]["caps"][i]:
+            err("repo", "flavor.name", "%s relaxes caps[%d] from %d (flavor %s, set by %s) to %d; a project may only "
+                "tighten" % (mine, i, named[below]["caps"][i], below, layer, cap))
+
+
+def doc_home_escape(merged, project, err):
+    """repo.doc_home must stay inside the checkout after symlinks resolve (team §9.8); checked when the path exists."""
+    home, paths = merged["repo"].get("doc_home"), merged.get("paths", {})
+    base = os.path.dirname(os.path.abspath(project))
+    checkout = os.path.join(base, os.path.expanduser(paths["checkout"])) if paths.get("checkout") else base
+    if not isinstance(home, str) or re.search(r"<[^<>]+>", checkout):
+        return
+    root = os.path.realpath(checkout)
+    if os.path.commonpath([root, os.path.realpath(os.path.join(root, home))]) != root:
+        err("repo.doc_home", "%s resolves outside the checkout %s" % (home, root))
+
+
+# --- project context (team §9.3, D1): identity (resolved team, canonical repo); FILE#selector is only a locator. ---
+ENVELOPE = ("team", "project", "repo", "item", "change", "head", "pass", "round")
+ENVELOPE_PASS = re.compile(r"[a-z][a-z0-9-]{0,31}")
+FULL_SHA = re.compile(r"[0-9a-f]{40}|[0-9a-f]{64}")
+
+
+def context(project, team, owner, name):
+    """{team, project, repo}: the canonical repo (compared case-insensitively), the resolved team or a one-repo
+    config's derived singleton team `repo:<owner>/<name>`, and the real file path (plus #<repo>, the sole repo when the
+    selector is omitted), so aliases and symlinks to one file give one context."""
+    file, selector = split_ref(project)
+    real, repo = os.path.realpath(file), ("%s/%s" % (owner, name)).lower()
+    if team is None:
+        return {"team": "repo:" + repo, "project": real, "repo": repo}
+    return {"team": team, "project": "%s#%s" % (real, selector or team_repos(real)[0]), "repo": repo}
+
+
+def project_identity(project, org_profile=None):
+    """(team, repo) a project reference resolves to; ValueError naming the first problem when it does not resolve."""
+    meta = {}
+    merged, _, problems, _ = resolve_profile(project, org_profile, meta=meta)
+    if problems:
+        raise ValueError(problems[0])
+    found = context(project, meta.get("team.name", (None,))[0], merged["repo"]["owner"], merged["repo"]["name"])
+    return found["team"], found["repo"]
+
+
+def envelope(ctx, item=None, change=None, head=None, pass_=None, round_=None):
+    """The closed durable work envelope (team §9.3): an id that does not apply is an explicit null, and a new build
+    has no change or head yet, never a guessed SHA."""
+    return {"team": ctx["team"], "project": ctx["project"], "repo": ctx["repo"], "item": item, "change": change,
+            "head": head, "pass": pass_, "round": round_}
+
+
+def envelope_problem(env, ctx, resolve=project_identity):
+    """Why env may not act in the project whose context is ctx, or None. The shape is closed; team and repo must be
+    ctx's; another project reference must resolve to that same identity (an alias), and one that does not resolve
+    refuses."""
+    if not isinstance(env, dict) or sorted(env) != sorted(ENVELOPE):
+        return "work envelope missing or not the closed key set (%s)" % ", ".join(ENVELOPE)
+
+    def ident(v):
+        return v is None or type(v) is int and v >= 1 or isinstance(v, str) and v != "" and not ID_UNSAFE & set(v)
+    bad = [k for k in ("team", "project", "repo") if not isinstance(env[k], str) or not env[k]]
+    bad += [k for k in ("item", "change") if not ident(env[k])]
+    bad += ["head"] * (env["head"] is not None and not (isinstance(env["head"], str) and FULL_SHA.fullmatch(env["head"])
+                                                         and env["change"] is not None))
+    bad += ["pass"] * (env["pass"] is not None and not (isinstance(env["pass"], str) and ENVELOPE_PASS.fullmatch(env["pass"])))
+    bad += ["round"] * (env["round"] is not None and not (type(env["round"]) is int and env["round"] >= 1))
+    if bad:
+        return "work envelope has an invalid %s" % ", ".join(bad)
+    if (env["team"], env["repo"]) != (ctx["team"], ctx["repo"]):
+        return "work envelope names %s in team %s, not %s in team %s" % (env["repo"], env["team"], ctx["repo"], ctx["team"])
+    if env["project"] != ctx["project"]:
+        try:
+            found = resolve(env["project"])
+        except (ValueError, OSError) as e:
+            return "work envelope project %s does not resolve (%s)" % (env["project"], e)
+        if found != (ctx["team"], ctx["repo"]):
+            return "work envelope project %s is %s in team %s, not %s" % (env["project"], found[1], found[0], ctx["repo"])
+    return None
 
 
 def team_repos(file):
@@ -1526,10 +1684,13 @@ def resolve_profile(project, org_profile=None, pack_manifest=None, meta=None):
         ids = backend_ids(merged, pack_base, lambda name, key, reason: problems.append(
             "backend-map:%s:%s: %s" % (name, key, reason)), names)
         validate(merged, verr, names, item=ids["item"] if ids["item"][1] else None)
+        if len(problems) == count and team:
+            project_relaxation(layers, merged, err)
         if len(problems) == count:
             cross_check(merged, verr)
         if len(problems) == count:
             resolve_root(merged.get("paths"), prov, merged.get("repo"))
+            doc_home_escape(merged, project, verr)
         if len(problems) == count:  # one resolved copy for every consumer; a profile layer cannot set [ids]
             merged["ids"] = {key: pattern for key, (pattern, _) in ids.items()}
             prov.update({"ids." + key: "backend-map:" + name if name else "core" for key, (_, name) in ids.items()})

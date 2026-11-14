@@ -38,7 +38,7 @@ class Send(SendBase):
         r2 = self.send("ben-7", "ci-red", "#171")
         self.assertEqual(r2.returncode, 0, r2.stdout + r2.stderr)
         first, second = self.inbox()
-        self.assertEqual(sorted(first), ["from", "id", "kind", "refs", "ts"])
+        self.assertEqual(sorted(first), ["context", "from", "id", "kind", "refs", "ts"])
         self.assertEqual(first["kind"], "fix")
         self.assertEqual(first["refs"], ["#171", sha, "https://github.com/acme/widgets/pull/171", "docs/x.md"])
         self.assertEqual(first["from"], "coordinator")
@@ -49,6 +49,28 @@ class Send(SendBase):
         self.assertEqual(keys[:2], [["send-keys", "-t", "=crew-acme-widgets:10", "-l", "inbox: " + first["id"]],
                                     ["send-keys", "-t", "=crew-acme-widgets:10", "Enter"]])
         self.assertEqual(len(keys), 4)
+
+    def test_message_carries_the_envelope_and_refuses_a_foreign_one(self):  # #1856, team §9.3
+        sha, mine = "a" * 40, os.path.realpath(self.project)
+        own = dict(team="repo:acme/widgets", project=mine, repo="acme/widgets", item=None, change=171, head=sha, round=2)
+        own["pass"] = "review"
+        r = self.send("ben-7", "ci-red", "#171")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.inbox()[0]["context"], dict(own, change=None, head=None, round=None, **{"pass": None}))
+        self.assertEqual(self.send("ben-7", "fix", "#171", sha).returncode, 0)  # refs `#n <sha>` name the change and head
+        self.assertEqual(self.inbox()[1]["context"], dict(own, round=None, **{"pass": None}))
+        before = (self.inbox(), [c for c in self.calls() if c[0] == "send-keys"])
+        for env, reason in ((dict(own, repo="acme/gadgets", team="repo:acme/gadgets"),
+                             "work envelope names acme/gadgets in team repo:acme/gadgets, not acme/widgets"),
+                            (dict(own, head="b" * 40, change=None), "work envelope has an invalid head"),
+                            ({"repo": "acme/widgets"}, "work envelope missing or not the closed key set")):
+            r = self.send("ben-7", "fix", "#171", sha, "--context", json.dumps(env))
+            self.assertEqual(r.returncode, 2, r.stdout + r.stderr)
+            self.assertIn("crew: refusing send: " + reason, r.stdout)
+            self.assertEqual((self.inbox(), [c for c in self.calls() if c[0] == "send-keys"]), before)
+        r = self.send("ben-7", "fix", "#171", sha, "--context", json.dumps(own))  # the control: this project's own
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(self.inbox()[-1]["context"], own)
 
     def test_self_resolved_unblocked_to_coordinator_not_nudged(self):  # #578
         ref = os.path.join(self.state, "leads", "builder-delivery-7.json")

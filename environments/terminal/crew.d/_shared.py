@@ -131,6 +131,28 @@ def profile(args, *keys, runtimes=("tmux",)):
     return values, session, state
 
 
+def work_context(project, values):
+    """The routing context {team, project, repo} of project's resolved values, for a work envelope (team §9.3);
+    computed on demand so the resolved values stay exactly the profile."""
+    return crew_render.crew_config.context(project, values.get("team.name"), values["repo.owner"], values["repo.name"])
+
+
+def tracker_labels(values):
+    """Canonical state tag -> this project's tracker label (repo.labels), the tag itself when unmapped."""
+    return {tag: values.get("repo.labels." + tag, tag) for tag in crew_render.crew_config.STATE_TAGS}
+
+
+def canonical_labels(values, record):
+    """record's tracker labels renamed back to canonical state tags, in place. A label spelled like a tag this project
+    renames is not that tag and is dropped."""
+    labels = tracker_labels(values)
+    back = dict({tag: None for tag, label in labels.items() if label != tag}, **{v: k for k, v in labels.items()})
+    if isinstance(record, dict) and isinstance(record.get("labels"), list):
+        record["labels"] = [dict(label, name=back.get(label["name"], label["name"])) for label in record["labels"]
+                            if back.get(label["name"], label["name"]) is not None]
+    return record
+
+
 def checkout(values, project):
     """The git checkout role worktrees and trains come from: paths.checkout (relative to the profile's directory),
     else the profile's directory, so a non-git runtime home can name a separate checkout (#1178)."""

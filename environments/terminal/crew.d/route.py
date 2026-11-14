@@ -37,6 +37,11 @@ Its waiting gate-status blocks are consumed like a synthesizer's; its other
 `train-report` (all landed, `dropped=none stop=none`) is consumed. After its land's close-out, route queues the
 away-only Slack `land` message itself and hands `crew:ready` dependents to the builder lead; only dependents that are
 not ready still wake the coordinator.
+Before any action a record must qualify (#1856): its `context` envelope is closed and names this team and repo
+(another project reference resolving to them) and agrees with its refs; without one, a team file's record must come
+from a run or lead in this repo's state, and a `done:` completion line must match the run it came from. The item or
+change it reads, before any lead handoff, must carry this repo's URL. A refused record
+stays queued with its `route_error`. `repo.labels` maps state tags on every label read and write.
 A poll `pr-conflicting` at the live head becomes one builder-lead `merge-up` handoff before any CI (#1398); a moved
 head or resolved conflict is consumed, and held, escalated, solo or lead-less conflicts stay queued.
 
@@ -52,8 +57,8 @@ import os
 import re
 import subprocess
 from urllib.parse import quote
-from crew_shared import (commands, heartbeat, profile, queue_lock, refuse_paused, require_ownership, ROLES, runs,
-                         synthesizer_work, open_trains)
+from crew_shared import (canonical_labels, commands, crew_render, heartbeat, profile, queue_lock, refuse_paused,
+                         require_ownership, ROLES, runs, synthesizer_work, open_trains, tracker_labels, work_context)
 
 
 # A gate-status block whose only unmet items are pending CI, an in-flight review, validation or express self-gate, or a
@@ -72,6 +77,9 @@ LAND_EVENTS = ("review-approved", "selfgate-passed", "ci-passed", "merge-ok-reco
 # A release cut's CHANGELOG.md patch adds a version section heading (scripts/changelog-cut.py).
 RELEASE_HEADING = re.compile(r"^\+## \[\d+\.\d+\.\d+\]", re.M)
 REVIEW_DONE = re.compile(r"done: #(\d+) ([0-9a-f]{40}) (review|validate|recheck) (pass|changes|escalate)(?:\s.*)?")
+FULL_SHA = re.compile(r"[0-9a-f]{40}")
+BUILT = re.compile(r"done: #(\d+) #(\d+) ([0-9a-f]{40})")
+ITEM_EVENTS = ("issue-assigned", "builder-queued")  # records whose first ref is an item, not a change
 GC_MAX = 5  # removals per backstop wake: mdstack gc's merged-only sweep stays bounded (#316)
 
 
@@ -80,6 +88,105 @@ def gh(*args):
     if r.returncode:
         raise RuntimeError("crew: gh %s: %s" % (" ".join(args[:2]), r.stderr.strip()))
     return json.loads(r.stdout) if "--json" in args else None
+
+
+def repo_of(url):
+    """Canonical owner/name of an https item or change URL; None when unreadable."""
+    m = re.fullmatch(r"https://[^/\s]+/([^/\s]+)/([^/\s]+)/(?:pull|issues)/\d+", url) if isinstance(url, str) else None
+    return ("%s/%s" % m.groups()).lower() if m else None
+
+
+def same_repo(values, record, what):
+    """An independently read item or change must be in this project's repo (team §9.3): a transferred or redirected
+    record, or one without a readable URL, refuses before any claim, spawn or post."""
+    found, mine = repo_of(record.get("url")), ("%s/%s" % (values["repo.owner"], values["repo.name"])).lower()
+    if found != mine:
+        raise RuntimeError("crew: route: refusing: %s reads as repo %s, not %s" % (
+            what, found or "unknown (no readable url)", mine))
+    return canonical_labels(values, record)
+
+
+def line_identity(line):
+    """The ids a completion status line claims: a builder's `done: #<issue> #<pr> <head>` or a reviewer's
+    `done: #<pr> <head> <pass> <verdict>`; {} for any other line."""
+    m = BUILT.fullmatch(line)
+    if m:
+        return {"item": int(m[1]), "change": int(m[2]), "head": m[3]}
+    m = REVIEW_DONE.fullmatch(line)
+    return {"change": int(m[1]), "head": m[2], "pass": m[3]} if m else {}
+
+
+def named_ids(w, rec):
+    """(ids, source of each, conflict): every work id the record, its completion status line and its run name. The
+    record's first ref `#n` is an issue event's item or any other record's change, a full-SHA second ref its head,
+    `round` its round; the line names item/change/head (builder) or change/head/pass (reviewer); for a status record
+    from it, the run names its item, change and pass, plus head and round for a reviewer (a builder pushes new heads).
+    Sources that disagree conflict."""
+    ids, source, refs = {}, {}, w.get("refs") or []
+    named = []
+    if refs and re.fullmatch(r"#\d+", refs[0]):
+        change = w.get("event") not in ITEM_EVENTS
+        named.append(("change" if change else "item", int(refs[0][1:]), "the record"))
+        if change and len(refs) > 1 and FULL_SHA.fullmatch(refs[1]):
+            named.append(("head", refs[1], "the record"))
+    named.append(("round", w.get("round"), "the record"))
+    if w.get("reason") == "status":
+        named += [(k, v, "the completion line") for k, v in line_identity(w.get("line", "")).items()]
+    if rec is not None and w.get("reason") == "status":  # a result from the run; a handoff to it names only itself
+        args = rec.get("args", {})
+        run = [("item", args.get("issue")), ("change", rec.get("pr") or args.get("pr")), ("pass", rec.get("pass"))]
+        run += [("head", rec.get("head")), ("round", args.get("round"))] if rec["role"] == "reviewer" else []
+        named += [(k, v, "run " + w["window"]) for k, v in run]
+    for key, value, where in named:
+        if value is None:
+            continue
+        if key in ids and str(ids[key]) != str(value):
+            return ids, source, "%s names %s %s, not %s's %s" % (where, key, value, source[key], ids[key])
+        ids.setdefault(key, value)
+        source.setdefault(key, where)
+    return ids, source, None
+
+
+def qualify(args, values, state, w):
+    """Why wake w may not act in this project, or None (team §9.3, #1856). One comparison: a supplied envelope must be
+    closed, name this team and repo (another project reference must resolve to them), and carry and equal every work
+    id the record, its completion line or its run names (named_ids); a missing or differing id refuses. An id nothing
+    names may be absent (a new build has no change or head). A record without an envelope is bound to a run or lead
+    record in this repo's state, or the profile is a one-repo config, whose selected state is its only project; in a
+    team file every other envelope-less record refuses, and a completion line needs its run or lead even with an
+    envelope. A one-repo replay with neither keeps today's recovery after the repo-checked change read."""
+    config = crew_render.crew_config
+    rec = dict(runs(state)).get(w.get("window"))
+    bound = rec or dict(commands()["lead"].records(state)).get(w.get("window"))
+    ids, source, conflict = named_ids(w, rec)
+    if conflict:
+        return conflict
+    if "context" in w:
+        env = w["context"]
+        problem = config.envelope_problem(env, work_context(args.project, values), lambda ref: config.project_identity(ref, args.org_profile))
+        if problem:
+            return problem
+        for key, value in ids.items():
+            if env[key] is None:
+                return "work envelope lacks the %s %s names" % (key, source[key])
+            if str(env[key]) != str(value):
+                return "work envelope %s %s is not %s's %s" % (key, env[key], source[key], value)
+    elif bound is None and "team.name" in values and w.get("reason") != "backstop":
+        return "no work envelope, and no run or lead record in this repo's state (team %s)" % values["team.name"]
+    if bound is not None and "context" in bound:
+        problem = config.envelope_problem(bound["context"], work_context(args.project, values))
+        if problem:
+            return problem
+    if w.get("reason") == "status" and line_identity(w.get("line", "")) and bound is None and "team.name" in values:
+        return "completion line from %s has no run or lead record in this repo's state (team %s)" % (
+            w.get("window"), values["team.name"])
+    return None
+
+
+def read_change(values, n):
+    """The independent read of change #n, checked against this repo before a lead receives work for it (#1856)."""
+    return same_repo(values, gh("pr", "view", str(n), "-R", "%s/%s" % (values["repo.owner"], values["repo.name"]),
+                                "--json", "url"), "change #%d" % n)
 
 
 def invoke(args, cmd, **kw):
@@ -168,9 +275,11 @@ def reconcile_approval(values, repo, pr, own):
     labels = {label["name"] for label in pr["labels"]}
     if "crew:approved" in labels and not labels & stale:
         return
-    gh("pr", "edit", str(pr["number"]), "-R", repo, "--add-label", "crew:approved",
-       *[a for label in sorted(labels & stale) for a in ("--remove-label", label)])
-    back = {label["name"] for label in gh("pr", "view", str(pr["number"]), "-R", repo, "--json", "labels")["labels"]}
+    tag = tracker_labels(values)
+    gh("pr", "edit", str(pr["number"]), "-R", repo, "--add-label", tag["crew:approved"],
+       *[a for label in sorted(labels & stale) for a in ("--remove-label", tag[label])])
+    back = {label["name"] for label in canonical_labels(values, gh("pr", "view", str(pr["number"]), "-R", repo,
+                                                                     "--json", "labels"))["labels"]}
     if "crew:approved" not in back or back & stale:
         raise RuntimeError("crew: #%d tag readback after approval: %s" % (pr["number"], ",".join(sorted(back))))
 
@@ -300,15 +409,15 @@ def branch_retained(values, pr, default):
 
 def close_out(args, values, state, pr):
     repo = "%s/%s" % (values["repo.owner"], values["repo.name"])
-    labels = {label["name"] for label in pr["labels"]}
+    labels, tag = {label["name"] for label in pr["labels"]}, tracker_labels(values)
     for label in ("crew:approved", "crew:hold", "crew:in-review", "crew:changes"):
         if label in labels:
-            gh("pr", "edit", str(pr["number"]), "-R", repo, "--remove-label", label)
+            gh("pr", "edit", str(pr["number"]), "-R", repo, "--remove-label", tag[label])
     issues = {i["number"] for i in pr["closingIssuesReferences"]}
     for n in sorted(issues):
-        issue = gh("issue", "view", str(n), "-R", repo, "--json", "labels,state,stateReason")
+        issue = canonical_labels(values, gh("issue", "view", str(n), "-R", repo, "--json", "labels,state,stateReason"))
         if any(label["name"] == "crew:ready" for label in issue["labels"]):
-            gh("issue", "edit", str(n), "-R", repo, "--remove-label", "crew:ready")
+            gh("issue", "edit", str(n), "-R", repo, "--remove-label", tag["crew:ready"])
         # GitHub's auto-close can miss (train lands, #846); a reopened issue stays open on purpose (#917)
         if issue["state"] == "OPEN" and issue.get("stateReason") != "REOPENED":
             gh("issue", "close", str(n), "-R", repo, "--comment",
@@ -350,8 +459,9 @@ def dependents(repo, pr):
                              for n in re.findall(r"#(\d+)", block)})
 
 
-def ready(repo, n):
-    return any(label["name"] == "crew:ready" for label in gh("issue", "view", str(n), "-R", repo, "--json", "labels")["labels"])
+def ready(values, repo, n):
+    return any(label["name"] == "crew:ready" for label in
+               canonical_labels(values, gh("issue", "view", str(n), "-R", repo, "--json", "labels"))["labels"])
 
 
 def notify_land(args, state, repo, pr):
@@ -397,8 +507,8 @@ def conflict(args, values, state, w):
     merge-up handoff now. A closed PR, moved head or resolved conflict is consumed (a new conflict polls again); held,
     escalated, draft, still-UNKNOWN, solo or lead-less work stays queued for the coordinator."""
     lead, n, head = commands()["lead"], int(w["refs"][0].lstrip("#")), w["refs"][1]
-    pr = gh("pr", "view", str(n), "-R", "%s/%s" % (values["repo.owner"], values["repo.name"]), "--json",
-            "state,headRefOid,isDraft,labels,mergeable")
+    pr = same_repo(values, gh("pr", "view", str(n), "-R", "%s/%s" % (values["repo.owner"], values["repo.name"]),
+                              "--json", "state,headRefOid,isDraft,labels,mergeable,url"), "change #%d" % n)
     if pr["state"] != "OPEN" or pr["headRefOid"] != head or pr["mergeable"] == "MERGEABLE":
         return True
     if pr["mergeable"] != "CONFLICTING" or pr["isDraft"] or \
@@ -473,6 +583,9 @@ def backstop_gc(args, state):
 
 def route_record(args, values, state, w):
     line = w.get("line", "")
+    problem = qualify(args, values, state, w)
+    if problem:  # refused before any claim, spawn, post or reap; the record stays queued for the coordinator
+        raise RuntimeError("crew: route: refusing %s: %s" % (w.get("event") or w.get("reason") or "record", problem))
     if reclaimed(state, w):
         print("crew: route: %s was reclaimed idle; its stale wake is consumed" % w["window"])
         return True
@@ -529,6 +642,9 @@ def route_record(args, values, state, w):
     pool = "builder" if event in ("issue-assigned", "builder-message", "builder-queued") else rec.get("role") if rec else None
     if event in ("issue-assigned", "builder-message"):
         n = int(w["refs"][0].lstrip("#"))
+        kind = "issue" if event == "issue-assigned" else "pr"
+        same_repo(values, gh(kind, "view", str(n), "-R", "%s/%s" % (values["repo.owner"], values["repo.name"]),
+                             "--json", "url"), "%s #%d" % (kind, n))
         if lead.solo(values, **{"issue" if event == "issue-assigned" else "pr": n}):
             if event == "issue-assigned":
                 return True
@@ -537,16 +653,19 @@ def route_record(args, values, state, w):
     if lead.enabled(state, pool) and (event in ("issue-assigned", "builder-message", "builder-queued") or w.get("reason") in ("stale", "dialog", "quota")):
         return lead.event(args, pool, w) == 0
     if event == "pr-closed" and lead.enabled(state, "reviewer"):
+        read_change(values, int(w["refs"][0].lstrip("#")))
         lead.event(args, "reviewer", w)
     reviewer_event = event in ("new-head", "fix-at-head") or \
         REVIEW_DONE.fullmatch(line)
     if not getattr(args, "reviewer_lead", False) and lead.enabled(state, "reviewer") and reviewer_event:
+        read_change(values, int(REVIEW_DONE.fullmatch(line)[1]) if REVIEW_DONE.fullmatch(line) else
+                    int(w["refs"][0].lstrip("#")))
         if rec and rec["role"] == "reviewer":
             w = dict(w, round=rec["args"]["round"])
         return lead.event(args, "reviewer", w) == 0
     if event == "builder-queued":
         return True
-    built = re.fullmatch(r"done: #(\d+) #(\d+) ([0-9a-f]{40})", line)
+    built = BUILT.fullmatch(line)
     done = REVIEW_DONE.fullmatch(line)
     if done and done[4] in ("pass", "escalate") and rec is None and not getattr(args, "reviewer_lead", False):
         return True
@@ -577,8 +696,8 @@ def route_record(args, values, state, w):
         n, head = int(w["refs"][0].lstrip("#")), w["refs"][1]
     repo = "%s/%s" % (values["repo.owner"], values["repo.name"])
     fields = "number,state,headRefOid,isDraft,labels,reviews,statusCheckRollup,headRefName,baseRefName," \
-             "headRepositoryOwner,headRepository,isCrossRepository,closingIssuesReferences,title,milestone"
-    pr = gh("pr", "view", str(n), "-R", repo, "--json", fields)
+             "headRepositoryOwner,headRepository,isCrossRepository,closingIssuesReferences,title,milestone,url"
+    pr = same_repo(values, gh("pr", "view", str(n), "-R", repo, "--json", fields), "change #%d" % n)
     if event in ("pr-merged", "pr-closed"):
         if pr["state"] != ("MERGED" if event == "pr-merged" else "CLOSED"):
             return False
@@ -591,7 +710,7 @@ def route_record(args, values, state, w):
                 notify_land(args, state, repo, pr)
             waiting, complete = dependents(repo, pr), milestone_complete(repo, pr)
             if waiting and landed and lead.enabled(state, "builder"):
-                for d in [d for d in waiting if ready(repo, d)]:
+                for d in [d for d in waiting if ready(values, repo, d)]:
                     if lead.handoff(args, "builder", "build", ["#%d" % d]) not in (0, 4):
                         raise RuntimeError("crew: builder lead handoff failed for dependent #%d" % d)
                     waiting.remove(d)
@@ -661,7 +780,8 @@ def route_record(args, values, state, w):
                    tier=None, head=head, messages=[w], wake=False)
         if w["window"] not in dict(runs(state)):
             return True  # capped spawn carries the message until dequeue
-        invoke(args, "send", window=w["window"], kind=w["kind"], refs=w["refs"], wait_ack=None)
+        invoke(args, "send", window=w["window"], kind=w["kind"], refs=w["refs"], wait_ack=None,
+               context=w.get("context"))  # the original envelope travels on, re-checked by send
         return True
     if built:
         if rec and rec["role"] == "builder":
