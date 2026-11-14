@@ -75,10 +75,10 @@ def resolve_tier(issue, bodies):
     tier = None
     for body in bodies:
         for marker in re.findall(r"<!-- crew:v1 (.*?) -->", body):
-            fields = dict(re.findall(r"(\S+)=(\S+)", marker))
+            fields = dict(re.findall(r"(\S+)=(\S*)", marker))
             if fields.get("role") == "coordinator" and fields.get("pass") == "flavor" and \
                     fields.get("issue") == str(issue) and "tier" in fields:
-                tier = fields["tier"]
+                tier = fields["tier"]  # present but empty (`tier=`) stays malformed
     if tier is not None and tier not in TIERS:
         raise ValueError("malformed item tier %r on #%s (expected %s)" % (tier, issue, "|".join(TIERS)))
     return tier

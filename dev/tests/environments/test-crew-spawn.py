@@ -850,7 +850,10 @@ class ItemTier(SpawnBase):
     def test_malformed_or_unreadable_tier_refuses_before_claim_queue_or_window(self):
         self.pr(12, "claude-code sonnet medium")
         malformed = json.dumps([tier_comment(7, "deep"), tier_comment(7, "high")])
+        empty = [tier_comment(7, "deep")]
+        empty[0]["body"] = empty[0]["body"].replace("tier=deep", "tier=")  # present but empty (review r1)
         for comments, why in ((malformed, "malformed item tier 'high' on #7 (expected trivial|default|deep)"),
+                              (json.dumps(empty), "malformed item tier '' on #7 (expected trivial|default|deep)"),
                               ("not json", "crew: gh issue view: ")):  # the fake gh exits 1, as a failed read does
             for role, ref, name in (("builder", "--issue", "ben-7"), ("reviewer", "--pr", "vera-12-r1-review")):
                 if role == "builder" and comments == "not json":

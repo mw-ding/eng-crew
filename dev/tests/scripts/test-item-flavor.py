@@ -128,7 +128,7 @@ class ItemTier(unittest.TestCase):
             self.assertIsNone(item.resolve_tier(196, [body]))
 
     def test_malformed_newest_tier_raises(self):
-        for tier in ("high", "Deep", "deep,default"):
+        for tier in ("high", "Deep", "deep,default", ""):
             with self.assertRaises(ValueError):
                 item.resolve_tier(196, [self.tiered("deep"), self.tiered(tier)])
         self.assertEqual(item.resolve_tier(196, [self.tiered("high"), self.tiered("default")]), "default")
