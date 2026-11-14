@@ -594,8 +594,10 @@ the `context` as well. Every `train` action reads first, then writes: before
 any write it reads every record and delegation it names and the predecessor
 train each one builds on, and the full lookup of every change it can write
 for (`build` and `delegate` members; for `land`, `wait`, `bisect`, `route`
-and `close` every member, each dropped member route merges up and a pending
-merge record's change), comparing each URL and member qualifier
+and `close` every member and a pending merge record's change, and for each
+dropped member route merges up every read route decides on: its full view,
+hold dependencies and the solo labels of it and its linked issues), comparing
+each URL and member qualifier
 (`<owner>/<name>#<n>`, also `<owner>/<name>#<n>:<sha>` in
 `land stack --stack`) with the selected repo; `land`, `route` and `build` act
 on those reads. `train land` also reads the train CI, the default branch and
