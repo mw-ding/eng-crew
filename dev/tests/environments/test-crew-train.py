@@ -2077,10 +2077,13 @@ class RepoBound(TrainBase):
     foreign source refuses before any write, merge or cleanup; the same source from acme/widgets is the control."""
 
     def tree(self):
-        """Every file under the state dir and its bytes: a refusal leaves it unchanged."""
+        """Every file under the state dir and its bytes: a refusal leaves it unchanged, except the gateway error
+        telemetry schedule/errors.jsonl, outside the zero-mutation boundary (#1859 c6881154373)."""
         found = {}
         for top, _, names in os.walk(self.state):
             for n in names:
+                if os.path.relpath(os.path.join(top, n), self.state) == os.path.join("schedule", "errors.jsonl"):
+                    continue
                 with open(os.path.join(top, n), "rb") as f:
                     found[os.path.relpath(os.path.join(top, n), self.state)] = f.read()
         return found
@@ -2166,8 +2169,8 @@ class RepoBound(TrainBase):
             if how == "unreadable":
                 with open(os.path.join(self.gh_dir, "pr-%d.json" % d)) as f:
                     view = dict(json.load(f), mergeable="UNKNOWN")
-                with open(os.path.join(self.gh_dir, "views-%d.json" % d), "w") as f:
-                    json.dump([view, "required dropped read unavailable"], f)
+                with open(os.path.join(self.gh_dir, "views-%d.json" % d), "w") as f:  # UNKNOWN, a gateway error, then
+                    json.dump([view, "HTTP 502 Bad Gateway", "required dropped read unavailable"], f)  # unreadable
             else:
                 self.url("pull", "pr", d, how)
 
