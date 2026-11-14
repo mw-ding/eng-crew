@@ -204,6 +204,12 @@ def waits(state, name=None):
     return book if name is None else book.get(name, {})
 
 
+def parked(state, name):
+    """Ids of name's acknowledged waits the wait book holds unchanged (not woken), read without writing it: team
+    admission leaves them out of demand, so one repo's parked waits never take another repo's budget (#1836)."""
+    return {i for i, w in waits(state, name).items() if isinstance(w, dict) and not w.get("woke")}
+
+
 def actionable(state, name):
     """Pending messages less acknowledged owner, hold or CI waits whose ref's fresh state is unchanged since their
     `waiting:` line. A changed state wakes the id until a later `waiting:` line; leads/waits.json keeps the record."""

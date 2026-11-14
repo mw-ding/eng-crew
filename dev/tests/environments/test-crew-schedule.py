@@ -733,5 +733,323 @@ class DecideCommand(Fixture):
                                                                 "mdstack: config %s\n" % self.project))
 
 
+
+TEAM_GH = """#!/usr/bin/env python3
+import json, os, sys
+args = sys.argv[1:]
+with open(os.environ["FAKE_GH_LOG"], "a") as f:
+    f.write(json.dumps(args) + "\\n")
+with open(os.environ["FAKE_GH_CONF"]) as f:
+    conf = json.load(f)
+repo = args[args.index("-R") + 1] if "-R" in args else "/".join(args[1].split("?")[0].split("/")[1:3])
+r = conf.get(repo, {})
+if args[0] == "api":
+    print(json.dumps(r.get("milestones", [{"number": 1, "title": "M1"}, {"number": 2, "title": "M2"}])))
+elif args[:2] == ["issue", "list"] and "--label" in args:
+    if r.get("holds_fail"):
+        sys.exit(1)
+    print(json.dumps([{"number": n} for n in r.get("labels", {}).get(args[args.index("--label") + 1], [])]))
+elif args[:2] == ["pr", "list"]:
+    print("[]")
+elif args[:2] == ["issue", "list"]:
+    print(json.dumps(r.get("issues", [])))
+else:
+    sys.exit(1)
+"""
+READS = (["api"], ["issue", "list"], ["pr", "list"])  # every backend call admission may make; anything else mutates
+SHA = "1" * 40
+
+
+class Team(Base):
+    """Two disposable repos in one team file, acme/widgets (A) and acme/gadgets (B), sharing issue 42, change 7, head,
+    pass and round (team §9.3, §9.7); a fake gh logs every backend call, so a decision proves it mutated nothing."""
+    def setUp(self):
+        super().setUp()
+        with open(os.path.join(self.tmp, "bin", "gh"), "w") as f:
+            f.write(TEAM_GH)
+        self.gh_log, self.gh_conf = os.path.join(self.tmp, "gh.log"), os.path.join(self.tmp, "gh.json")
+        self.env.update(FAKE_GH_LOG=self.gh_log, FAKE_GH_CONF=self.gh_conf)
+        self.gh({})
+        with open(self.state_file, "w") as f:
+            json.dump({"crew-team-eng": {"0": "ash-eng"}}, f)
+        self.team = os.path.join(self.tmp, "teams", "eng.toml")
+        self.write_team()
+        self.root = os.path.join(self.tmp, "team", "eng")
+        self.a, self.b = (os.path.join(self.root, s) for s in ("acme__widgets", "acme__gadgets"))
+        for state in (self.a, self.b):  # the same issue 42 build in each repo's builder lead inbox
+            self.inbox(state, "ben-lead", [dict(id="b42", kind="build", refs=["#42"], ts="2026-11-13T10:00:00Z")])
+        now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        self.write(os.path.join(self.root, "schedule", "target.json"), json.dumps(dict(target=4, changed=now, starts=[])))
+
+    def write_team(self, builders=2, extra="", runtime=""):
+        os.makedirs(os.path.dirname(self.team), exist_ok=True)
+        checkouts = [os.path.join(self.tmp, c) for c in ("wa", "wb")]
+        for c in checkouts:
+            os.makedirs(c, exist_ok=True)
+        with open(self.team, "w") as f:
+            f.write('[team]\nname = "eng"\nruntime = { name = "tmux"%s, options = { builders = %d, reviewers = 2 } }\n'
+                    'engines = { coordinator = "claude-code" }\n'
+                    'identities = { owners = ["acme-owner"], coordinator = { gh_user = "acme-bot", name = "Ash" }, '
+                    'builder = { gh_user = "acme-bot", name = "Ben" }, reviewer = { gh_user = "acme-reviewer", name = '
+                    '"Vera" }, synthesizer = { gh_user = "acme-bot", name = "Sam" } }\n'
+                    'paths = { state_dir = "%s", worktree_root = "%s" }\n'
+                    '[repos.widgets]\nrepo = "acme/widgets"\ncheckout = "%s"\n'
+                    '[repos.gadgets]\nrepo = "acme/gadgets"\ncheckout = "%s"\n%s'
+                    % (runtime, builders, os.path.join(self.tmp, "team"), os.path.join(self.tmp, "team-wt"), *checkouts, extra))
+
+    def gh(self, conf):
+        with open(self.gh_conf, "w") as f:
+            json.dump(conf, f)
+
+    def inbox(self, state, name, messages):
+        os.makedirs(os.path.join(state, "inbox"), exist_ok=True)
+        with open(os.path.join(state, "inbox", name + ".jsonl"), "w") as f:
+            f.writelines(json.dumps(m) + "\n" for m in messages)
+
+    def write(self, path, text):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as f:
+            f.write(text)
+
+    def call(self, repo, *argv, code=0):
+        r = self.crew("schedule", *argv, "--project", "%s#%s" % (self.team, repo))
+        self.assertEqual(r.returncode, code, r.stdout + r.stderr)
+        return json.loads(r.stdout) if r.stdout.startswith("{") else r.stdout
+
+    def ledger(self):
+        with open(os.path.join(self.root, "schedule", "reservations.json")) as f:
+            return [(r["repo"], r["pool"], r["ref"]) for r in json.load(f)]
+
+    def mutations(self):
+        with open(self.gh_log) as f:
+            return [a for a in map(json.loads, f) if not any(a[:len(p)] == p for p in READS)]
+
+    def mod(self):
+        return Memory.load()
+
+    def test_one_team_lock_target_and_ledger_with_every_action_naming_its_repo(self):
+        out = self.call("widgets", "decide", "--pool", "builder")
+        self.assertEqual((out["team"], out["repo"], out["blocked"]), ("eng", "acme/widgets", []))
+        self.assertEqual([(a["repo"], a["ref"], a["project"]) for a in out["admit"]],
+                         [("acme/widgets", "#42", self.team + "#widgets")])
+        self.assertEqual(sorted(os.listdir(os.path.join(self.root, "schedule")))[-3:],
+                         ["lock", "reservations.json", "target.json"])
+        self.assertFalse(any(os.path.exists(os.path.join(s, "schedule", "reservations.json")) for s in (self.a, self.b)))
+        out = self.call("gadgets", "decide", "--pool", "builder")  # same issue 42, other repo: its own grant
+        self.assertEqual([(a["repo"], a["ref"], a["reasons"]) for a in out["admit"]], [("acme/gadgets", "#42", [])])
+        self.assertEqual(self.ledger(), [("acme/widgets", "builder", "#42"), ("acme/gadgets", "builder", "#42")])
+        again = self.call("widgets", "decide", "--pool", "builder")
+        self.assertEqual([(a["repo"], a["reasons"]) for a in again["admit"]], [("acme/widgets", ["reserved"])])
+        self.assertEqual(len(self.ledger()), 2)  # repeated grants never add a reservation
+        snap = self.call("widgets", "snapshot")
+        self.assertEqual((sorted(snap["repos"]), snap["caps"]), (["acme/gadgets", "acme/widgets"],
+                                                                 {"builder": 2, "reviewer": 2}))
+        self.assertEqual(self.mutations(), [])
+
+    def test_a_held_leaves_b_eligible_and_takes_no_reservation(self):
+        self.write_team(builders=1)
+        self.gh({"acme/widgets": {"labels": {"crew:hold": [42]}}})
+        a = self.call("widgets", "decide", "--pool", "builder")
+        self.assertEqual((a["admit"], a["held"]), ([], [dict(pool="builder", ref="#42", kind="build", repo="acme/widgets")]))
+        b = self.call("gadgets", "decide", "--pool", "builder")
+        self.assertEqual([(x["repo"], x["ref"]) for x in b["admit"]], [("acme/gadgets", "#42")])
+        self.assertEqual(self.ledger(), [("acme/gadgets", "builder", "#42")])
+        self.call("gadgets", "release", "--pool", "builder", "#42")
+        self.gh({"acme/widgets": {"labels": {"crew:escalated": [42]}}})  # escalation filters a team repo the same way
+        self.assertEqual(self.call("widgets", "decide", "--pool", "builder")["admit"], [])
+        self.call("gadgets", "release", "--pool", "builder", "#42")
+        self.gh({})  # control: A unheld is admitted through the same entry point
+        self.assertEqual([x["repo"] for x in self.call("widgets", "decide", "--pool", "builder")["admit"]],
+                         ["acme/widgets"])
+        self.assertEqual(self.mutations(), [])
+
+    def test_a_and_b_racing_for_the_last_slot_never_over_admit(self):
+        self.write_team(builders=1)
+        argv = lambda repo: [sys.executable, CREW, "schedule", "decide", "--pool", "builder", "--project",
+                             "%s#%s" % (self.team, repo)]
+        procs = [subprocess.Popen(argv(r), env=self.env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                 for r in ("widgets", "gadgets", "widgets", "gadgets")]
+        outs = [json.loads(p.communicate()[0]) for p in procs]
+        self.assertEqual(len(self.ledger()), 1)  # one team cap of 1: exactly one grant, whoever won
+        winner = self.ledger()[0][0]
+        loser = [o for o in outs if o["repo"] != winner]
+        self.assertTrue(loser and all(o["admit"] == [] and [d["reasons"] for d in o["deferred"]] == [["cap"]]
+                                      for o in loser), outs)
+
+    def test_team_caps_count_every_repo_once(self):
+        self.write_team(builders=1)
+        now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        self.write(os.path.join(self.root, "schedule", "reservations.json"), json.dumps(
+            [dict(ref="#9", pool="builder", time=now, repo="acme/widgets", project="x", kind="build", round=None)]))
+        b = self.call("gadgets", "decide", "--pool", "builder")  # A's grant fills the one team builder slot
+        self.assertEqual((b["admit"], [d["reasons"] for d in b["deferred"]]), ([], [["cap"]]))
+        self.call("gadgets", "release", "--pool", "builder", "#9")  # B's release of #9 cannot free A's grant
+        self.assertEqual(self.ledger(), [("acme/widgets", "builder", "#9")])
+        self.call("widgets", "release", "--pool", "builder", "#9")  # control: A's own release frees it
+        self.assertEqual([x["repo"] for x in self.call("gadgets", "decide", "--pool", "builder")["admit"]],
+                         ["acme/gadgets"])
+
+    def test_unreadable_a_state_blocks_only_a(self):
+        cases = [("paused", lambda: self.write(os.path.join(self.a, "pause.json"), json.dumps({"at": "t"})),
+                  lambda: os.remove(os.path.join(self.a, "pause.json"))),
+                 ("holds-unreadable", lambda: self.gh({"acme/widgets": {"holds_fail": True}}), lambda: self.gh({})),
+                 ("demand-unreadable", lambda: self.write(os.path.join(self.a, "inbox", "ben-lead.jsonl"), "{bad\n"),
+                  lambda: self.inbox(self.a, "ben-lead", [dict(id="b42", kind="build", refs=["#42"])]))]
+        for why, break_a, mend_a in cases:
+            break_a()
+            a = self.call("widgets", "decide", "--pool", "builder")
+            self.assertEqual((a["admit"], a["deferred"]), ([], [dict(pool="builder", ref=None, action="defer",
+                                                                     reasons=[why], repo="acme/widgets")]), why)
+            self.assertIn(dict(repo="acme/widgets", pool="builder", reasons=[why]), a["blocked"])
+            b = self.call("gadgets", "decide", "--pool", "builder")
+            self.assertEqual([x["repo"] for x in b["admit"]], ["acme/gadgets"], why)
+            self.call("gadgets", "release", "--pool", "builder", "#42")
+            mend_a()
+            self.assertEqual([x["repo"] for x in self.call("widgets", "decide", "--pool", "builder")["admit"]],
+                             ["acme/widgets"], why)  # the same-repo control
+            self.call("widgets", "release", "--pool", "builder", "#42")
+        self.assertRegex(self.crew("schedule", "summary", "--project", self.team + "#gadgets").stdout,
+                         r"^schedule: builders \d/2 .*; terminal 0\n$")
+
+    def test_ownership_read_only_blocks_that_repo_only(self):
+        self.write_team(extra="control_item = 5\n", runtime=', instance = "eng"')  # B's control record is unreadable
+        b = self.call("gadgets", "decide", "--pool", "builder")
+        self.assertEqual([d["reasons"] for d in b["deferred"]], [["ownership-read-only"]])
+        self.assertEqual([x["repo"] for x in self.call("widgets", "decide", "--pool", "builder")["admit"]],
+                         ["acme/widgets"])
+
+    def test_unknown_aggregate_state_refuses_the_team_and_keeps_the_ledger(self):
+        path = os.path.join(self.root, "schedule", "reservations.json")
+        self.write(path, "{not a ledger")
+        for repo in ("widgets", "gadgets"):
+            out = self.call(repo, "decide", "--pool", "builder")
+            self.assertEqual((out["admit"], [d["reasons"] for d in out["deferred"]]), ([], [["reservations-unreadable"]]))
+        with open(path) as f:
+            self.assertEqual(f.read(), "{not a ledger")  # never rewritten as an empty ledger
+        os.remove(path)
+        self.write_team(extra="spec = 3\n")  # B's section no longer resolves: its runs cannot be counted
+        out = self.call("widgets", "decide", "--pool", "builder")
+        self.assertEqual((out["admit"], [d["reasons"] for d in out["deferred"]]), ([], [["caps-unreadable"]]))
+        self.assertEqual([b["reasons"] for b in out["blocked"]], [["profile-unreadable"]])
+        with open(path) as f:
+            self.assertEqual(json.load(f), [])  # nothing granted
+        self.write_team()  # control: both resolve again
+        self.assertEqual([x["repo"] for x in self.call("widgets", "decide", "--pool", "builder")["admit"]],
+                         ["acme/widgets"])
+
+    def test_red_default_repair_in_a_ranks_first_and_b_still_starts(self):
+        self.gh({"acme/widgets": {"issues": [{"number": 15, "milestone": None, "body": "", "title": "main-red: CI"}]}})
+        self.inbox(self.a, "ben-lead", [dict(id="b15", kind="build", refs=["#15"], ts="2026-11-13T11:00:00Z")])
+        self.inbox(self.b, "vera-lead", [dict(id="r7", kind="review", refs=["#7", SHA, "1"], ts="2026-11-13T09:00:00Z")])
+        snap = self.call("gadgets", "snapshot")
+        ranked = self.mod().rank(snap)
+        self.assertEqual([(r["class"], r["repo"], r["ref"]) for r in ranked],
+                         [(1, "acme/widgets", "#15"), (5, "acme/gadgets", "#7"), (7, "acme/gadgets", "#42")])
+        self.assertEqual([x["ref"] for x in self.call("gadgets", "decide", "--pool", "builder")["admit"]], ["#42"])
+
+    def test_parked_wait_is_not_team_demand(self):
+        self.inbox(self.a, "ben-lead", [dict(id="f7", kind="fix", refs=["#7"]), dict(id="b42", kind="build", refs=["#42"])])
+        self.write(os.path.join(self.a, "status", "ben-lead.status"), "ack: f7\nwaiting: #7 ci id=f7\n")
+        self.write(os.path.join(self.a, "leads", "waits.json"), json.dumps(
+            {"ben-lead": {"f7": {"line": 1, "seen": [None, False, None, False], "woke": False}}}))
+        snap = self.call("gadgets", "snapshot")
+        self.assertEqual([d["id"] for d in snap["repos"]["acme/widgets"]["demand"]["builder"]], ["b42"])
+        self.write(os.path.join(self.a, "leads", "waits.json"), json.dumps(
+            {"ben-lead": {"f7": {"line": 1, "seen": [None, False, None, False], "woke": True}}}))
+        snap = self.call("gadgets", "snapshot")  # control: once its state changed, the wait is demand again
+        self.assertEqual([d["id"] for d in snap["repos"]["acme/widgets"]["demand"]["builder"]], ["f7", "b42"])
+
+
+class TeamWalk(unittest.TestCase):
+    """The team walk, transfer and release as pure functions over two repos sharing #7 (team §9.4)."""
+    def setUp(self):
+        self.s = Memory.load()
+        self.opts = dict(self.s.TARGET_OPTIONS)
+        a, b = "acme/widgets", "acme/gadgets"
+        self.a, self.b = a, b
+        self.ranked = [dict(pool="reviewer", ref="#7", kind="review", round=1, repo=b, project="t#b", **{"class": 5}),
+                       dict(pool="reviewer", ref="#7", kind="review", round=1, repo=a, project="t#a", **{"class": 5}),
+                       dict(pool="builder", ref="#42", kind="build", repo=a, project="t#a", **{"class": 7})]
+        self.alive = {(r, p): "alive" for r in (a, b) for p in ("builder", "reviewer")}
+
+    def walk(self, pool, repo, reserved=(), workers=(), target=3, caps=None, leads=None):
+        return [(x["action"], x["repo"], x["ref"], x["reasons"]) for x in self.s.walk(
+            pool, self.ranked, dict(workers=list(workers), caps=caps or {"builder": 2, "reviewer": 2}), list(reserved),
+            dict(target=target, starts=[]), self.opts, self.alive if leads is None else leads, None, repo)]
+
+    def test_only_the_callers_lane_is_granted(self):
+        self.assertEqual(self.walk("reviewer", self.a), [("hold", self.b, "#7", []), ("admit", self.a, "#7", []),
+                                                         ("hold", self.a, "#42", ["floor"])])  # ramp spent: floor
+        down = {**self.alive, (self.b, "reviewer"): "missing"}
+        self.assertEqual(self.walk("reviewer", self.a, leads=down)[0], ("drop", self.b, "#7", ["lead-down"]))
+
+    def test_team_pool_floor_and_caps_are_team_totals(self):
+        busy = [dict(role="reviewer", state="busy", item="PR #3", repo=self.b)]
+        self.assertEqual(self.walk("reviewer", self.a, workers=busy, caps={"builder": 2, "reviewer": 1}),
+                         [("defer", self.a, "#7", ["cap"]), ("hold", self.a, "#42", [])])  # B's busy reviewer fills it
+
+    def test_same_id_passes_and_rounds_stay_distinct(self):
+        res = lambda repo, kind="review", rnd=1: dict(ref="#7", pool="reviewer", time="t", repo=repo, kind=kind, round=rnd)
+        mine = lambda reserved: [x for x in self.walk("reviewer", self.a, reserved=[reserved], target=4,
+                                                      caps={"builder": 2, "reviewer": 3}) if x[1:3] == (self.a, "#7")]
+        for other in (res(self.b), res(self.a, "validate"), res(self.a, rnd=2)):  # another repo, pass or round
+            self.assertEqual(mine(other), [("admit", self.a, "#7", [])], other)
+        self.assertEqual(mine(res(self.a)), [("admit", self.a, "#7", ["reserved"])])
+
+    def test_reservation_transfers_only_to_its_own_run(self):
+        r = dict(ref="#7", pool="reviewer", time="2026-11-03T08:00:00Z", repo=self.a, kind="review", round=1)
+        w = dict(role="reviewer", item="PR #7", pr=7, state="busy", repo=self.a, round=1, **{"pass": "review"})
+        live = lambda *workers: len(self.s.live_reservations([r], list(workers), T0 + datetime.timedelta(minutes=1)))
+        self.assertEqual([live(dict(w, repo=self.b)), live(dict(w, **{"pass": "validate"})), live(dict(w, round=2)),
+                          live(w), live(dict(w, round=None))], [1, 1, 1, 0, 0])
+
+    def test_release_frees_only_the_callers_repo_and_pass(self):
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        os.makedirs(os.path.join(tmp, "schedule"))
+        rows = [dict(ref="#7", pool="reviewer", time="t", repo=repo, kind=kind, round=1)
+                for repo, kind in ((self.a, "review"), (self.a, "validate"), (self.b, "review"))]
+        with open(os.path.join(tmp, "schedule", "reservations.json"), "w") as f:
+            json.dump(rows, f)
+        values = {"team.name": "eng", "paths.state_dir": tmp, "repo.owner": "acme", "repo.name": "widgets"}
+        self.s.release(os.path.join(tmp, "acme__widgets"), "reviewer", ["#7"], values, "review", 1)
+        with open(os.path.join(tmp, "schedule", "reservations.json")) as f:
+            self.assertEqual([(x["repo"], x["kind"]) for x in json.load(f)], [(self.a, "validate"), (self.b, "review")])
+
+    def test_ties_break_by_repo_then_identity_and_class_8_waits_for_team_class_7(self):
+        tracker = lambda issues: dict(milestones=[dict(number=1, title="M1"), dict(number=2, title="M2")], max_active=2,
+                                      issues=issues, red_fixes=[])
+        repo = lambda project, issues, builds: dict(project=project, ownership="active", paused=None, holds=[],
+                                                    tracker=tracker(issues), demand=dict(builder=builds, reviewer=[]))
+        snap = dict(workers=[], repos={
+            self.a: repo("t#a", [dict(number=42, milestone="M2", depends=[])], [item("build", 42)]),
+            self.b: repo("t#b", [dict(number=42, milestone="M1", depends=[]), dict(number=43, milestone="M1", depends=[])],
+                         [item("build", 43), item("build", 42)])})
+        self.assertEqual([(r["class"], r["repo"], r["ref"]) for r in self.s.rank(snap)],
+                         [(7, self.b, "#42"), (7, self.b, "#43"), (8, self.a, "#42")])
+
+    def test_stuck_alarm_is_per_repo(self):
+        tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        os.makedirs(os.path.join(tmp, "schedule"))
+        entry = lambda repo: dict(kind="fix", reasons=["target"], since="2026-11-03T07:00:00Z", repo=repo, ref="#7",
+                                  **{"class": 6})
+        with open(os.path.join(tmp, "schedule", "deferred.json"), "w") as f:
+            json.dump({"builder": {self.a + " #7": entry(self.a), self.b + " #7": entry(self.b)}}, f)
+        now = T0.timestamp()
+        self.assertEqual([d["repo"] for d in self.s.stuck(tmp, now, 1800, self.b)], [self.b])
+        self.assertEqual(len(self.s.stuck(tmp, now, 1800)), 2)
+
+
+class OneRepoLedger(Fixture):
+    def test_unreadable_ledger_refuses_and_is_kept(self):  # a one-repo config is its own singleton team (#1857)
+        self.put("schedule/reservations.json", "{oops")
+        r = self.crew("schedule", "decide", "--pool", "builder", "--project", self.project)
+        out = json.loads(r.stdout)
+        self.assertEqual((out["admit"], [d["reasons"] for d in out["deferred"]]), ([], [["reservations-unreadable"]]))
+        self.assertNotIn("repo", out["deferred"][0])
+        with open(os.path.join(self.state, "schedule", "reservations.json")) as f:
+            self.assertEqual(f.read(), "{oops")
+
 if __name__ == "__main__":
     unittest.main()
