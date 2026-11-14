@@ -584,6 +584,34 @@ pane matches as the liveness probe reads it), removes a worktree only under this
 tag, and releases only this repo's allocation, so A's kill, restart or
 replay never touches B's same-number run.
 
+Landing is bound to the repo the command's `--project` selects (#1859,
+[team §9.5](../specs/team.md#95-landing-authority-and-refusals)). The land
+lock lives in that repo's state, so one land runs at a time inside A while
+B's lock, and B's red default branch, never block A; `locks/merge.pid`
+records the repo's `context` and the acquiring `window` (a shared lead's
+too). Train and delegation records and async land and stack intents record
+the `context` as well. Every `train` action reads first, then writes: before
+any write it reads every record and delegation it names and the predecessor
+train each one builds on, and the full lookup of every change it can write
+for (`build` and `delegate` members; for `land`, `wait`, `bisect`, `route`
+and `close` every member and a pending merge record's change, and for each
+dropped member route merges up every read route decides on: its full view,
+hold dependencies and the solo labels of it and its linked issues), comparing
+each URL and member qualifier
+(`<owner>/<name>#<n>`, also `<owner>/<name>#<n>:<sha>` in
+`land stack --stack`) with the selected repo; `land`, `route` and `build` act
+on those reads. `train land` also reads the train CI, the default branch and
+the member's gate (change, landing control issue, hold dependencies) before
+the pending merge record or any other write. One that is unreadable or not
+the selected repo's refuses with nothing written (a failed gate view still
+prints `paused` but records no pause), never stopping or closing the train;
+`train check` reports such a gate read as blocked. `land request|resume|done`, the stack land and
+`land-lock acquire|release` refuse a record naming another repo before any
+read, request, cleanup or drop. One foreign or unreadable source refuses the
+whole action with nothing written; in a one-repo config a record written
+before #1859, without `context`, stays the selected repo's. Gate
+satisfaction, actors and fail-open paths are unchanged.
+
 ## Reviewer lead
 
 The default binding installs `reviewer-lead.md` and starts the reviewer lead
@@ -1986,7 +2014,9 @@ lock is held and the live process with the recorded PID has the recorded
 start time and is an `mdstack land-lock acquire`; otherwise (a stale or reused
 PID, or a lock held by another process) it signals nothing and exits 1.
 It then waits for the unlock and removes `merge.pid`; with no lock held it
-is a no-op. The lock is local to the machine.
+is a no-op. The lock is local to the machine and to the selected repo:
+`merge.pid` records its `context` and both commands refuse one naming another
+repo ([Team pools](#team-pools), #1859).
 
 Under an asynchronous land, `sam` holds the lock until the terminal land
 status and the merge post, and takes no lock when the backend declares

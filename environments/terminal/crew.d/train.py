@@ -12,6 +12,10 @@ strategy.update_from_base = "rebase".
 Membership is decided before the push (#1425): drops leaving one member under lone_pr_land = "direct" close the
 train unpushed (`path=direct`, collapsed-to-direct) for the synthesizer's direct land, and `check`'s `train-merge`
 gate runs the build's drop checks per PR on the default branch with merge-tree.
+Repo binding (#1859, team §9.5): before any write, every train record, delegation and qualified member (`<owner>/<name>#<n>`)
+an action names must be the selected repo's, and build and delegate read each member's URL from the backend; one foreign
+or unreadable source refuses the whole action with nothing written. Train and delegation records carry the selected
+project's context, and land reads the member's verdict, permission, control and hold records only from that repo.
 
 Usage: mdstack train build PR... [--after N] [--no-wait] [--local] | build --train N | delegate PR... [--after N] | check PR...
        | wait N | land N PR [--mirror-deferred] | close N | route N | bisect N
@@ -33,6 +37,7 @@ from crew_shared import (checkout, commands, coordinator_window, fetch, GATEWAY,
 
 precheck = load("crew_precheck", "scripts/crew-precheck.py")
 item_flavor = load("crew_item_flavor", "scripts/item-flavor.py")
+repo_bind = load("crew_repo_bind", "environments/terminal/crew.d/_repo_bind.py")
 
 
 # Merge train (tmux.md mdstack train, #321): build crew/train-<n> = fetched main + each PR head as --no-ff merges, run the
@@ -98,6 +103,7 @@ def train_delegate(args, values, state, repo, slug):
     else:
         base = fetch(repo, values["repo.default_branch"])
     rec = {"n": n, "base": base, "after": args.after, "members": [], "closed": False,
+           "context": repo_bind.context(args.project, values),
            "synthesizer": values.get("identities.synthesizer.name", NAMES["synthesizer"]).lower() +
            ("-lead" if commands()["lead"].enabled(state, "synthesizer") else "")}  # its lead lands (#1569)
     for pr in dict.fromkeys(args.items):
@@ -191,10 +197,47 @@ def train_compose(wt, base, prs, rec):
     return candidates
 
 
+def route_reads(poll, slug, args, state, n, pr):
+    """Every read train_route acts on for dropped member pr (#1859), taken in the read phase: its full view, with
+    mergeability computed while it is open (train_view), each hold-until dependency's state and the crew:solo labels
+    of the change and its linked issues, each with the URL compared against the selected repo. A failed read raises."""
+    view = poll.gh_json("pr", "view", str(pr), "-R", slug, "--json", poll.PR_FIELDS + ",comments,url")
+    urls = [("dropped member #%d" % pr, view.get("url"))]
+    if view.get("state") == "OPEN":
+        view = train_view(poll, slug, pr, args, state, n)
+        urls.append(("dropped member #%d" % pr, view.get("url")))
+    holds = {}
+    for x in sorted(set(re.findall(r"hold-until-#(\d+)", "\n".join(
+            p["body"] for p in view["reviews"] + view["comments"])))):
+        dependency = poll.gh_json("issue", "view", x, "-R", slug, "--json", "state,url")
+        holds[x] = dependency["state"]
+        urls.append(("dropped member #%d's hold-until-#%s dependency" % (pr, x), dependency.get("url")))
+    solo = "crew:solo" in {lb["name"] for lb in view["labels"]}
+    for item in view.get("closingIssuesReferences") or []:
+        issue = poll.gh_json("issue", "view", str(item["number"]), "-R", slug, "--json", "labels,url")
+        solo = solo or "crew:solo" in {lb["name"] for lb in issue["labels"]}
+        urls.append(("dropped member #%d's linked issue #%s" % (pr, item["number"]), issue.get("url")))
+    return {"view": view, "holds": holds, "solo": solo, "urls": urls}
+
+
+def plan_route(args, slug, state, n, pr):
+    """A member land drops in its own read phase: take route's reads for it there (route_reads); a failed or foreign
+    read raises Refused, so nothing is written (#1859)."""
+    try:
+        reads = route_reads(commands()["poll"], slug, args, state, n, pr)
+    except (RuntimeError, ValueError, KeyError, TypeError) as e:
+        raise Refused("dropped member #%d's required read failed (%s)" % (pr, e))
+    foreign = repo_bind.off_repo(slug, reads["urls"])
+    if foreign:
+        raise Refused(foreign)
+    args.plan_routes = dict(getattr(args, "plan_routes", None) or {})
+    args.plan_routes[pr] = reads
+
+
 def train_route(args, values, state, repo, slug, rec):
+    """Merge up each queued dropped member from the reads train_plan took for it (route_reads), never a new read."""
     if not rec.get("closed"):
         return
-    poll = commands()["poll"]
     for d in rec["dropped"]:
         if d.get("merge_up", "queued") != "queued" or d["reason"] == "no-head":
             continue
@@ -203,19 +246,22 @@ def train_route(args, values, state, repo, slug, rec):
             train_save(state, rec)
             print("merge-up pr=%d status=reviewer reason=no-verified-base" % d["pr"])
             continue
+        planned = getattr(args, "plan_routes", {}).get(d["pr"])
+        if planned is None:  # not read by this command's read phase: `train route` plans and routes it
+            print("merge-up pr=%d status=queued reason=not in this command's read plan" % d["pr"])
+            continue
         try:
-            view = train_view(poll, slug, d["pr"], args, state, rec["n"])
+            view = planned["view"]
             tags = {lb["name"] for lb in view["labels"]}
             if tags & {"crew:escalated", "crew:hold"}:
                 continue
-            holds = set(re.findall(r"hold-until-#(\d+)", "\n".join(p["body"] for p in view["reviews"] + view["comments"])))
-            if any(poll.gh_json("issue", "view", x, "-R", slug, "--json", "state")["state"] == "OPEN" for x in holds):
+            if "OPEN" in planned["holds"].values():
                 continue
             if view["state"] != "OPEN":
                 d["merge_up"] = "closed"
             elif not require_ownership(values, "write"):
                 return
-            elif commands()["lead"].solo(values, pr=d["pr"]):
+            elif planned["solo"]:
                 d["merge_up"] = "solo"
                 train_save(state, rec)
                 sent = commands()["send"].run(argparse.Namespace(
@@ -236,8 +282,7 @@ def train_route(args, values, state, repo, slug, rec):
                     if sent not in (0, 4):  # ambiguous nudge is already in the inbox: do not send twice
                         d["merge_up"] = "queued"
                 else:
-                    linked = poll.gh_json("pr", "view", str(d["pr"]), "-R", slug, "--json", "closingIssuesReferences")
-                    issues = linked.get("closingIssuesReferences", [])
+                    issues = view.get("closingIssuesReferences") or []
                     if issues:
                         if not require_ownership(values, "write"):
                             d["merge_up"] = "queued"
@@ -292,7 +337,8 @@ def train_build(args, values, state, repo, slug):
         print("crew: refusing train: %s exists" % wt)
         return 1
     rec = {"n": n, "branch": "crew/train-%d" % n, "base": base, "sha": base, "members": [], "dropped": [],
-           "pr": None, "local": "none", "ci": "none", "ci_links": [], "after": args.after, "deferred": []}
+           "pr": None, "local": "none", "ci": "none", "ci_links": [], "after": args.after, "deferred": [],
+           "context": repo_bind.context(args.project, values)}
     if delegated and base != delegated["base"]:  # the synthesizer landed meanwhile: a stale base never trains
         rec.update(closed=True, stopped={"reason": "delegated base %s moved to %s" % (delegated["base"], base)})
         train_save(state, rec)
@@ -321,7 +367,8 @@ def train_build(args, values, state, repo, slug):
                 rec["dropped"].append({"pr": pr, "head": head, "reason": "head-moved", "merge_up": "none"})
                 continue
             before = git(wt, "rev-parse", "HEAD")
-            view = commands()["poll"].gh_json("pr", "view", str(pr), "-R", slug, "--json", "number,reviews,labels")
+            view = getattr(args, "plan", {}).get(pr) or commands()["poll"].gh_json(
+                "pr", "view", str(pr), "-R", slug, "--json", "number,reviews,labels")
             try:
                 lane, _ = train_express(args, values, slug, view)
             except RuntimeError:
@@ -552,7 +599,7 @@ def train_check_prs(args, values, state, repo, slug, poll, clone):
     blocked, base = False, fetch(repo, values["repo.default_branch"])
     for pr in args.items:
         view = poll.gh_json("pr", "view", str(pr), "-R", slug, "--json", poll.PR_FIELDS +
-                            ",commits,comments,mergeable,body,files,isDraft,baseRefName,closingIssuesReferences")
+                            ",commits,comments,mergeable,body,files,isDraft,baseRefName,closingIssuesReferences,url")
         head = view["headRefOid"]
         mode = ownership(values)
         results = {"ownership": ("pass", "runtime owns project") if mode == "active" else ("blocked", mode)}
@@ -572,7 +619,10 @@ def train_check_prs(args, values, state, repo, slug, poll, clone):
                     carried = verified_head
             except RuntimeError:
                 pass
-        why, merge_ok, spec = train_gate(poll, values, slug, view, head, state, carried, lane)
+        try:
+            why, merge_ok, spec = train_gate(poll, values, slug, view, head, state, carried, lane)
+        except Refused as e:  # read-only: reported, never treated as this repo's gate snapshot
+            why, merge_ok, spec = str(e), False, False
         results["state-permission"] = ("blocked", why) if why else ("pass", "current gate snapshot")
         verdict = None
         verdict_head = carried or head
@@ -745,7 +795,7 @@ def train_view(poll, slug, pr, args, state, n):
     Each failed read naming a gateway error is recorded, including reads a later retry recovers from."""
     for attempt in range(10):
         try:
-            view = poll.gh_json("pr", "view", str(pr), "-R", slug, "--json", poll.PR_FIELDS + ",headRefName,isCrossRepository,headRepositoryOwner,headRepository,baseRefName,commits,comments,mergeable,closingIssuesReferences")
+            view = poll.gh_json("pr", "view", str(pr), "-R", slug, "--json", poll.PR_FIELDS + ",headRefName,isCrossRepository,headRepositoryOwner,headRepository,baseRefName,commits,comments,mergeable,closingIssuesReferences,url")
             if view.get("mergeable") != "UNKNOWN":
                 return view
             reason = "GitHub mergeability UNKNOWN"
@@ -885,8 +935,14 @@ def train_verified(poll, view, lane=False):
     return None, None
 
 
+class Refused(RuntimeError):
+    """A required gate read that is unreadable or not the selected repo's (#1859): the change, the landing control
+    issue or a hold dependency. train land refuses with nothing written, unlike a gate miss, which stops and closes
+    the train; train check reports it as blocked."""
+
+
 def landing_stop(poll, slug, view, state):
-    posts = list(view["reviews"])
+    posts, foreign = list(view["reviews"]), None
     path = os.path.join(state, "landing-control.json")
     if os.path.exists(path):
         try:
@@ -894,16 +950,24 @@ def landing_stop(poll, slug, view, state):
                 control = json.load(f)["issue"]
             if not isinstance(control, int) or isinstance(control, bool) or control < 1:
                 raise ValueError("invalid control issue")
-            posts += poll.gh_json("issue", "view", str(control), "-R", slug, "--json", "comments")["comments"]
-        except (OSError, ValueError, KeyError, TypeError, RuntimeError):
-            return "landing control unreadable; nothing may land"
+            read = poll.gh_json("issue", "view", str(control), "-R", slug, "--json", "comments,url")
+            foreign = repo_bind.off_repo(slug, [("landing control #%d" % control, read.get("url"))])
+            posts += read["comments"]
+        except (OSError, ValueError, KeyError, TypeError, RuntimeError, AttributeError):
+            raise Refused("landing control unreadable; nothing may land")
+        if foreign:
+            raise Refused(foreign)
     stops = poll.landing_steers(posts)["stops"]
     return "open stop-landing: %s" % ", ".join(sorted(set(stops))) if stops else None
 
 
 def train_gate(poll, values, slug, view, head, state, verified_head=None, lane=False):
     """The §7 gates land re-checks at head right before the squash: (first miss or None, merge-ok at head). The other
-    gates are the synthesizer's check right before this call (synthesizer brief)."""
+    gates are the synthesizer's check right before this call (synthesizer brief). Raises Refused when the change,
+    landing control or a hold dependency is unreadable or reads from another repo (#1859)."""
+    foreign = repo_bind.off_repo(slug, [("change #%d's verdict and permission read" % view["number"], view.get("url"))])
+    if foreign:
+        raise Refused(foreign)
     stop = landing_stop(poll, slug, view, state)
     rereview = merge_ok = False
     rework, reviewer = None, values.get("identities.reviewer.gh_user")
@@ -945,10 +1009,13 @@ def train_gate(poll, values, slug, view, head, state, verified_head=None, lane=F
     hold_miss = None
     for x in sorted(holds):
         try:
-            state = poll.gh_json("issue", "view", x, "-R", slug, "--json", "state")["state"]
+            dependency = poll.gh_json("issue", "view", x, "-R", slug, "--json", "state,url")
+            state = dependency["state"]
         except RuntimeError:
-            hold_miss = "unresolved coordinator hold-until-#%s: dependency missing or lookup failed" % x
-            break
+            raise Refused("unresolved coordinator hold-until-#%s: dependency missing or lookup failed" % x)
+        foreign = repo_bind.off_repo(slug, [("hold-until-#%s dependency" % x, dependency.get("url"))])
+        if foreign:
+            raise Refused(foreign)
         if state == "OPEN":
             hold_miss = "open coordinator hold-until-#%s" % x
             break
@@ -1005,41 +1072,25 @@ def train_land(args, values, state, repo, slug):
         return 1
     landed = rec.setdefault("landed", [])
     pending = rec.get("pending_record")
-    if pending:
-        if not require_ownership(values, "write"):
-            return 1
-        posted = subprocess.run(["gh", "pr", "review", str(pending["pr"]), "--comment", "-R", slug,
-                                 "--body", pending["body"]], capture_output=True)
-        if posted.returncode:
-            print("paused pr=%d reason=merge record still pending" % pending["pr"])
-            print(train_report(rec))
-            return 1
-        rec.pop("pending_record")
-        rec.pop("stopped", None)
-        train_save(state, rec)
-        if len(landed) == len(rec["members"]):
-            tail = train_close(repo, slug, rec, values)
-            train_save(state, rec)
-            train_route(args, values, state, repo, slug, rec)
-            print("train n=%d landed=%d/%d %s" % (n, len(landed), len(rec["members"]), tail))
-            print(train_report(rec))
-            return 0
+    if pending and len(landed) == len(rec["members"]):  # only the last record is left: its reads are planned
+        return train_post_pending(args, values, state, repo, slug, rec, pending, finish=True)
     i, m = len(landed) + 1, rec["members"][len(landed)]
     if pr != m["pr"]:
         print("crew: train %d lands #%d next, not #%d; nothing landed" % (n, m["pr"], pr))
         return 2
     expected, why, merge_ok, spec, recorded = landed[-1]["merge"] if landed else predecessor_base, None, False, False, False
     rec.pop("stopped", None)
-    try:
+    view = None
+    try:  # read phase (#1859): every read this member's land needs, before the pending record or any write
         checks = subprocess.run(["gh", "pr", "checks", str(rec["pr"]), "-R", slug, "--json", "name,bucket"],
                                 capture_output=True, text=True)
         if checks.returncode not in (0, 1, 8):
-            raise RuntimeError(checks.stderr.strip())
+            raise Refused("train CI unreadable: %s" % checks.stderr.strip())
         try:
             observed = json.loads(checks.stdout or "[]")
             buckets = {c["bucket"] for c in observed}
         except ValueError:
-            raise RuntimeError("train CI UNKNOWN: invalid API JSON")
+            raise Refused("train CI unreadable: invalid API JSON")
         missing = poll.missing_checks(observed, poll.required_checks(values))
         if buckets & {"fail", "cancel"}:
             rec["ci"] = "fail"
@@ -1060,10 +1111,19 @@ def train_land(args, values, state, repo, slug):
                 repo, m["verified_base"], m.get("verified_head", m["head"]), m["updated_base"], m["step"]):
             why = "content-different: route to builder for delta re-review"
             rec["dropped"].append({"pr": pr, "head": m["head"], "reason": "content-different"})
+            plan_route(args, slug, state, n, pr)  # still the read phase: route's reads for this drop, before writes
         elif not why:
-            view = train_view(poll, slug, pr, args, state, n)
+            view = getattr(args, "plan", {}).get(pr) or train_view(poll, slug, pr, args, state, n)
             why, merge_ok, spec = train_gate(poll, values, slug, view, m["head"], state, m.get("verified_head"),
                                        train_express(args, values, slug, view)[0])
+    except Refused as e:  # nothing written: the train, its PR, branch and record stay as they are
+        print("crew: refusing train land: %s; nothing written" % e)
+        return 1
+    except RuntimeError as e:
+        why, recorded = str(e), isinstance(e, ViewError)
+    if pending and train_post_pending(args, values, state, repo, slug, rec, pending, finish=False):
+        return 1  # write phase: the earlier member's pending merge record first
+    try:
         if not why:
             if not require_ownership(values, "land"):
                 return 1
@@ -1119,6 +1179,29 @@ def train_land(args, values, state, repo, slug):
     return 1 if why else 0
 
 
+def train_post_pending(args, values, state, repo, slug, rec, pending, finish):
+    """Write the earlier member's pending merge record, after the read phase; 1 when it failed. finish: it was the
+    last member, so close and route the train too and report it."""
+    if not require_ownership(values, "write"):
+        return 1
+    posted = subprocess.run(["gh", "pr", "review", str(pending["pr"]), "--comment", "-R", slug,
+                             "--body", pending["body"]], capture_output=True)
+    if posted.returncode:
+        print("paused pr=%d reason=merge record still pending" % pending["pr"])
+        print(train_report(rec))
+        return 1
+    rec.pop("pending_record")
+    rec.pop("stopped", None)
+    train_save(state, rec)
+    if finish:
+        tail = train_close(repo, slug, rec, values)
+        train_save(state, rec)
+        train_route(args, values, state, repo, slug, rec)
+        print("train n=%d landed=%d/%d %s" % (rec["n"], len(rec["landed"]), len(rec["members"]), tail))
+        print(train_report(rec))
+    return 0
+
+
 def train_close_cmd(args, values, state, repo, slug):
     """End a train early (the synthesizer's own §7 check failed for the next member): close its PR, delete its branch."""
     delegated = delegation_load(state, args.items[0])
@@ -1143,7 +1226,7 @@ def train_close_cmd(args, values, state, repo, slug):
 def register(sub):
     p = sub.add_parser("train", help="merge train: CI once on main + approved PRs, then land them in order")
     p.add_argument("action", choices=["build", "delegate", "wait", "check", "land", "close", "route", "bisect"])
-    p.add_argument("items", nargs="*", type=int,
+    p.add_argument("items", nargs="*", type=repo_bind.member,
                    help="build: PR numbers in landing order; land: the train number and its next PR; close/route/bisect: the number")
     p.add_argument("--after", type=int, help="build on this predecessor train's tested tip")
     p.add_argument("--train", type=int, help="build: the delegated train N, its members, heads and base (#1391)")
@@ -1158,7 +1241,73 @@ def register(sub):
     p.add_argument("--org-profile")
 
 
+def recorded(path):
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return None
+    except (OSError, ValueError):
+        return "unreadable"
+
+
+def train_plan(args, values, state, slug, qualified):
+    """The read phase of every train action (#1859): (why it may not act, or None; {pr: full view}). Reads every train
+    record and delegation the action names and the predecessor each builds on, then the full lookup of every change
+    the action can write for: build and delegate members or a delegation's; for land, wait, bisect, route and close
+    every member, a pending merge record's change and, for each dropped member route will merge up, every read
+    route decides on (route_reads). The member land lands next is read as its gate reads it (train_view). One
+    comparison over the records, every read's URL and every qualifier; a failed or foreign read refuses before the
+    action's first write. Returns (problem, member views, route reads); land, route and build act on these, never on
+    a read taken after a write."""
+    poll = commands()["poll"]
+    numbers = [n for n in (args.train, args.after) if n]
+    numbers += args.items[:1] if args.action in ("wait", "land", "close", "route", "bisect") else []
+    records = [("train %d %s" % (n, kind), recorded(path(state, n))) for n in numbers
+               for kind, path in (("record", train_path), ("delegation", delegation_path))]
+    for what, rec in list(records):  # the predecessor a record names: land, wait and build consume its result
+        after = rec.get("after") if isinstance(rec, dict) else None
+        if after is not None:
+            records.append(("%s's predecessor train %s record" % (what, after), recorded(
+                train_path(state, after)) if type(after) is int and after >= 1 else "unreadable"))
+    members = list(args.items) if args.action in ("build", "delegate") else []
+    if args.train and isinstance(records[1][1], dict):
+        members = [m.get("pr") for m in records[1][1].get("members", []) if isinstance(m, dict)]
+    train = records[0][1] if args.action in ("land", "wait", "bisect", "route", "close") and isinstance(
+        records[0][1], dict) else {}
+    members += [m.get("pr") if isinstance(m, dict) else m for m in train.get("members") or []]
+    routed = [d.get("pr") for d in train.get("dropped") or [] if isinstance(d, dict) and d.get("merge_up", "queued") == "queued"
+              and d.get("reason") not in ("no-head", "no-verified-base")]  # route reads nothing for these if args.action in ("land", "route", "close") else []
+    pending = [train["pending_record"].get("pr")] if isinstance(train.get("pending_record"), dict) else []
+    left = [m.get("pr") for m in (train.get("members") or [])[len(train.get("landed") or []):] if isinstance(m, dict)]
+    landing = args.items[1] if args.action == "land" and left[:1] == [args.items[1]] else None  # its next member
+    views, routes, urls = {}, {}, []
+    for pr in dict.fromkeys(members + pending):
+        try:
+            if pr == landing:
+                view = train_view(poll, slug, pr, args, state, train.get("n") or 0)
+            else:
+                view = poll.gh_json("pr", "view", str(pr), "-R", slug, "--json", poll.PR_FIELDS + ",comments,url")
+        except (RuntimeError, ValueError) as e:
+            if pr == landing and train_transient(str(e)):
+                print("paused pr=%d reason=%s; the train is unchanged" % (pr, e))
+            return "member #%s's required read failed (%s)" % (pr, e), {}, {}
+        if not isinstance(view, dict):
+            return "member #%s's required read is unreadable" % pr, {}, {}
+        views[pr] = view
+        urls.append(("member #%s" % pr, view.get("url")))
+    for pr in dict.fromkeys(routed):  # route's whole decision is read here, before close, save or any write
+        try:
+            routes[pr] = route_reads(poll, slug, args, state, train.get("n") or 0, pr)
+        except (RuntimeError, ValueError, KeyError, TypeError) as e:
+            return "dropped member #%s's required read failed (%s)" % (pr, e), {}, {}
+        urls += routes[pr]["urls"]
+    return repo_bind.foreign(repo_bind.context(args.project, values), "team.name" in values, records=records,
+                             urls=urls, repos=[("%s#%d" % (q, n), q) for q, n in qualified]), views, routes
+
+
 def run(args):
+    qualified, args.items = args.items, [n for _, n in args.items]
     many = len(args.items) or -1
     if args.train and (args.action != "build" or args.items or args.after):
         print("crew: train build --train N takes no PRs or --after")
@@ -1177,6 +1326,10 @@ def run(args):
               "each patch on the tip; land each PR alone with mdstack land request" % args.action)
         return 1
     slug = "%s/%s" % (values["repo.owner"], values["repo.name"])
+    problem, args.plan, args.plan_routes = train_plan(args, values, state, slug, qualified)
+    if problem:  # before any clone, branch, record, push, CI, merge or cleanup (team §9.5)
+        print("crew: refusing train %s: %s; nothing written" % (args.action, problem))
+        return 1
     try:
         repo = git(checkout(values, args.project), "rev-parse", "--show-toplevel")
         if args.action == "route":

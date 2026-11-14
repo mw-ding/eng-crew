@@ -52,6 +52,13 @@ reclaim through its lead); never kill other windows.
 
 <include:policy/shared/team-lead.md>
 
+Team land (#1859): read first, then write. With `context.project`, do
+every required read (the change's URL and head, verdict, evidence, CI,
+holds, permission) before the land lock; if one is unreadable or its repo
+is not `context.repo`, write `blocked:` and take no lock. Another repo's
+verdict, merge-ok, grant or train result never counts, at any number or
+SHA. `train` and `land` refuse unreadable or foreign records themselves.
+
 Restart: a token-free supervisor restarts a dead or missing lead once with
 its inbox intact. Replay every queued id. An unsettled land restarts at
 step 1 of the merge gate with live state: never merge a merged PR twice.
