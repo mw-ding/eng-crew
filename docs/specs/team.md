@@ -3,11 +3,11 @@
 > - **Status:** partly built
 > - **Applies to:** this repo's layout, axes, roles, actions and modules
 > - **Current rules:** the [protocol](../protocol.md) and its gate registry; each requirement's **Delivered by** issues
-> - **Built:** M29–M33 (roles, connectors, environments, harnesses, core, cli and dev modules; the dependency lint; the actions CLI in part; the `mdstack` rename); M51 personnel delivery, #1180 rows A–D (PR #1805)
-> - **Design only:** the `protocols/` and `install/` modules ([§4](#4-target-module-layout)) and the rest of the actions implementation
-> - **M51 design delivered:** #1318's [team/project contract](#9-team-and-project-separation-1318-design-only) and approved T1–T4 breakdown (PR #1802); shared-pool routing remains design only
-> - **M56 delivery:** T1–T4 admitted under [#1854](https://github.com/mw-ding/mdstack/issues/1854) as #1856–#1859, bookended by #1861 and #1860; rows, choices and order in [§9.8](#98-m56-delivery-1854); all four planned, not built
-> - **Last checked:** 2026-11-13 at `aacfb7e` (M51 personnel delivery landed)
+> - **Built:** M29–M33 (roles, connectors, environments, harnesses, core, cli and dev modules; the dependency lint; the actions CLI in part; the `mdstack` rename); M51 personnel delivery, #1180 rows A–D (PR #1805); M56 team/project routing for the terminal runtime, T1–T4 (PRs #1866, #1875, #1876, #1877; [§9.8](#98-m56-delivery-1854))
+> - **Design only:** the `protocols/` and `install/` modules ([§4](#4-target-module-layout)) and the rest of the actions implementation; live team adoption and state moves (§9.2) are a later operator step
+> - **M51 design delivered:** #1318's [team/project contract](#9-team-and-project-separation-1318) and approved T1–T4 breakdown (PR #1802), built by M56
+> - **M56 delivery:** T1–T4 (#1856–#1859) built under [#1854](https://github.com/mw-ding/mdstack/issues/1854), bookended by #1861 and #1860; rows, outcome and lessons in [§9.8](#98-m56-delivery-1854); isolated proof only, no live adoption claim
+> - **Last checked:** 2026-11-14 at `8aeb039` (M56 T4 landed)
 
 Status: v0.1 (2026-11-07). Owner: coordinator. Changes land through
 `crew:spec` PRs (review pass only, merge on the owner's merge-ok). Tracking:
@@ -471,7 +471,7 @@ restate it. #1217 updates portable.md to v0.4 with the harness axis, the
 | Q4. Does the runtime-word lint (D5) run before the reorganisation, against today's paths? | #1185 |
 | Q5. How long do the compatibility shims at old paths stay: one major version, or until packs confirm? | #1226 |
 | Q6. Do role classes and seats belong in `docs/specs/` of every project, or only here? | #1219 |
-| Q7. What does a team profile own versus a project, how do profiles and roles compose, and how do admission, claims and land stay inside one repo? | #1318 (PR #1802): [§9](#9-team-and-project-separation-1318-design-only), design delivered; T1–T4 planned under #1854 ([§9.8](#98-m56-delivery-1854)); applied M51 choices in [portable.md §5](portable.md#m51-personnel-boundary-and-team-routing-design) |
+| Q7. What does a team profile own versus a project, how do profiles and roles compose, and how do admission, claims and land stay inside one repo? | #1318 (PR #1802): [§9](#9-team-and-project-separation-1318), design delivered; T1–T4 built under #1854 ([§9.8](#98-m56-delivery-1854)); applied M51 choices in [portable.md §5](portable.md#m51-personnel-boundary-and-team-routing-design) |
 | Q8. How does a host import a personnel bundle and pinned roles without the terminal machinery or a change to role authority? | #1180 rows A–D built (PR #1805), on [§9.6](#96-pinned-personnel-import-and-host-binding)'s import and binding contract; fake-host proof, no live adoption claim |
 
 ## 8. Out of scope
@@ -482,15 +482,18 @@ restate it. #1217 updates portable.md to v0.4 with the harness axis, the
 - The CLI and repo rename (M33), beyond keeping the layout rename-ready.
 - Any change to a live merge gate or marker rule.
 
-## 9. Team and project separation (#1318, design only)
+## 9. Team and project separation (#1318)
 
 **Status: routing design delivered (PR #1802); personnel content built
-(PR #1805).** Shared admission, pools and routing remain design only. The
+(PR #1805); project context, shared admission, shared leads and repo-bound
+landing built for the terminal runtime by M56 (PR #1866, PR #1875,
+PR #1876, PR #1877; [§9.8](#98-m56-delivery-1854)).** Live team adoption
+remains an operator step. The
 [applied decision](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6846260224)
 adopts [readiness §3–§4](https://github.com/mw-ding/mdstack/issues/1779#issuecomment-6844208107).
 It replaces #1318's draft `[[projects]]` proposal with the existing
 `[team]` / `[repos.<name>]` schema. The implementation breakdown is §9.7;
-its units need separate plan records before admission.
+its units were admitted and built under M56 (§9.8).
 
 M51 status, synced by #1790; the landed items are closed in the tracker.
 The milestone closes after its status-sync slice (#1790, PR #1806) lands.
@@ -503,8 +506,9 @@ The milestone closes after its status-sync slice (#1790, PR #1806) lands.
 
 Lessons: pinned content and a thin host binding preserve role authority
 without exporting terminal execution. Fake-host import proves the content
-boundary; shared-pool and repo-isolation scenarios in §9.7 remain future
-tests, and live host adoption remains outside M51.
+boundary; shared-pool and repo-isolation scenarios in §9.7 remained future
+tests at M51's close (M56 covered them, §9.8), and live host adoption
+remains outside M51.
 
 ### 9.1 Ownership and composition
 
@@ -676,10 +680,11 @@ membership before branch creation, push, CI dispatch or merge. A mixed-repo
 train or stack is refused with **zero mutation**, including cleanup writes
 or partial execution. Each result routes back to its original project.
 
-These rules are the future isolation contract, not an edit to the gate
-registry's satisfied-by, actor or fail-open columns. T4 must preserve those
-columns; any proposed change to them needs the gate-contract path. Import,
-shared capacity and operator silence never waive CI, ownership, sensitive
+These rules are the isolation contract, built for the terminal runtime by
+T4 (#1859, PR #1877); they are not an edit to the gate registry's
+satisfied-by, actor or fail-open columns. T4 preserved those columns; any
+proposed change to them needs the gate-contract path. Import, shared
+capacity and operator silence never waive CI, ownership, sensitive
 permission, holds or reviewer independence.
 
 ### 9.6 Pinned personnel import and host binding
@@ -736,10 +741,10 @@ work-unit PR in logical commits; sizes below exclude tests.
 | T3 | One set of leads; unique windows/runs/worktrees; repo-state dispatch and correct recovery/reclaim | Terminal `up.py`, `lead.py`, `spawn.py`, `route.py`, `watch.py`, `_shared.py`; pool templates and lifecycle tests | T1, integrated with T2; 400–700 lines |
 | T4 | Repo-bound gates, locks and result routing; wrong verdict/grant and mixed train/stack rejected before mutation | Terminal `land.py`, `land-lock.py`, `train.py`, `_land_stack.py`; synthesizer templates, protocol, land-lock/stack tests | T1; integration after T3; 250–450 lines |
 
-The routing scenarios below specify future tests, **not observed runtime
-results**. Personnel import/refusal scenarios were exercised by #1180
-(PR #1805); that proof does not establish shared-pool routing or live host
-adoption.
+The routing scenarios below were specified before M56; T1–T4 cover them
+with isolated tests on disposable repos and fake backends (§9.8 outcome),
+**not live runtime results**. Personnel import/refusal scenarios were
+exercised by #1180 (PR #1805); neither proof establishes live host adoption.
 
 | Scenario | Required result / future proof owner |
 |---|---|
@@ -766,22 +771,23 @@ their issues, from
 S0 is recorded `built` for this opening slice, effective on merge; T1 is
 recorded `built` by #1856's change, effective on its merge; T2 by #1857's
 ([team admission](../scheduling.md#team-admission)), T3 by #1858's and T4
-by #1859's, each effective on its merge. No
+by #1859's, each effective on its merge; S1 by #1860's, effective on its
+merge. No
 member dispatches before #1861 merges. One issue → one PR in logical
 commits; the four units are not split further to meet a line budget.
 Estimates exclude tests and are planning ranges, not limits.
 
-| ID | Issue | Scope | Size | Depends on / integration prerequisite | Status |
-|---|---|---|---|---|---|
-| S0 | #1861 | Contract choices, issue references, refusal and proof matrix | 80–140 docs | M56 plan record; D1–D5 | built |
-| T1 | #1856 | Closed project context and qualified durable routing (§9.1–§9.3) | 250–450 | S0 | built |
-| T2 | #1857 | Shared admission lock, target and ledger (§9.4) | 300–550 | T1; M55 #1836 shared waits | built |
-| T3 | #1858 | Shared leads and worker lifecycle (§9.3–§9.4) | 400–700 | T1; integrated T2; M55 #1836 and #1830 | built |
-| T4 | #1859 | Repo-bound land, locks and train/stack refusals (§9.5) | 250–450 | T1; integrated T3; M55 #1835 and #1836 | built |
-| S1 | #1860 | Delivery references, headers, tracker closure, lessons | 40–90 docs | T1–T4 and M56 acceptance evidence | planned |
+| ID | Issue | Scope | Size | Depends on / integration prerequisite | Delivery | Status |
+|---|---|---|---|---|---|---|
+| S0 | #1861 | Contract choices, issue references, refusal and proof matrix | 80–140 docs | M56 plan record; D1–D5 | PR #1863 ([verdict](https://github.com/mw-ding/mdstack/pull/1863#pullrequestreview-5899065346)) | built |
+| T1 | #1856 | Closed project context and qualified durable routing (§9.1–§9.3) | 250–450 | S0 | PR #1866 ([verdict](https://github.com/mw-ding/mdstack/pull/1866#pullrequestreview-5901662913)) | built |
+| T2 | #1857 | Shared admission lock, target and ledger (§9.4) | 300–550 | T1; M55 #1836 shared waits | PR #1875 ([verdict](https://github.com/mw-ding/mdstack/pull/1875#pullrequestreview-5904266904)) | built |
+| T3 | #1858 | Shared leads and worker lifecycle (§9.3–§9.4) | 400–700 | T1; integrated T2; M55 #1836 and #1830 | PR #1876 ([verdict](https://github.com/mw-ding/mdstack/pull/1876#pullrequestreview-5903457187)) | built |
+| T4 | #1859 | Repo-bound land, locks and train/stack refusals (§9.5) | 250–450 | T1; integrated T3; M55 #1835 and #1836 | PR #1877 ([verdict](https://github.com/mw-ding/mdstack/pull/1877#pullrequestreview-5906774947)) | built |
+| S1 | #1860 | Delivery references, headers, tracker closure, lessons | 40–90 docs | T1–T4 and M56 acceptance evidence | this change | built |
 
-Each later land updates its row through the existing delivery references;
-S1 performs the final sync. The overall spec stays **partly built**: the
+Each land updated its row through the existing delivery references; S1
+performs the final sync. The overall spec stays **partly built**: the
 `protocols/` and `install/` modules and the rest of the actions work
 (§4) remain design only after M56.
 
@@ -879,5 +885,46 @@ on every push; T1–T4's authority, capacity, reclaim and land content are
 candidates, not recorded matches. A `crew:sensitive` match needs the
 owner's per-change reason and is not covered by the bulk merge-ok.
 
-The §9.7 routing scenarios remain future tests. This slice records no
-runtime result, and isolated proof will not assert live adoption.
+S0 recorded no runtime result. The outcome below cites the members'
+isolated proof; it asserts no live adoption.
+
+#### M56 outcome and lessons
+
+**Tracker.** S0 (#1861) and T1–T4 (#1856–#1859) landed and are closed;
+none was superseded and no extra item was admitted. #1860 closes on this
+change's merge, then #1854 and M56 close.
+
+**Applied scope decisions.** T3 landed before T2: T2 merged up on T3 and
+carried the shared-admission integration proof T3's verdict deferred
+(shared leads admit through the one team ledger; A's held or stale work
+never takes B's last slot) ([#1857 c6875348106](https://github.com/mw-ding/mdstack/issues/1857#issuecomment-6875348106)).
+T4's zero-mutation boundary excludes the gateway error telemetry append
+`schedule/errors.jsonl`; every other file and all backend and git writes
+stay unchanged on refusal ([#1859 c6881154373](https://github.com/mw-ding/mdstack/issues/1859#issuecomment-6881154373)).
+D1–D5 were built as applied; markers and the stage 7 registry columns are
+unchanged.
+
+**Proof boundary.** Each member's acceptance evidence is isolated:
+disposable repos sharing IDs, heads, passes and rounds, with fake session,
+forge and stack adapters (`test-crew-config.py`, `test-crew-route.py`,
+`test-crew-send.py`, `test-crew-poll.py`; `test-crew-schedule.py`;
+`test-crew-team.py`; `test-crew-land-team.py`, `test-crew-land.py`,
+`test-crew-train.py`). It shows no deployed source, installed release or
+live team adoption. None of PRs #1863, #1866, #1875, #1876 and #1877 is in
+a release yet: v7.12.0 predates them.
+
+**Lessons.**
+
+- Order by integration, not by number: landing T3 before T2 and moving the
+  deferred cross-unit check onto the later unit kept each verdict bound to
+  code that existed at its head.
+- A zero-mutation AC must name its boundary up front: telemetry appends are
+  writes, and T4's round 2 finding was settled by scoping, not code.
+- T1, T2 and T4 each reached the review round cap and resumed on a
+  coordinator steer; deep-tier units with many refusal cases should expect
+  more than three rounds.
+
+**Follow-ups.** A one-repo config still counts its own parked waits as
+demand while team demand skips them (PR #1875); aligning the two is a
+one-line change if wanted. Live team adoption and any state move stay an
+operator step (§9.2).

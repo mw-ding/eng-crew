@@ -1935,9 +1935,9 @@ its tested state and its members train again. Steps 3 and 5 and every gate
 above stay with the synthesizer. A train builder that dies is restarted
 once; a second failure closes the train and the synthesizer re-surveys.
 
-## Multi-project isolation design reference
+## Multi-project isolation reference
 
-The [M51 team/project design](specs/team.md#9-team-and-project-separation-1318-design-only)
+The [M51 team/project contract](specs/team.md#9-team-and-project-separation-1318)
 qualifies ownership, claims, evidence, verdicts and landing permission by
 repo. Its [landing contract](specs/team.md#95-landing-authority-and-refusals)
 is implemented for the terminal runtime (#1859,

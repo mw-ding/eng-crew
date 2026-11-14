@@ -173,8 +173,8 @@ Release and work status are recorded here:
   [docs/merge-enforcement.md](docs/merge-enforcement.md).
 
 M51 personnel delivery is built in source (PR #1805); its team/project
-routing design and approved T1–T4 breakdown landed in PR #1802. Shared
-pools remain design only and T1–T4 remain unadmitted
+routing design and approved T1–T4 breakdown landed in PR #1802; M56
+later built T1–T4 (below)
 ([M51 status](docs/specs/portable.md#m51-personnel-boundary-and-team-routing-design)).
 These landed after the 7.11.0 cut; they do not imply a released personnel
 bundle or live host adoption. M51 closes after status sync #1790 lands.
@@ -209,6 +209,15 @@ the synthesizer (PR #1867) and item tiers carried through every spawn
 closed; M55 closes after status sync #1848 lands
 ([M55 outcome](docs/specs/portable.md#m55-outcome-and-lessons)). All three
 repairs landed after the 7.12.0 cut and are in no release yet.
+
+M56 team/project routing is built in source for the terminal runtime:
+closed project context and qualified routing (PR #1866), one team
+admission ledger (PR #1875), shared team leads and worker lifecycle
+(PR #1876) and repo-bound landing (PR #1877), on the opening spec
+(PR #1863). All member issues are closed; M56 closes after status sync
+issue #1860 lands ([M56 outcome](docs/specs/team.md#m56-outcome-and-lessons)).
+The proof is isolated (disposable repos, fake backends); none of it is in
+a release yet, and it shows no live team adoption.
 
 Content is built by the crew itself through the normal PR pipeline; every
 change is recorded in `CHANGELOG.md`.

@@ -565,7 +565,10 @@ parks and retries only its own messages, fingerprinted from its own poll
 state. The lead brief lists each repo's rendered lead brief, and
 `$CREW_PROJECT` is the team file, so a command without the message's
 `context.project` refuses in a multi-repo team. A repo whose ownership
-refuses gets no handoff; the lead keeps serving the others.
+refuses gets no handoff; the lead keeps serving the others. The lead's
+admission asks the one team scheduler
+([team admission](../scheduling.md#team-admission), #1857), so pool caps,
+floors and reservations count across every repo once.
 
 One lock at the team root (`allocations/.lock`) mints a team-global run ID
 and takes the window slot before any worktree or window. A team run's window
