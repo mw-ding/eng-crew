@@ -608,7 +608,11 @@ with a passing verdict, self-gate or coordinator `merge-ok` steer at head,
 or on an approved merge-up head
 (an express `ci-passed` is already gated by `mdstack poll`), and approved
 `merge-up` events as durable `work` events into its inbox. They no longer stay queued for the
-coordinator. A land event for a superseded head is dropped; an unapproved
+coordinator. A `merge-ok-recorded` event whose authenticated merge-ok is still
+at the live head goes there too, so permission recorded after CI went green
+wakes the land; permission before CI gets a gate check that waits, and the
+later `ci-passed` retries (#1835). A closed PR or a merge-ok no longer at
+head consumes it. A land event for a superseded head is dropped; an unapproved
 `ci-passed` is consumed unless held CI refs (`ci/<n>-*.json`) wait on it.
 A merge-up with an open rereview or a resolved conflict still goes to
 the reviewer lead. Coordinator recovery uses
@@ -1748,6 +1752,7 @@ exactly one consuming role ([protocol §8](../protocol.md#8-safety)):
 | `crew:ready` issue newly assigned | `issue-assigned` | builder |
 | Open crew PR head turns `CONFLICTING` (`UNKNOWN` is no conflict), including after another land | `pr-conflicting` | builder (merge-up via the builder lead, before any CI) |
 | Express change: new builder `pass=selfgate verdict=pass` at head with CI green | `selfgate-passed` | synthesizer |
+| New authenticated coordinator `pass=steer cmd=merge-ok` record at the current full head SHA, whatever CI shows; duplicates, other heads or authors and a legacy state entry emit none (#1835) | `merge-ok-recorded` | synthesizer (a reason to re-read gates; never approval or a CI waiver) |
 
 A change that resolves express ([express lane](../express-lane.md#routing),
 `crew:express` plus the item record and class rules, read as `mdstack train`

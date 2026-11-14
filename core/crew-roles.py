@@ -24,7 +24,7 @@ PASSES = {"tmux": {"coordinate", "build", "fix", "review", "validate", "recheck"
           "grok-bot": {"coordinate", "build", "fix", "review", "validate", "land"}}
 EVENTS = {"tmux": {"issue-assigned", "new-head", "ci-passed", "ci-failed", "ci-infra", "review-approved",
                    "review-changes-requested", "pr-merged", "pr-closed", "fix-at-head", "merge-up", "selfgate-passed",
-                   "pr-conflicting", "hold-released", "owner-answer"},
+                   "pr-conflicting", "hold-released", "owner-answer", "merge-ok-recorded"},
           "grok-bot": {"issue-assigned", "pr-opened", "new-head", "ci-passed", "ci-failed",
                        "review-requested", "review-approved", "review-changes-requested", "pr-merged", "pr-closed"}}
 POLICIES = {"always-on": "min = max", "elastic": "1 <= min < max", "ephemeral": "min = 0"}

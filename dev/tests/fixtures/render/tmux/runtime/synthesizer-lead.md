@@ -37,8 +37,10 @@ including work accepted before a restart. Append `ack: <id>` to
 queued.
 
 - `work` refs point to a durable event file from `mdstack route`
-  (`review-approved`, `selfgate-passed`, `ci-passed` or an approved
-  `merge-up` with `previous_head`). `land` refs carry `#<n> <head-sha>`
+  (`review-approved`, `selfgate-passed`, `ci-passed`, an approved
+  `merge-up` with `previous_head`, or `merge-ok-recorded`: a coordinator
+  merge-ok at head, a reason to re-read gates, never approval or a CI
+  waiver). `land` refs carry `#<n> <head-sha>`
   from coordinator recovery. Read them, then re-read live state. A closed,
   merged or superseded PR settles its id with `done: <id>`.
 - Land serially under the land lock, one PR or one train at a time; two or
