@@ -337,11 +337,15 @@ outputs and reservations are unchanged.
   demand is unreadable (`demand-unreadable`). Its running workers still
   count. Another repo stays eligible. A team repo's `crew:escalated` items
   are held like `crew:hold` ones, each read through that repo's
-  `repo.labels`. A build whose `Depends on` names an issue still open in its
-  own repo is not ranked; decide lists it under `waiting` with those
-  numbers. An acknowledged wait whose ref is unchanged (`lead.parked`,
-  #1836) is not demand, so one repo's parked waits never take another's
-  budget.
+  `repo.labels`. Within an eligible repo each item must also pass, read
+  positively in its own repo: not held or escalated (`held`); a head-bound
+  item (a handoff, fix, ci-red or work event naming a sha) matches its open
+  PR's live head (`heads-unreadable`, `stale-head`); a build's local `Depends
+  on` issues are closed (`depends-open`). An unknown input refuses like a
+  mismatch, only that item is refused, and it takes no reservation; decide
+  lists such items under `waiting` with the reason. An acknowledged wait
+  whose ref is unchanged (`lead.parked`, #1836) is not demand, so one repo's
+  parked waits never take another's budget.
 - **Unknown shared state refuses.** Unreadable caps, workers (a repo that
   does not resolve included) or ledger defer every team decision as
   `caps-unreadable`, `workers-unreadable` or `reservations-unreadable`. An

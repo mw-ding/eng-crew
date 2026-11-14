@@ -741,14 +741,24 @@ with open(os.environ["FAKE_GH_LOG"], "a") as f:
     f.write(json.dumps(args) + "\\n")
 with open(os.environ["FAKE_GH_CONF"]) as f:
     conf = json.load(f)
-repo = args[args.index("-R") + 1] if "-R" in args else "/".join(args[1].split("?")[0].split("/")[1:3])
+path = next((a for a in args[1:] if a.startswith("repos/")), "")
+repo = args[args.index("-R") + 1] if "-R" in args else "/".join(path.split("?")[0].split("/")[1:3])
 r = conf.get(repo, {})
-if args[0] == "api":
+if args[0] == "api" and "/comments" in path:  # the control item's ownership record
+    if r.get("posts") is None:
+        sys.exit(1)
+    print(json.dumps([[dict(user=dict(login="acme-bot"), body=b, created_at="2026-11-14T00:00:00Z", id=i)
+                       for i, b in enumerate(r["posts"])]]))
+elif args[0] == "api":
     print(json.dumps(r.get("milestones", [{"number": 1, "title": "M1"}, {"number": 2, "title": "M2"}])))
 elif args[:2] == ["issue", "list"] and "--label" in args:
     if r.get("holds_fail"):
         sys.exit(1)
     print(json.dumps([{"number": n} for n in r.get("labels", {}).get(args[args.index("--label") + 1], [])]))
+elif args[:2] == ["pr", "list"] and "number,headRefOid" in args:  # open PR heads
+    if r.get("heads_fail"):
+        sys.exit(1)
+    print(json.dumps(r.get("prs", [{"number": 7, "headRefOid": "1" * 40}])))
 elif args[:2] == ["pr", "list"]:
     print("[]")
 elif args[:2] == ["issue", "list"]:
@@ -976,30 +986,85 @@ class Team(Base):
         out = self.call("widgets", "decide", "--pool", "builder")
         self.assertEqual([(a["ref"], a["class"], a["reasons"]) for a in out["admit"]], [("#43", 8, [])])
 
-    def test_open_local_dependency_blocks_only_that_repos_build(self):
+    def test_every_ac2_predicate_refuses_only_its_item_unknown_or_mismatched(self):
+        """One table over AC2's predicates (team §9.4) through `mdstack schedule decide`: B's item under an unknown or
+        mismatched predicate is refused and takes no reservation, A then wins the one team slot (the cross-repo
+        last-slot control), and B's item under the passing predicate is admitted."""
+        live, other = SHA, "2" * 40
+        claim = lambda to: ("<!-- crew:v1 role=coordinator pass=handoff handoff=20261114-abcdef state=claimed from=none "
+                            "to=%s cmd-id=c1 sha=%s round=n/a verdict=n/a -->" % (to, SHA))
         issue = lambda n, body="": dict(number=n, milestone={"title": "M1"}, body=body, title=str(n))
-        self.gh({"acme/widgets": {"issues": [issue(41), issue(42, "Depends on #41")]}, "acme/gadgets": {"issues": [issue(42)]}})
-        out = self.call("widgets", "decide", "--pool", "builder")  # A's #42 waits on A's open #41
-        self.assertEqual([(a["repo"], a["ref"]) for a in out["admit"]], [])
-        self.assertEqual(out["waiting"], [dict(pool="builder", ref="#42", kind="build", repo="acme/widgets", depends=[41])])
-        self.assertFalse(os.path.exists(os.path.join(self.root, "schedule", "reservations.json")) and self.ledger())
-        out = self.call("gadgets", "decide", "--pool", "builder")  # B's same-ID #42 has no dependency
-        self.assertEqual([(a["repo"], a["ref"]) for a in out["admit"]], [("acme/gadgets", "#42")])
-        self.gh({"acme/widgets": {"issues": [issue(42, "Depends on #41")]}, "acme/gadgets": {"issues": [issue(42)]}})
-        out = self.call("widgets", "decide", "--pool", "builder")  # control: #41 closed, A's #42 is eligible
-        self.assertEqual(([(a["repo"], a["ref"]) for a in out["admit"]], out["waiting"]), ([("acme/widgets", "#42")], []))
-        self.assertEqual(self.mutations(), [])
+        dep = lambda *ns: {"acme/gadgets": {"issues": [issue(n) for n in ns] + [issue(42, "Depends on #41")]}}
+        owned = 'control_item = 5\n'
+        pause = lambda text: lambda: self.write(os.path.join(self.b, "pause.json"), text)
+        gh = lambda conf: lambda: self.gh(conf)
+        cfg = lambda extra: lambda: self.write_team(builders=1, extra=extra, runtime=', instance = "eng"')
+        both = lambda *fs: lambda: [f() for f in fs]
+        rows = [  # predicate, case, pool, setup, B's refusal (None: admitted), where it is reported
+            ("ownership", "unknown", "builder", cfg(owned), "ownership-read-only", "blocked"),
+            ("ownership", "mismatch", "builder", both(cfg(owned), gh({"acme/gadgets": {"posts": [claim("tmux@other")]}})),
+             "ownership-read-only", "blocked"),
+            ("ownership", "pass", "builder", both(cfg(owned), gh({"acme/gadgets": {"posts": [claim("tmux@eng")]}})),
+             None, None),
+            ("pause", "unknown", "builder", pause("{bad"), "paused", "blocked"),
+            ("pause", "mismatch", "builder", pause(json.dumps({"at": "t"})), "paused", "blocked"),
+            ("pause", "pass", "builder", lambda: None, None, None),
+            ("hold", "unknown", "builder", gh({"acme/gadgets": {"holds_fail": True}}), "holds-unreadable", "blocked"),
+            ("hold", "mismatch", "builder", gh({"acme/gadgets": {"labels": {"crew:hold": [42]}}}), "held", "held"),
+            ("hold", "pass", "builder", gh({"acme/gadgets": {"labels": {"crew:hold": [99]}}}), None, None),
+            ("escalation", "unknown", "builder", gh({"acme/gadgets": {"holds_fail": True}}), "holds-unreadable", "blocked"),
+            ("escalation", "mismatch", "builder", gh({"acme/gadgets": {"labels": {"crew:escalated": [42]}}}), "held", "held"),
+            ("escalation", "pass", "builder", gh({"acme/gadgets": {"labels": {"crew:escalated": [99]}}}), None, None),
+            ("tracker", "unknown", "builder", gh({"acme/gadgets": {"issues": None}}), "tracker-unreadable", "blocked"),
+            ("tracker", "pass", "builder", gh({"acme/gadgets": {"issues": [issue(42)]}}), None, None),
+            ("dependency", "unknown", "builder", gh({"acme/gadgets": {"issues": None}}), "tracker-unreadable",
+             "blocked"),
+            ("dependency", "mismatch", "builder", gh(dep(41)), "depends-open", "waiting"),
+            ("dependency", "pass", "builder", gh(dep()), None, None),
+            ("head", "unknown", "reviewer", gh({"acme/gadgets": {"heads_fail": True}}), "heads-unreadable", "waiting"),
+            ("head", "mismatch", "reviewer", gh({"acme/gadgets": {"prs": [{"number": 7, "headRefOid": other}]}}),
+             "stale-head", "waiting"),
+            ("head", "mismatch", "reviewer", gh({"acme/gadgets": {"prs": []}}), "stale-head", "waiting"),  # PR not open
+            ("head", "pass", "reviewer", gh({"acme/gadgets": {"prs": [{"number": 7, "headRefOid": live}]}}),
+             None, None)]
+        ref, ledger = {"builder": "#42", "reviewer": "#7"}, os.path.join(self.root, "schedule", "reservations.json")
 
-    def test_unreadable_tracker_blocks_only_that_repo(self):
-        self.gh({"acme/widgets": {"issues": None}})
-        out = self.call("widgets", "decide", "--pool", "builder")
-        self.assertEqual((out["admit"], [d["reasons"] for d in out["deferred"]]), ([], [["tracker-unreadable"]]))
-        self.assertIn(dict(repo="acme/widgets", pool="builder", reasons=["tracker-unreadable"]), out["blocked"])
-        out = self.call("gadgets", "decide", "--pool", "builder")  # B's tracker reads: B stays eligible
-        self.assertEqual([(a["repo"], a["ref"]) for a in out["admit"]], [("acme/gadgets", "#42")])
-        self.gh({})
-        out = self.call("widgets", "decide", "--pool", "builder")  # control: A's tracker reads again
-        self.assertEqual(([(a["repo"], a["ref"]) for a in out["admit"]], out["blocked"]), ([("acme/widgets", "#42")], []))
+        def cap1():  # one team slot per pool, so A taking it after B's refusal is the last-slot control
+            with open(self.team) as f:
+                text = f.read()
+            with open(self.team, "w") as f:
+                f.write(text.replace("reviewers = 2", "reviewers = 1"))
+        for pred, case, pool, setup, why, where in rows:
+            with self.subTest("%s/%s" % (pred, case)):
+                self.write_team(builders=1)
+                self.gh({})
+                for path in (os.path.join(self.b, "pause.json"), ledger):
+                    if os.path.exists(path):
+                        os.remove(path)
+                for state in (self.a, self.b):
+                    builds = [dict(id="b42", kind="build", refs=["#42"])] if pool == "builder" else []
+                    passes = [dict(id="v7", kind="validate", refs=["#7", live, "1"])] if pool == "reviewer" else []
+                    self.inbox(state, "ben-lead", builds)
+                    self.inbox(state, "vera-lead", passes)
+                setup()
+                cap1()
+                b = self.call("gadgets", "decide", "--pool", pool)
+                if why is None:
+                    self.assertEqual([(x["repo"], x["ref"]) for x in b["admit"]], [("acme/gadgets", ref[pool])])
+                    continue
+                self.assertEqual(b["admit"], [])
+                self.assertFalse(os.path.exists(ledger) and self.ledger())
+                item = dict(pool=pool, ref=ref[pool], kind="build" if pool == "builder" else "validate", repo="acme/gadgets")
+                if where == "blocked":
+                    self.assertEqual([d["reasons"] for d in b["deferred"]], [[why]])
+                    self.assertIn(dict(repo="acme/gadgets", pool=pool, reasons=[why]), b["blocked"])
+                elif where == "held":
+                    self.assertEqual(b["held"], [item])
+                else:
+                    self.assertEqual([{k: w.get(k) for k in [*item, "reasons"]} for w in b["waiting"]],
+                                     [dict(item, reasons=[why])])
+                a = self.call("widgets", "decide", "--pool", pool)  # A's same-ID item takes the one team slot
+                self.assertEqual([(x["repo"], x["ref"]) for x in a["admit"]], [("acme/widgets", ref[pool])])
         self.assertEqual(self.mutations(), [])
 
     def route(self, kind, round_, cap=1):

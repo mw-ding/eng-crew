@@ -33,6 +33,7 @@ RESERVATION_TTL = 600  # seconds a grant counts as busy before its run record ap
 LEAD_DOWN = ("dead", "missing", "ambiguous", UNKNOWN)
 DEPENDS = re.compile(r"^#*\s*Depends on\b(.*?)(?=^#+\s|\Z)", re.I | re.M | re.S)
 RED_FIX = re.compile(r"main-red\b", re.I)
+SHA40 = re.compile(r"\b[0-9a-f]{40}\b")
 REVIEW_LINES = ((re.compile(r"done: #(\d+) [0-9a-f]{40} review pass(?:\s|$)"), "validate"),
                 (re.compile(r"done: #(\d+) [0-9a-f]{40} recheck escalate(?:\s|$)"), "review"),
                 (re.compile(r"done: #\d+ #(\d+) [0-9a-f]{40}$"), "review"))
@@ -96,7 +97,7 @@ def demand(state, values, role, team=False):
                     item.update(kind=kind, refs=[ref])
         items.append(item)
     if role == "builder":
-        items += [dict(kind=e["pass"], issue=e["issue"], pr=e["pr"], ts=e["queued"], queued=True)
+        items += [dict(kind=e["pass"], issue=e["issue"], pr=e["pr"], ts=e["queued"], queued=True, head=e.get("head"))
                   for e in jsonl(os.path.join(state, "spawn-queue.jsonl")) if e["role"] == "builder"]
     return items
 
@@ -164,6 +165,13 @@ def holds(values, escalated=False):
     prs = gh("pr", "list", "-R", repo, "--state", "open", "--limit", "1000", "--json", "number,labels,closingIssuesReferences")
     return sorted(issues | {p["number"] for p in prs if any(label["name"] in names for label in p["labels"])
                             or issues & {i["number"] for i in p["closingIssuesReferences"]}})
+
+
+def heads(values):
+    """Each open PR's head commit by number (a team repo's head check, team §9.4)."""
+    repo = "%s/%s" % (values["repo.owner"], values["repo.name"])
+    prs = commands()["route"].gh("pr", "list", "-R", repo, "--state", "open", "--limit", "1000", "--json", "number,headRefOid")
+    return {str(p["number"]): p["headRefOid"] for p in prs}
 
 
 def memory():
@@ -243,7 +251,8 @@ def repo_inputs(values, state, team=False):
     """One repo's demand, lands, trains, tracker and holds (docs/scheduling.md#inputs)."""
     return dict(demand={role: read(demand, state, values, role, team) for role in ("builder", "reviewer")},
                 lands=read(lands, state, values), trains=read(lambda: [os.path.basename(p) for p in open_trains(state)]),
-                tracker=read(tracker, values), holds=read(holds, values, team))
+                tracker=read(tracker, values), holds=read(holds, values, team),
+                **({"heads": read(heads, values)} if team else {}))
 
 
 def ledger(path):
@@ -329,7 +338,8 @@ def classify(snap, red_fixes=None):
     are left out. `red_fixes` defaults to the tracker's open `main-red` issues. A team snapshot classifies each repo
     against its own tracker, holds and workers (milestones and dependencies stay local) and tags every item with its
     repo and project reference; a blocked repo's demand in a pool is left out. A team build whose `Depends on` names
-    an issue still open in its own repo carries those numbers as `depends_open` and is not ranked (team §9.4)."""
+    an issue still open in its own repo carries those numbers as `depends_open`, and each team item carries the first
+    AC2 predicate it fails as `ineligible` (see ineligible()); rank() leaves those out."""
     if "repos" in snap:
         found = []
         for repo, r in sorted(snap["repos"].items()):
@@ -340,10 +350,11 @@ def classify(snap, red_fixes=None):
             issues = [] if r["tracker"] == UNKNOWN else r["tracker"]["issues"]
             open_ = {i["number"] for i in issues}
             depends = {i["number"]: sorted(set(i["depends"]) & open_) for i in issues}
-            found += [dict(i, repo=repo, project=r["project"], **({"round": round_of(i)} if i["pool"] == "reviewer" else {}),
-                           **({"depends_open": depends[i["issue"]]} if i["kind"] == "build" and depends.get(i["issue"])
-                              else {}))
-                      for i in classify(sub, red_fixes)]
+            for i in classify(sub, red_fixes):
+                i = dict(i, repo=repo, project=r["project"], **({"round": round_of(i)} if i["pool"] == "reviewer" else {}),
+                         **({"depends_open": depends[i["issue"]]} if i["kind"] == "build" and depends.get(i["issue"])
+                            else {}))
+                found.append(dict(i, ineligible=ineligible(r, i)))
         return found
     tracker = snap["tracker"] if snap.get("tracker", UNKNOWN) != UNKNOWN else dict(milestones=[], max_active=1, issues=[])
     red_fixes = set(tracker.get("red_fixes", []) if red_fixes is None else red_fixes)
@@ -385,7 +396,7 @@ def rank(snap, red_fixes=None):
     path (more waiters first) and age (oldest first). `red_fixes` are the issue or PR numbers whose builds or fixes
     repair a red default branch (class 1); by default the tracker's open `main-red` issues and their PRs. Team items
     then tie-break by canonical repo and work identity, so the order is deterministic across repos."""
-    return sorted((r for r in classify(snap, red_fixes) if not r["held"] and not r.get("depends_open")),
+    return sorted((r for r in classify(snap, red_fixes) if not r["held"] and not r.get("ineligible")),
                   key=lambda r: (r["class"], r["milestone_order"], -r["waiting"], r.get("ts") or "~") +
                   ((r["repo"], r["ref"], r["kind"]) if "repo" in r else ()))
 
@@ -402,6 +413,37 @@ def blocked(r, pool):
     if r["tracker"] == UNKNOWN:
         return "tracker-unreadable"
     return "demand-unreadable" if r["demand"][pool] == UNKNOWN else None
+
+
+def head_of(item):
+    """The head commit a demand item is bound to, else None: a queued spawn's head, or the sha after its PR ref in its
+    refs (a `#n <sha> ...` handoff, fix or ci-red) or in the work event it names (refs or `done:` line)."""
+    if item.get("queued"):
+        return item.get("head")
+    event = item.get("event") or {}
+    for refs in (event.get("refs"), item.get("refs")):
+        if refs and len(refs) > 1 and SHA40.fullmatch(str(refs[1])):
+            return refs[1]
+    found = SHA40.search(event.get("line", ""))
+    return found[0] if found else None
+
+
+def ineligible(r, item):
+    """The first AC2 predicate (team §9.4) a team demand item fails in its own repo `r`, else None. Each predicate must
+    read positively, so an unknown input defers the item exactly as a mismatch does: the repo's ownership, pause and
+    readable holds, tracker and demand (blocked()), its hold or escalation, a head-bound item's head equal to its open
+    PR's live head, and a build's local dependencies closed. Only that item is refused; other repos are untouched."""
+    why = blocked(r, item["pool"])
+    if why:
+        return why
+    if item["held"]:
+        return "held"
+    head = head_of(item)
+    if head and r.get("heads", UNKNOWN) == UNKNOWN:
+        return "heads-unreadable"
+    if head and r["heads"].get(item["ref"][1:]) != head:
+        return "stale-head"
+    return "depends-open" if item.get("depends_open") else None
 
 
 def lane(x):
@@ -699,8 +741,8 @@ def team_blocks(snap):
 
 def schedule_decide(args):
     """One decision for args.pool under schedule/lock; returns the JSON printed to the lead. A team adds its name, the
-    caller's repo, each repo's refusals (`blocked`) and builds waiting on an open local dependency (`waiting`), and
-    every action names its repo."""
+    caller's repo, each repo's refusals (`blocked`) and its unheld items an item-level AC2 predicate refuses
+    (`waiting`, each with its reason), and every action names its repo."""
     values, session, state = profile(args)
     sched = os.path.join(home(values, state), "schedule")
     os.makedirs(sched, exist_ok=True)
@@ -735,8 +777,9 @@ def schedule_decide(args):
                                                 **({"repo": r["repo"]} if team else {})) for r in held(snap)])
     if team:
         out.update(team=snap["team"], repo=canonical(values), blocked=team_blocks(snap), waiting=[] if unreadable else [
-            dict(pool=r["pool"], ref=r["ref"], kind=r["kind"], repo=r["repo"], depends=r["depends_open"])
-            for r in classify(snap) if r.get("depends_open") and not r["held"]])
+            dict(pool=r["pool"], ref=r["ref"], kind=r["kind"], repo=r["repo"], reasons=[r["ineligible"]],
+                 **({"depends": r["depends_open"]} if r["ineligible"] == "depends-open" else {}))
+            for r in classify(snap) if r["ineligible"] not in (None, "held")])
     return out
 
 
