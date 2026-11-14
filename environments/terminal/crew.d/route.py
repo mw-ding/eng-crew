@@ -352,7 +352,7 @@ def review(args, state, pr, head, pass_, round_):
                tier=None, head=head, rereview_id=steer if lead else None)
     except RuntimeError:
         if lead:
-            commands()["schedule"].schedule_release(scheduler(args, refs=["#%d" % pr["number"]]))
+            commands()["schedule"].schedule_release(scheduler(args, refs=["#%d" % pr["number"]], kind=pass_, round=round_))
         raise
 
 

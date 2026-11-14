@@ -239,9 +239,11 @@ def stall(state, seen, name, now, since=None, liveness=None):
     commands()["poll"].observe(state, dict(record, ts=utc(now), source="watch", key="run:" + name))
 
 
-def scan(state, session, now, stale, seen, idle_ttl=1800, stuck_after=1800, idle_stall=1800):
+def scan(state, session, now, stale, seen, idle_ttl=1800, stuck_after=1800, idle_stall=1800, schedule_home=None,
+         repo=None):
     """Wake records: new status lines, runs dead, missing or silent past stale, owner asks past their deadline and
-    finishing work deferred past stuck_after; each fires once per key. A working run whose pane printed nothing for
+    finishing work deferred past stuck_after (in a team, this repo's from the team schedule at schedule_home); each
+    fires once per key. A working run whose pane printed nothing for
     idle_stall seconds is idle at its prompt and wakes stale (liveness `idle`), however fresh its status file (#1283)."""
     windows = dict((n, i) for i, n in tmux.list_windows(session))
     wakes = []
@@ -355,11 +357,11 @@ def scan(state, session, now, stale, seen, idle_ttl=1800, stuck_after=1800, idle
             seen["keys"]["ask " + n] = text
             wakes.append({"reason": "ask", "event": "%s deadline %s" % (n, text)})
     schedule = commands()["schedule"]
-    found = schedule.read(schedule.stuck, state, now, stuck_after)
+    found = schedule.read(schedule.stuck, schedule_home or state, now, stuck_after, repo)
     for d in [] if found == schedule.UNKNOWN else found:
         if seen["keys"].get("stuck %s %s" % (d["pool"], d["ref"])) != d["since"]:
             seen["keys"]["stuck %s %s" % (d["pool"], d["ref"])] = d["since"]
-            line = schedule.read(schedule.latest, state)
+            line = schedule.read(schedule.latest, schedule_home or state)
             wakes.append({"reason": "schedule-stuck", "snapshot": line["snapshot"] if isinstance(line, dict) else None,
                           "event": "%s %s %s class %s deferred since %s: %s" % (
                               d["pool"], d["ref"], d["kind"], d["class"], d["since"], ", ".join(d["reasons"]))})
@@ -675,11 +677,12 @@ def nudge(args, session, state, wake, seen):
     return None
 
 
-def announce(args, session, state, wake, seen, wakes):
-    """Wake the coordinator for retained wakes: the nudge, then one reason line and the schedule summary."""
+def announce(args, session, state, wake, seen, wakes, schedule_home=None):
+    """Wake the coordinator for retained wakes: the nudge, then one reason line and the schedule summary (a team's
+    from its team root, schedule_home)."""
     wakes = wakes + [w for w in [nudge(args, session, state, wake, seen)] if w]
     print(reason(wakes[0]) + (" (+%d more in wake/queue.jsonl)" % (len(wakes) - 1) if len(wakes) > 1 else ""))
-    if (line := commands()["schedule"].read(commands()["schedule"].summary, state)) not in (None, "unknown"):
+    if (line := commands()["schedule"].read(commands()["schedule"].summary, schedule_home or state)) not in (None, "unknown"):
         print(line)
     sys.stdout.flush()
 
@@ -742,6 +745,8 @@ def run(args):
     """Zero-token watcher: block on status files, liveness, owner-ask deadlines, one-shot --source commands and
     queue growth; queue wakes, then exit."""
     values, session, state = profile(args)
+    schedule = commands()["schedule"]  # a team repo's stuck work and summary come from the team schedule (#1857)
+    home, repo = schedule.home(values, state), schedule.canonical(values) if values.get("team.name") else None
     if args.detach:
         argv = sys.argv[sys.argv.index("watch") + 1:]
         return start_persistent(state, [a for a in argv if a not in ("--detach", "--persistent")])
@@ -843,7 +848,7 @@ def run(args):
                 found += pull_hosts(values, state, seen, time.time(), args.stale)
             trial = json.loads(json.dumps(seen))  # committed only once its wakes are queued
             wakes = scan(state, session, time.time(), args.stale, trial, values["runtime.options.idle_builder_ttl"],
-                         values["runtime.options.stuck_after"], args.idle_stall) + found
+                         values["runtime.options.stuck_after"], args.idle_stall, home, repo) + found
             others = queued(state, wake, trial)
             if code_sig() != code and not held:  # before route resolves the live profile with old code (#702)
                 reexec(lock)  # trial is not committed, so the new image finds this scan's status lines and records again
@@ -890,14 +895,15 @@ def run(args):
                 if wakes and not args.persistent:
                     break
                 if wakes:  # persistent: wake the coordinator by its nudge and keep scanning (#1346)
-                    announce(args, session, state, wake, seen, wakes)
+                    announce(args, session, state, wake, seen, wakes, home)
                     seen["nudged"] = time.time()
                     flight, armed_at, deadline = backstop_deadline(state, seen, backstop, backoff)
                     save(seen)
             if args.persistent and not wakes and time.time() - seen.get("nudged", 0) >= args.renudge and \
                     os.path.exists(queue := os.path.join(wake, "queue.jsonl")) and os.path.getsize(queue):
                 # a coordinator turn that ended without draining (a gateway error, #1346) is nudged again
-                announce(args, session, state, wake, seen, [{"reason": "renudge", "event": "wake/queue.jsonl not drained"}])
+                announce(args, session, state, wake, seen, [{"reason": "renudge", "event": "wake/queue.jsonl not drained"}],
+                         home)
                 seen["nudged"] = time.time()
                 save(seen)
             sleeping = True
@@ -907,7 +913,7 @@ def run(args):
             sleeping = False
         if held:  # held during the last scan, whose wakes are queued
             raise SystemExit(128 + held[0])
-        announce(args, session, state, wake, seen, wakes + others)
+        announce(args, session, state, wake, seen, wakes + others, home)
         return 0
     finally:
         save(seen)
