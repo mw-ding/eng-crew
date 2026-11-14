@@ -108,5 +108,31 @@ class ItemFlavor(unittest.TestCase):
             self.assertTrue(result["project_gap"])
 
 
+class ItemTier(unittest.TestCase):
+    """#1830: the optional tier= on a flavor record, scanned apart from flavor."""
+
+    def tiered(self, tier, flavor="standard", issue=196):
+        return "<!-- crew:v1 role=coordinator pass=flavor issue=%d flavor=%s default=standard tier=%s -->" % (
+            issue, flavor, tier)
+
+    def test_newest_tiered_record_wins_and_flavor_only_record_keeps_it(self):
+        self.assertIsNone(item.resolve_tier(196, [record()]))
+        self.assertEqual(item.resolve_tier(196, [self.tiered("trivial"), self.tiered("deep")]), "deep")
+        self.assertEqual(item.resolve_tier(196, [self.tiered("deep"), record("thorough")]), "deep")
+        self.assertEqual(item.resolve_item({"flavor": {"name": "standard"}}, 196, [self.tiered("deep", "thorough")])["flavor"],
+                         "thorough")  # flavor resolution ignores the tier field
+
+    def test_other_issue_role_or_pass_is_ignored(self):
+        for body in (self.tiered("deep", issue=197), self.tiered("deep").replace("role=coordinator", "role=builder"),
+                     self.tiered("deep").replace("pass=flavor", "pass=triage")):
+            self.assertIsNone(item.resolve_tier(196, [body]))
+
+    def test_malformed_newest_tier_raises(self):
+        for tier in ("high", "Deep", "deep,default", ""):
+            with self.assertRaises(ValueError):
+                item.resolve_tier(196, [self.tiered("deep"), self.tiered(tier)])
+        self.assertEqual(item.resolve_tier(196, [self.tiered("high"), self.tiered("default")]), "default")
+
+
 if __name__ == "__main__":
     unittest.main()

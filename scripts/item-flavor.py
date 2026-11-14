@@ -9,6 +9,7 @@ missing records use thorough and flag flavor-missing. express is accepted as an 
 Express eligibility (docs/express-lane.md#eligibility) reads the issue's --labels: crew:sensitive
 or crew:spec needs a whole-line Owner override: quote in the record, crew:solo never qualifies,
 and unknown labels fail closed. An ineligible record resolves to the default as express-ineligible.
+resolve_tier reads a record's optional tier= for mdstack spawn (#1830); the CLI output is unchanged.
 """
 import argparse
 import importlib.util
@@ -23,6 +24,7 @@ spec.loader.exec_module(config)
 
 
 EXPRESS_OVERRIDABLE = ("crew:sensitive", "crew:spec")
+TIERS = ("trivial", "default", "deep")
 
 
 def express_blockers(labels, body):
@@ -64,6 +66,22 @@ def resolve_item(profile, issue, bodies, default=None, labels=None):
         if blockers:
             return dict(flavor=default, default=default, status="express-ineligible", blockers=blockers)
     return dict(flavor=chosen, default=default, status="recorded")
+
+
+def resolve_tier(issue, bodies):
+    """The item's execution tier (#1830): `tier=` from the newest coordinator `pass=flavor` record for the issue that
+    carries one, scanned apart from flavor so a later flavor-only record keeps it; None when no record has one.
+    Callers pass only bodies authenticated as the coordinator. A malformed tier raises ValueError."""
+    tier = None
+    for body in bodies:
+        for marker in re.findall(r"<!-- crew:v1 (.*?) -->", body):
+            fields = dict(re.findall(r"(\S+)=(\S*)", marker))
+            if fields.get("role") == "coordinator" and fields.get("pass") == "flavor" and \
+                    fields.get("issue") == str(issue) and "tier" in fields:
+                tier = fields["tier"]  # present but empty (`tier=`) stays malformed
+    if tier is not None and tier not in TIERS:
+        raise ValueError("malformed item tier %r on #%s (expected %s)" % (tier, issue, "|".join(TIERS)))
+    return tier
 
 
 def main(argv=None):

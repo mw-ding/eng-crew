@@ -224,6 +224,24 @@ class Restart(LivenessBase):
         self.assertEqual(self.git("status", "--porcelain", cwd=wt), "")
         self.assertEqual(len(self.windows()), 2)
 
+    def test_restart_keeps_the_recorded_item_tier(self):  # #1830: clean respawn and preserved-work relaunch
+        record = "<!-- crew:v1 role=coordinator pass=flavor issue=%d flavor=standard default=standard tier=%s -->\n— 🔥 Ash (CTO) · x"
+        for issue, index, unlanded in ((8, 11, False), (9, 12, True)):
+            with self.subTest(unlanded=unlanded):
+                key, name = "FAKE_COMMENTS_%d" % issue, "ben-%d" % issue
+                self.env[key] = json.dumps([{"author": {"login": "acme-bot"}, "body": record % (issue, "deep")}])
+                self.assertEqual(self.spawn("builder", "--issue", str(issue)).returncode, 0)
+                if unlanded:
+                    self.git("commit", "-q", "--allow-empty", "-m", "local only", cwd=self.record(name)["worktree"])
+                self.env[key] = json.dumps([{"author": {"login": "acme-bot"}, "body": record % (issue, "trivial")}])
+                self.set_pane(index, dead="1")
+                r = self.crew("restart", name, "--project", self.project, "--timeout", "1")
+                self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+                self.assertIn("keeping unlanded work" if unlanded else "crew: started " + name, r.stdout)
+                rec = self.record(name)
+                self.assertEqual((rec["args"]["tier"], rec["effort"], rec["restarts"]), ("deep", "high", 1))
+                self.assertIn("model_reasoning_effort=high", self.windows()[-1][-1])  # relaunched at deep effort
+
     QUOTA = "■ You've hit your usage limit. Upgrade to Pro or try again in 2 days."  # Codex's own banner (#631)
 
     def test_quota_run_restarts_once_on_the_next_engine(self):  # #631: a clean run too stays in place

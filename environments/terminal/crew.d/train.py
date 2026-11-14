@@ -245,7 +245,7 @@ def train_route(args, values, state, repo, slug, rec):
                             return
                         spawned = commands()["spawn"].run(argparse.Namespace(
                             role="builder", issue=issues[0]["number"], pr=d["pr"], pass_="fix", round=1,
-                            tier="default", timeout=15.0, project=args.project, org_profile=args.org_profile))
+                            tier=None, timeout=15.0, project=args.project, org_profile=args.org_profile))
                         if spawned:
                             d["merge_up"] = "queued"
                     else:

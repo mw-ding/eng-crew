@@ -215,6 +215,7 @@ class Base(unittest.TestCase):
                     "args = sys.argv[1:]\n"
                     "solo = args[2] in os.environ.get('FAKE_SOLO_' + args[0].upper(), '').split(',')\n"
                     "print(json.dumps({'labels': [{'name': 'crew:solo'}] if solo else [], "
+                    "'comments': json.loads(os.environ.get('FAKE_COMMENTS_' + args[2], '[]')), "
                     "'closingIssuesReferences': [{'number': 7}], 'body': os.environ.get('FAKE_PR_BODY', '')}))\n")
         os.chmod(os.path.join(bindir, "gh"), 0o755)
 
@@ -286,7 +287,9 @@ class SpawnBase(Base):
                     "if args[:2] in (['issue', 'view'], ['pr', 'view']):\n"
                     " solo = args[2] in os.environ.get('FAKE_SOLO_' + args[0].upper(), '').split(',')\n"
                     " print(json.dumps({'labels': [{'name': 'crew:solo'}] if solo else [], "
-                    "'closingIssuesReferences': [{'number': 7}], 'body': os.environ.get('FAKE_PR_BODY', '')}))\n"
+                    "'comments': json.loads(os.environ.get('FAKE_COMMENTS_' + args[2], '[]')), "
+                    "'closingIssuesReferences': [{'number': int(i)} for i in os.environ.get('FAKE_PR_ISSUES', '7').split(',')], "
+                    "'body': os.environ.get('FAKE_PR_BODY', '')}))\n"
                     "else:\n open(%r, 'a').write('called\\n')\n print(%r)\n" % (os.path.join(self.tmp, "gh.log"), SECRET))
         os.chmod(os.path.join(bindir, "gh"), 0o755)
         self.env["GH_TOKEN"] = SECRET
@@ -325,7 +328,7 @@ class KillLandedBase(SpawnBase):
         with open(os.path.join(self.tmp, "bin", "gh"), "w") as f:
             f.write("#!/usr/bin/env python3\nimport json, sys\n"
                     "if sys.argv[1:3] in (['issue', 'view'], ['pr', 'view']):\n"
-                    " print(json.dumps({'labels': [], 'closingIssuesReferences': []}))\n sys.exit(0)\n"
+                    " print(json.dumps({'labels': [], 'comments': [], 'closingIssuesReferences': []}))\n sys.exit(0)\n"
                     "open(%r, 'a').write(json.dumps(sys.argv[1:]) + '\\n')\n"
                     "sys.exit(%d)\n" % (self.gh_log, self.gh_exit))
 

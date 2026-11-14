@@ -49,7 +49,9 @@ refuse a reasonless lowering and retain the default. An `express` record also
 passes the template's eligibility check (`--labels`) before the coordinator
 applies `crew:express`. Roles read the newest
 record each wake; missing records use `thorough` and report `flavor-missing`
-to the coordinator. Tightening applies immediately; tier stays separate.
+to the coordinator. Tightening applies immediately; tier stays separate:
+an optional `tier=` on the record allocates the item's execution tier
+([Tiers](#tiers)) without changing its flavor.
 The coordinator handles the sweeper's aging-issue report in its next window
 and routes owner asks through the owner SLA linked above.
 For a bug issue or intake card traced to a merged PR, add a whole-line
@@ -319,6 +321,17 @@ its reasoning effort.
 | trivial | Mechanical work: small patches, config, lint, docs, test fixes | No planning or exploration | low |
 | default | Features, bug fixes, tests, moderate refactors | Brief plan, then execute | medium |
 | deep | Root-cause investigations, complex refactors or migrations, performance, security | Understand the problem deeply before changing anything | high |
+
+The coordinator records an item's tier as the optional `tier=` field of its
+signed flavor record ([triage template](../templates/triage-flavor.md)).
+`mdstack spawn` resolves a builder's or reviewer's tier in this order: an
+explicit `--tier`, then the item's tier, then the role's `default_tier`, then
+`default`. A build or fix reads its own issue; a review, validation or
+recheck reads the PR's linked issues, and conflicting tiers there refuse
+until a dispatch names one. A malformed tier or an unreadable item refuses
+before any claim, queue entry or window. The queue and run records keep the
+resolved tier, so dequeue, restart and quota relaunch run the same tier; a
+fresh spawn reads the current record. The researcher keeps its research row.
 
 ## Engines and fallback order
 
