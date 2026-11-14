@@ -959,6 +959,56 @@ class Team(Base):
         snap = self.call("gadgets", "snapshot")  # control: once its state changed, the wait is demand again
         self.assertEqual([d["id"] for d in snap["repos"]["acme/widgets"]["demand"]["builder"]], ["f7", "b42"])
 
+    def milestones(self, first=True):
+        """A's issue 42 in M1 (class 7) and 43 in M2 (class 8); B has no demand."""
+        self.inbox(self.b, "ben-lead", [])
+        builds = [dict(id="b42", kind="build", refs=["#42"])] if first else []
+        self.inbox(self.a, "ben-lead", builds + [dict(id="b43", kind="build", refs=["#43"])])
+        self.gh({"acme/widgets": {"issues": [dict(number=42, milestone={"title": "M1"}, body="", title="First"),
+                                              dict(number=43, milestone={"title": "M2"}, body="", title="Later")]}})
+
+    def test_class_8_waits_while_team_class_7_is_eligible(self):
+        self.milestones()
+        out = self.call("widgets", "decide", "--pool", "builder")  # two free slots, but #42 has not started
+        self.assertEqual([(a["ref"], a["class"]) for a in out["admit"]], [("#42", 7)])
+        self.assertEqual([(d["ref"], d["class"], d["reasons"]) for d in out["deferred"]], [("#43", 8, ["class-7"])])
+        self.milestones(False)  # control: with no class 7 left, M2 fills the slot
+        out = self.call("widgets", "decide", "--pool", "builder")
+        self.assertEqual([(a["ref"], a["class"], a["reasons"]) for a in out["admit"]], [("#43", 8, [])])
+
+    def route(self, kind, round_, cap=1):
+        """The reviewer lead requests `kind` round `round_` of A's #7 while only A's validate round 1 is granted."""
+        self.inbox(self.a, "ben-lead", [])
+        self.inbox(self.b, "ben-lead", [])
+        self.inbox(self.a, "vera-lead", [dict(id="v7", kind="validate", refs=["#7", SHA, "1"])])
+        with open(self.team) as f:
+            config = f.read()
+        with open(self.team, "w") as f:
+            f.write(config.replace("reviewers = 2", "reviewers = %d" % cap))
+        out = self.call("widgets", "decide", "--pool", "reviewer")
+        self.assertEqual([(a["kind"], a["round"]) for a in out["admit"]], [("validate", 1)])
+        s = self.mod()
+        route = s.commands()["route"]
+        args = argparse.Namespace(project=self.team + "#widgets", org_profile=None, reviewer_lead=True)
+        values = {"identities.reviewer.name": "Vera", "identities.reviewer.gh_user": "acme-reviewer"}
+        with mock.patch.object(route, "profile", return_value=(values, "fake", self.a)), \
+                mock.patch.object(s.commands()["poll"], "express_lane", return_value=False), \
+                mock.patch.object(s, "schedule_decide", return_value=out), \
+                mock.patch.object(route, "invoke") as spawn:
+            try:
+                route.review(args, self.a, dict(number=7, reviews=[]), SHA, kind, round_)
+            except RuntimeError as e:
+                return spawn, str(e)
+        return spawn, None
+
+    def test_reviewer_grant_is_consumed_only_by_its_pass_and_round(self):
+        for kind, round_ in (("review", 1), ("validate", 2)):  # another pass, another round: not granted
+            spawn, err = self.route(kind, round_)
+            self.assertFalse(spawn.called, (kind, round_))
+            self.assertEqual(err, "crew: reviewer admission deferred: #7 not-granted")
+        spawn, err = self.route("validate", 1)  # control: the granted pass and round spawn
+        self.assertEqual((err, spawn.call_args.kwargs["pass_"], spawn.call_args.kwargs["round"]), (None, "validate", 1))
+
 
 class TeamWalk(unittest.TestCase):
     """The team walk, transfer and release as pure functions over two repos sharing #7 (team §9.4)."""
@@ -1016,7 +1066,7 @@ class TeamWalk(unittest.TestCase):
         with open(os.path.join(tmp, "schedule", "reservations.json")) as f:
             self.assertEqual([(x["repo"], x["kind"]) for x in json.load(f)], [(self.a, "validate"), (self.b, "review")])
 
-    def test_ties_break_by_repo_then_identity_and_class_8_waits_for_team_class_7(self):
+    def test_ties_break_by_class_milestone_then_repo_and_identity(self):
         tracker = lambda issues: dict(milestones=[dict(number=1, title="M1"), dict(number=2, title="M2")], max_active=2,
                                       issues=issues, red_fixes=[])
         repo = lambda project, issues, builds: dict(project=project, ownership="active", paused=None, holds=[],

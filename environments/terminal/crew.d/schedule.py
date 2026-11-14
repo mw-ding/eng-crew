@@ -537,16 +537,22 @@ def walk(pool, ranked, snap, reserved, target_doc, opts, leads, ceiling=None, re
     builder already runs is skipped: it is neither admitted, held nor counted (#988). Reviewer demand is not: it leaves
     the inbox when its pass starts, and a busy reviewer on the same PR runs another pass or round. In a team the
     caller is the lane (repo, pool): another repo's would-be grants are holds too, `leads` is keyed by lane, and caps,
-    floors, target and ramp count team totals (team §9.4)."""
+    floors, target and ramp count team totals (team §9.4). A team class 8 build waits (`class-7`) while any eligible
+    team class 7 build has not started; a one-repo walk keeps class 8 as fill-in by rank order."""
     caller = pool if repo is None else (repo, pool)
+
+    def running(item):
+        return item["pool"] == "builder" and any(w["state"] == "busy" and on_ref(w, "builder", item["ref"]) and
+                                                 w.get("repo") == item.get("repo") for w in snap["workers"])
+    class_7 = repo is not None and any(i["class"] == 7 and not running(i) and
+                                       (lane(i) == caller or leads.get(lane(i), UNKNOWN) not in LEAD_DOWN) for i in ranked)
     used = {p: sum(w["role"] == p and w["state"] == "busy" for w in snap["workers"]) +
             sum(r["pool"] == p for r in reserved) for p in ("builder", "reviewer")}
     floor = {p: used[p] == 0 for p in used}
     held = {ident(r) for r in reserved}
     total, starts, actions = sum(used.values()), len(target_doc["starts"]), []
     for item in ranked:
-        if item["pool"] == "builder" and any(w["state"] == "busy" and on_ref(w, "builder", item["ref"]) and
-                                             w.get("repo") == item.get("repo") for w in snap["workers"]):
+        if running(item):
             continue
         p, act = item["pool"], dict(pool=item["pool"], ref=item["ref"], kind=item["kind"], **{"class": item["class"]})
         if "repo" in item:
@@ -558,6 +564,10 @@ def walk(pool, ranked, snap, reserved, target_doc, opts, leads, ceiling=None, re
             continue
         if not mine and leads.get(lane(item), UNKNOWN) in LEAD_DOWN:
             actions.append(dict(act, action="drop", reasons=["lead-down"]))
+            continue
+        if item["class"] == 8 and class_7:
+            if mine:
+                actions.append(dict(act, action="defer", reasons=["class-7"]))
             continue
         fails = [why for why, ok in (("cap", used[p] < snap["caps"][p]), ("target", total < target_doc["target"]),
                                      ("ramp", starts < opts["schedule_ramp"]), (ceiling, ceiling is None)) if not ok]

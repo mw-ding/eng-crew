@@ -347,11 +347,12 @@ outputs and reservations are unchanged.
 - **Local ranking, team order.** Each repo's demand is classed against its
   own tracker: milestone order (`repo.milestones` when set), `Depends on`
   critical paths and `main-red` fixes stay local. Class 7 is each repo's
-  earliest active milestone, so a class 8 build runs only when no class 7
-  build in the team is eligible. Within a class, ties break by milestone
-  order, critical path and age, then canonical repo, ref and kind. A red
-  default branch in A ranks A's fix class 1 and leaves B's work and lands
-  alone.
+  earliest active milestone, and a class 8 build runs only when no class 7
+  build in the team is eligible: while one has not started, a class 8 build
+  defers as `class-7`, even with a free slot. Within a class, ties break by
+  milestone order, critical path and age, then canonical repo, ref and kind.
+  A red default branch in A ranks A's fix class 1 and leaves B's work and
+  lands alone.
 - **Caller lane.** A decision grants and reserves only the caller's lane,
   its `(repo, pool)`. Another lane's would-be grants hold budget for that
   walk only, as the other pool's do, and wake that lane's lead; a lane whose
@@ -359,9 +360,11 @@ outputs and reservations are unchanged.
 - **Qualified reservations.** A team reservation records `repo`, `project`,
   `kind` and `round` beside `ref`, `pool` and `time`. It matches by repo,
   pool and ref, and a reviewer pass's kind and round. So A's `#7` and B's
-  `#7`, or one PR's review and validation, are separate grants. It transfers
-  only to a run of that repo (and reviewer pass and round), and `mdstack
-  spawn` and `mdstack schedule release` drop only the caller repo's grant.
+  `#7`, or one PR's review and validation, are separate grants. The reviewer
+  lead starts a pass only on a grant of that pass and round, so a validation
+  grant never starts a review. It transfers only to a run of that repo (and
+  reviewer pass and round), and `mdstack spawn` and `mdstack schedule
+  release` drop only the caller repo's grant.
 - **Observability.** Team outputs are additive: every action and `held`
   entry names its `repo`, and team actions also carry `project`; decide
   adds `team`, `repo` and `blocked`; release adds `repo`. The decision log

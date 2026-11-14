@@ -296,10 +296,15 @@ def scheduler(args, **kw):
     return argparse.Namespace(project=args.project, org_profile=args.org_profile, pool="reviewer", **kw)
 
 
-def admit(args, ref):
-    """The reviewer lead starts a pass only when `mdstack schedule decide --pool reviewer` grants its PR."""
+def granted(a, ref, kind, round_):
+    """Whether admit action `a` grants this pass: its ref, and for a team grant its pass and round too (team §9.3)."""
+    return a["ref"] == ref and (a.get("repo") is None or (a.get("kind") == kind and a.get("round") in (None, round_)))
+
+
+def admit(args, ref, kind, round_):
+    """The reviewer lead starts a pass only when `mdstack schedule decide --pool reviewer` grants it."""
     out = commands()["schedule"].schedule_decide(scheduler(args))
-    if not any(a["ref"] == ref for a in out["admit"]):
+    if not any(granted(a, ref, kind, round_) for a in out["admit"]):
         why = next((a["reasons"][0] for a in out["deferred"] if a["ref"] in (ref, None)), "not-granted")
         raise RuntimeError("crew: reviewer admission deferred: %s %s" % (ref, why))
 
@@ -346,7 +351,7 @@ def review(args, state, pr, head, pass_, round_):
         return
     lead = getattr(args, "reviewer_lead", False)
     if lead:
-        admit(args, "#%d" % pr["number"])
+        admit(args, "#%d" % pr["number"], pass_, round_)
     try:
         invoke(args, "spawn", role="reviewer", issue=None, pr=pr["number"], pass_=pass_, round=round_,
                tier=None, head=head, rereview_id=steer if lead else None)
