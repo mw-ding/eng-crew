@@ -2,6 +2,10 @@
 Solo-labelled items skip builder build/fix/CI/merge-up handoffs. The synthesizer lead (window 1, #1569) is the
 long-lived lander itself: its durable inbox is the land queue, and route hands it approval, self-gate, green-CI and
 approved merge-up events.
+In a team (team.json at the team root, #1858) each pool has one `(team, pool)` lead: its record, inbox, status and brief
+live at the team root, every repo's route hands it enveloped messages, and a repo sees only its own messages there
+(pending, waits, retries). Its brief lists each repo's rendered lead brief and `$CREW_PROJECT` is the team file, so a
+command without the message's `context.project` refuses for a multi-repo team.
 
 Usage: mdstack lead ensure|suites|handoff|report ROLE [KIND REF...] [--id ID] --project FILE
 """
@@ -12,8 +16,9 @@ import os
 import shlex
 import time
 from crew_shared import (
-    commands, coordinator_window, ENGINE_CMD, harness, identity, LAUNCH, probe, proc, profile, queue_lock, remember_pr,
-    refuse_paused, require_ownership, runs, show_icon, stop_pane, tmux, wait_harness, window_env)
+    commands, coordinator_window, ENGINE_CMD, harness, identity, LAUNCH, lead_state, probe, proc, profile,
+    queue_lock, remember_pr, refuse_paused, repo_id, require_ownership, runs, show_icon, stop_pane, team_module, tmux,
+    wait_harness, window_env, work_context)
 
 
 POOLS = {"builder": 2, "reviewer": 3, "synthesizer": 1}
@@ -41,7 +46,7 @@ def solo(values, issue=None, pr=None):
 
 
 def record_path(state, role):
-    return os.path.join(state, "leads", role + ".json")
+    return os.path.join(lead_state(state), "leads", role + ".json")
 
 
 def save_record(path, rec):
@@ -67,12 +72,35 @@ def recovery(liveness, restarts):
     return "none" if liveness == "alive" else "restart" if liveness in ("dead", "missing") and not restarts else "blocked"
 
 
+def team_brief(home, role):
+    """A `(team, pool)` lead's brief: the message's repo decides the rendered brief, project and state (#1858)."""
+    data = team_module.read(home)
+    rows = "".join("| %s | `%s` | `%s` | `%s` |\n" % (r, v["project"], v["state"], os.path.join(
+        v["state"], "render", "runtime", role + "-lead.md")) for r, v in sorted(data["repos"].items()))
+    return ("# Team %s lead: %s\n\nYou lead the %s pool of every repo of team `%s` (team §9.4). Your inbox and status "
+            "are at the team root `%s`. Each inbox message carries a `context` work envelope: refuse one without it "
+            "(`blocked:` with its id). For each message, follow the rendered lead brief of `context.repo` below, pass "
+            "`context.project` as `--project` to every crew command and use that repo's state where the brief says "
+            "`$CREW_STATE`. `$CREW_PROJECT` is the team file, which refuses without a repo for a multi-repo team. "
+            "One repo's ownership, pause or holds never decide another repo's work.\n\n"
+            "| Repo | --project | State | Lead brief |\n|---|---|---|---|\n%s" % (
+                role, data.get("team", ""), role, data.get("team", ""), home, rows))
+
+
+def bind_team(values, state, project):
+    """A team repo records itself in team.json before any lead read, so its leads resolve to the team root."""
+    if values.get("team.name"):
+        team_module.bind(state, values["team.name"], repo_id(values), work_context(project, values)["project"])
+
+
 def ensure(args, role):
     values, session, state = profile(args)
     if not require_ownership(values) or not enabled(state, role) or refuse_paused(state, "lead " + role):
         return 1
+    bind_team(values, state, args.project)
+    home = lead_state(state)
     path = record_path(state, role)
-    with queue_lock(state):
+    with queue_lock(home):
         rec = dict(records(state)).get(values["identities.%s.name" % role].lower() + "-lead")
         windows = dict((n, i) for i, n in tmux.list_windows(session))
         name = values["identities.%s.name" % role].lower() + "-lead"
@@ -95,14 +123,15 @@ def ensure(args, role):
                 return 1
             tmux.kill_window(session, windows[name])
         engine, model, effort = commands()["spawn"].pick_engine(values, "default")
-        cwd = os.path.dirname(os.path.abspath(args.project))
-        brief = os.path.join(state, "leads", role + ".brief.md")
+        cwd = os.path.dirname(os.path.abspath(args.project.partition("#")[0]))
+        brief = os.path.join(home, "leads", role + ".brief.md")
         os.makedirs(os.path.dirname(brief), exist_ok=True)
-        os.makedirs(os.path.join(state, "status"), exist_ok=True)  # a fresh lead appends its first ack here (#1176)
+        os.makedirs(os.path.join(home, "status"), exist_ok=True)  # a fresh lead appends its first ack here (#1176)
         with open(os.path.join(state, "render", "runtime", role + "-lead.md")) as f, open(brief, "w") as out:
-            out.write(f.read())
-        env = window_env(values, state, role, name, brief, args.project)
-        env.update(CREW_ROLE=role + "-lead", CREW_POOL=role)
+            out.write(team_brief(home, role) if home != state else f.read())
+        team_file = args.project.partition("#")[0] if home != state else None
+        env = window_env(values, home, role, name, brief, team_file or args.project)
+        env.update(CREW_ROLE=role + "-lead", CREW_POOL=role, **{"CREW_TEAM": os.path.abspath(team_file)} if team_file else {})
         argv = harness(engine, model, effort, cwd, state, values["runtime.options.permission_mode"], values)
         new = dict(name=name, index=index, role=role + "-lead", harness=ENGINE_CMD[engine],
                    restarts=1 if rec else 0, start=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
@@ -133,11 +162,11 @@ def handoff(args, role, kind, refs):
     name = values["identities.%s.name" % role].lower() + "-lead"
     prior = next((m for m in pending(state, name) if m["kind"] == kind and m["refs"] == refs), None)
     if prior:  # a done (completed or withdrawn) message is never reused: a re-send starts a new handoff
-        if commands()["send"].wait_ack(state, name, prior["id"], 0) == 0:
+        if commands()["send"].wait_ack(lead_state(state), name, prior["id"], 0) == 0:
             return 0
         if commands()["send"].nudge(session, POOLS[role], "inbox: " + prior["id"]):
             return 4
-        return commands()["send"].wait_ack(state, name, prior["id"], args.wait_ack) \
+        return commands()["send"].wait_ack(lead_state(state), name, prior["id"], args.wait_ack) \
             if getattr(args, "wait_ack", None) is not None else 0
     if not require_ownership(values):
         return 1
@@ -146,21 +175,25 @@ def handoff(args, role, kind, refs):
 
 
 def pending(state, name):
-    inbox = os.path.join(state, "inbox", name + ".jsonl")
-    status = os.path.join(state, "status", name + ".status")
+    """The lead's undone inbox messages; from a team repo's state, only messages whose envelope names that repo."""
+    home = lead_state(state)
+    inbox = os.path.join(home, "inbox", name + ".jsonl")
+    status = os.path.join(home, "status", name + ".status")
     if not os.path.exists(inbox):
         return []
     done = set()
     if os.path.exists(status):
         with open(status) as f:
             done = {line.split()[1] for line in f if line.startswith("done: ")}
+    mine = team_module.repo_of(state) if home != state else None
     with open(inbox) as f:
-        return [m for m in map(json.loads, f) if m["id"] not in done]
+        return [m for m in map(json.loads, f) if m["id"] not in done and
+                (home == state or (m.get("context") or {}).get("repo") == mine)]
 
 
 def deferred_ids(state, name):
     """Handoff ids the lead acknowledged and then reported as an admission deferral (`deferred: ... id=<id>`)."""
-    status = os.path.join(state, "status", name + ".status")
+    status = os.path.join(lead_state(state), "status", name + ".status")
     acked, found = set(), set()
     if os.path.exists(status):
         with open(status) as f:
@@ -212,9 +245,10 @@ def parked(state, name):
 
 def actionable(state, name):
     """Pending messages less acknowledged owner, hold or CI waits whose ref's fresh state is unchanged since their
-    `waiting:` line. A changed state wakes the id until a later `waiting:` line; leads/waits.json keeps the record."""
+    `waiting:` line. A changed state wakes the id until a later `waiting:` line; leads/waits.json keeps the record.
+    For a team lead the messages, waits book and fingerprints are this repo state's own (#1858)."""
     messages = pending(state, name)
-    status = os.path.join(state, "status", name + ".status")
+    status = os.path.join(lead_state(state), "status", name + ".status")
     acked, latest = set(), {}
     if os.path.exists(status):
         with open(status) as f:
@@ -304,8 +338,8 @@ def report(args):
         out.write("# Builder %s\n\nReason: %s\nRefs: %s\n%s\n" % (
             "admission deferred" if deferred else "blocked", reason, " ".join(refs), args.detail))
     name = values["identities.builder.name"].lower() + "-lead"
-    os.makedirs(os.path.join(state, "status"), exist_ok=True)
-    with open(os.path.join(state, "status", name + ".status"), "a") as out:
+    os.makedirs(os.path.join(lead_state(state), "status"), exist_ok=True)
+    with open(os.path.join(lead_state(state), "status", name + ".status"), "a") as out:
         out.write("%s: %s %s %s%s\n" % ("deferred" if deferred else "blocked", " ".join(refs), reason, path,
                                        " id=" + args.id if deferred and args.id else ""))
     if deferred:

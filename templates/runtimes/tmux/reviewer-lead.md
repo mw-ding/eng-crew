@@ -51,6 +51,8 @@ deferred/error output; preserve pending refs.
 
 <include:policy/shared/lead-waits.md>
 
+<include:policy/shared/team-lead.md>
+
 Write `blocked: <id> REFS` for exhausted recovery, disputed evidence, unsafe
 cleanup or unavailable observations; coordinator owns the owner channel.
 Never ask the owner only here or change a gate, round cap or permission.

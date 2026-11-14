@@ -22,11 +22,16 @@ A builder's worktree is its own clone borrowing the checkout's objects, not a li
 confined to it by the harness's OS write sandbox, and confinement=enforce refuses an unsupported one before any claim
 (_confine.py, docs/runtimes/tmux.md#confinement, #1252).
 Claude Code copies launch from the stable run-copy parent; missing trust warns before the claim (#1792).
+In a team (#1858) the window name carries the repo tag (`ben-42-<owner>__<repo>`), and one lock at the team root mints a
+team-global run ID and takes the window slot before any worktree or window; the worktree is
+`<worktree-root>/<owner>__<repo>/<run-id>/` and the run record keeps `run_id`, `context` (its work envelope), `project`,
+`checkout` and `handoff` (--handoff, the lead message it answers), while claims, inbox and status stay in repo state.
 Without --tier, a builder or reviewer takes the item's tier from the newest coordinator-signed `pass=flavor` record
 carrying `tier=` (#1830); the queue and run records keep the resolved tier, so dequeue and restart retain it.
 
 Usage: mdstack spawn ROLE --issue N | --pr N | --sweep | --docs-pass | --reflection WINDOW [--log N] [--input-sha SHA]
-       [--run-id ID] | --train N [--pass PASS] [--round K] [--tier T] [--host H --reason TEXT] --project FILE [--org-profile FILE]
+       [--run-id ID] | --train N [--pass PASS] [--round K] [--tier T] [--host H --reason TEXT] [--handoff ID]
+       --project FILE [--org-profile FILE]
 """
 import collections
 import json
@@ -36,9 +41,9 @@ import shlex
 import shutil
 import time
 from crew_shared import (
-    BANDS, brief_src, checkout, commands, copy_claim, ENGINE_CMD, fetch, git, harness, harnesses, identity, kill_run, LAUNCH, NAMES, over_cap, PASSES, POINTER,
-    load, profile, public_repo, queue_lock, remote_run, role_notes, ROLES, runs, show_icon, tmux, wait_harness, window_env, open_trains,
-    synthesizer_work)
+    BANDS, brief_src, checkout, commands, copy_claim, crew_render, ENGINE_CMD, fetch, git, harness, harnesses, identity, kill_run, LAUNCH, NAMES, over_cap, PASSES, POINTER,
+    load, profile, public_repo, queue_lock, remote_run, repo_id, role_notes, ROLES, runs, show_icon, team_module, team_name, tmux,
+    wait_harness, window_env, open_trains, synthesizer_work, work_context)
 
 placement = load("crew_placement", "environments/terminal/crew.d/_placement.py")
 confine = load("crew_confine", "environments/terminal/crew.d/_confine.py")
@@ -178,6 +183,8 @@ def enqueue(state, args, pass_, reason=None):
         entry["reflection"] = reflection_of(args)
     if reason:
         entry["reason"] = reason
+    if getattr(args, "handoff", None):  # the lead message the request answers (#1858)
+        entry["handoff"] = args.handoff
     if getattr(args, "host", None):  # an override survives the queue; dequeue posts its reason at the spawn
         entry["host"], entry["override_reason"] = args.host, args.reason
     os.makedirs(state, exist_ok=True)
@@ -213,6 +220,7 @@ def register(sub):
     p.add_argument("--timeout", type=float, default=15.0, help="seconds to see the harness in the foreground")
     p.add_argument("--host", help="placement override: run on this inventory host; needs --reason")
     p.add_argument("--reason", help="why the host is overridden; posted on the item before the spawn")
+    p.add_argument("--handoff", help="the lead inbox message id this run answers; kept on the run record (#1858)")
     p.add_argument("--project")
     p.add_argument("--org-profile")
 
@@ -293,7 +301,10 @@ def run(args):
         return 1
     nm = values.get(data["identity_key"] + ".name", NAMES[role]).lower()
     instance = getattr(args, "instance", None)  # mdstack up <role>: an on-demand instance, named by mdstack up (#1231)
+    if values.get("team.name"):  # its leads and allocation resolve to the team root (#1858)
+        commands()["lead"].bind_team(values, state, args.project)
     name = instance or data["window_name"].format(name=nm, issue="sweep" if sweep else "docs" if docs_pass else "reflection" if reflection else "train%d" % train if train else args.issue, change=args.pr, round=args.round, **{"pass": pass_})
+    name = team_name(values, name)
     if not tmux.has_session(session):
         print("crew: session %s not reachable (tmux socket, or run mdstack up first)" % session)
         return 1
@@ -382,11 +393,28 @@ def run(args):
         args.pr or args.issue or ("train%d" % train if train else "docs" if docs_pass else "reflection" if reflection else instance or "sweep"), sha[:7], role, "r%d-" % args.round if data["lifetime"] == "pass" else "", pass_)
     wt = os.path.join(placement.setting(values, remote, "root", "~/.mdstack"), "wt", wt_name) if remote else \
         os.path.join(os.path.abspath(values["paths.worktree_root"]), wt_name)
+    top, alloc = team_module.root(state), None
+    if top and not remote:  # run ID and window slot together, under the team's one lock (team §9.3)
+        context = crew_render.crew_config.envelope(work_context(args.project, values), item=args.issue, change=args.pr,
+                                                   head=sha if args.pr else None, pass_=pass_, round_=args.round)
+        with team_module.lock(top):
+            alloc = team_module.allocate(top, BANDS[role], [i for i, _ in tmux.list_windows(session)], {
+                "repo": repo_id(values), "project": context["project"], "state": state, "window": name, "claim": claim},
+                prefer=free[0])
+        if alloc is None:
+            os.remove(claim)
+            print("crew: refusing spawn: band %d-%d full across the team" % BANDS[role])
+            return 1
+        free = [alloc["index"]]
+        wt = os.path.join(os.path.abspath(values["paths.worktree_root"]), team_module.tag(repo_id(values)), alloc["run_id"])
     rec = {"index": None if remote else free[0], "role": role, "item": item, "pass": pass_, "repo": repo, "worktree": None, "claim": claim,
            "engine": engine, "model": model, "effort": effort, "harness": ENGINE_CMD[engine], "head": sha,
            "host": placed["host"], "placement": placed["placement"], "rejections": placed["rejections"]}
     if override:
         rec["override_reason"] = reason
+    if alloc:  # the checkout-valued "repo" stays; the canonical repo is the envelope's (#1858)
+        rec.update(run_id=alloc["run_id"], context=context, project=context["project"], checkout=repo,
+                   handoff=getattr(args, "handoff", None))
     if role == "builder":  # mdstack doctor lists unconfined runs (#1252)
         rec.update({"confined": True} if confined else {"confined": False, "unconfined": unconfined})
     if remote:  # its window and worktree are on the host; the run record, claim and brief copy stay here

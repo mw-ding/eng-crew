@@ -88,6 +88,8 @@ Never delete a referenced event or finding while work remains pending.
 
 <include:policy/shared/lead-waits.md>
 
+<include:policy/shared/team-lead.md>
+
 Prove worker delivery through `ack:`; re-nudge once on a miss, then probe
 and escalate. Round, CI-fix and nudge caps stay unchanged. Defer admission
 without model polling: the token-free watcher backstop or a slot-release
