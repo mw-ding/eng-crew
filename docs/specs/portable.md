@@ -2506,7 +2506,7 @@ under the owner's
 [next-round approval](https://github.com/mw-ding/mdstack/issues/985#issuecomment-6884105830).
 Runtime module paths below are under `environments/terminal/crew.d/`;
 `path:line` citations refer to base `4202c823a7c028a19044a16991ba60d02ab628dd`.
-S0 is recorded as done for this opening slice (PR #TBD), effective on merge.
+S0 is recorded as done for this opening slice (PR #1892), effective on merge.
 No member dispatches before #1891 merges. Order: S0 → D1, D2 and SD together;
 D3, O1, C1 and L1–L6 fill spare slots; ST after SD merges; S1 last. D3
 integrates after D2 if it reuses D2's pending-delivery bookkeeping, and L6
@@ -2517,7 +2517,7 @@ limits.
 
 | ID | Issue | Scope / named paths | Size | Depends on | Tier | Status |
 |---|---|---|---|---|---|---|
-| S0 | #1891 | This section (PR #TBD) | 110–170 docs | Signed M57 scope and applied choices | default | done |
+| S0 | #1891 | This section (PR #1892) | 110–170 docs | Signed M57 scope and applied choices | default | done |
 | D1 | #1878 | Review readiness: `route.py`, `poll.py`, `reviewer-pool.py`, `review.py`; `lead.py`/`watch.py` for retained waits; `_review_ready.py` only if needed; tmux runtime doc, builder fix fragment | 180–320 | #1891; integrate with D2 and L6 | deep | open |
 | D2 | #1850 | Busy delivery: `send.py`, `acked.py`, `lead.py`, `watch.py`; `_shared.py` only for a necessary primitive; builder-lead template, tmux runtime doc | 160–280 | #1891 | deep | open |
 | D3 | #1871 | Relay disposition: `reviewer-pool.py`, `lead.py`, `watch.py` if its wait fingerprint changes; builder-lead/coordinator templates, tmux runtime doc | 40–90 | #1891; after D2 if sharing its pending state | default | open |
