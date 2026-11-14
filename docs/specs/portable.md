@@ -2261,7 +2261,7 @@ commits. Estimates exclude tests and are planning ranges, not limits.
 | B2 | #1835 | Signed permission-change wake | 70–130; 15–30 | #1847; #1836 for integrated wait/resume acceptance | patch | [PR #1867](https://github.com/mw-ding/mdstack/pull/1867), [review / validation](https://github.com/mw-ding/mdstack/pull/1867#pullrequestreview-5900285513) | done |
 | B3 | #1830 | Item-tier resolution and launch preservation | 100–180; 25–50 | #1847; integrate against #1836/#1835 | minor | [PR #1868](https://github.com/mw-ding/mdstack/pull/1868), [round 2 review / validation](https://github.com/mw-ding/mdstack/pull/1868#pullrequestreview-5901450160) | done |
 | L1 | #1813 | One retained learning record | 25–45 docs | #1847 | none | [PR #1852](https://github.com/mw-ding/mdstack/pull/1852), [review](https://github.com/mw-ding/mdstack/pull/1852#pullrequestreview-5898806445), [m55-learning.md](../findings/m55-learning.md) | done |
-| S1 | #1848 | Status, evidence, decisions, lessons and tracker reconciliation | 35–70 docs | #1847, #1836, #1835, #1830, #1813 | none | this closing sync; pending land | open |
+| S1 | #1848 | Status, evidence, decisions, lessons and tracker reconciliation | 35–70 docs | #1847, #1836, #1835, #1830, #1813 | none | [PR #1869](https://github.com/mw-ding/mdstack/pull/1869); pending land | open |
 
 #### M55 outcome and lessons
 
