@@ -116,57 +116,70 @@ def line_identity(line):
     return {"change": int(m[1]), "head": m[2], "pass": m[3]} if m else {}
 
 
+def named_ids(w, rec):
+    """(ids, source of each, conflict): every work id the record, its completion status line and its run name. The
+    record's first ref `#n` is an issue event's item or any other record's change, a full-SHA second ref its head,
+    `round` its round; the line names item/change/head (builder) or change/head/pass (reviewer); for a status record
+    from it, the run names its item, change and pass, plus head and round for a reviewer (a builder pushes new heads).
+    Sources that disagree conflict."""
+    ids, source, refs = {}, {}, w.get("refs") or []
+    named = []
+    if refs and re.fullmatch(r"#\d+", refs[0]):
+        change = w.get("event") not in ITEM_EVENTS
+        named.append(("change" if change else "item", int(refs[0][1:]), "the record"))
+        if change and len(refs) > 1 and FULL_SHA.fullmatch(refs[1]):
+            named.append(("head", refs[1], "the record"))
+    named.append(("round", w.get("round"), "the record"))
+    if w.get("reason") == "status":
+        named += [(k, v, "the completion line") for k, v in line_identity(w.get("line", "")).items()]
+    if rec is not None and w.get("reason") == "status":  # a result from the run; a handoff to it names only itself
+        args = rec.get("args", {})
+        run = [("item", args.get("issue")), ("change", rec.get("pr") or args.get("pr")), ("pass", rec.get("pass"))]
+        run += [("head", rec.get("head")), ("round", args.get("round"))] if rec["role"] == "reviewer" else []
+        named += [(k, v, "run " + w["window"]) for k, v in run]
+    for key, value, where in named:
+        if value is None:
+            continue
+        if key in ids and str(ids[key]) != str(value):
+            return ids, source, "%s names %s %s, not %s's %s" % (where, key, value, source[key], ids[key])
+        ids.setdefault(key, value)
+        source.setdefault(key, where)
+    return ids, source, None
+
+
 def qualify(args, values, state, w):
-    """Why wake w may not act in this project, or None (team §9.3). An envelope must be closed, name this team and repo
-    (another project reference must resolve to them) and agree with the record's refs and any completion line. A record
-    without one is bound to a run or lead record in this repo's state, or the profile is a one-repo config, whose
-    selected state is its only project; a team file's other envelope-less records refuse, so a bare `done:` there has
-    no repo authority. A completion line's ids (#1856) must match its envelope and the run record it came from; in a
-    team file that run (or lead) must exist even with an envelope, while a one-repo replay with neither keeps today's
-    recovery, and the change it names is still read from this repo first. An issue event's first ref is compared with
-    the envelope's item, any other record's with its change; the item, change, head and round a record names must be
-    present in its envelope and equal."""
-    config, line, refs = crew_render.crew_config, w.get("line", ""), w.get("refs") or []
-    claimed = line_identity(line) if w.get("reason") == "status" else {}
+    """Why wake w may not act in this project, or None (team §9.3, #1856). One comparison: a supplied envelope must be
+    closed, name this team and repo (another project reference must resolve to them), and carry and equal every work
+    id the record, its completion line or its run names (named_ids); a missing or differing id refuses. An id nothing
+    names may be absent (a new build has no change or head). A record without an envelope is bound to a run or lead
+    record in this repo's state, or the profile is a one-repo config, whose selected state is its only project; in a
+    team file every other envelope-less record refuses, and a completion line needs its run or lead even with an
+    envelope. A one-repo replay with neither keeps today's recovery after the repo-checked change read."""
+    config = crew_render.crew_config
     rec = dict(runs(state)).get(w.get("window"))
     bound = rec or dict(commands()["lead"].records(state)).get(w.get("window"))
+    ids, source, conflict = named_ids(w, rec)
+    if conflict:
+        return conflict
     if "context" in w:
         env = w["context"]
         problem = config.envelope_problem(env, work_context(args.project, values), lambda ref: config.project_identity(ref, args.org_profile))
         if problem:
             return problem
-        key = "item" if w.get("event") in ITEM_EVENTS else "change"  # the id the record's first ref names
-        named = refs and re.fullmatch(r"#\d+", refs[0])
-        need = ([key] if named else []) + (["head"] if named and key == "change" and len(refs) > 1 and
-                                           FULL_SHA.fullmatch(refs[1]) else [])
-        need += ["round"] if w.get("round") is not None else []
-        if [k for k in need if env[k] is None]:  # explicit absence is for work the record does not name
-            return "work envelope lacks the %s this record names" % ", ".join(k for k in need if env[k] is None)
-        if env["round"] is not None and w.get("round") is not None and env["round"] != w["round"]:
-            return "work envelope round %s is not the record's %s" % (env["round"], w["round"])
-        if env[key] is not None and refs and re.fullmatch(r"#\d+", refs[0]) and refs[0][1:] != str(env[key]):
-            return "work envelope %s #%s is not the record's %s" % (key, env[key], refs[0])
-        if env["head"] and len(refs) > 1 and FULL_SHA.fullmatch(refs[1]) and refs[1] != env["head"]:
-            return "work envelope head %s is not the record's %s" % (env["head"], refs[1])
-        for key, value in claimed.items():
-            if env[key] is not None and str(env[key]) != str(value):
-                return "work envelope %s %s is not the completion line's %s" % (key, env[key], value)
+        for key, value in ids.items():
+            if env[key] is None:
+                return "work envelope lacks the %s %s names" % (key, source[key])
+            if str(env[key]) != str(value):
+                return "work envelope %s %s is not %s's %s" % (key, env[key], source[key], value)
     elif bound is None and "team.name" in values and w.get("reason") != "backstop":
         return "no work envelope, and no run or lead record in this repo's state (team %s)" % values["team.name"]
     if bound is not None and "context" in bound:
         problem = config.envelope_problem(bound["context"], work_context(args.project, values))
         if problem:
             return problem
-    if claimed and bound is None and "team.name" in values:  # an envelope names the work, not the run that did it
+    if w.get("reason") == "status" and line_identity(w.get("line", "")) and bound is None and "team.name" in values:
         return "completion line from %s has no run or lead record in this repo's state (team %s)" % (
             w.get("window"), values["team.name"])
-    if claimed and rec is not None:
-        run = {"item": rec.get("args", {}).get("issue"), "change": rec.get("pr") or rec.get("args", {}).get("pr")}
-        if rec["role"] == "reviewer":  # a builder pushes new heads; a reviewer's run is pinned to its head and pass
-            run.update(head=rec.get("head"), **{"pass": rec.get("pass")})
-        for key, value in claimed.items():
-            if run.get(key) is not None and str(run[key]) != str(value):
-                return "run %s is for %s %s, not the completion line's %s" % (w["window"], key, run[key], value)
     return None
 
 

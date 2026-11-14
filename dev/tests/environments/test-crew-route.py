@@ -137,7 +137,7 @@ class Route(SpawnBase):
                          "repo:acme/gadgets"),
                  (dict(b_env, project=mine), "work envelope project %s is acme/widgets in team repo:acme/widgets, not "
                                              "acme/gadgets" % mine),
-                 (dict(b_env, change=13), "work envelope change #13 is not the record's #12"),
+                 (dict(b_env, change=13), "work envelope change 13 is not the record's 12"),
                  (dict(b_env, head="c" * 40), "work envelope head %s is not the record's %s" % ("c" * 40, self.sha)),
                  (dict(b_env, extra=1), "work envelope missing or not the closed key set"),
                  (None, "work envelope missing or not the closed key set")]
@@ -205,7 +205,7 @@ class Route(SpawnBase):
         self.assertFalse(os.path.exists(self.gh_log))
         # round 2: an envelope names the work, not the run that did it; a team-file completion needs its run
         done = dict(worker, context=self.envelope(team + "#widgets", "acme/widgets", team="eng", item=7, round=None,
-                                                  **{"pass": None}))
+                                                  **{"pass": "build"}))
         with open(queue, "w") as f:
             f.write(json.dumps(done) + "\n")
         self.crew("route", "--project", team, "--timeout", "1")
@@ -229,14 +229,15 @@ class Route(SpawnBase):
 
     def test_completion_line_binds_to_its_run_and_envelope(self):  # #1856 fix round 1: a bare done: has no authority
         self.spawn("builder", "--issue", "7")
-        env = self.envelope(self.project, "acme/widgets", item=7, round=None, **{"pass": None})
+        env = self.envelope(self.project, "acme/widgets", item=7, round=None, **{"pass": self.record("ben-7")["pass"]})
         line, before = "done: #7 #12 " + self.sha, self.gh_calls() if os.path.exists(self.gh_log) else []
-        cases = [(dict(reason="status", window="ben-7", line=line, context=dict(env, change=13, head="c" * 40)),
-                  "work envelope change 13 is not the completion line's 12"),
-                 (dict(reason="status", window="ben-7", line="done: #8 #12 " + self.sha),
-                  "run ben-7 is for item 7, not the completion line's 8"),
+        cases = [(dict(reason="status", window="ben-7", line="done: #8 #12 " + self.sha),  # no envelope: line vs run
+                  "run ben-7 names item 7, not the completion line's 8"),
                  (dict(reason="status", window="ben-9", line=line, context=dict(env, change=13, head="c" * 40)),
-                  "work envelope change 13 is not the completion line's 12")]  # the review's repro: no run either
+                  "work envelope change 13 is not the completion line's 12"),  # no run either
+                 (dict(reason="status", window="ben-7", line=line, context=dict(env, item=None, change=None, head=None,
+                                                                                 **{"pass": None})),
+                  "work envelope lacks the item the completion line names")]  # the r1-after-reset repro: all ids null
         for record, reason in cases:
             self.queue(record)
             self.route()
@@ -249,27 +250,49 @@ class Route(SpawnBase):
         self.route()
         self.assertEqual((self.pending(), "vera-12-r1-review" in self.names()), ([], True))
 
-    def test_change_record_compares_the_envelope_change_not_its_item(self):  # #1856 round 2
-        mixed = self.envelope(self.project, "acme/widgets", item=12, change=13)
-        self.queue(self.event(context=mixed))
-        self.route()
-        (kept,) = self.pending()
-        self.assertEqual(kept["route_error"], "crew: route: refusing new-head: work envelope change #13 is not the "
-                                              "record's #12")
-        self.assertEqual((os.path.exists(self.gh_log), self.names()), (False, ["ash"]))
-        os.remove(os.path.join(self.state, "wake", "queue.jsonl"))
-        for env, reason in ((dict(mixed, change=12, round=2), "work envelope round 2 is not the record's 1"),  # round 3
-                            (dict(mixed, change=None, head=None), "work envelope lacks the change, head this record names"),
-                            (dict(mixed, change=12, round=None), "work envelope lacks the round this record names")):
-            self.queue(self.event(context=env))
+    def test_every_named_field_missing_or_mismatched_refuses(self):  # #1856 steer: one comparison, table-driven
+        """Every id the record, its completion line or its run names (team, repo, item, change, head, pass, round) must
+        be in a supplied envelope and equal: each field missing or mismatched refuses through `mdstack route` with no
+        backend call or window; each scenario's complete envelope is the control."""
+        self.spawn("builder", "--issue", "7")
+        build = self.record("ben-7")["pass"]
+        completion = (dict(reason="status", window="ben-7", line="done: #7 #12 " + self.sha), "status",  # item, change,
+                      self.envelope(self.project, "acme/widgets", item=7, round=None, **{"pass": build}),  # head; pass
+                      {"item": ("the completion line", 7, 8), "change": ("the completion line", 12, 13),  # from its run
+                       "head": ("the completion line", self.sha, "c" * 40), "pass": ("run ben-7", build, "fix")})
+        head = (self.event(), "new-head", self.envelope(self.project, "acme/widgets"),  # change, head, round; team, repo
+                {"change": ("the record", 12, 13), "head": ("the record", self.sha, "c" * 40),
+                 "round": ("the record", 1, 2), "team": None, "repo": None})
+        before = self.gh_calls() if os.path.exists(self.gh_log) else []
+        for record, what, env, fields in (completion, head):
+            for field, named in fields.items():
+                for mode in ("missing", "mismatched"):
+                    if named is None:  # team and repo: the closed shape and the project identity refuse them
+                        bad = dict(env, **{field: None if mode == "missing" else "acme/gadgets" if field == "repo"
+                                           else "repo:acme/gadgets"})
+                        reason = "work envelope has an invalid %s" % field if mode == "missing" else \
+                            "work envelope names %s in team %s, not acme/widgets in team repo:acme/widgets" % (
+                                bad["repo"], bad["team"])
+                    else:
+                        where, value, other = named
+                        bad = dict(env, **{field: None if mode == "missing" else other})
+                        reason = "work envelope lacks the %s %s names" % (field, where) if mode == "missing" else \
+                            "work envelope %s %s is not %s's %s" % (field, other, where, value)
+                        if (field, mode) == ("change", "missing"):  # a head without its change is not a closed envelope
+                            reason = "work envelope has an invalid head"
+                    self.queue(dict(record, context=bad))
+                    self.route()
+                    (kept,) = self.pending()
+                    self.assertEqual(kept["route_error"], "crew: route: refusing %s: %s" % (what, reason), (field, mode))
+                    self.assertEqual(kept["context"], bad)
+                    os.remove(os.path.join(self.state, "wake", "queue.jsonl"))
+        self.assertEqual(self.gh_calls() if os.path.exists(self.gh_log) else [], before)
+        self.assertEqual(self.names(), ["ash", "ben-7"])
+        for record, _, env, _ in (head, completion):  # the matching controls: both reach this change's review
+            self.queue(dict(record, context=env))
             self.route()
-            (kept,) = self.pending()
-            self.assertEqual(kept["route_error"], "crew: route: refusing new-head: " + reason)
-            os.remove(os.path.join(self.state, "wake", "queue.jsonl"))
-        self.assertEqual((os.path.exists(self.gh_log), self.names()), (False, ["ash"]))
-        self.queue(self.event(context=dict(mixed, change=12)))  # the control: the complete, same change starts its review
-        self.route()
-        self.assertEqual((self.pending(), "vera-12-r1-review" in self.names()), ([], True))
+            self.assertEqual(self.pending(), [])
+        self.assertIn("vera-12-r1-review", self.names())
 
     def test_foreign_change_never_reaches_the_reviewer_lead(self):  # #1856 fix round 1: read before any lead handoff
         bindir = os.path.join(self.tmp, "bin")
